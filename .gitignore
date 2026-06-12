@@ -1,0 +1,14 @@
+# Log and output directories
+outputs/
+*.log
+
+# Datasets and large resource files
+data/
+resources/
+
+# Backup files
+backup/
+
+# IDE / Editor folders
+.vscode/
+.idea/
