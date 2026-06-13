@@ -351,7 +351,7 @@ def _rank_stats(sv, l, tols, prefix=''):
 
 
 @torch.no_grad()
-def _effective_attention_rank(qf, kf, rg, wg, max_b=4, max_l=4096, tols=(1e-1, 1e-2, 1e-3, 1e-4)):
+def _effective_attention_rank(qf, kf, rg, wg, max_b=64, max_l=8192, tols=(1e-1, 1e-2, 1e-3, 1e-4)):
     """Realized effective-attention rank on real inputs — the direct empirical test of the
     paper's rank argument. The per-head effective weight is W = G ∘ R (Hadamard), G=φ(Q)φ(K)ᵀ
     (rank ≤ d_qk), R=(read)(writeᵀ) (rank ≤ nc), so by the Schur/Oppenheim bound
@@ -368,7 +368,7 @@ def _effective_attention_rank(qf, kf, rg, wg, max_b=4, max_l=4096, tols=(1e-1, 1
     measures 1024/1024 — and the masked map carries no rank signal). Un-normalized: row
     normalization is a positive-diagonal left-scaling, rank-preserving for strictly positive
     entries. The masked object (prefix 'm') can still be emitted as an appendix honesty row
-    via CLA_RANK_MASKED=1; off by default, with the SVD budget spent on more sequences
+    via ROLA_RANK_MASKED=1; off by default, with the SVD budget spent on more sequences
     (max_b=4) so the per-slice DISTRIBUTIONS in `*_dist` have support.
     Also emits the spectrum itself — per-slice σ/σmax at log-spaced indices, quantiles
     across slices — the "supply thins" plot of §4.
@@ -376,7 +376,7 @@ def _effective_attention_rank(qf, kf, rg, wg, max_b=4, max_l=4096, tols=(1e-1, 1
     B, L, H, _ = qf.shape
     b, l = min(max_b, B), min(max_l, L)
     q, k, r, w = qf[:b, :l], kf[:b, :l], rg[:b, :l], wg[:b, :l]
-    measure_masked = bool(os.environ.get('CLA_RANK_MASKED'))
+    measure_masked = bool(os.environ.get('ROLA_RANK_MASKED'))
     causal = torch.tril(torch.ones(l, l, device=qf.device)) if measure_masked else None
     # SVD ONE l×l matrix at a time (loop over batch×head) rather than batching the full
     # [b,H,l,l] tensor + cuSOLVER workspace ×(b·H) at once — that peak OOMs/corrupts the
@@ -759,7 +759,7 @@ class AdditiveKernel(RoutedKernel):
         # Measure rank once per (epoch, sequence-length): MQAR slices have different L
         # (kv=1024 → longest), so this captures rank PER SLICE — does rank grow on the
         # hard/long slice where the task actually demands it, past d_model?
-        if not self.training and os.environ.get('CLA_MEASURE_RANK') and L >= 256:
+        if not self.training and os.environ.get('ROLA_MEASURE_RANK') and L >= 256:
             if not hasattr(self, '_rank_seen'):
                 self._rank_seen = set()
             key = (_ep, L)
@@ -888,6 +888,25 @@ class ScalarGLAKernel(RoutedKernel):
                         d_tri = d_tri.view(2, H, 128, -1).permute(0, 2, 1, 3)
                         r2 = (d_tri - d_dense).abs().max().item() / (d_dense.abs().max().item() + 1e-6)
                         assert r2 < 1e-2, f"GLA den Triton vs dense oracle mismatch: rel={r2:.2e}"
+        # Realized-rank diagnostic (fig:rank, gated kernel). The scalar decay exp(Λ_i−Λ_j) is an
+        # outer product e^{Λ_i}·e^{−Λ_j} — a two-sided positive diagonal rescaling, RANK-PRESERVING
+        # — so the gated effective-attention rank equals the un-decayed G∘R rank; the same probe
+        # (un-decayed gates) applies. nc·d_qk past d_model is the routed claim; the GLA monolith saturates.
+        if not self.training and os.environ.get('ROLA_MEASURE_RANK') and L >= 256:
+            if not hasattr(self, '_rank_seen'):
+                self._rank_seen = set()
+            key = (getattr(self, '_current_epoch', 0), L)
+            if key not in self._rank_seen:
+                self._rank_seen.add(key)
+                try:
+                    import json as _json
+                    _r = _effective_attention_rank(qg, kg, read_gates, write_gates)
+                    _r.update(nc=self.num_chunks, d_qk=self.d_qk, d_model=self.d_model,
+                              nc_dqk=self.num_chunks * self.d_qk, epoch=getattr(self, '_current_epoch', 0),
+                              seqlen=L, cell='gla')
+                    print(f"RANK_JSON {_json.dumps(_r)}", flush=True)
+                except Exception:
+                    pass
         return out
 
 
@@ -1037,7 +1056,7 @@ class RoLA(nn.Module):
                 self.read_router.weight.data.copy_(self.write_router.weight.data)
 
         # Print actual instantiated state size (parseable) so runners log the real state.
-        if os.environ.get('CLA_PRINT_STATE_JSON', '1') != '0':
+        if os.environ.get('ROLA_PRINT_STATE_JSON', '1') != '0':
             try:
                 import json as _json
                 _stats = self.get_stats(); _stats['kernel'] = kernel
@@ -1188,7 +1207,4 @@ ROLA_INSTANCES = ('rola-rla-asym', 'rola-rla-sym', 'rola-rla-asym-ps', 'rola-rla
                   'rola-based-sym', 'rola-based-asym', 'rola-rebased-sym', 'rola-rebased-asym')
 
 
-# Backward-compat alias: the model is RoLA now, but the zoology mixer wrapper and
-# existing config strings still reference the legacy name. New code should use RoLA.
-ChunkedLinearAttention = RoLA
 

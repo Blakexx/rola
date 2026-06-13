@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rola"
+version = "0.1.0"
+description = "Routed Linear Attention (RoLA) — model library + Triton kernels"
+readme = "README.md"
+requires-python = ">=3.10"
+# Light deps only. torch is environment-provided (pinned by the image/venv), and the FLA
+# kernels (fla-core) + the routed fork (fla-rola) are installed separately so we don't fight
+# their versions here. rola imports fla.* and (optionally) fla_rola.* at runtime.
+dependencies = [
+    "torch",
+    "einops",
+]
+
+[tool.setuptools]
+# rola.py is the top-level module; the kernels + HF wrapper are packages.
+py-modules = ["rola"]
+
+[tool.setuptools.packages.find]
+include = ["rola_kernels*", "rola_hf*"]
+namespaces = false
