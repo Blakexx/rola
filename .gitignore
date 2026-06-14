@@ -12,3 +12,5 @@ backup/
 # IDE / Editor folders
 .vscode/
 .idea/
+__pycache__/
+*.pyc

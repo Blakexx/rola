@@ -21,5 +21,5 @@ dependencies = [
 py-modules = ["rola"]
 
 [tool.setuptools.packages.find]
-include = ["rola_kernels*", "rola_hf*"]
+include = ["rola_kernels*"]
 namespaces = false
