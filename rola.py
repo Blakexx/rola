@@ -28,11 +28,11 @@ from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 
 # Routed kernels live in the fla-rola fork: chunk_simple_gla = additive r/w/g params on the
 # canonical simple_gla kernel (un-normalized routed readout; we normalize via the ones-column
-# here). BOTH RLA and GLA route through it by default (ROLA_USE_TRITON=1) — at model scale the
-# fused GLA path is ~4× faster than the eager torch GLA loop. Per-state-norm den uses the fork's
-# rola_perstate_den_*_triton kernels. Non-CUDA / dqk>64 / import failure → torch fallback.
-_USE_TRITON = os.environ.get('ROLA_USE_TRITON', '1') != '0'          # default ON for both RLA + GLA
-_USE_TRITON_RLA = _USE_TRITON                                        # RLA routes through the same fork kernel
+# here). BOTH RLA and GLA route through it whenever the hardware/shape supports it — at model scale
+# the fused GLA path is ~4× faster than the eager torch GLA loop. Per-state-norm den uses the fork's
+# rola_perstate_den_*_triton kernels. The eager torch path is a CAPABILITY fallback (not a toggle):
+# taken only when Triton genuinely can't run — non-CUDA, small-smem GPU, or a post-feature-map dim
+# >64 (e.g. based/rebased φ, whose expanded feature dim exceeds the kernel's SRAM-bound K≤64 block).
 try:
     # The FLA fork's routed simple_gla: additive r/w/g params on the canonical kernel
     # ([B,T,H,*] layout, un-normalized readout — we normalize via the ones-column here).
@@ -308,99 +308,6 @@ def _rola_gla_chunked(q, k, v, wg, rg, ld, eps=1e-5, chunk=64, normalized=False)
     return out.view(B, H, L, dv).permute(0, 2, 1, 3).contiguous()
 
 
-def _rank_stats(sv, l, tols, prefix=''):
-    """Rank statistics from singular values sv:[N,l] (already sorted desc per row), over
-    the N = b·H (sequence × head) slices. The paper's barrier claim is DISTRIBUTIONAL —
-    "the level past which the head's realized rank distribution no longer covers the
-    task's demand" (§4) — and a mean over slices can report a rank no slice realizes
-    (verified: 4×rank-8 + 4×rank-380 slices → mean 194). So every estimator is emitted
-    both as the legacy mean and as the full sorted per-slice distribution `*_dist`.
-    Estimators: numerical rank #{σ>tol·σmax} at each tol; Roy & Vetterli (2007)
-    effective rank exp(H(σ/Σσ)); participation ratio (Σσ)²/Σσ² (the appendix
-    apd:spectra estimator, so main-figure and appendix numbers are comparable);
-    stable rank Σσ²/σmax²."""
-    smax = sv[..., :1].clamp_min(1e-20)
-    out = {}
-
-    def put(name, vals):                       # vals: [N] tensor of per-slice values
-        out[f'{prefix}{name}'] = round(vals.mean().item(), 2)
-        out[f'{prefix}{name}_dist'] = [round(v, 2) for v in vals.sort().values.tolist()]
-
-    for t in tols:
-        put(f'rank_{t:.0e}', (sv > t * smax).sum(-1).float())
-    # Roy & Vetterli effective rank: exp(Shannon entropy, nats, of the L1-normalized
-    # singular-value distribution). xlogy gives the 0·log0→0 convention exactly.
-    p = sv / sv.sum(-1, keepdim=True).clamp_min(1e-20)
-    put('eff_rank', torch.exp(-torch.special.xlogy(p, p).sum(-1)))
-    put('pr_rank', sv.sum(-1) ** 2 / (sv ** 2).sum(-1).clamp_min(1e-20))
-    # stable (numerical) rank ‖W‖_F²/σmax² = Σσ² / σmax² — threshold-free, in [1, rank].
-    put('stable_rank', (sv ** 2).sum(-1) / smax.squeeze(-1) ** 2)
-    return out
-
-
-@torch.no_grad()
-def _effective_attention_rank(qf, kf, rg, wg, max_b=64, max_l=8192, tols=(1e-1, 1e-2, 1e-3, 1e-4)):
-    """Realized effective-attention rank on real inputs — the direct empirical test of the
-    paper's rank argument. The per-head effective weight is W = G ∘ R (Hadamard), G=φ(Q)φ(K)ᵀ
-    (rank ≤ d_qk), R=(read)(writeᵀ) (rank ≤ nc), so by the Schur/Oppenheim bound
-    rank(W) ≤ rank(G)·rank(R) ≤ nc·d_qk. The relevant ceiling is PER-HEAD: a plain
-    linear-attention head's score matrix has rank ≤ its feature dim (d_qk, or ≤ d_model for a
-    width-d_model "wide monolith"); routing lifts the per-head ceiling to nc·d_qk. So these
-    are PER-HEAD means — compare them to the per-head monolith ceiling (d_qk, or d_model for
-    the wide monolith), NOT to n_heads·d_v. To demonstrate the claim, pair this with the same
-    measurement on the matched-state monolith.
-
-    Measured object: the UNMASKED W — the score-structure rank the nc·d_qk bound is about,
-    and the paper's measured object (§7: the causal mask is a Hadamard with the FULL-RANK
-    lower-triangular ones matrix, so it can only inflate rank — verified: masked rank-1 ones
-    measures 1024/1024 — and the masked map carries no rank signal). Un-normalized: row
-    normalization is a positive-diagonal left-scaling, rank-preserving for strictly positive
-    entries. The masked object (prefix 'm') can still be emitted as an appendix honesty row
-    via ROLA_RANK_MASKED=1; off by default, with the SVD budget spent on more sequences
-    (max_b=4) so the per-slice DISTRIBUTIONS in `*_dist` have support.
-    Also emits the spectrum itself — per-slice σ/σmax at log-spaced indices, quantiles
-    across slices — the "supply thins" plot of §4.
-    qf,kf:[B,L,H,d_qk]  rg,wg:[B,L,H,nc].  Eval-only, subsampled."""
-    B, L, H, _ = qf.shape
-    b, l = min(max_b, B), min(max_l, L)
-    q, k, r, w = qf[:b, :l], kf[:b, :l], rg[:b, :l], wg[:b, :l]
-    measure_masked = bool(os.environ.get('ROLA_RANK_MASKED'))
-    causal = torch.tril(torch.ones(l, l, device=qf.device)) if measure_masked else None
-    # SVD ONE l×l matrix at a time (loop over batch×head) rather than batching the full
-    # [b,H,l,l] tensor + cuSOLVER workspace ×(b·H) at once — that peak OOMs/corrupts the
-    # heavy cell (nc=256, l=4096: stacked 4096² SVDs) and produced an anomalous, non-monotone
-    # rank. Per-slice is identical math, peak memory = one l×l matrix.
-    svs, svs_m = [], []
-    for bi in range(b):
-        for hi in range(H):
-            W = (q[bi, :, hi] @ k[bi, :, hi].T) * (r[bi, :, hi] @ w[bi, :, hi].T)   # [l,l]
-            W = W.float()
-            svs.append(torch.linalg.svdvals(W))                 # unmasked: score-structure rank
-            if measure_masked:
-                svs_m.append(torch.linalg.svdvals(W * causal))  # masked: inflated, no rank signal
-    sv = torch.stack(svs)                                 # [b·H, l] = per-(sequence,head) slices
-    out = _rank_stats(sv, l, tols)                        # unmasked (score structure)
-    if measure_masked:
-        out.update(_rank_stats(torch.stack(svs_m), l, tols, prefix='m'))
-    smax = sv[..., :1].clamp_min(1e-20)
-    # The spectrum itself, σ_i/σmax at log-spaced indices i, quantiles over slices: the
-    # supply distribution. A thinning supply shows as p90 collapsing toward p10 past the
-    # barrier; legacy scalar probes sv_ratio_128/256 kept for old-run comparability.
-    idx = sorted({0, 1} | {2 ** i for i in range(1, l.bit_length())} | {l - 1})
-    idx = [i for i in idx if i < l]
-    rel = (sv / smax)[:, idx]                              # [N, len(idx)]
-    qs = torch.quantile(rel, torch.tensor([0.1, 0.5, 0.9], device=rel.device), dim=0)
-    out['spec_idx'] = idx
-    out['spec_p10'] = [round(v, 5) for v in qs[0].tolist()]
-    out['spec_p50'] = [round(v, 5) for v in qs[1].tolist()]
-    out['spec_p90'] = [round(v, 5) for v in qs[2].tolist()]
-    out['sv_ratio_128'] = round((sv[..., min(127, l - 1)] / smax.squeeze(-1)).mean().item(), 4)
-    out['sv_ratio_256'] = round((sv[..., min(255, l - 1)] / smax.squeeze(-1)).mean().item(), 4)
-    out['seq_len'] = l
-    out['n_slices'] = sv.shape[0]
-    return out
-
-
 # ==========================================
 # Canonical single-state baselines (RLA / GLA / GDN)
 # ==========================================
@@ -636,7 +543,6 @@ class AdditiveKernel(RoutedKernel):
         # the read gates first (per_state ≡ kappa=1, exact). _rola_perstate_ref remains as the
         # endpoint ORACLE in the first-use check only.
         self._kfn = _rola_chunked_parallel
-        self._ref = _rola_global_ref
         if state_norm == 'kappa':
             self.w_kappa = nn.Linear(d_model, n_heads)
             nn.init.zeros_(self.w_kappa.weight)
@@ -656,9 +562,6 @@ class AdditiveKernel(RoutedKernel):
             self.rebased_q = RebasedFeatureMap(head_dim=d_qk)
             self.rebased_k = RebasedFeatureMap(head_dim=d_qk)
             self.feat_dim = d_qk * (d_qk + 1) // 2
-        self._current_epoch = 0      # trainer sets this; used to throttle the rank diag
-        self._checked = False
-        self._last_rank_epoch = -2
 
     def _feature_map(self, q, k):
         if self.phi == 'hedgehog': return self.hh_q(q), self.hh_k(k)
@@ -675,7 +578,8 @@ class AdditiveKernel(RoutedKernel):
             # (read gates sum to 1 ⇒ the outer divide collapses). The mass d comes from the fork's
             # Triton den kernel (scan + chunk-parallel bwd) — the eager helper retains its chunk
             # grams for backward (12GB VRAM blowup at LM scale) and is kept as the ORACLE only.
-            if _fla_routed is not None and qf.is_cuda and qf.shape[-1] <= 64:
+            # No dqk<=64 gate: the den kernels feature-tile (BD autotune knob) to ANY dqk.
+            if _fla_routed is not None and qf.is_cuda:
                 from fla_rola.ops.simple_gla.rola import rola_perstate_den_triton
                 H = self.n_heads
                 foldd = lambda t: t.permute(0, 2, 1, 3).reshape(B * H, L, t.shape[-1])
@@ -692,10 +596,11 @@ class AdditiveKernel(RoutedKernel):
             else:
                 read_gates = read_gates / (d + 1e-5)
         # φ-agnostic: the kernel only sees post-feature-map q,k (G=φ(q)·φ(k)ᵀ), so hedgehog/based/
-        # rebased work too — gate on state_norm (global-form combine only) and the feature dim
-        # fitting SRAM, NOT on the φ identity. ('kappa' uses the global combine on modified gates.)
-        if (_USE_TRITON_RLA and _fla_routed is not None and qf.is_cuda
-                and qf.shape[-1] <= 64):
+        # rebased work too — gate on state_norm (global-form combine only), NOT on the φ identity.
+        # No d_qk<=64 gate: the routed kernels feature-tile (BD autotune knob) to ANY dqk, and
+        # chunk_rola_fwd tiers small-smem devices to the torch core internally. ('kappa' uses the
+        # global combine on modified gates.)
+        if _fla_routed is not None and qf.is_cuda:
             dv = self.d_v
             # Cast ALL kernel inputs to the autocast compute dtype (bf16) — fixes both the
             # router-softmax-is-fp32 mismatch AND the hedgehog-softmax-is-fp32 slowdown. tl.dot
@@ -711,56 +616,8 @@ class AdditiveKernel(RoutedKernel):
                 out = (oa[..., :dv] / (oa[..., dv:dv + 1] + 1e-5)).to(v.dtype)
         else:
             out = self._kfn(qf, kf, v, write_gates, read_gates)
-        if not self._checked:
-            self._checked = True
-            # Validate the ALGORITHM in true fp32: cast inputs AND disable autocast
-            # (autocast would otherwise re-cast the einsums to bf16 -> false 1e-2 mismatch).
-            with torch.no_grad(), torch.autocast(device_type='cuda', enabled=False):
-                bb, ll = min(2, B), min(256, L)
-                s = (slice(0, bb), slice(0, ll))
-                f = lambda t: t[s].float()
-                ref = self._ref(f(qf), f(kf), f(v), f(write_gates), f(read_gates))
-                chk = self._kfn(f(qf), f(kf), f(v), f(write_gates), f(read_gates))
-                rel = (chk - ref).abs().max().item() / (ref.abs().max().item() + 1e-6)
-                assert rel < 1e-2, f"fused RoLA ({self.state_norm}) vs ref mismatch: rel={rel:.2e}"
-                if self.state_norm in ('kappa', 'per_state'):
-                    # endpoint check: κ≡1 gates through the global combine must equal the
-                    # per-state reference (read gates sum to 1 ⇒ outer divide collapses).
-                    # Run on SYNTHETIC well-conditioned inputs: the identity is algebraic, and the
-                    # ε-placement deviation (r/(d+ε) vs num/(den+ε), O(ε/den)) is unbounded on
-                    # live activations once trained routing is peaked (tiny per-state masses) —
-                    # a trained checkpoint's data must not fail a math check. ε=0 identical.
-                    gen = torch.Generator(device=qf.device).manual_seed(7)
-                    rnd = lambda *sh: torch.randn(*sh, generator=gen, device=qf.device)
-                    qs = F.elu(rnd(2, 128, self.n_heads, self.d_qk)) + 1.0
-                    ks = F.elu(rnd(2, 128, self.n_heads, self.d_qk)) + 1.0
-                    vs = rnd(2, 128, self.n_heads, self.d_v)
-                    ws = torch.softmax(rnd(2, 128, self.n_heads, self.num_chunks), -1)
-                    raw = torch.softmax(rnd(2, 128, self.n_heads, self.num_chunks), -1)
-                    d_s = _rola_perstate_den(qs, ks, ws)
-                    r1 = raw * (d_s + 1e-5).pow(-1.0)                    # κ≡1
-                    chk1 = _rola_chunked_parallel(qs, ks, vs, ws, r1)
-                    ref1 = _rola_perstate_ref(qs, ks, vs, ws, raw)
-                    rel1 = (chk1 - ref1).abs().max().item() / (ref1.abs().max().item() + 1e-6)
-                    assert rel1 < 3e-2, f"kappa endpoint (κ=1) vs per-state ref mismatch: rel={rel1:.2e}"
-        _ep = self._current_epoch
-        # Measure rank once per (epoch, sequence-length): MQAR slices have different L
-        # (kv=1024 → longest), so this captures rank PER SLICE — does rank grow on the
-        # hard/long slice where the task actually demands it, past d_model?
-        if not self.training and os.environ.get('ROLA_MEASURE_RANK') and L >= 256:
-            if not hasattr(self, '_rank_seen'):
-                self._rank_seen = set()
-            key = (_ep, L)
-            if key not in self._rank_seen:
-                self._rank_seen.add(key)
-                try:
-                    import json as _json
-                    _r = _effective_attention_rank(qf, kf, read_gates, write_gates)
-                    _r.update(nc=self.num_chunks, d_qk=self.d_qk, d_model=self.d_model,
-                              nc_dqk=self.num_chunks * self.d_qk, epoch=_ep, seqlen=L)
-                    print(f"RANK_JSON {_json.dumps(_r)}", flush=True)
-                except Exception:
-                    pass
+        # Realized-rank diagnostic moved OUT of the forward to the post-hoc benchmark
+        # rola_bench.rank (generic, checkpoint-driven; reproduces this path's formula exactly).
         return out
 
 
@@ -789,7 +646,6 @@ class ScalarGLAKernel(RoutedKernel):
             self.w_kappa = nn.Linear(d_model, n_heads)
             nn.init.zeros_(self.w_kappa.weight)
             nn.init.constant_(self.w_kappa.bias, -4.0)   # start ≈ global (κ≈0.018), learn upward
-        self._checked = False
 
     def _log_decay(self, x, write_gates):
         B, L = x.shape[0], x.shape[1]; H = self.n_heads
@@ -804,7 +660,8 @@ class ScalarGLAKernel(RoutedKernel):
         if self.state_norm in ('kappa', 'per_state'):
             # rescale read gates by the DECAYED per-state mass, then run the standard global
             # combine on the modified gates (kernel unchanged). per_state ≡ kappa=1 exactly.
-            if _fla_routed is not None and qg.is_cuda and qg.shape[-1] <= 64:
+            # No dqk<=64 gate: the GLA den kernel feature-tiles (BD autotune knob) to ANY dqk.
+            if _fla_routed is not None and qg.is_cuda:
                 from fla_rola.ops.simple_gla.rola import rola_perstate_den_gla_triton
                 H = self.n_heads
                 foldd = lambda t: t.permute(0, 2, 1, 3).reshape(B * H, L, t.shape[-1])
@@ -820,7 +677,8 @@ class ScalarGLAKernel(RoutedKernel):
                 read_gates = read_gates * (d + 1e-5).pow(-kap)
             else:
                 read_gates = read_gates / (d + 1e-5)
-        if _USE_TRITON and _fla_routed is not None and qg.is_cuda and qg.shape[-1] <= 64:
+        # No d_qk<=64 gate: the routed GLA kernel feature-tiles (BD autotune knob) to ANY dqk.
+        if _fla_routed is not None and qg.is_cuda:
             dv = self.d_v
             # Cast all inputs to one dtype (see AdditiveKernel — softmax routers are fp32 under
             # autocast, q/k/v bf16). Model tensors are already [B,T,H,*]; the fork returns the
@@ -835,66 +693,9 @@ class ScalarGLAKernel(RoutedKernel):
                     else oa.to(v.dtype)
         else:
             out = _rola_gla_chunked(qg, kg, v, write_gates, read_gates, ld, normalized=self.normalized)
-        if not self._checked:
-            self._checked = True
-            with torch.no_grad(), torch.autocast(device_type='cuda', enabled=False):
-                bb, ll = min(2, B), min(192, L)
-                s = (slice(0, bb), slice(0, ll))
-                f = lambda t: t[s].float()   # fp32 + autocast off: validate the algorithm, not bf16 roundoff
-                ref = _rola_gla_ref(f(qg), f(kg), f(v), f(write_gates), f(read_gates), f(ld), normalized=self.normalized)
-                chk = _rola_gla_chunked(f(qg), f(kg), f(v), f(write_gates), f(read_gates), f(ld), normalized=self.normalized)
-                rel = (chk - ref).abs().max().item() / (ref.abs().max().item() + 1e-6)
-                assert rel < 1e-2, f"fused GLA vs ref mismatch: rel={rel:.2e}"
-                # DEEP-DECAY gate: init gates are mild (chunk-total decay ~10 nats), so the
-                # check above never exercises the regime where a factored/clamped decay form
-                # silently corrupts the intra-chunk gram. Force strong decay (ld≡-3 → ~190
-                # nats/chunk) and re-verify chunked==ref — guards against that class of bug.
-                ld_deep = torch.full_like(f(ld), -3.0)
-                rd = _rola_gla_ref(f(qg), f(kg), f(v), f(write_gates), f(read_gates), ld_deep, normalized=self.normalized)
-                cd = _rola_gla_chunked(f(qg), f(kg), f(v), f(write_gates), f(read_gates), ld_deep, normalized=self.normalized)
-                rel_d = (cd - rd).abs().max().item() / (rd.abs().max().item() + 1e-6)
-                assert rel_d < 1e-2, f"fused GLA deep-decay mismatch: rel={rel_d:.2e}"
-                if self.state_norm in ('kappa', 'per_state'):
-                    # DEN gate on SYNTHETIC well-massed inputs (live peaked routing is
-                    # ε-sensitive): dense oracle vs chunked torch vs (CUDA) Triton den.
-                    H, nc = self.n_heads, self.num_chunks
-                    qs = torch.rand(2, 128, H, self.d_qk, device=qg.device) + 0.1
-                    ws = torch.softmax(torch.randn(2, 128, H, nc, device=qg.device), -1)
-                    lds = -torch.rand(2, 128, H, nc, device=qg.device) * 0.5
-                    Lam = lds.cumsum(1)
-                    dec = torch.exp(Lam[:, :, None] - Lam[:, None, :, :, :])      # [B,i,j,H,nc]
-                    Gd = torch.einsum('bihd,bjhd->bijh', qs, qs)
-                    m = torch.tril(torch.ones(128, 128, device=qg.device, dtype=torch.bool))
-                    d_dense = (Gd[..., None] * dec * ws[:, None] * m[None, :, :, None, None]).sum(2)
-                    d_chk = _rola_gla_perstate_den(qs, qs, ws, lds)
-                    r1 = (d_chk - d_dense).abs().max().item() / (d_dense.abs().max().item() + 1e-6)
-                    assert r1 < 1e-2, f"GLA den chunked vs dense oracle mismatch: rel={r1:.2e}"
-                    if _fla_routed is not None and qg.is_cuda and self.d_qk <= 64:
-                        from fla_rola.ops.simple_gla.rola import rola_perstate_den_gla_triton
-                        foldd = lambda t: t.permute(0, 2, 1, 3).reshape(2 * H, 128, t.shape[-1])
-                        d_tri = rola_perstate_den_gla_triton(foldd(qs), foldd(qs), foldd(ws), foldd(lds))
-                        d_tri = d_tri.view(2, H, 128, -1).permute(0, 2, 1, 3)
-                        r2 = (d_tri - d_dense).abs().max().item() / (d_dense.abs().max().item() + 1e-6)
-                        assert r2 < 1e-2, f"GLA den Triton vs dense oracle mismatch: rel={r2:.2e}"
-        # Realized-rank diagnostic (fig:rank, gated kernel). The scalar decay exp(Λ_i−Λ_j) is an
-        # outer product e^{Λ_i}·e^{−Λ_j} — a two-sided positive diagonal rescaling, RANK-PRESERVING
-        # — so the gated effective-attention rank equals the un-decayed G∘R rank; the same probe
-        # (un-decayed gates) applies. nc·d_qk past d_model is the routed claim; the GLA monolith saturates.
-        if not self.training and os.environ.get('ROLA_MEASURE_RANK') and L >= 256:
-            if not hasattr(self, '_rank_seen'):
-                self._rank_seen = set()
-            key = (getattr(self, '_current_epoch', 0), L)
-            if key not in self._rank_seen:
-                self._rank_seen.add(key)
-                try:
-                    import json as _json
-                    _r = _effective_attention_rank(qg, kg, read_gates, write_gates)
-                    _r.update(nc=self.num_chunks, d_qk=self.d_qk, d_model=self.d_model,
-                              nc_dqk=self.num_chunks * self.d_qk, epoch=getattr(self, '_current_epoch', 0),
-                              seqlen=L, cell='gla')
-                    print(f"RANK_JSON {_json.dumps(_r)}", flush=True)
-                except Exception:
-                    pass
+        # Realized-rank diagnostic moved to the post-hoc benchmark rola_bench.rank. (The scalar decay
+        # exp(Λ_i−Λ_j) is a two-sided positive diagonal rescaling — rank-preserving — so the gated
+        # effective-attention rank equals the un-decayed G∘R rank the benchmark probes.)
         return out
 
 
