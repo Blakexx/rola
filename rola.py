@@ -1,5 +1,5 @@
 """RoLA — Routed Linear Attention. The generic model library (kernels + orchestrator
-+ canonical monolith baselines), decoupled from usage (datasets / benchmarking / LM
++ canonical single-state baselines), decoupled from usage (datasets / benchmarking / LM
 harnesses live with the caller, e.g. zoology). Single source of truth for the model."""
 import torch
 import torch.nn as nn
@@ -22,25 +22,21 @@ def get_device():
 DEVICE = get_device()
 
 # FLA kernels (canonical baselines + virtual-head GLA/GDN paths).
-from fla.ops.linear_attn import chunk_linear_attn, fused_chunk_linear_attn
+from fla.ops.linear_attn import fused_chunk_linear_attn
 from fla.ops.gla import chunk_gla
 from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 
-# Fused Triton kernels (shared-gram, tiled over states), verified vs torch refs (fwd + all grads,
-# nc≤256, bf16-safe). Empirically (measured fwd+bwd at model scale):
-#   GLA: Triton fwd + FLA virtual-head fused bwd is ~4× faster than the eager torch GLA (its
-#        [Cc,Cc,C]/Python-loop path) → DEFAULT ON for global-norm scalar GLA.
-#   RLA: eager cuBLAS chunk-parallel is already optimal (not kernel-bound); the Triton path is
-#        neutral (elu) to slower (hedgehog), and the fully-fused Triton bwd LOSES to cuBLAS
-#        (0.23-0.37×). So RLA defaults to EAGER; Triton-RLA is opt-in (ROLA_TRITON_RLA=1) for the
-#        low-memory / inference forward only. The Triton RLA path is φ-agnostic + global-norm only.
-# Per-state norm, non-CUDA, or import failure → torch fallback automatically.
+# Routed kernels live in the fla-rola fork: chunk_simple_gla = additive r/w/g params on the
+# canonical simple_gla kernel (un-normalized routed readout; we normalize via the ones-column
+# here). BOTH RLA and GLA route through it by default (ROLA_USE_TRITON=1) — at model scale the
+# fused GLA path is ~4× faster than the eager torch GLA loop. Per-state-norm den uses the fork's
+# rola_perstate_den_*_triton kernels. Non-CUDA / dqk>64 / import failure → torch fallback.
 _USE_TRITON = os.environ.get('ROLA_USE_TRITON', '1') != '0'          # default ON for both RLA + GLA
-_USE_TRITON_RLA = _USE_TRITON                                        # RLA uses the bespoke fused path too
+_USE_TRITON_RLA = _USE_TRITON                                        # RLA routes through the same fork kernel
 try:
     # The FLA fork's routed simple_gla: additive r/w/g params on the canonical kernel
     # ([B,T,H,*] layout, un-normalized readout — we normalize via the ones-column here).
-    # Gated against the oracle + canonical baselines by rola_fla_dev/check.py.
+    # Gated against the oracle + canonical baselines by the rola-scratch verification suite.
     from fla_rola.ops.simple_gla import chunk_simple_gla as _fla_routed
 except Exception:
     _fla_routed = None
@@ -285,14 +281,6 @@ def _rola_gla_chunked(q, k, v, wg, rg, ld, eps=1e-5, chunk=64, normalized=False)
         a = torch.cumsum(ldc, dim=1)                             # chunk-local cumulative log-decay (≤0)
         Lam = a[:, -1, :]                                        # chunk-total log-decay [bh,C]
         G = torch.einsum('bid,bjd->bij', qc, kc)                 # shared content gram
-        # Intra-chunk decayed routing gram D_ij = Σ_c rg_i^c wg_j^c exp(a_i^c - a_j^c), as a
-        # cheap factored MATMUL rt·wtᵀ. To keep it fp32-safe we (a) MIDPOINT-shift by s=Lam/2
-        # so each exponent is ≤|Lam|/2 (not |Lam|), and (b) FLOOR the per-token decay (see
-        # _GLA_LD_FLOOR) so |Lam| stays inside fp32 range. NO exponent clamp — that would break
-        # the shift's exact cancellation rt_i·wt_j = exp(a_i-a_j) and silently corrupt the O(1)
-        # near-diagonal entries (the bug that the [bh,Cc,Cc,C] direct form avoided but ran ~3×
-        # slower). The floor is a no-op for healthy gates (rel diff 0.0); it only clips the
-        # degenerate deep-decay corner — the same corner that produced the original overflow.
         # Intra-chunk decayed routing gram D_ij = Σ_c rg_i^c wg_j^c exp(a_i^c - a_j^c), formed
         # DIRECTLY (per-state relative decay) with the exponent clamped ≤0. This is the ONLY
         # fp32-safe form: a factored matmul rt·wtᵀ forms exp(a_i-a_j) for the UPPER triangle
@@ -414,7 +402,7 @@ def _effective_attention_rank(qf, kf, rg, wg, max_b=64, max_l=8192, tols=(1e-1, 
 
 
 # ==========================================
-# 1. Dataset Handling
+# Canonical single-state baselines (RLA / GLA / GDN)
 # ==========================================
 class RecurrentLinearAttention(nn.Module):
     """

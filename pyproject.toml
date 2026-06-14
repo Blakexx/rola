@@ -17,9 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-# rola.py is the top-level module; the kernels + HF wrapper are packages.
+# rola.py is the whole library — a single top-level module. The Triton kernels now live in the
+# fla-rola fork (rola.py imports fla_rola.* on the default ROLA_USE_TRITON path); the old standalone
+# rola_kernels package was its verified ancestor and is archived in rola-scratch/reference.
 py-modules = ["rola"]
-
-[tool.setuptools.packages.find]
-include = ["rola_kernels*"]
-namespaces = false
