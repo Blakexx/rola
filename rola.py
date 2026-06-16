@@ -34,12 +34,12 @@ from fla.ops.gated_delta_rule import chunk_gated_delta_rule
 # taken only when Triton genuinely can't run — non-CUDA, small-smem GPU, or a post-feature-map dim
 # >64 (e.g. based/rebased φ, whose expanded feature dim exceeds the kernel's SRAM-bound K≤64 block).
 try:
-    # The FLA fork's routed simple_gla: additive r/w/g params on the canonical kernel
-    # ([B,T,H,*] layout, un-normalized readout — we normalize via the ones-column here).
-    # Gated against the oracle + canonical baselines by the rola-scratch verification suite.
-    from fla_rola.ops.simple_gla import chunk_simple_gla as _fla_routed
+    # First-class routed RoLA operator: one norm-aware entry point that owns the per-state den
+    # pre-pass, read-gate rescale, numerator-only shared-gram readout, and the divide. The model
+    # just passes norm=... — no normalization logic here. ([B,T,H,*] layout, φ applied by caller.)
+    from fla_rola.ops.rola import chunk_rola as _chunk_rola
 except Exception:
-    _fla_routed = None
+    _chunk_rola = None
 
 
 def _triton_compute_dtype(fallback):
@@ -572,52 +572,30 @@ class AdditiveKernel(RoutedKernel):
     def forward(self, x, q, k, v, write_gates, read_gates):
         B, L = x.shape[0], x.shape[1]
         qf, kf = self._feature_map(q, k)
-        if self.state_norm in ('kappa', 'per_state'):
-            # rescale read gates by the per-state mass, then run the standard GLOBAL combine on
-            # the modified gates (kernel unchanged, incl. Triton). per_state ≡ kappa=1 exactly
-            # (read gates sum to 1 ⇒ the outer divide collapses). The mass d comes from the fork's
-            # Triton den kernel (scan + chunk-parallel bwd) — the eager helper retains its chunk
-            # grams for backward (12GB VRAM blowup at LM scale) and is kept as the ORACLE only.
-            # No dqk<=64 gate: the den kernels feature-tile (BD autotune knob) to ANY dqk.
-            if _fla_routed is not None and qf.is_cuda:
-                from fla_rola.ops.simple_gla.rola import rola_perstate_den_triton
-                H = self.n_heads
-                foldd = lambda t: t.permute(0, 2, 1, 3).reshape(B * H, L, t.shape[-1])
-                with torch.autocast(device_type='cuda', enabled=False):
-                    dt = _triton_compute_dtype(qf.dtype)
-                    d = rola_perstate_den_triton(foldd(qf).to(dt), foldd(kf).to(dt),
-                                                 foldd(write_gates).to(dt))
-                d = d.view(B, H, L, -1).permute(0, 2, 1, 3)
-            else:
-                d = _rola_perstate_den(qf, kf, write_gates)
-            if self.state_norm == 'kappa':
-                kap = torch.sigmoid(self.w_kappa(x)).view(B, L, self.n_heads, 1)
-                read_gates = read_gates * (d + 1e-5).pow(-kap)
-            else:
-                read_gates = read_gates / (d + 1e-5)
-        # φ-agnostic: the kernel only sees post-feature-map q,k (G=φ(q)·φ(k)ᵀ), so hedgehog/based/
-        # rebased work too — gate on state_norm (global-form combine only), NOT on the φ identity.
-        # No d_qk<=64 gate: the routed kernels feature-tile (BD autotune knob) to ANY dqk, and
-        # chunk_rola_fwd tiers small-smem devices to the torch core internally. ('kappa' uses the
-        # global combine on modified gates.)
-        if _fla_routed is not None and qf.is_cuda:
-            dv = self.d_v
-            # Cast ALL kernel inputs to the autocast compute dtype (bf16) — fixes both the
-            # router-softmax-is-fp32 mismatch AND the hedgehog-softmax-is-fp32 slowdown. tl.dot
-            # still accumulates fp32. Autocast OFF so intermediates aren't silently re-cast.
-            # Model tensors are already FLA's [B,T,H,*] layout — no folding. The fork returns the
-            # un-normalized readout; global norm = ones-column augmentation + divide, done here.
-            dt = _triton_compute_dtype(qf.dtype)
-            c = lambda t: t.to(dt)
+        # The first-class chunk_rola operator owns the whole recipe (per-state den pre-pass, read-gate
+        # rescale, numerator-only shared-gram readout, divide) — state_norm selects global/per_state/
+        # kappa. φ stays here (operator is φ-agnostic); the model carries only the learned κ exponent.
+        kap = torch.sigmoid(self.w_kappa(x)).view(B, L, self.n_heads, 1) if self.state_norm == 'kappa' else None
+        if _chunk_rola is not None and qf.is_cuda:
+            # Cast kernel inputs to the autocast compute dtype (bf16; softmax routers are fp32 under
+            # autocast). tl.dot still accumulates fp32. Autocast OFF so intermediates aren't re-cast.
             with torch.autocast(device_type='cuda', enabled=False):
-                v1 = torch.cat([v, torch.ones_like(v[..., :1])], dim=-1)
-                oa, _ = _fla_routed(c(qf), c(kf), c(v1), scale=1.0,
-                                    r=c(read_gates), w=c(write_gates))
-                out = (oa[..., :dv] / (oa[..., dv:dv + 1] + 1e-5)).to(v.dtype)
+                dt = _triton_compute_dtype(qf.dtype)
+                c = lambda t: t.to(dt)
+                out = _chunk_rola(c(qf), c(kf), c(v), r=c(read_gates), w=c(write_gates), g=None,
+                                  norm=self.state_norm, kappa=c(kap) if kap is not None else None,
+                                  scale=1.0).to(v.dtype)
+        elif _chunk_rola is not None:
+            out = _chunk_rola(qf, kf, v, r=read_gates, w=write_gates, g=None,
+                              norm=self.state_norm, kappa=kap, scale=1.0)
         else:
-            out = self._kfn(qf, kf, v, write_gates, read_gates)
-        # Realized-rank diagnostic moved OUT of the forward to the post-hoc benchmark
-        # rola_bench.rank (generic, checkpoint-driven; reproduces this path's formula exactly).
+            # pure-torch capability fallback (rola op unavailable): rescale gates + eager global combine.
+            rg = read_gates
+            if self.state_norm in ('kappa', 'per_state'):
+                d = _rola_perstate_den(qf, kf, write_gates)
+                rg = read_gates * (d + 1e-5).pow(-kap) if self.state_norm == 'kappa' else read_gates / (d + 1e-5)
+            out = self._kfn(qf, kf, v, write_gates, rg)
+        # Realized-rank diagnostic moved OUT of the forward to the post-hoc benchmark rola_bench.rank.
         return out
 
 
@@ -656,46 +634,28 @@ class ScalarGLAKernel(RoutedKernel):
     def forward(self, x, q, k, v, write_gates, read_gates):
         B, L = x.shape[0], x.shape[1]
         qg = F.elu(q) + 1.0; kg = F.elu(k) + 1.0
-        ld = self._log_decay(x, write_gates)
-        if self.state_norm in ('kappa', 'per_state'):
-            # rescale read gates by the DECAYED per-state mass, then run the standard global
-            # combine on the modified gates (kernel unchanged). per_state ≡ kappa=1 exactly.
-            # No dqk<=64 gate: the GLA den kernel feature-tiles (BD autotune knob) to ANY dqk.
-            if _fla_routed is not None and qg.is_cuda:
-                from fla_rola.ops.simple_gla.rola import rola_perstate_den_gla_triton
-                H = self.n_heads
-                foldd = lambda t: t.permute(0, 2, 1, 3).reshape(B * H, L, t.shape[-1])
-                with torch.autocast(device_type='cuda', enabled=False):
-                    dt = _triton_compute_dtype(qg.dtype)
-                    d = rola_perstate_den_gla_triton(foldd(qg).to(dt), foldd(kg).to(dt),
-                                                     foldd(write_gates).to(dt), foldd(ld).to(dt))
-                d = d.view(B, H, L, -1).permute(0, 2, 1, 3)
-            else:
-                d = _rola_gla_perstate_den(qg, kg, write_gates, ld)
-            if self.state_norm == 'kappa':
-                kap = torch.sigmoid(self.w_kappa(x)).view(B, L, self.n_heads, 1)
-                read_gates = read_gates * (d + 1e-5).pow(-kap)
-            else:
-                read_gates = read_gates / (d + 1e-5)
-        # No d_qk<=64 gate: the routed GLA kernel feature-tiles (BD autotune knob) to ANY dqk.
-        if _fla_routed is not None and qg.is_cuda:
-            dv = self.d_v
-            # Cast all inputs to one dtype (see AdditiveKernel — softmax routers are fp32 under
-            # autocast, q/k/v bf16). Model tensors are already [B,T,H,*]; the fork returns the
-            # un-normalized readout (GLA convention) — normalized=True adds the ones-column here.
-            dt = _triton_compute_dtype(qg.dtype)
-            c = lambda t: t.to(dt)
+        ld = self._log_decay(x, write_gates)        # per-state log-decay [B,L,H,nc]
+        # chunk_rola owns den-prepass + rescale + numerator-only readout + divide; state_norm selects
+        # raw/global/per_state/kappa. g=ld makes it the scalar-gated (GLA) variant.
+        kap = torch.sigmoid(self.w_kappa(x)).view(B, L, self.n_heads, 1) if self.state_norm == 'kappa' else None
+        if _chunk_rola is not None and qg.is_cuda:
             with torch.autocast(device_type='cuda', enabled=False):
-                v_in = torch.cat([v, torch.ones_like(v[..., :1])], dim=-1) if self.normalized else v
-                oa, _ = _fla_routed(c(qg), c(kg), c(v_in), g=c(ld), scale=1.0,
-                                    r=c(read_gates), w=c(write_gates))
-                out = (oa[..., :dv] / (oa[..., dv:dv + 1] + 1e-5)).to(v.dtype) if self.normalized \
-                    else oa.to(v.dtype)
+                dt = _triton_compute_dtype(qg.dtype)
+                c = lambda t: t.to(dt)
+                out = _chunk_rola(c(qg), c(kg), c(v), r=c(read_gates), w=c(write_gates), g=c(ld),
+                                  norm=self.state_norm, kappa=c(kap) if kap is not None else None,
+                                  scale=1.0).to(v.dtype)
+        elif _chunk_rola is not None:
+            out = _chunk_rola(qg, kg, v, r=read_gates, w=write_gates, g=ld,
+                              norm=self.state_norm, kappa=kap, scale=1.0)
         else:
-            out = _rola_gla_chunked(qg, kg, v, write_gates, read_gates, ld, normalized=self.normalized)
-        # Realized-rank diagnostic moved to the post-hoc benchmark rola_bench.rank. (The scalar decay
-        # exp(Λ_i−Λ_j) is a two-sided positive diagonal rescaling — rank-preserving — so the gated
-        # effective-attention rank equals the un-decayed G∘R rank the benchmark probes.)
+            # pure-torch capability fallback (rola op unavailable).
+            rg = read_gates
+            if self.state_norm in ('kappa', 'per_state'):
+                d = _rola_gla_perstate_den(qg, kg, write_gates, ld)
+                rg = read_gates * (d + 1e-5).pow(-kap) if self.state_norm == 'kappa' else read_gates / (d + 1e-5)
+            out = _rola_gla_chunked(qg, kg, v, write_gates, rg, ld, normalized=self.normalized)
+        # Realized-rank diagnostic moved to the post-hoc benchmark rola_bench.rank.
         return out
 
 
@@ -991,7 +951,8 @@ ROLA_INSTANCES = ('rola-rla-asym', 'rola-rla-sym', 'rola-rla-asym-ps', 'rola-rla
                   'rola-rla-kappa-asym', 'rola-rla-kappa-sym', 'rola-rla-asym-tieinit',
                   'rola-gla-sym', 'rola-gla-norm-sym',                  # per-channel GLA (virtual heads)
                   'rola-gla-scalar-sym', 'rola-gla-scalar-norm-sym',    # optimized scalar GLA (shared-gram)
-                  'rola-gla-scalar-asym', 'rola-gla-scalar-norm-asym',  # asym variants
+                  'rola-gla-scalar-asym', 'rola-gla-scalar-norm-asym',  # asym variants (state_norm='global')
+                  'rola-gla-kappa-sym', 'rola-gla-kappa-asym',          # KAPPA on scalar GLA (matches RLA kappa)
                   'rola-gdn-sym', 'rola-hedgehog-sym', 'rola-hedgehog-asym',
                   'rola-based-sym', 'rola-based-asym', 'rola-rebased-sym', 'rola-rebased-asym')
 
