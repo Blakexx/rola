@@ -746,7 +746,7 @@ class RoLA(nn.Module):
     """
     def __init__(self, d_model, d_qk, d_v, num_chunks, n_heads=4, tie_routers=False,
                  tie_router_init=False, kernel='rla', phi='elu', kernel_kwargs=None,
-                 use_short_conv=False, conv_size=4, **kwargs):
+                 use_short_conv=False, conv_size=4, router_bias=False, **kwargs):
         super().__init__()
         self.d_model = d_model
         self.d_qk = d_qk
@@ -789,7 +789,7 @@ class RoLA(nn.Module):
         # Routing lives in the orchestrator (orthogonal to the kernel). Linear routers
         # on the residual stream -> dense softmax over states (default init). tie_routers
         # shares one router for read+write (symmetric).
-        self.write_router = nn.Linear(d_model, n_heads * num_chunks, bias=False)
+        self.write_router = nn.Linear(d_model, n_heads * num_chunks, bias=router_bias)
         # sym (tie_routers): read_router stays None and _route reuses write_router. This avoids
         # registering a SECOND module that aliases the same weight — which would put two keys
         # (read_router.weight, write_router.weight) for one tensor in the state_dict and crash
@@ -798,11 +798,13 @@ class RoLA(nn.Module):
         if tie_routers:
             self.read_router = None
         else:
-            self.read_router = nn.Linear(d_model, n_heads * num_chunks, bias=False)
+            self.read_router = nn.Linear(d_model, n_heads * num_chunks, bias=router_bias)
             # tie_router_init: untied routers, but read STARTS == write so asym begins in the
             # sym basin (then is free to specialize). Cheap fix for asym's bad conditioning.
             if tie_router_init:
                 self.read_router.weight.data.copy_(self.write_router.weight.data)
+                if router_bias:
+                    self.read_router.bias.data.copy_(self.write_router.bias.data)
 
         # Print actual instantiated state size (parseable) so runners log the real state.
         if os.environ.get('ROLA_PRINT_STATE_JSON', '1') != '0':
