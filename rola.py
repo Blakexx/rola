@@ -6,8 +6,6 @@ have no home in the fork:
 
   * `rola_instance` / `ROLA_INSTANCES` — preset name → RoLAMixer kwargs (the MQAR configs pass these
                         to `zoology.mixers.rola.RoLAMixer`, which maps them onto the fla layer).
-  * `RecurrentLinearAttention` — the single-state (nc=1) RLA baseline the zoology MQAR grid trains
-                        alongside RoLA (the unused GLA/GDN single-state variants were removed).
   * `_rola_perstate_den` / `_rola_gla_perstate_den` — eager per-state denominators the
                         routing/similarity evaluator uses to reconstruct the read-gate rescale.
 """
@@ -16,7 +14,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # FLA kernel for the single-state RLA baseline.
-from fla.ops.linear_attn import fused_chunk_linear_attn
 
 
 # ============================================================================
@@ -76,49 +73,6 @@ def _rola_gla_perstate_den(qf, kf, wg, ld, chunk=64):
     inter = torch.exp(a) * torch.einsum('bnid,bncd->bnic', qc, Z)
     d = (intra + inter).reshape(B * H, Lp, nc)[:, :L]
     return d.view(B, H, L, nc).permute(0, 2, 1, 3)                # [B,L,H,nc]
-
-
-# ============================================================================
-# Canonical single-state RLA baseline (nc=1) — trained by the zoology MQAR grid.
-# ============================================================================
-class RecurrentLinearAttention(nn.Module):
-    """Recurrent Linear Attention (RLA): V+1 denominator trick + ELU+1 positivity."""
-    def __init__(self, d_model, d_qk, d_v, n_heads=4, **kwargs):
-        super().__init__()
-        self.d_model = d_model
-        self.d_qk = d_qk
-        self.d_v = d_v
-        self.n_heads = n_heads
-        self.dim_inner_qk = n_heads * d_qk
-        self.dim_inner_v = n_heads * d_v
-        self.w_q = nn.Linear(d_model, self.dim_inner_qk, bias=False)
-        self.w_k = nn.Linear(d_model, self.dim_inner_qk, bias=False)
-        self.w_v = nn.Linear(d_model, self.dim_inner_v, bias=False)
-        self.w_o = nn.Linear(self.dim_inner_v, d_model, bias=False)
-
-    def forward(self, x):
-        B, L, _ = x.shape
-        H = self.n_heads
-        q = self.w_q(x).view(B, L, H, self.d_qk)
-        k = self.w_k(x).view(B, L, H, self.d_qk)
-        v = self.w_v(x).view(B, L, H, self.d_v)
-        q = F.elu(q) + 1.0
-        k = F.elu(k) + 1.0
-        v_aug = torch.cat([v, torch.ones_like(v[..., :1])], dim=-1)   # V+1 denominator trick
-        raw_out, _ = fused_chunk_linear_attn(q, k, v_aug, normalize=False, scale=1.0)
-        num = raw_out[..., :-1]
-        den = raw_out[..., -1:]
-        out = num / (den + 1e-5)
-        return self.w_o(out.reshape(B, L, self.dim_inner_v))
-
-    def get_stats(self):
-        state_floats = self.n_heads * 1 * (self.d_qk * self.d_v + self.d_qk)
-        return {'d_qk': self.d_qk, 'd_v': self.d_v, 'n_heads': self.n_heads,
-                'num_chunks': 1, 'state_floats': state_floats}
-
-    def state_size(self, sequence_length: int = None, **kwargs) -> int:
-        return self.get_stats()['state_floats']
-
 
 
 # ============================================================================
