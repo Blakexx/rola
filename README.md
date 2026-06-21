@@ -19,7 +19,7 @@ Blake Bottum, 2026.
 |---|---|---|
 | **Model + fused kernels** (source of truth) | [flash-linear-attention-rola](https://github.com/Blakexx/flash-linear-attention-rola) | `fla_rola.layers.RoLA` (the layer) and `fla_rola.models.rola` (`RoLAConfig` / `RoLAModel` / `RoLAForCausalLM`), as a first-class FLA-style arch, plus the chunk-parallel + recurrent Triton kernels and their correctness suite. |
 | **Baselines + MQAR mixer** | [rola-zoology](https://github.com/Blakexx/rola-zoology) | The zoology fork: clean-room baselines and `zoology.mixers.rola.RoLAMixer` (wraps the fla layer for the MQAR harness). |
-| **Benchmarks + orchestration** | `rola-bench` | The benchmark suite — MQAR, LM, kernel-perf, similarity — as declarative specs over one config-driven runner, with a uniform `results/<bench>/<config>/<cell>.jsonl` store and a fleet of cloud GPUs. |
+| **Benchmarks + orchestration** | `rola-bench` | The benchmark suite — MQAR, LM, kernel-perf, similarity — as declarative specs over one config-driven runner, with a uniform `results/<bench>/<config>/<cell>.json` store and a fleet of cloud GPUs. |
 | **Paper** | [rola-paper](https://github.com/Blakexx/rola-paper) | The write-up. |
 
 The model is the single source of truth in the `fla_rola` fork; this repo's former `rola.py` (the
