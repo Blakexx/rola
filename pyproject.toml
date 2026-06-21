@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rola"
 version = "0.1.0"
-description = "Routed Linear Attention (RoLA) — model library + Triton kernels"
+description = "Routed Linear Attention (RoLA) — project root (docs, venv, planning). The model + kernels live in the fla-rola fork; MQAR instances/dens moved into rola-bench."
 readme = "README.md"
 requires-python = ">=3.10"
 # Light deps only. torch is environment-provided (pinned by the image/venv), and the FLA
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-# rola.py is the whole library — a single top-level module. The Triton kernels now live in the
-# fla-rola fork (rola.py imports fla_rola.* on the default ROLA_USE_TRITON path); the old standalone
-# rola_kernels package was its verified ancestor and is archived in rola-scratch/reference.
-py-modules = ["rola"]
+# No importable module anymore — the model is fla_rola.layers.RoLA / fla_rola.models.rola, and the
+# former rola.py helpers (rola_instance, eager dens) moved into rola-bench. This stays an installable
+# (deps-only) metadata package so `pip install -e .` and the image build remain valid.
+py-modules = []
