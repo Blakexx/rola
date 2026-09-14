@@ -36,7 +36,7 @@ def declared(tmp_path, monkeypatch):
 
 def _record(ptxas, major=13):
     return {"ptxas": ptxas, "cuda_major": major, "torch_index": f"https://download.pytorch.org/whl/cu{major}0",
-            "container": {"base_image": f"nvidia/cuda:{major}.0.0-devel-ubuntu22.04",
+            "container": {"base_image": f"nvidia/cuda:{major}.0.0-devel-ubuntu22.04@sha256:{'a' * 64}",
                           "packages": [f"cuda-nvcc-{major}-0={major}.0.1-1"]}}
 
 
@@ -64,7 +64,9 @@ def test_two_records_for_one_assembler_are_refused(declared):
 
 @pytest.mark.parametrize("record", [{"ptxas": A, "cuda_major": 13}, {**_record(A), "extra": 1},
                                     {**_record(A), "cuda_major": "13"},
-                                    {**_record(A), "container": {"base_image": "x", "packages": ["cuda-nvcc-13-0"]}}])
+                                    {**_record(A), "container": {"base_image": "x", "packages": ["cuda-nvcc-13-0"]}},
+                                    {**_record(A), "container": {"base_image": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
+                                                                 "packages": ["cuda-nvcc-13-0=13.0.48-1"]}}])
 def test_a_malformed_record_is_refused(declared, record):
     declared(bad=record)
     with pytest.raises(toolchains.ToolchainError):

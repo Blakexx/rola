@@ -13,7 +13,7 @@ that asks "which compiler, which manifests" reads it through this module: `setup
 | `ptxas` | the whole `ptxas --version` output, whitespace-normalized: the string closed-world rule 1 compares |
 | `cuda_major` | the CUDA major torch must be built for; torch's extension builder only refuses another major once it compiles, the build refuses before |
 | `torch_index` | the PyTorch wheel index serving torch for that major |
-| `container` | the dev container that carries this assembler: `base_image` (an `nvidia/cuda` devel tag) and `packages`, the exact apt `name=version` pins that put the record's `ptxas` in it (`tools/dev.py container build` passes both, and the image refuses a `ptxas` that is not the record's) |
+| `container` | the dev container that carries this assembler: `base_image` (an `nvidia/cuda` devel tag pinned by its digest, `name:tag@sha256:...`: a tag can be re-pushed, the digest is the image) and `packages`, the exact apt `name=version` pins that put the record's `ptxas` in it (`tools/dev.py container build` passes both, and the image refuses a `ptxas` that is not the record's) |
 
 Two records naming one assembler are refused: one assembler is one toolchain. The record's name is the manifest
 directory: `tools/manifests/<name>/sm_XX.json`, one file per architecture

@@ -3,7 +3,7 @@
  "cuda_major": 13,
  "torch_index": "https://download.pytorch.org/whl/cu130",
  "container": {
-  "base_image": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
+  "base_image": "nvidia/cuda:13.0.0-devel-ubuntu22.04@sha256:1470d2d7904fac4e5cb3bdfd4993305c46d3ee76deb0213eaaf248e5cf9c7400",
   "packages": [
    "cuda-nvcc-13-0=13.0.48-1",
    "cuda-crt-13-0=13.0.48-1",

@@ -8,6 +8,7 @@ docs/internals/tools/toolchains.md.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -62,6 +63,9 @@ def records() -> dict[str, Toolchain]:
         if set(container) != set(_CONTAINER) or any(type(container[k]) is not v for k, v in _CONTAINER.items()) \
                 or not all(type(p) is str and "=" in p for p in container["packages"]):
             raise ToolchainError(f"{path}: `container` must be {{base_image: str, packages: [\"name=version\", ...]}}")
+        if not re.fullmatch(r"[^@\s]+@sha256:[0-9a-f]{64}", container["base_image"]):
+            raise ToolchainError(f"{path}: `container.base_image` must pin its digest (name:tag@sha256:...), got "
+                                 f"{container['base_image']!r}: a tag is re-pushed, a digest is the image")
         toolchain = Toolchain(name=path.stem, ptxas=normalize(blob["ptxas"]), cuda_major=blob["cuda_major"],
                               torch_index=blob["torch_index"], base_image=container["base_image"],
                               packages=tuple(container["packages"]))
