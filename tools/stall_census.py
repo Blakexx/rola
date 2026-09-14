@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import phase_ledger  # noqa: E402
 import probe_cells  # noqa: E402
+from rola_devtools import process  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
@@ -35,12 +36,12 @@ def measure(cell: str, schedule: str, out: Path) -> None:
     ncu = dev_config.get("toolchain.ncu")
     with tempfile.TemporaryDirectory(prefix="stall_census_", dir=dev_config.scratch("stall_census")) as tmp:
         rep = Path(tmp) / "rep"
-        done = subprocess.run([ncu, "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1", "--section",
-                               "SourceCounters", "--metrics", "group:smsp__pcsamp_warp_stall_reasons", "--import-source",
-                               "yes", "-f", "-o", str(rep), *probe_cells.oneshot_argv(cell, schedule=schedule)],
-                              cwd=ROOT, capture_output=True, text=True, timeout=3600)
-        exported = subprocess.run([ncu, "--import", f"{rep}.ncu-rep", "--page", "source", "--print-source", "sass", "--csv"],
-                                  cwd=ROOT, capture_output=True, text=True, timeout=1800)
+        done = process.run([ncu, "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1", "--section",
+                            "SourceCounters", "--metrics", "group:smsp__pcsamp_warp_stall_reasons", "--import-source",
+                            "yes", "-f", "-o", str(rep), *probe_cells.oneshot_argv(cell, schedule=schedule)],
+                           cwd=ROOT, timeout=3600)
+        exported = process.run([ncu, "--import", f"{rep}.ncu-rep", "--page", "source", "--print-source", "sass", "--csv"],
+                               cwd=ROOT, timeout=1800)
         if exported.returncode:
             raise SystemExit(f"stall_census: the capture or export failed:\n{(done.stdout + done.stderr + exported.stderr)[-1500:]}")
         csv = Path(tmp) / "source.csv"

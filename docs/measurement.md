@@ -5,7 +5,7 @@ stored with its provenance. This document is what that sentence means.
 
 | layer | where | answers |
 |---|---|---|
-| cells | `benchmarks/cells/` (`registry.py`) | WHAT shape and draw is measured: one name, one cell, everywhere |
+| cells | `benchmarks/cells/` (`registry.py`) | WHAT shape and draw is measured: one name, one cell, everywhere; `runnable()` is which cells a binary runs, refusing one without a shipped arm |
 | subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` | WHICH launch is timed, and each arm's dials |
 | method | rola-devtools' `rola_devtools.interleave`, run by `tools/compare.py` | HOW: interleaved call by call, paired within a rep |
 | preconditions | `tools/compare.py`, `bench/provider.py` | what the box and the binary must be first |

@@ -1,6 +1,7 @@
 """The bench provider (benchmarks/bench/provider.py) and the comparison's arms (tools/compare.py): an arm is named by its
 subject and the dials it reads, a point is a registered cell and only its own facts, and arms parse as their flags say.
-No GPU: nothing here builds an arm."""
+The registry's `runnable`: a binary runs the cells of its arms and is refused without a shipped one. No GPU: nothing here
+builds an arm, and the binary's arm list is planted."""
 from __future__ import annotations
 
 import argparse
@@ -49,3 +50,20 @@ def test_the_comparisons_arms_parse_as_their_flags_say():
     assert foreign["provider"] == "pkg.attention:arms"
     with pytest.raises(argparse.ArgumentTypeError, match="lacks"):
         compare.foreign_arm("label:attention,arm:flash")
+
+
+def test_a_binary_runs_the_cells_of_its_arms_and_is_refused_without_a_shipped_arm(monkeypatch):
+    import gen_shards
+
+    import rola.ops.carry as carry
+    from benchmarks.cells.registry import CELLS, runnable
+
+    shipped = [tuple(gen_shards.CARRY_ARMS[i]) for i in gen_shards.CARRY_SHIPPED_ARMS]
+    monkeypatch.setattr(carry, "arms", lambda: shipped)
+    got = runnable()
+    assert got["arms"] == sorted(shipped) and "flat-small-alt-k16" in got["cells"]
+    assert all(CELLS[name][0] == "layer" or CELLS[name][1].arm in shipped for name in got["cells"])
+    assert "deep3-dense" in got["undeclared"] and "deep3-dense" not in got["cells"]
+    monkeypatch.setattr(carry, "arms", lambda: [])
+    with pytest.raises(RuntimeError, match="lacks the shipped arms"):
+        runnable()

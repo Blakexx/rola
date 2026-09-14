@@ -59,6 +59,7 @@ from pathlib import Path
 import clock_lock
 import dev_config
 from gpu_lock import GPU_LOCK_DEFAULT, gpu_lock
+from rola_devtools import process
 
 THIS_FILE = Path(__file__).resolve()
 REPO = THIS_FILE.parents[1]
@@ -375,8 +376,7 @@ def run_ncu_cell(binary: dict, bench: str, symbol: str, cell: str, lock_path: st
                         binary.get("schedule", "first"), binary.get("calls", 1))]
     out_csv = f"{out_csv_prefix}_{binary['label']}_{bench}_{cell}.csv"
     with gpu_lock(lock_path, mode="exclusive"):  # measured work
-        proc = subprocess.run(cmd, cwd=binary["worktree"], capture_output=True, text=True,
-                              timeout=timeout)
+        proc = process.run(cmd, cwd=binary["worktree"], timeout=timeout)
     Path(out_csv).write_text(proc.stdout)
     row = {"csv": out_csv, "rc": proc.returncode}
     #: ncu's stdout interleaves its own progress lines and the worker's JSON stamp BEFORE

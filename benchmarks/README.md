@@ -19,6 +19,8 @@ appears. Two kinds, both data:
   builds the fixture and checks `layer_manifest.json`, the committed INTEGER statistics
   every constructor realizes — a statistic is not a fixture, and the manifest exists so a
   drift in the RNG, the solver or the producer announces itself as a diff.
+* `registry.py` — every cell by name with its kind, and `runnable()`: the cells this checkout's binary runs (a carry
+  cell where the binary carries its arm), refusing a binary without an arm the tree ships.
 
 **`benchmarks/bench/` — the library.** `subjects.py` is the roster: one lean callable per
 kernel this line carries, each taking a registry cell and returning the launch to time,

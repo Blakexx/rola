@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import phase_ledger  # noqa: E402
 import probe_cells  # noqa: E402
+from rola_devtools import process  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 COUNTERS = (
@@ -48,7 +48,7 @@ COUNTERS = (
 def measure(cell: str, schedule: str) -> dict:
     cmd = [dev_config.get("toolchain.ncu"), "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1",
            "--metrics", ",".join(COUNTERS), "--csv", *probe_cells.oneshot_argv(cell, schedule=schedule)]
-    done = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=3600)
+    done = process.run(cmd, cwd=ROOT, timeout=3600)
     values = {}
     for line in done.stdout.splitlines():
         parts = [x.strip().strip('"') for x in line.split('","')]

@@ -71,6 +71,12 @@ class CellSpec:
         return len(self.widths)
 
     @property
+    def arm(self) -> tuple[int, int, int]:
+        """The carry arm this cell launches: ``(D, DV, warps_per_cta)``, the key a binary's arms are listed by
+        (`rola.ops.carry.arms()`) and the shipped set is declared in (`tools/manifests/shipped_set.json`)."""
+        return (self.D, self.dv, self.warps_per_cta)
+
+    @property
     def N(self) -> int:
         n = 1
         for width in self.widths:
