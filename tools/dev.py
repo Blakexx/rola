@@ -135,6 +135,27 @@ def wire_hooks(checkout: Path) -> None:
                    check=True)
 
 
+def _worktrees() -> list[Path]:
+    """Every checkout of this repository: the main one and each linked worktree."""
+    listing = subprocess.run(["git", "-C", str(ROOT), "worktree", "list", "--porcelain"], capture_output=True, text=True,
+                             check=True).stdout
+    return [Path(line.split(" ", 1)[1]) for line in listing.splitlines() if line.startswith("worktree ")]
+
+
+def _refuse_unwired() -> None:
+    """The repository's shared hook refuses: a checkout reaches it only when its own gate is not wired, and a commit
+    must never pass unchecked or through a hook that runs the host's python."""
+    common = Path(subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                 capture_output=True, text=True, check=True).stdout.strip())
+    hook = common / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/usr/bin/env bash\n# Written by rola's tools/dev.py init: a checkout reaches this hook only when "
+                    "its own commit gate\n# (core.hooksPath -> tools/git-hooks) is not wired, so it refuses.\n"
+                    'echo "pre-commit: refusing -- this checkout\'s commit gate is not wired: python3 tools/dev.py init" >&2\n'
+                    "exit 1\n")
+    hook.chmod(0o755)
+
+
 def gate_venv(checkout: Path | str) -> str:
     """The venv a checkout's commit hooks run from (`git config rola.venv`), or "" when none is named."""
     done = subprocess.run(["git", "-C", str(checkout), "config", "--get", "rola.venv"], capture_output=True, text=True)
@@ -188,6 +209,7 @@ def cmd_init(a) -> int:
     base = base_venv_of(Path(sys.prefix))
     if base and not a.image:
         _write_section("workspace", {"base_venv": base}, a.force)
+
     tools_dir = Path(dev_config.get("host.tools_dir"))
     for name in PINS:
         current = dev_config.get(f"toolchain.{name}")
@@ -205,7 +227,10 @@ def cmd_init(a) -> int:
     for site in link_results(a.image):
         print(f"rola_results: linked into {site}")
     if not a.image:
-        wire_hooks(ROOT)
+        for checkout in _worktrees():
+            if os.access(checkout / "tools" / "git-hooks" / "pre-commit", os.X_OK):
+                wire_hooks(checkout)
+        _refuse_unwired()
         for key in GATED_CONSUMERS:
             if (Path(dev_config.get(key)) / ".git").exists():
                 subprocess.run(["git", "-C", dev_config.get(key), "config", "rola.venv", dev_config.get("workspace.base_venv")],
