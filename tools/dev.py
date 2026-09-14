@@ -382,7 +382,7 @@ def _windows(rel: str) -> Path:
 
 def _clock_wsl(mhz: int) -> dict:
     """An elevated scheduled task a non-administrator may start: registered once, one administrator prompt."""
-    smi, tasks, ps = _windows("nvidia-smi.exe"), _windows("schtasks.exe"), _windows("WindowsPowerShell/v1.0/powershell.exe")
+    smi, ps = _windows("nvidia-smi.exe"), _windows("WindowsPowerShell/v1.0/powershell.exe")
     appdata = subprocess.run([str(ps), "-NoProfile", "-Command", "$env:LOCALAPPDATA"],
                              capture_output=True, text=True, check=True).stdout.strip()
     home = Path(f"/mnt/{appdata[0].lower()}{appdata[2:].replace(chr(92), '/')}") / "rola"
@@ -395,16 +395,29 @@ def _clock_wsl(mhz: int) -> dict:
     lines = ["$ErrorActionPreference = 'Stop'"]
     for name, arg in (("gpu-lock", f"-lgc {mhz},{mhz}"), ("gpu-unlock", "-rgc")):
         vbs = home / f"{name}.vbs"
-        vbs.write_text(f'CreateObject("WScript.Shell").Run "C:\\Windows\\System32\\nvidia-smi.exe {arg}", 0, True\r\n')
+        #: the launcher exits with nvidia-smi's own code, so the task's last result is the driver's answer
+        vbs.write_text(f'WScript.Quit CreateObject("WScript.Shell").Run("C:\\Windows\\System32\\nvidia-smi.exe {arg}", 0, '
+                       f'True)\r\n')
         lines.append(f"schtasks /create /tn '{name}' /sc once /st 00:00 /rl highest /f /tr 'wscript.exe \"{to_windows(vbs)}\"'")
     script = home / "register-gpu-clock-tasks.ps1"
     script.write_text("\r\n".join(lines) + "\r\n")
     print(f"registering the tasks (one administrator prompt): {to_windows(script)}")
     subprocess.run([str(ps), "-NoProfile", "-Command", f"Start-Process powershell -Verb RunAs -Wait -ArgumentList "
                     f"'-NoProfile -ExecutionPolicy Bypass -File \"{to_windows(script)}\"'"], check=True)
-    run = [str(tasks), "/run", "/tn"]
-    return {"ghz": mhz / 1000.0, "lock": [*run, "gpu-lock"], "unlock": [*run, "gpu-unlock"],
+    return {"ghz": mhz / 1000.0, "lock": _task_run(ps, "gpu-lock"), "unlock": _task_run(ps, "gpu-unlock"),
             "read": [str(smi), "--query-gpu=clocks.sm", "--format=csv,noheader,nounits"]}
+
+
+def _task_run(ps: Path, name: str) -> list[str]:
+    """Start a scheduled task and return when it has FINISHED, failing with its result: `schtasks /run` returns before the
+    task runs, so a lock read at once raced it and one run's unlock could land after the next run's lock."""
+    script = (f"$t = '{name}'; Start-ScheduledTask -TaskName $t; $w = [Diagnostics.Stopwatch]::StartNew(); "
+              "while ((Get-ScheduledTask -TaskName $t).State -ne 'Running' -and $w.ElapsedMilliseconds -lt 3000) "
+              "{ Start-Sleep -Milliseconds 50 }; "
+              "while ((Get-ScheduledTask -TaskName $t).State -eq 'Running') { Start-Sleep -Milliseconds 50 }; "
+              "$r = (Get-ScheduledTaskInfo -TaskName $t).LastTaskResult; "
+              "if ($r -ne 0) { [Console]::Error.WriteLine(\"$t exited $r (nvidia-smi's code)\"); exit 1 }")
+    return [str(ps), "-NoProfile", "-NonInteractive", "-Command", script]
 
 
 def _clock_linux(mhz: int) -> dict:

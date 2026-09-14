@@ -43,7 +43,9 @@ clock is not set by `init`, because locking it asks for administrator consent on
 the harness makes (`tools/clock_lock.py`, [sm_clock.md](../common/sm_clock.md)). Only after the lock is proven
 does it write `clock.json`.
 - **Under WSL:** it registers two elevated scheduled tasks, `gpu-lock` and `gpu-unlock`. Each runs a hidden
-  `wscript` launcher that calls `nvidia-smi.exe`, and registering them asks for administrator consent once.
+  `wscript` launcher that calls `nvidia-smi.exe` and exits with its code, and registering them asks for administrator
+  consent once. The lock and unlock commands start the task and return when it has finished, failing with its result:
+  `schtasks /run` returns before the task runs, so a proof read raced the lock, and a driver's refusal read as success.
 - **On Linux:** it writes `sudo -n nvidia-smi -lgc` commands and prints the sudoers rule they need.
 
 **`worktree <name> <sha>`** creates the worktree in `workspace.worktrees` and wires its commit gate before

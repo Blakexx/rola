@@ -42,7 +42,10 @@ def load() -> dict | None:
 
 
 def _run(cmd: list[str]) -> None:
-    subprocess.run(cmd, check=True, capture_output=True, timeout=60)
+    done = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if done.returncode:
+        raise SystemExit(f"CLOCK: {cmd[0]} failed ({done.returncode}): {(done.stderr or done.stdout).strip()[-400:]}; the host's "
+                         "lock is broken -- python tools/dev.py clock --mhz N re-registers and proves it")
 
 
 def within(ghz: float | None, cfg: dict | None) -> bool:
