@@ -75,6 +75,9 @@ SCHEMA: dict[str, dict[str, Key]] = {
     "workspace": {
         "suite": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-bench"),
                      "the rola-bench checkout whose measurement suite (rola_bench/measure) runs this tree's instruments"),
+        "devtools": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-devtools"),
+                        "the rola-devtools checkout (the public mirror's export, the interleaving driver), linked into "
+                        "every venv that runs here"),
         "worktrees": Key("path", str(ROOT.parent / "worktrees") if ROOT.parent.name != "worktrees" else str(ROOT.parent),
                          "the one folder every worktree and its venv live in"),
         "base_venv": Key("path?", None, "the shared venv every worktree's pointer venv borrows site-packages from"),
@@ -91,7 +94,8 @@ IMAGE_LAYOUT = {
     "toolchain": {"cuda_home": "/usr/local/cuda"},
     "host": {"lock_dir": "/run/rola/locks", "gpu_lock": "/run/rola/gpu/rola_gpu.lock", "tools_dir": "/opt/rola/tools"},
     "store": {"root": "/workspace/store"},
-    "workspace": {"suite": "/workspace/suite", "worktrees": "/workspace/worktrees", "base_venv": "/opt/venv"},
+    "workspace": {"suite": "/workspace/suite", "devtools": "/workspace/devtools", "worktrees": "/workspace/worktrees",
+                  "base_venv": "/opt/venv"},
 }
 #: where the image's loader looks for the WSL driver's libraries (the Dockerfile's LD_LIBRARY_PATH names it)
 WSL_LIB_IN_IMAGE = "/usr/lib/wsl/lib"

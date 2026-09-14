@@ -63,7 +63,9 @@ jobs:
       - name: readability spacing (long zero-blank bodies, csrc blank runs)
         run: python3 tools/lint/readability_spacing.py
       - name: every tracked path is declared for the public mirror
-        run: python3 .github/mirror/mirror.py --check
+        run: |
+          pip install "rola-devtools @ git+https://github.com/Blakexx/rola-devtools@3318da1c25ecf4f46389b204a23e93ec3a4eb23a"
+          python3 -m rola_devtools.mirror --check
       - name: drift guards + work codes + R9 enforcement (report-only, printed for the log)
         run: |
           python3 tools/lint/drift_guards.py

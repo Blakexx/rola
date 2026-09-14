@@ -263,10 +263,11 @@ CI auto-commit. See [`docs/bringup.md`](docs/bringup.md).
 | `rola-zoology` | Synthetic capability evaluations (MQAR and friends) |
 | `rola-bench` | The benchmarks and the local measurement suite |
 | `rola-results` | The measurement records every reported number is read from |
+| `rola-devtools` | The development tools every RoLA repository shares: the public mirror's export, the interleaving driver |
 | `rola-paper` | The paper source |
 
 Each is developed in a private `-dev` repository and published here by a mirror job: a push to the development
-default branch publishes its declared files as one snapshot commit ([`.github/mirror/README.md`](.github/mirror/README.md)).
+default branch publishes its declared files as one snapshot commit (`.github/mirror/declarations.json`; the export is [rola-devtools](https://github.com/Blakexx/rola-devtools)').
 
 ## Changelog
 

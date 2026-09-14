@@ -107,23 +107,29 @@ def site_packages(venv: Path) -> Path:
     return Path(out.stdout.strip())
 
 
-def link_results(image: bool) -> list[Path]:
-    """`rola_results` importable from every interpreter that measures here, by a one-line `rola_results.pth` naming
-    `store.root`: the base venv (the image's at its build, naming the store's mount point), and on a host each worktree's
-    pointer venv (it borrows the base as a plain path, which reads none of the base's .pth files). Never the host's own
-    python: nothing here runs from it."""
+#: the shared checkouts every venv here imports, by a one-line `.pth` naming each: the store's `rola_results` and
+#: rola-devtools' `rola_devtools`
+LINKED = {"rola_results.pth": "store.root", "rola_devtools.pth": "workspace.devtools"}
+
+
+def link_packages(image: bool) -> list[Path]:
+    """`rola_results` and `rola_devtools` importable from every interpreter that runs here, by the `LINKED` `.pth` files:
+    the base venv (the image's at its build, naming the mount points), and on a host each worktree's pointer venv (it
+    borrows the base as a plain path, which reads none of the base's .pth files). Never the host's own python: nothing
+    here runs from it."""
     sites = [site_packages(Path(dev_config.get("workspace.base_venv")))]
     if not image:
         sites += [site_packages(v) for v in sorted(Path(dev_config.get("workspace.worktrees")).glob("venv-*"))
                   if (site_packages(v) / "zz_rola_base.pth").exists()]
     for site in sites:
         site.mkdir(parents=True, exist_ok=True)
-        (site / "rola_results.pth").write_text(f"{dev_config.get('store.root')}\n")
+        for pth, key in LINKED.items():
+            (site / pth).write_text(f"{dev_config.get(key)}\n")
     return sites
 
 
-#: the other checkouts whose tracked commit hooks run from this machine's base venv: the suite and the store
-GATED_CONSUMERS = ("workspace.suite", "store.root")
+#: the other checkouts whose tracked commit hooks run from this machine's base venv: the suite, the store, the devtools
+GATED_CONSUMERS = ("workspace.suite", "store.root", "workspace.devtools")
 
 
 def wire_hooks(checkout: Path) -> None:
@@ -224,8 +230,8 @@ def cmd_init(a) -> int:
         subprocess.run(["uv", "pip", "install", "--python", str(Path(base) / "bin" / "python"),
                         "-r", str(ROOT / "requirements.lock"), "--extra-index-url", toolchain.torch_index,
                         "--index-strategy", "unsafe-best-match"], check=True)
-    for site in link_results(a.image):
-        print(f"rola_results: linked into {site}")
+    for site in link_packages(a.image):
+        print(f"rola_results, rola_devtools: linked into {site}")
     if not a.image:
         for checkout in _worktrees():
             if os.access(checkout / "tools" / "git-hooks" / "pre-commit", os.X_OK):
@@ -337,6 +343,13 @@ def cmd_check(a) -> int:
                            text=True)
     row(found.stdout.strip() == str(root / "records"), f"rola_results imports from store.root in {python}",
         "python tools/dev.py init")
+    devtools = Path(dev_config.get("workspace.devtools"))
+    row((devtools / "rola_devtools" / "mirror.py").is_file(), f"workspace.devtools is a rola-devtools checkout: {devtools}",
+        "clone rola-devtools to workspace.devtools, or point workspace.devtools at a checkout")
+    found = subprocess.run([str(python), "-c", "import rola_devtools; print(rola_devtools.__file__)"],
+                           capture_output=True, text=True)
+    row(found.stdout.strip() == str(devtools / "rola_devtools" / "__init__.py"),
+        f"rola_devtools imports from workspace.devtools in {python}", "python tools/dev.py init")
     return _report(rows)
 
 
@@ -440,11 +453,13 @@ def cmd_worktree(a) -> int:
     if not os.access(worktree / "tools" / "git-hooks" / "pre-commit", os.X_OK):
         raise SystemExit(f"refusing: {worktree}/tools/git-hooks/pre-commit is missing or not executable")
     wire_hooks(worktree)
+
     subprocess.run(["uv", "venv", "--python", py.removeprefix("python"), "--seed", str(venv)], check=True)
     site = site_packages(venv)
     (site / f"aa_rola_{a.name}.pth").write_text(f"{worktree}\n")
     (site / "zz_rola_base.pth").write_text(f"{site_packages(Path(base))}\n")
-    (site / "rola_results.pth").write_text(f"{dev_config.get('store.root')}\n")
+    for pth, key in LINKED.items():
+        (site / pth).write_text(f"{dev_config.get(key)}\n")
     main_so = sorted((main / "rola").glob("_C.cpython-*.so"))
     same = subprocess.run(["git", "-C", str(main), "rev-parse", "HEAD"], capture_output=True, text=True).stdout == \
         subprocess.run(["git", "-C", str(worktree), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
@@ -465,15 +480,16 @@ def cmd_worktree(a) -> int:
 
 def _mounts() -> list[str]:
     """The host paths the container shares, onto `IMAGE_LAYOUT`, as `source:target[:ro]`: the checkout, the lock
-    directories, the store, the worktrees folder, and under WSL the driver's libraries at the path the image's loader
-    searches."""
+    directories, the store, the worktrees folder, the suite, the devtools, and under WSL the driver's libraries at the
+    path the image's loader searches."""
     gpu, image_gpu = Path(dev_config.get("host.gpu_lock")), Path(IMAGE_LAYOUT["host"]["gpu_lock"])
     if gpu.name != image_gpu.name:
         raise SystemExit(f"host.gpu_lock {gpu} must be named {image_gpu.name} for the container to share it")
     mounts = [f"{ROOT}:/workspace/rola", f"{dev_config.get('host.lock_dir')}:{IMAGE_LAYOUT['host']['lock_dir']}",
               f"{gpu.parent}:{image_gpu.parent}", f"{dev_config.get('store.root')}:{IMAGE_LAYOUT['store']['root']}",
               f"{dev_config.get('workspace.worktrees')}:{IMAGE_LAYOUT['workspace']['worktrees']}",
-              f"{dev_config.get('workspace.suite')}:{IMAGE_LAYOUT['workspace']['suite']}"]
+              f"{dev_config.get('workspace.suite')}:{IMAGE_LAYOUT['workspace']['suite']}",
+              f"{dev_config.get('workspace.devtools')}:{IMAGE_LAYOUT['workspace']['devtools']}"]
     wsl_lib = dev_config.get("host.wsl_lib")
     #: the whole WSL directory, not only lib/: its libcuda is a loader that opens the host's driver store beside it
     return mounts + ([f"{Path(wsl_lib).parent}:{Path(WSL_LIB_IN_IMAGE).parent}:ro"] if wsl_lib else [])

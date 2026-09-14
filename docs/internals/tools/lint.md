@@ -23,7 +23,7 @@ clean yet prints its findings, exits 0, and says here what it is waiting for.
 | `unused_instantiations.py` | every `__global__` function template must demangle-match a symbol in a committed manifest. `__device__` templates are found, counted and explicitly NOT checked: manifests record entry functions only, and a wrapped-once helper has no standalone symbol |
 | `run_ruff_e3.sh` | pycodestyle's blank-line family. It keeps its own invocation because ruff preview-gates that family, and turning preview on in `pyproject.toml` would gate every other family's preview rules too |
 | `readability_spacing.py` | a function or kernel body of forty lines or more with ZERO blank lines in it, and a run of blank lines in `csrc` (Python's own two-line convention is ruff's `E303` territory). The rule asks for segmentation and does not say where |
-| `.github/mirror/mirror.py --check` | every tracked path is declared ships or private for the public mirror in `.github/mirror/declarations.json`, so a new file never ships, and never silently stays behind, undecided ([`.github/mirror/README.md`](../../../.github/mirror/README.md)) |
+| `python -m rola_devtools.mirror --check` | every tracked path is declared ships or private for the public mirror in `.github/mirror/declarations.json`, so a new file never ships, and never silently stays behind, undecided (the tool is rola-devtools', linked into the venvs; its README describes the export) |
 | `clang-format` (root `.clang-format`) | the formatting floor, including `MaxEmptyLinesToKeep: 1` and `SeparateDefinitionBlocks: Always` — the formatter's half of the readability rule above |
 
 ## The report-only set, and what each is waiting for

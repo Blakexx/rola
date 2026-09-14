@@ -90,7 +90,7 @@ repos:
       - id: mirror-declarations
         name: every tracked path is declared for the public mirror (.github/mirror/declarations.json)
         language: system
-        entry: python3 .github/mirror/mirror.py --check
+        entry: python3 -m rola_devtools.mirror --check
         pass_filenames: false
         always_run: true
       - id: dev-container-current
