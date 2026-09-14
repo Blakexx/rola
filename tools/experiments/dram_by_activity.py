@@ -250,10 +250,12 @@ def run_variant(binary, cell, variant, warmup, launches, lock_path, out_dir,
             continue
         if isinstance(cand, dict) and "rola_file" in cand:
             stamp = cand
+    stamp["rola_file"], outside = pc.rola_file_in(binary["worktree"], stamp.get("rola_file"))
     row = {"binary": binary["label"], "cell": cell, "variant": variant, "rc": proc.returncode,
            "kernel_name": kernel, "stamp": stamp, "n_launches": 0}
-    if not per_metric:
-        row["error"] = f"no ncu CSV (rc={proc.returncode}): {tail or proc.stderr[-1500:]}"
+    if outside or not per_metric:
+        row["error"] = pc.portable_error(outside or f"no ncu CSV (rc={proc.returncode}): {tail or proc.stderr[-1500:]}",
+                                         binary["worktree"])
         return row
     for name, vals in per_metric.items():
         #: EVERY profiled launch's value is kept, not just the median: the diagnosis
@@ -278,7 +280,7 @@ def run_source(binary, cell, variant, warmup, lock_path, out_dir,
     path = Path(out_dir, f"src_{binary['label']}_{cell}_{variant}.csv")
     path.write_text(proc.stdout)
     return {"binary": binary["label"], "cell": cell, "variant": variant,
-            "rc": proc.returncode, "csv": str(path)}
+            "rc": proc.returncode, "csv": path.name}
 
 
 def fmt(v, scale=1.0, digits=3):
@@ -350,7 +352,7 @@ def main():
                 for b in args.binary:
                     s = run_source(b, cell, variant, args.warmup, args.lock, out_dir,
                                    args.continuation)
-                    print(f"  source {b['label']}/{cell}/{variant} -> {s['csv']} rc={s['rc']}")
+                    print(f"  source {b['label']}/{cell}/{variant} -> {Path(out_dir, s['csv'])} rc={s['rc']}")
 
     print()
     hdr = ("cell", "variant", "binary", "dram MB", "dram rd MB", "dram wr MB",

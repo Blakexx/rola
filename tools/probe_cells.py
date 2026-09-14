@@ -266,6 +266,25 @@ def venv_python(venv_path: str) -> str:
     return str(python)
 
 
+def rola_file_in(worktree: str, rola_file: str | None) -> tuple[str | None, str | None]:
+    """The worker's imported `rola` as its path inside the measured checkout, and the refusal when it came from outside
+    that checkout: the row would stamp this checkout's identity onto another tree's binary. A record names a file by its
+    path inside its checkout, never by where the checkout sat on this machine."""
+    if not rola_file or not Path(rola_file).is_absolute():
+        return rola_file, None
+    try:
+        return str(Path(rola_file).resolve().relative_to(Path(worktree).resolve())), None
+    except ValueError:
+        return None, f"`import rola` resolved outside the measured checkout {Path(worktree).name}"
+
+
+def portable_error(text: str, worktree: str) -> str:
+    """A worker's message as a record may carry it: paths inside the measured checkout relative to it, others from ~."""
+    from rola_results import portable
+
+    return portable(str(text), worktree)
+
+
 def worker_argv(binary: dict, bench: str, cells: list[str], reps: int, warmup: int,
                 state: str, oneshot: bool, schedule: str = "first", calls: int = 1) -> list[str]:
     """The worker command, built against the MEASURED worktree's own copy of this file.
@@ -473,10 +492,7 @@ def record(binaries, results, args, clock) -> None:
     #: the stored rows never carry this box's absolute paths: a checkout is named by its directory
     rows = []
     for entry in results:
-        row = {**entry, "worktree": Path(entry["worktree"]).name, "venv": Path(entry["venv"]).name}
-        if row.get("rola_file"):
-            row["rola_file"] = str(Path(entry["rola_file"]).resolve().relative_to(Path(entry["worktree"]).resolve()))
-        rows.append(row)
+        rows.append({**entry, "worktree": Path(entry["worktree"]).name, "venv": Path(entry["venv"]).name})
     provenance = {"session": head["session"], "stage": args.stage, "agent": args.agent, "purpose": args.purpose,
                   "arms": [{"label": b["label"], **checkout(b["worktree"])} for b in binaries]}
     store = Store("probe_cells")
@@ -573,11 +589,13 @@ def main() -> None:
                      **{k: stamp.get(k) for k in
                         ("device_name", "device_uuid", "rola_file", "manifest_sha256",
                          "sm", "driver_cuda", "torch", "ptxas", "family_stamp")}}
-            if summary:
+            entry["rola_file"], outside = rola_file_in(binary["worktree"], entry["rola_file"])
+            if summary and not outside:
                 entry.update(summary)
                 shown = f"{summary['median_of_round_medians_ms']:.4f}"
             else:
-                entry["error"] = first.get("error", refused or "no successful rounds")
+                entry["error"] = portable_error(outside or first.get("error", refused or "no successful rounds"),
+                                                binary["worktree"])
                 shown = "ERROR: " + str(entry["error"])[:20]
             results.append(entry)
             ghz = [g for g in (summary or {}).get("round_sm_ghz", []) if g]
