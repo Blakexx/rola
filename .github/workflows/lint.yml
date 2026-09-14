@@ -112,9 +112,14 @@ jobs:
       # into memory and must produce the same formatted bytes that were committed,
       # so the version is pinned to the one the hook and the lint job use.
       - run: pip install pytest clang-format==19.1.7
+      # The supported matrix reads rola's own capability table, so the checkout is imported (never built) under the
+      # lock's torch in its CPU build.
+      - run: pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
       - name: the instantiation shards are the ones the matrix definition produces
         run: python tools/gen_shards.py --check
       - name: the README's supported matrix is the derived one
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: python tools/supported.py --check
       # The shard partition, the README's generated tables and the vendored pin
       # moved to the `lint` job's lint_standards.py (RULED 2026-08-29:
