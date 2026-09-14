@@ -1,0 +1,144 @@
+# Lint gates, mirrored exactly by .github/workflows/lint.yml — one tool
+# version in both places, pinned, so a hook pass IS a CI pass. A hook named
+# `[report-only]` prints its findings and exits 0; every other hook here refuses the
+# commit, and docs/internals/tools/lint.md carries the table of which is which.
+#
+#   pip install pre-commit && pre-commit install
+#
+# Every hook is a CHECK, not a rewriter: a commit that fails formatting is
+# refused with the diff named, and the author runs the formatter deliberately.
+# csrc/third_party is vendored under a PIN.json digest (setup.py rule R5) and
+# is never formatted — the `files` scope below is the enforcement of that.
+repos:
+  - repo: local
+    hooks:
+      - id: clang-format-check
+        name: clang-format --dry-run (csrc/rola)
+        language: python
+        additional_dependencies: ["clang-format==19.1.7"]
+        entry: clang-format --style=file --dry-run --Werror
+        files: ^csrc/rola/.*\.(cu|cuh|cpp|h|hpp)$
+      - id: ruff-check
+        name: ruff check
+        language: python
+        additional_dependencies: ["ruff==0.14.10"]
+        entry: ruff check --force-exclude
+        types_or: [python]
+      # Standards lint (unratified: ast-grep rules + the textual checks ast-grep
+      # cannot express -- see docs/build.md's "Standards lint" section and
+      # tools/lint/rules/*.yml's messages for the KERNEL_STANDARDS.md section
+      # and incident each one guards).
+      #
+      # K46 item 5: `tools/lint/ast_grep_gate.py` scopes the scan to `csrc/`
+      # (its module docstring has the incident -- a bare `ast-grep scan
+      # --config sgconfig.yml` re-fires every rule's must-fire fixture under
+      # tools/lint/fixtures/ as a gating error on every commit).
+      # `python3 tools/lint/ast_grep_gate.py --test-fixtures` is the separate
+      # self-test asserting each fixture still fires; run it by hand or add
+      # it to CI, never as this hook's entry.
+      - id: ast-grep-standards
+        name: ast-grep (KERNEL_STANDARDS.md rules, csrc/ only)
+        language: system
+        entry: python3 tools/lint/ast_grep_gate.py
+        pass_filenames: false
+        files: ^csrc/.*\.(cu|cuh|cpp|h|hpp)$
+      - id: lint-standards
+        name: lint_standards.py (unroll discipline, arm-TU torch include, decode prologue, docs mirror, no bare-flock GPU lock, repo portability)
+        language: system
+        entry: python3 tools/lint/lint_standards.py
+        pass_filenames: false
+        # K40: check_repo_portability scans EVERY tracked file (`git ls-files`) for an
+        # ad-hoc absolute path (someone's home directory, the coordinator's out-of-repo
+        # journal, a real worktree checkout, a session's scratch directory), so this
+        # hook must fire on every commit regardless of which file changed, not just a
+        # csrc/docs/tools touch -- always_run, no `files` filter.
+        always_run: true
+      - id: clang-tidy-host
+        name: clang-tidy (host-only TUs; SKIPS if no build/temp exists yet)
+        language: system
+        entry: tools/lint/run_clang_tidy.sh
+        pass_filenames: false
+        files: ^(csrc/rola/rola_api\.cpp|\.clang-tidy)$
+
+      # THE READABILITY AND DEAD-CODE GATES. Every hook below EXITS NONZERO on a
+      # finding: each is at zero on the tip this flip lands on, which is what makes it
+      # a gate a contributor can satisfy rather than a standing debt notice.
+      - id: clang-tidy-device
+        name: clang-tidy device profile (carry arm TUs)
+        language: system
+        entry: tools/lint/run_clang_tidy_device.sh
+        pass_filenames: false
+        files: ^csrc/.*\.(cu|cuh)$
+      - id: host-warnings
+        name: host -Wall -Wextra -Wunused dry compile
+        language: system
+        entry: python3 tools/lint/host_warnings.py
+        pass_filenames: false
+        always_run: true
+      - id: unused-instantiations
+        name: unused __global__ instantiation check
+        language: system
+        entry: python3 tools/lint/unused_instantiations.py
+        pass_filenames: false
+        always_run: true
+      - id: ruff-e3
+        name: ruff E30x (blank-line spacing, preview)
+        language: system
+        entry: tools/lint/run_ruff_e3.sh
+        pass_filenames: false
+        always_run: true
+      - id: mirror-declarations
+        name: every tracked path is declared for the public mirror (.github/mirror/declarations.json)
+        language: system
+        entry: python3 .github/mirror/mirror.py --check
+        pass_filenames: false
+        always_run: true
+      - id: dev-container-current
+        name: "§23 (3): a changed dev environment carries a passing container check"
+        language: system
+        entry: python3 tools/dev.py container gate
+        pass_filenames: false
+        always_run: true
+      - id: readability-spacing
+        name: readability spacing (long zero-blank bodies, csrc blank runs)
+        language: system
+        entry: python3 tools/lint/readability_spacing.py
+        pass_filenames: false
+        always_run: true
+
+      # STILL REPORT-ONLY, each with the reason it cannot gate YET stated where the
+      # lint's own header states it. A hook here always exits 0: the finding is an
+      # inventory for a human to rule on, never a blocked commit -- the same backstop
+      # philosophy the gating hooks above are held to, applied to checks that are not
+      # clean enough to gate on this tip.
+      - id: vulture-report
+        name: "[report-only] vulture (Python dead code)"
+        language: python
+        additional_dependencies: ["vulture==2.16"]
+        entry: tools/lint/run_vulture.sh
+        pass_filenames: false
+        always_run: true
+      - id: r9-enforcement-report
+        name: "[report-only] R9 enforcement (device switch/if-chain traps + case markers)"
+        language: system
+        entry: python3 tools/lint/r9_enforcement.py
+        pass_filenames: false
+        always_run: true
+      - id: drift-guards-report
+        name: "[report-only] drift guards (the laws each deletion ratified)"
+        language: system
+        entry: python3 tools/lint/drift_guards.py
+        pass_filenames: false
+        always_run: true
+      - id: constant-parameters-report
+        name: "[report-only] constant parameters (a knob with one value is a constant)"
+        language: system
+        entry: python3 tools/lint/constant_parameters.py
+        pass_filenames: false
+        always_run: true
+      - id: work-codes-report
+        name: "[report-only] campaign work codes (the sweep's remaining inventory)"
+        language: system
+        entry: python3 tools/lint/work_codes.py
+        pass_filenames: false
+        always_run: true

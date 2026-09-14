@@ -1,0 +1,30 @@
+id: leader-only-fence
+language: cpp
+severity: error
+message: >-
+  KERNEL_STANDARDS.md §12: a fence orders only the FENCING THREAD's own
+  accesses. Gating `__threadfence`/`__threadfence_block`/`__threadfence_system`
+  behind a single-lane predicate (`if (lane == 0) { ...; __threadfence(); }`)
+  leaves every OTHER lane's writes unordered ("seven of eight
+  lanes unordered"). Every lane that issued the data must execute the fence
+  itself; only the counter update after it may be single-lane.
+files:
+  - "csrc/rola/**"
+  - "tools/lint/fixtures/**"
+rule:
+  all:
+    - kind: if_statement
+    - has:
+        field: condition
+        stopBy: end
+        has:
+          kind: binary_expression
+          has: { field: operator, regex: '^==$' }
+          stopBy: end
+    - has:
+        field: consequence
+        stopBy: end
+        has:
+          kind: call_expression
+          has: { field: function, regex: '^__threadfence(_block|_system)?$' }
+          stopBy: end

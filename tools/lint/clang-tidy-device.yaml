@@ -1,0 +1,24 @@
+# DEVICE clang-tidy profile (LINT2 item 1, report-only until G5).
+#
+# Separate from the repo-root `.clang-tidy` (HOST TUs only, owned by the prior
+# lint stage -- not touched here). This profile's check set is the one
+# G_FOUNDATION's G5 card names for DEAD CODE: real-store analysis and unused-
+# parameter/declaration classes, scoped to the codebase's TORCH-FREE device
+# TUs (the carry arm instantiations, `carry_arm_abi.cuh`'s raw-pointer ABI --
+# rola-build skill) via clang's `--cuda-host-only` CUDA frontend. See
+# `tools/lint/run_clang_tidy_device.sh` for which checks fire cleanly on this
+# clang14 / CUDA 12.4 pairing and which are toolchain noise, not silenced.
+Checks: >
+  -*,
+  clang-analyzer-deadcode.DeadStores,
+  misc-unused-parameters,
+  bugprone-unused-return-value,
+  bugprone-unused-raii,
+  readability-redundant-declaration,
+  readability-redundant-control-flow,
+  readability-redundant-string-init,
+  readability-redundant-member-init,
+  readability-redundant-smartptr-get
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+FormatStyle: none

@@ -1,0 +1,25 @@
+id: global-fn-in-anon-namespace
+language: cpp
+severity: error
+message: >-
+  ancestral code standard / anon-namespace-kernels-unratifiable: a __global__
+  function inside an anonymous namespace gets the BUILD PATH hashed into its
+  mangled name, so a worktree manifest refuses an identical binary built
+  elsewhere (fix 7577850). Every device kernel needs a NAMED namespace.
+files:
+  - "csrc/**"
+  - "tools/lint/fixtures/**"
+rule:
+  all:
+    - kind: function_definition
+    - regex: '^__global__'
+    - inside:
+        stopBy: end
+        all:
+          - kind: namespace_definition
+          - not:
+              has:
+                field: name
+                any:
+                  - kind: namespace_identifier
+                  - kind: nested_namespace_specifier

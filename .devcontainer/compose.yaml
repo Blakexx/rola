@@ -1,0 +1,16 @@
+# The dev container as a compose service. `.devcontainer/devcontainer.json` runs it; its initializeCommand
+# (`python3 tools/dev.py container compose`) first writes `compose.local.yaml` beside this file with the image tag for
+# the current environment key and the host's mounts, read from the host's dev config -- never committed (§17).
+# The image is built by `python tools/dev.py container build` from the environment's inputs alone (not the whole tree).
+services:
+  rola:
+    ipc: host
+    working_dir: /workspace/rola
+    command: sleep infinity
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

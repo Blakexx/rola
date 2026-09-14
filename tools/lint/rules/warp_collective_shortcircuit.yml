@@ -1,0 +1,39 @@
+id: warp-collective-in-shortcircuit
+language: cpp
+severity: error
+message: >-
+  KERNEL_STANDARDS.md §12: a warp collective inside a short-circuit or a
+  ternary branch splits the warp at an instruction that needs every lane --
+  the split never completes. This is the ring hang (recorded 2026-08-26):
+  `part && lane_broadcast(x)` hung and survived removing every explicit wait.
+  Hoist the collective out of the `&&`/`||`/`?:`; predicate its RESULT instead.
+note: >-
+  Fires on __shfl_sync / __ballot_sync / __syncwarp / __all_sync / __any_sync
+  appearing as (or inside) an operand of `&&`, `||`, or a `?:` branch.
+files:
+  - "csrc/**"
+  - "tools/lint/fixtures/**"
+rule:
+  any:
+    # $A && $B / $A || $B, collective anywhere under either operand.
+    - all:
+        - kind: binary_expression
+        - has: { field: operator, regex: '^(&&|\|\|)$' }
+        - any:
+            - has:
+                field: left
+                stopBy: end
+                kind: call_expression
+                regex: '__shfl_sync|__ballot_sync|__syncwarp|__all_sync|__any_sync'
+            - has:
+                field: right
+                stopBy: end
+                kind: call_expression
+                regex: '__shfl_sync|__ballot_sync|__syncwarp|__all_sync|__any_sync'
+    # cond ? A : B, collective in either branch (or the condition itself).
+    - all:
+        - kind: conditional_expression
+        - has:
+            stopBy: end
+            kind: call_expression
+            regex: '__shfl_sync|__ballot_sync|__syncwarp|__all_sync|__any_sync'

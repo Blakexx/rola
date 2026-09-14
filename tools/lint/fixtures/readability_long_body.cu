@@ -1,0 +1,90 @@
+// Fixture for tools/lint/readability_spacing.py -- `bad` must fire (40+ line
+// body, zero blank lines); `ok` must not (same length, has blank lines).
+__device__ int bad(int x) {
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  return x;
+}
+
+__device__ int ok(int x) {
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  x += 1;
+  return x;
+}

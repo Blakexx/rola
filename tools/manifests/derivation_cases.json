@@ -1,0 +1,326 @@
+{
+ "schema": 1,
+ "note": "THE DECLARED CASES the addressing block's derivation is ratified on. The derivation is HOST code -- one function, run once per launch, that every kernel of the family then addresses through -- so it is ratified the way the codegen is: a hash of the sources it is computed from, plus the OUTPUT it produces on this declared set of named inputs, measured and recorded rather than asserted. `tools/ratify.py` compiles a harness against `sources`, runs these cases and records the result in `tools/manifests/derivation.json`. Cases that must be REFUSED are declared too, with their refusal read back: the refusal set is half the contract (KERNEL_STANDARDS §R13 -- the kernel accepts the descriptor's strict shape and refuses the rest) and an unstated refusal is the half that rots. A case is named, never numbered, so a drift report says which shape moved. EVERY GEOMETRY CASE NAMES A REAL (D, DV, warps_per_cta) POINT of the declared shipped set, through the BC that pair implies: BC = leaves_per_warp(DV) x warps_per_cta, with leaves_per_warp(DV) = 16384 / DV / 8 (docs/internals/common/geom.md, the arch constants). DV does not enter the derived block directly -- it enters through BC -- so two cases differing only in DV would be one measurement filed twice, and the case names carry the DV that produced their BC so a reader can see which arm each covers.",
+ "sources": [
+  "common/geom.cuh"
+ ],
+ "geometry": [
+  {
+   "name": "d1_dv64_w8",
+   "widths": [
+    256
+   ],
+   "level_modes": 3,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d1_dv64_w4",
+   "widths": [
+    256
+   ],
+   "level_modes": 3,
+   "bc": 128,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 4
+  },
+  {
+   "name": "d2_dv32_w8",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 0,
+   "bc": 512,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 32,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d2_dv32_w4",
+   "widths": [
+    512,
+    512
+   ],
+   "level_modes": 6,
+   "bc": 256,
+   "nsr": 8,
+   "nsw": 8,
+   "dv": 32,
+   "warps_per_cta": 4
+  },
+  {
+   "name": "d2_dv64_w8_dense",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 0,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d2_dv64_w8_split",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 256,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d2_dv64_w4_split",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 128,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 4
+  },
+  {
+   "name": "d2_dv128_w8",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 128,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 128,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d2_dv128_w4",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 0,
+   "bc": 64,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 128,
+   "warps_per_cta": 4
+  },
+  {
+   "name": "d2_narrow_dv64_w8",
+   "widths": [
+    64,
+    64
+   ],
+   "level_modes": 0,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d3_dv64_w8_dense",
+   "widths": [
+    16,
+    16,
+    16
+   ],
+   "level_modes": 0,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d3_dv64_w8_mixed",
+   "widths": [
+    16,
+    16,
+    16
+   ],
+   "level_modes": 38,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d4_dv64_w8_dense",
+   "widths": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "level_modes": 0,
+   "bc": 256,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "d4_dv64_w8_mixed",
+   "widths": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "level_modes": 102,
+   "bc": 256,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_width_not_pow2",
+   "widths": [
+    24,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 128,
+   "nsr": 4,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_width_under_span",
+   "widths": [
+    16,
+    4
+   ],
+   "level_modes": 0,
+   "bc": 128,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_streams_not_pow2",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 128,
+   "nsr": 3,
+   "nsw": 4,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_dv_not_granular",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 0,
+   "bc": 128,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 48,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_bc_not_pow2",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 0,
+   "bc": 96,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  },
+  {
+   "name": "refuse_depth_five",
+   "widths": [
+    16,
+    16,
+    16,
+    16,
+    16
+   ],
+   "level_modes": 0,
+   "bc": 128,
+   "nsr": 1,
+   "nsw": 1,
+   "dv": 64,
+   "warps_per_cta": 8
+  }
+ ],
+ "sub_boxes": [
+  {
+   "name": "sb_d1_dv64_w8",
+   "depth": 1,
+   "box_leaves": 256,
+   "workers": 8
+  },
+  {
+   "name": "sb_d2_dv32_w8",
+   "depth": 2,
+   "box_leaves": 512,
+   "workers": 8
+  },
+  {
+   "name": "sb_d2_dv64_w8",
+   "depth": 2,
+   "box_leaves": 256,
+   "workers": 8
+  },
+  {
+   "name": "sb_d2_dv64_w4",
+   "depth": 2,
+   "box_leaves": 128,
+   "workers": 4
+  },
+  {
+   "name": "sb_d2_dv128_w8",
+   "depth": 2,
+   "box_leaves": 128,
+   "workers": 8
+  },
+  {
+   "name": "sb_d3_dv64_w8",
+   "depth": 3,
+   "box_leaves": 256,
+   "workers": 8
+  },
+  {
+   "name": "sb_d4_dv64_w8",
+   "depth": 4,
+   "box_leaves": 256,
+   "workers": 8
+  },
+  {
+   "name": "sb_d4_dv128_w4",
+   "depth": 4,
+   "box_leaves": 64,
+   "workers": 4
+  }
+ ]
+}

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Copyright 2026 Blake Bottum
+# SPDX-License-Identifier: Apache-2.0
+#
+# THE COMMIT GATE, IN THE TREE. `core.hooksPath` points every checkout and every
+# linked worktree here (`python tools/dev.py worktree` and `init` wire it), so the gate is a
+# property of the tree rather than of one `.git` directory: a worktree cannot be
+# created without it, and there is no configuration left for a caller to supply.
+#
+# It runs pre-commit's own hook implementation against .pre-commit-config.yaml, so
+# what a commit is checked against is exactly what `pre-commit run --all-files` and
+# .github/workflows/lint.yml run.
+#
+# FAILING CLOSED IS THE POINT: a missing `pre-commit` refuses the commit rather than
+# letting it through unchecked, because an absent gate that says nothing is
+# indistinguishable from a gate that passed.
+set -euo pipefail
+
+if ! command -v pre-commit >/dev/null 2>&1; then
+  echo "pre-commit hook: refusing -- 'pre-commit' is not on PATH." >&2
+  echo "  pip install pre-commit   (the version .pre-commit-config.yaml pins its own tools to)" >&2
+  exit 1
+fi
+
+exec pre-commit hook-impl \
+  --config=.pre-commit-config.yaml \
+  --hook-type=pre-commit \
+  --hook-dir "$(cd "$(dirname "$0")" && pwd)" \
+  -- "$@"

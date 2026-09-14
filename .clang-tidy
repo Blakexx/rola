@@ -1,0 +1,26 @@
+# Conservative host-TU lint. Device (.cu/.cuh) TUs are OUT OF SCOPE: clang-tidy
+# here is clang 14, and NVCC's CUDA dialect (warp intrinsics, __launch_bounds__,
+# cooperative-groups-adjacent syntax used across csrc/rola) is not something a
+# stock clang-tidy front end parses cleanly -- see docs/build.md's Standards
+# lint section for what was actually tried and what it reported. This config is
+# exercised on the ONE host TU named there (csrc/rola/rola_api.cpp) via
+# tools/lint/compdb.sh's compile database.
+#
+# The check set is deliberately narrow: bugprone (real correctness classes)
+# plus a small readability set, with nothing opinionated about naming or
+# braces (this codebase's own style rules -- KERNEL_STANDARDS.md, the
+# comments-to-docs mandate -- already govern that, and a second, disagreeing
+# style opinion here would just be noise a contributor learns to ignore).
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  readability-misleading-indentation,
+  readability-redundant-declaration,
+  readability-simplify-boolean-expr,
+  readability-container-size-empty
+
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+FormatStyle: none

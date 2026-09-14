@@ -1,0 +1,8 @@
+# ast-grep root config. Rules live one-per-file under tools/lint/rules/, each
+# naming the KERNEL_STANDARDS.md section and the incident it was written from.
+# Fixtures under tools/lint/fixtures/ are each rule's own test: it must fire on
+# its fixture and produce zero hits on csrc/ (a hit on shipped code is either a
+# real violation to report, or a signal the pattern needs refining -- never a
+# reason to silence the rule).
+ruleDirs:
+  - tools/lint/rules

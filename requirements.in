@@ -1,0 +1,63 @@
+# K37 -- ONE Python lock file, source of the dev container's environment.
+#
+# HOW THIS WAS DERIVED: `pip freeze` on the hand-grown dev venv this box
+# iterated in (the pre-container `rola311` environment), PRUNED to what the
+# repo actually imports (`pyproject.toml`
+# `dependencies`/`optional-dependencies`, plus a grep of `rola/`, `tests/`,
+# `tools/`, `benchmarks/` for top-level imports) -- not the whole 101-package
+# freeze, which also carries training-loop packages (`wandb`, `accelerate`,
+# `transformers`, ...) this repository's OWN test/dev/bench extras never import.
+# Anything present in the pruned freeze is pinned to the EXACT version measured
+# there, so the lock reproduces the environment the closed-world gates were last
+# proven against. `hypothesis` and the `dev`/`bench` extras' `ruff`/`pytest-xdist`
+# were NOT in that venv (never installed there) -- pinned here to a current
+# release instead, called out so a reader does not mistake "not in rola311" for
+# "measured and pinned to that version".
+#
+# Compiled with `uv pip compile requirements.in --python-version 3.11
+# --extra-index-url https://download.pytorch.org/whl/cu124
+# --index-strategy unsafe-best-match -o requirements.lock` (uv being present
+# on this box -- the card's "uv lock, or pip-compile if uv isn't available").
+# The extra index is required because a plain PyPI resolve of `torch` fetches
+# the CPU-only wheel, which is exactly the trap `docs/build.md` and
+# `pyproject.toml`'s `[build-system]` comment both name for the build itself.
+
+# --- pyproject.toml's runtime dependencies ---
+torch==2.6.0+cu124
+einops==0.8.2
+
+# --- [fla] extra: the fused short-conv layer path ---
+fla-core==0.4.2
+
+# --- [bench] extra: benchmarks/ plotting and result tables ---
+matplotlib
+pandas==3.0.3
+# THE ATTENTION REFERENCE (`attention_reference`, pyproject.toml's bench extra): the release wheel built for this lock's
+# torch 2.6 / CUDA 12 / cp311 / cxx11abi=FALSE, by URL -- a PyPI resolve builds it from source against whatever torch
+# is present. Pinned here so the base venv and the container carry the same bytes every host venv was measured with.
+flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1%2Bcu12torch2.6cxx11abiFALSE-cp311-cp311-linux_x86_64.whl#sha256=58853b28a5a926cae14402bfd8d4d93a45ebf8f9e79533f37ab09d0d77a99c05
+
+# --- [test] extra: the oracle/routing gate reference + xdist ---
+entmax==1.3
+pytest-xdist==3.8.0
+
+# --- [dev] extra ---
+ruff==0.16.5
+pre-commit
+
+# --- shared pytest core (rola311-measured versions) ---
+pytest==9.1.1
+pytest-json-report==1.5.0
+pytest-metadata==3.1.1
+
+# --- card K37 explicit adds, not previously in any extra ---
+pytest-timeout==2.4.0
+hypothesis==6.165.10
+
+# --- setup.py's [build-system] requires (torch excluded there for the
+# no-build-isolation reason above; the rest are ordinary build deps) ---
+setuptools>=61
+wheel
+packaging
+psutil==7.2.2
+ninja==1.13.0

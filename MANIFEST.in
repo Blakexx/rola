@@ -1,0 +1,12 @@
+include LICENSE NOTICE README.md CITATION.cff
+recursive-include csrc *.cu *.cuh *.cpp *.h *.hpp
+# The vendored CuTe/CUTLASS subtree is a CODEGEN INPUT (closed-world rule 5), so an
+# sdist that omitted any of it would not build the binary the manifest ratified. The
+# `.inl` files and the pin/licence records are named because the pattern above does
+# not reach them.
+recursive-include csrc/third_party/cutlass *.inl
+include csrc/third_party/cutlass/PIN.json csrc/third_party/cutlass/LICENSE.txt
+recursive-include tools *.py *.cu *.toml
+recursive-include tools/manifests *.json
+recursive-include docs *.md
+global-exclude __pycache__ *.py[cod]

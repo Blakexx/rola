@@ -1,0 +1,18 @@
+id: width-test-if-device
+language: cpp
+severity: error
+message: >-
+  card-numbers-from-the-kernel / branch-on-structure-not-thresholds: "d_v is a
+  parameter, not a path" -- `if (kDv == N)` / `if (DV == N)` branches on a
+  dimension VALUE where the design wants branching on STRUCTURE (tile count,
+  arm index). Autotune picks the structure; a dv==64-shaped test is a
+  dimension threshold hiding as a branch and belongs in the arm/manifest
+  selection, not inlined into device code.
+files:
+  - "csrc/**"
+  - "tools/lint/fixtures/**"
+rule:
+  pattern: "if ($COND == $VAL) { $$$BODY }"
+constraints:
+  COND:
+    regex: '^k?[Dd][Vv]$'

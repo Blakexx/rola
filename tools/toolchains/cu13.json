@@ -1,0 +1,5 @@
+{
+ "ptxas": "ptxas: NVIDIA (R) Ptx optimizing assembler Copyright (c) 2005-2025 NVIDIA Corporation Built on Wed_Jul_16_07:24:57_PM_PDT_2025 Cuda compilation tools, release 13.0, V13.0.48 Build cuda_13.0.r13.0/compiler.36260728_0",
+ "cuda_major": 13,
+ "torch_index": "https://download.pytorch.org/whl/cu130"
+}

@@ -1,0 +1,124 @@
+# CPU CI. Two jobs, and the split is by what they NEED, not by how long they take:
+# `lint` needs a formatter, `cpu-gates` needs the repository's own instruments.
+# Neither needs a GPU, a CUDA toolchain or a build — which is the property that
+# makes this a fast lane rather than a subset of the real suite.
+#
+# The GPU arm (the tiered suite against a real device, and the build that produces
+# the binary it runs on) is declared here as a CONCURRENCY GROUP and nothing else.
+# This repository has no GPU runner attached, and a job that silently skipped its
+# only device would be worse than a group that honestly has nothing pointed at it
+# yet. A device is a single resource: two builds racing for it is how a
+# ratification gate ends up describing somebody else's binary.
+name: lint
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: rola-cpu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Pins match .pre-commit-config.yaml — one version of each tool, everywhere.
+      - run: pip install clang-format==19.1.7 ruff==0.14.10
+      - name: clang-format check (csrc/rola only — third_party is vendored, never formatted)
+        run: |
+          git ls-files 'csrc/rola/**/*.cu' 'csrc/rola/**/*.cuh' 'csrc/rola/**/*.cpp' 'csrc/rola/**/*.h' 'csrc/rola/**/*.hpp' 'csrc/rola/*.cpp' \
+            | xargs clang-format --style=file --dry-run --Werror
+      - name: ruff check
+        run: ruff check --force-exclude .
+      - name: ast-grep standards rules (KERNEL_STANDARDS.md, csrc/ only)
+        # Pinned to the version validated locally (ast-grep 0.45.2) -- same
+        # discipline as clang-format/ruff above: one tool version, everywhere.
+        # `tools/lint/ast_grep_gate.py` scopes the scan to csrc/
+        # so the rules' own must-fire fixtures under tools/lint/fixtures/
+        # never reach this gate.
+        run: |
+          npm install -g @ast-grep/cli@0.45.2
+          pip install pyyaml
+          python3 tools/lint/ast_grep_gate.py
+      - name: ast-grep fixture self-test (every rule fires on its own fixture)
+        run: python3 tools/lint/ast_grep_gate.py --test-fixtures
+      - name: lint_standards.py (unroll discipline, arm-TU torch include, decode prologue, the docs mirror, no work codes in a mirror page)
+        run: python3 tools/lint/lint_standards.py
+      # THE READABILITY AND DEAD-CODE GATES, mirrored from .pre-commit-config.yaml.
+      # Two of them read a compile database and are therefore the CUDA runner's, not
+      # this one's -- stated here, visibly, rather than skipped inside the script:
+      # `unused_instantiations.py` reads the committed manifests and needs no toolchain,
+      # so it runs; `host_warnings.py` and `run_clang_tidy_device.sh` need `nvcc` to
+      # produce a database at all.
+      - name: unused __global__ instantiation check
+        run: python3 tools/lint/unused_instantiations.py
+      - name: ruff E30x (blank-line spacing, preview)
+        run: tools/lint/run_ruff_e3.sh
+      - name: readability spacing (long zero-blank bodies, csrc blank runs)
+        run: python3 tools/lint/readability_spacing.py
+      - name: every tracked path is declared for the public mirror
+        run: python3 .github/mirror/mirror.py --check
+      - name: drift guards + work codes + R9 enforcement (report-only, printed for the log)
+        run: |
+          python3 tools/lint/drift_guards.py
+          python3 tools/lint/work_codes.py
+          python3 tools/lint/constant_parameters.py
+          python3 tools/lint/r9_enforcement.py
+      - name: every report-only lint's fixtures still fire
+        run: |
+          python3 tools/lint/drift_guards.py --test-fixtures
+          python3 tools/lint/constant_parameters.py --test-fixtures
+      - name: clang-tidy (host-only TUs)
+        # Blake ruling, 2026-08-28: "pre-commit can never be green by
+        # absence" -- tools/lint/run_clang_tidy.sh no longer skips; with no
+        # compile database to generate one from, it FAILS loudly. THIS job's
+        # runner has no CUDA toolchain at all (see the file header), so it
+        # cannot produce one structurally -- that is a decision about what
+        # THIS WORKFLOW asks for, made HERE, visibly, rather than a skip
+        # hidden inside the script. It exercises for real on a dev machine
+        # after `pip install -e .`, or a future job whose runner carries the
+        # CUDA toolchain.
+        run: |
+          if ! command -v nvcc >/dev/null 2>&1; then
+            echo "clang-tidy (host-only TUs): NOT RUN -- this runner has no CUDA"
+            echo "toolchain, so it cannot produce the compile database this check"
+            echo "reads (tools/lint/run_clang_tidy.sh itself now fails rather than"
+            echo "skips when a database is missing; this job never asks it to try)."
+            exit 0
+          fi
+          tools/lint/run_clang_tidy.sh
+
+  cpu-gates:
+    # THE GPU-FREE GATES. Each answers a question about the REPOSITORY — is the
+    # generated code what the generator produces, does every source carry its
+    # mirror doc, is the README's support matrix the one the arch table and the
+    # manifests decide — and none of them reads a device or compiles a kernel.
+    # The register/spill ratchet is NOT here: it is GPU-free but it needs the CUDA
+    # toolchain, so it belongs to the GPU arm's runner image -- and so does
+    # `tools/header_selfcheck.py`, which needs `nvcc` but no device.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # clang-format is the shard GENERATOR's dependency: `--check` regenerates
+      # into memory and must produce the same formatted bytes that were committed,
+      # so the version is pinned to the one the hook and the lint job use.
+      - run: pip install pytest clang-format==19.1.7
+      - name: the instantiation shards are the ones the matrix definition produces
+        run: python tools/gen_shards.py --check
+      - name: the README's supported matrix is the derived one
+        run: python tools/supported.py --check
+      # The shard partition, the README's generated tables and the vendored pin
+      # moved to the `lint` job's lint_standards.py (RULED 2026-08-29:
+      # "a check that does not execute the code under test is a lint, not a test" --
+      # docs/testing.md): check_shard_partition, check_supported_table,
+      # check_vendored_pin. That job already runs unconditionally on every push/PR
+      # (not file-scoped), so nothing here duplicates a check that stopped running.

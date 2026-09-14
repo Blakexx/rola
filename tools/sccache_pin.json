@@ -1,0 +1,14 @@
+{
+    "name": "sccache",
+    "role": "compiler cache wrapping nvcc for both setup.py's ninja compile and tools/ratify.py's post-build recompile, so the second compile of the same ten translation units is a cache hit instead of a repeat of the first",
+    "upstream": "https://github.com/mozilla/sccache",
+    "version": "0.17.0",
+    "version_string": "sccache 0.17.0",
+    "release_asset": "sccache-v0.17.0-x86_64-unknown-linux-musl.tar.gz",
+    "release_url": "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-x86_64-unknown-linux-musl.tar.gz",
+    "tarball_sha256": "67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006",
+    "binary_sha256": "066c5a84c85044c8f48b3ab571ac114293ea717c3d36985db022af8206e21e63",
+    "binary_sha256_recipe": "sha256 over the raw bytes of the extracted `sccache` executable that is actually invoked (not the tarball) -- this is what tools/sccache_toolchain.py gates before use",
+    "why_this_target": "x86_64-unknown-linux-musl is a static binary (no glibc version coupling), matching the closed-world preference for a pin that behaves the same on any host, and it is the target sccache itself ships prebuilt (no cargo build needed).",
+    "why_not_gated_like_ptxas": "sccache is a transparent pass-through wrapper: it execs the exact already-gated nvcc binary handed to it (tools/sccache_nvcc.py never resolves nvcc itself) and returns that nvcc's own output unmodified on a cache miss, or a byte-identical copy of a previous output on a cache hit -- measured, docs/build.md#sccache. Its version therefore cannot move ratified codegen the way a ptxas swap can, so a version drift is RECORDED (tools/ratify.py manifest toolchain.sccache) and REPORTED, not a hard ratchet failure. What IS gated hard, before the wrapper is used at all, is that the resolved `sccache` matches this pin -- an unpinned or tampered cache binary is REFUSED (Blake ruling 2026-08-28: 'a tool that can run one of two ways must REFUSE, not choose'). The only non-refusing outcome left is toolchain.sccache_enabled false in the dev config, an explicit, deliberate opt-out; the previous 'fall back to an uncached build and print a warning' default is gone -- a build no longer differs in whether it was cached by nothing more than which binaries happened to be on a host's PATH."
+}

@@ -1,0 +1,35 @@
+RoLA — Routed Linear Attention
+Copyright 2026 Blake Bottum
+
+This product includes software developed by Blake Bottum.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+-------------------------------------------------------------------------------
+THIRD-PARTY
+
+Portions of this package were extracted from a fork of flash-linear-attention
+(https://github.com/fla-org/flash-linear-attention), Copyright (c) 2023-2025
+Songlin Yang, Yu Zhang, which is distributed under the MIT License. The MIT
+license text and the specific files it covers are recorded in
+docs/provenance.md.
+
+This package also VENDORS CUTLASS/CuTe (https://github.com/NVIDIA/cutlass),
+Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES, distributed under the
+BSD-3-Clause License, at csrc/third_party/cutlass. The subtree is byte-identical to
+upstream tag v3.5.1 (commit f7b19de32c5d1f3cedfc735c2849f12b537522ee); the pin and
+the digest the build gates against are in csrc/third_party/cutlass/PIN.json and the
+license text is at csrc/third_party/cutlass/LICENSE.txt.
+
+The CUDA kernels in csrc/rola, the routing producers, the planner, the ratification
+tooling, and the evidence machinery are original work and are not derived from
+flash-linear-attention or from CUTLASS.

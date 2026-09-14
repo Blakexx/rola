@@ -1,19 +1,16 @@
-# Log and output directories
-outputs/
-*.log
-
-# Datasets and large resource files
-data/
-resources/
-
-# Backup files
-backup/
-
-# IDE / Editor folders
-.vscode/
-.idea/
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+*.egg-info/
+/build/
+dist/
+.pytest_cache/
+.ruff_cache/
+rola/_build_config.py
 
-# python venv
-.venv/
+# K38: the derived measurements index -- rebuilt from benchmarks/results/, never committed.
+.rola/
+compile_commands.json
+
+# the dev container's host mounts, written by `python3 tools/dev.py container compose` (host paths, never committed)
+.devcontainer/compose.local.yaml

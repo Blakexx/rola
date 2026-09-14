@@ -1,0 +1,64 @@
+# RoLA .clang-format — survey-calibrated codification of the existing style
+# (P03, 2026-08-04). Base is Google because the measured tree already IS
+# Google's core: 2-space indent, attached braces, left pointer alignment.
+# Every override below codifies a MEASURED dominant habit of csrc/rola, not
+# taste; the survey evidence is in the coordinator's P03 stage record.
+#
+# Scope: csrc/rola only. csrc/third_party is vendored and never formatted;
+# the pre-commit hook and CI scope their file lists to csrc/rola.
+#
+# Pinned tool: clang-format 19.1.7 (pip package `clang-format==19.1.7`).
+# `SkipMacroDefinitionBody` requires >= 18.
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++17
+
+# Measured: only 4 of 8829 lines exceed 100 columns. CUTLASS's written guide
+# uses the same limit.
+ColumnLimit: 100
+
+# Measured: `T* x` 212 vs `T *x` 28; `T& x` 96 vs `T &x` 53. Derivation off —
+# the dominant style is codified, not re-guessed per file.
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Measured: continuation lines LEAD with the binary operator
+# (`... atoms_per_bh\n    + owner * ...`).
+BreakBeforeBinaryOperators: NonAssignment
+
+# The comments are load-bearing documentation (comments-to-docs mandate),
+# including `//:` sentinel comments and column-aligned prose. The formatter
+# must never rewrap them.
+ReflowComments: false
+
+# The ROLA_* dispatch-chain macros (ROLA_CONSUMER_*, ROLA_DECODE_*,
+# ROLA_ENTMAX_*) are hand-laid tables: single-line `if` arms and aligned
+# backslash continuations. Formatting their bodies would explode them.
+SkipMacroDefinitionBody: true
+
+# CUDA execution-space qualifiers and launch bounds parse as attributes, so
+# `__global__ __launch_bounds__(T, B)\nvoid kernel(...)` keeps its shape.
+AttributeMacros:
+  - __global__
+  - __device__
+  - __host__
+  - __forceinline__
+  - __launch_bounds__
+
+# A format pass must be pure whitespace: no reordering of using-declarations,
+# no re-splitting of string literals (TORCH_CHECK messages stay as written).
+SortUsingDeclarations: Never
+BreakStringLiterals: false
+
+# THE READABILITY FLOOR, in the formatter. A body is segmented by blank lines
+# (`tools/lint/readability_spacing.py` is the textual half of the same rule) and
+# a run of blank lines is one line, so the segmentation means something; a
+# definition is separated from its neighbour, so a reader sees where one ends.
+MaxEmptyLinesToKeep: 1
+SeparateDefinitionBlocks: Always
+
+# Include blocks in this tree are ordered by hand with commentary between
+# groups (torch/extension.h first is load-bearing for the extension TUs);
+# reordering them is a semantic change, not formatting.
+SortIncludes: Never
