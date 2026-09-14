@@ -2,7 +2,8 @@
 
 `tools/toolchains/<name>.json` records one toolchain; its ratification is `tools/manifests/<name>/sm_XX.json`. The build
 takes no toolchain parameter: the configured toolkit's `ptxas --version` selects the record that names it, and a
-toolkit no record names refuses. Docs: docs/internals/tools/toolchains.md.
+toolkit no record names refuses. The record also names the dev container that carries that assembler. Docs:
+docs/internals/tools/toolchains.md.
 """
 from __future__ import annotations
 
@@ -15,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RECORDS = ROOT / "tools" / "toolchains"
 MANIFESTS = ROOT / "tools" / "manifests"
 
-_FIELDS = {"ptxas": str, "cuda_major": int, "torch_index": str}
+_FIELDS = {"ptxas": str, "cuda_major": int, "torch_index": str, "container": dict}
+_CONTAINER = {"base_image": str, "packages": list}
 
 
 class ToolchainError(RuntimeError):
@@ -28,6 +30,8 @@ class Toolchain:
     ptxas: str
     cuda_major: int
     torch_index: str
+    base_image: str
+    packages: tuple[str, ...]
 
     @property
     def manifest_dir(self) -> Path:
@@ -54,8 +58,13 @@ def records() -> dict[str, Toolchain]:
         for field, kind in _FIELDS.items():
             if type(blob[field]) is not kind:
                 raise ToolchainError(f"{path}: `{field}` must be {kind.__name__}, got {blob[field]!r}")
+        container = blob["container"]
+        if set(container) != set(_CONTAINER) or any(type(container[k]) is not v for k, v in _CONTAINER.items()) \
+                or not all(type(p) is str and "=" in p for p in container["packages"]):
+            raise ToolchainError(f"{path}: `container` must be {{base_image: str, packages: [\"name=version\", ...]}}")
         toolchain = Toolchain(name=path.stem, ptxas=normalize(blob["ptxas"]), cuda_major=blob["cuda_major"],
-                              torch_index=blob["torch_index"])
+                              torch_index=blob["torch_index"], base_image=container["base_image"],
+                              packages=tuple(container["packages"]))
         twin = next((t for t in out.values() if t.ptxas == toolchain.ptxas), None)
         if twin is not None:
             raise ToolchainError(f"{path}: names the same assembler as {twin.name}; one assembler is one toolchain")

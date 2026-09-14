@@ -15,7 +15,7 @@ or key is refused, so a typo fails instead of silently taking the default.
 | `host.json` | `nvcc_threads`, `build_jobs`, `budget_slots`, `lock_dir`, `gpu_lock`, `gpu_shared_slots`, `nice`, `locks_trace`, `scratch`, `tools_dir`, `windows_system32`, `wsl_lib` |
 | `clock.json` | `ghz`, `lock`, `unlock` (null `ghz`: the host measures unlocked) |
 | `store.json` | `root` (the measurements store: a rola-results checkout) |
-| `workspace.json` | `suite` (the rola-bench checkout whose `rola_bench/suite` measures this tree), `worktrees` (the one folder worktrees live in), `base_venv` (the venv pointer venvs borrow from) |
+| `workspace.json` | `suite` (the rola-bench checkout whose `rola_bench/measure` measures this tree), `worktrees` (the one folder worktrees live in), `base_venv` (the venv pointer venvs borrow from) |
 | `environment.json` | `image_digest` (inside the dev container), `fla_crosscheck` |
 
 Each key's type, default and meaning are declared in `SCHEMA`. `python tools/dev.py show` prints every

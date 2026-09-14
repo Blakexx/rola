@@ -89,9 +89,11 @@ implementation differs it is noted at the row.
 
 Every reported carry number sits beside FlashAttention at the same cell, measured in the
 same interleaved, clock-locked run: the `attention_reference` subject, causal, one head of
-width `dv`, `L` tokens, bf16, through Dao's `flash-attn` (a `bench` dependency, never
-torch's vendored backend as a stand-in, so no two rows cite different baselines; the row
-records the version). The capacity-fair point is `N = L`; a cell states its `L`. The layer
+width `dv`, `L` tokens, bf16, through torch's flash backend: Dao's FlashAttention-2 compiled
+into torch, or FA3 (Hopper) and FA4 (Blackwell) once `torch.nn.attention.activate_flash_attention_impl`
+registers them. The backend is forced, so torch refuses a call flash cannot take rather than
+timing its math or memory-efficient backend, and the row records torch's version and the
+implementation. The capacity-fair point is `N = L`; a cell states its `L`. The layer
 comparison is the inter term plus the intra term against that one number.
 
 ## The stopwatch

@@ -74,7 +74,7 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
     "workspace": {
         "suite": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-bench"),
-                     "the rola-bench checkout whose measurement suite (rola_bench/suite) runs this tree's instruments"),
+                     "the rola-bench checkout whose measurement suite (rola_bench/measure) runs this tree's instruments"),
         "worktrees": Key("path", str(ROOT.parent / "worktrees") if ROOT.parent.name != "worktrees" else str(ROOT.parent),
                          "the one folder every worktree and its venv live in"),
         "base_venv": Key("path?", None, "the shared venv every worktree's pointer venv borrows site-packages from"),

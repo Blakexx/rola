@@ -55,19 +55,21 @@ from inside the worktree. The three footguns this avoids are in `docs/setup.md` 
 
 **The base venv** is part of the machine: `check` compares `workspace.base_venv` against `requirements.lock`, where a
 pin the venv lacks or carries at another version is drift and extras the lock does not name are not. `init` installs
-the missing pins with `uv pip install -r requirements.lock`, adding without removing. flash-attn is pinned there by
-release-wheel URL and sha256.
+the missing pins with `uv pip install -r requirements.lock` from the host toolchain's `torch_index`, adding without
+removing.
 
 **`container`** keeps the dev image a supported environment (§23 (3), `docs/setup.md` §2-3). Its inputs are
 `ENV_INPUTS`: the Dockerfile, `.devcontainer/devcontainer.json` and `compose.yaml`, `requirements.lock`, the tool pins,
-and this file with the modules it imports. Their sha256, path and bytes each, is the ENVIRONMENT KEY.
-- `build` copies only those inputs into a context and builds `rola-dev:<key[:12]>`. The image's last step is
+the toolchain records, and this file with the modules it imports. Their sha256,
+path and bytes each, is the ENVIRONMENT KEY.
+- `build` copies only those inputs into a context and builds `rola-dev:<key[:12]>` for a toolchain record
+  (`--toolchain`, default the one declared), passing its base image, apt pins, torch index and name as build arguments. The image's last step is
   `init --image`, which writes the fixed layout `IMAGE_LAYOUT`, installs the pins and runs `check --image`. A red row
   fails the build.
 - `compose` writes `.devcontainer/compose.local.yaml`, binding the host's checkout, lock directories, store and
   worktrees onto that layout, and refuses without an image for the key.
-- `check` runs `CONTAINER_PROOFS` inside the image with those mounts: `dev.py check`, the GPU with torch and
-  flash-attn, a lock held by a host process seen as held, and an iteration build of a copy of the checkout. It
+- `check` runs `CONTAINER_PROOFS` inside the image with those mounts: `dev.py check`, the GPU with a call through
+  torch's flash backend, a lock held by a host process seen as held, and an iteration build of a copy of the checkout. It
   stores the result through `rola_results` at `environment`, one record per key, every check a sample.
 - `gate` is the commit hook. When the staged files touch an input, it computes the key of the staged blobs and
   refuses the commit without a passing sample for that key.

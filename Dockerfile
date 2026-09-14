@@ -6,31 +6,13 @@
 # compile the kernels under the SAME toolchain the ratified manifests were measured
 # under, plus the reading/searching/profiling tools the queue's briefs assume.
 #
-# BASE: nvidia/cuda:12.4.1-devel-ubuntu22.04, ubuntu22.04 for the apt package
-# surface the rest of this file needs (deadsnakes, clangd-14, ...).
-#
-# THE BASE IMAGE'S OWN nvcc/ptxas DO NOT MATCH THE RATIFIED MANIFEST, AND THIS
-# WAS MEASURED, NOT ASSUMED. `docs/build.md` rule 1 / `setup.py:_gate_toolchain`
-# check `ptxas --version`'s WHOLE string, byte for byte, against
-# `tools/manifests/sm_XX.json`; the manifests were ratified under
-# `V12.4.99, Build cuda_12.4.r12.4/compiler.33961263_0` (Built
-# Tue_Feb_27_16:15:50_PST_2024). BOTH `nvidia/cuda:12.4.0-devel-ubuntu22.04` AND
-# `12.4.1-devel-ubuntu22.04` were pulled and checked (2026-08-29) and both report
-# `V12.4.131, Build cuda_12.4.r12.4/compiler.34097967_0` (Built
-# Thu_Mar_28_02:14:54_PDT_2024) instead -- a LATER CUDA 12.4 toolkit package
-# revision than what the host (and the manifests) were measured under, even
-# though every current Docker Hub tag under "12.4" ships it. So the RUN block
-# below does not trust the base image's toolchain: it explicitly downgrades
-# `cuda-nvcc-12-4`/`cuda-nvvm-12-4`/`cuda-crt-12-4` to the exact `12.4.99-1`
-# package version via NVIDIA's own apt repo (already configured by this base
-# image), which the same 2026-08-29 check confirmed reproduces the manifest's
-# pinned string BYTE FOR BYTE. `12.4.99-1` was still present in NVIDIA's repo
-# at check time; if a future NVIDIA repo prune ever removes it, this build
-# fails at that RUN step with an explicit apt "unable to locate package"
-# error, not a silent toolchain swap -- `setup.py`'s rule-1 gate is the
-# second, independent line of defense that would catch it even if this one
-# did not (a build under the wrong `ptxas` refuses at the FIRST `pip install`,
-# never producing an unmeasured binary).
+# THE TOOLCHAIN COMES FROM ITS RECORD (tools/toolchains/<name>.json, docs/internals/tools/toolchains.md).
+# `tools/dev.py container build` passes the record's `container.base_image` (CUDA_BASE_IMAGE), its exact apt
+# `container.packages` (CUDA_PACKAGES), its `torch_index` (TORCH_INDEX) and its name (ROLA_TOOLCHAIN). A base tag's own
+# nvcc is not trusted: the packages are installed at their pinned versions whatever the tag ships (a tag can carry a
+# newer patch -- measured for 12.4, whose every tag shipped V12.4.131 against a V12.4.99 pin), and the build fails
+# unless `ptxas --version` is the record's string byte for byte, the same comparison setup.py's rule 1 makes.
+# ubuntu22.04 for the apt package surface the rest of this file needs (deadsnakes, clangd-14, ...).
 #
 # sccache and mold are installed by `tools/dev.py init --image` from the repo's own pins (`tools/sccache_pin.json`,
 # `tools/mold_pin.json`) -- the same command and the same pins a bare host uses, so the image and the host cannot
@@ -40,7 +22,8 @@
 # THE IMAGE IS KEPT CURRENT MECHANICALLY (KERNEL_STANDARDS §23 (3)): the environment key hashes this file and every
 # other input `tools/dev.py` lists in ENV_INPUTS; a commit that changes one carries a passing
 # `python tools/dev.py container check` for its key, or the commit gate refuses it.
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+ARG CUDA_BASE_IMAGE
+FROM ${CUDA_BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -55,7 +38,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # out on purpose: `docker.io`/nvidia-container-toolkit (host-side,
 # docs/setup.md), `hyperfine`/`mold`/`difftastic` (not in 22.04's repos --
 # pinned release binaries below). CUDA/ptxas is a SEPARATE, later RUN block
-# (below): the base image's own nvcc/ptxas do not match the pin, see the
+# (below): the base image's own nvcc/ptxas are not trusted, see the
 # FROM-line comment at the top of this file.
 #
 # PYTHON 3.11 IS NOT IN JAMMY'S DEFAULT REPOS (jammy ships 3.10). The
@@ -95,33 +78,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --------------------------------------------------------------------------
-# THE EXACT ASSEMBLER -- downgrade nvcc/ptxas AWAY from whatever this base
-# image tag currently ships (measured 12.4.131, see the FROM-line comment
-# above) to the exact `12.4.99-1` package build the ratified manifests pin.
-# `cuda-nvvm-12-4`/`cuda-crt-12-4` are `cuda-nvcc-12-4`'s own versioned
-# dependencies and must be pinned in the SAME command or apt refuses the
-# downgrade with an unmet-dependency error (measured). `--allow-downgrades`
-# is required because the base image ships a NEWER package than this pin.
-#
-# cuobjdump (the SASS gate, the region ledger and the composer extract cubins with it) and Nsight Compute 2025.3 (the
-# PM sampling the pipe timeline reads) are pinned in the same command: the image built on 2026-08-28 carried neither.
-RUN apt-get update && apt-get install -y --allow-downgrades \
-        cuda-nvcc-12-4=12.4.99-1 \
-        cuda-nvvm-12-4=12.4.99-1 \
-        cuda-crt-12-4=12.4.99-1 \
-        cuda-cuobjdump-12-4=12.4.127-1 \
+# THE EXACT ASSEMBLER -- the toolchain record's packages at their pinned versions (`--allow-downgrades`: a base tag can
+# ship a newer patch than the record). cuobjdump is one of them (the SASS gate, the region ledger and the composer
+# extract cubins with it); Nsight Compute 2025.3 (the PM sampling the pipe timeline reads) is pinned beside them.
+ARG CUDA_PACKAGES
+RUN apt-get update && apt-get install -y --allow-downgrades ${CUDA_PACKAGES} \
         nsight-compute-2025.3.0=2025.3.0.19-1 \
     && rm -rf /var/lib/apt/lists/*
-#: FAILS THE BUILD, LOUDLY, IF THE DOWNGRADE DID NOT TAKE: `docs/setup.md`'s
-#: own "verify the toolchain" step is this same string comparison run by
-#: hand; asserting it here means a future apt-repo change that silently
-#: reintroduces a newer `ptxas` (e.g. a version bump inside a mirrored cache)
-#: is caught at BUILD time, not discovered later at `pip install -e .`'s own
-#: rule-1 gate -- which would still catch it, but a build that appears to
-#: succeed while carrying the wrong assembler is exactly the silent-drift
-#: shape the whole closed-world design refuses.
-RUN ptxas --version | grep -q "V12.4.99" || \
-    (echo "FATAL: ptxas is not V12.4.99 after the pinned downgrade:" && ptxas --version && exit 1)
+#: FAILS THE BUILD, LOUDLY, IF THE ASSEMBLER IS NOT THE RECORD'S: a build that appears to succeed while carrying the
+#: wrong assembler is exactly the silent-drift shape the closed-world design refuses.
+ARG ROLA_TOOLCHAIN
+COPY tools/toolchains/ /opt/rola/bootstrap/tools/toolchains/
+RUN python3.11 -c "import json, subprocess, sys; \
+want = ' '.join(json.load(open('/opt/rola/bootstrap/tools/toolchains/${ROLA_TOOLCHAIN}.json'))['ptxas'].split()); \
+have = ' '.join(subprocess.run(['ptxas', '--version'], capture_output=True, text=True).stdout.split()); \
+sys.exit(0 if have == want else 'FATAL: ptxas is not toolchain ${ROLA_TOOLCHAIN}: ' + have)"
 
 # --------------------------------------------------------------------------
 # uv -- the Python resolver/installer this repo's ONE lock file
@@ -199,12 +170,14 @@ RUN pipx install ast-grep-cli \
 # for the same reason `docs/build.md` states it: pip's isolation would fetch
 # a CPU-only torch and build the extension against the wrong ABI.
 WORKDIR /workspace
+ARG TORCH_INDEX
 COPY requirements.lock /tmp/requirements.lock
 RUN uv venv /opt/venv --python 3.11 --seed \
     && . /opt/venv/bin/activate \
     && uv pip install -r /tmp/requirements.lock \
-        --extra-index-url https://download.pytorch.org/whl/cu124 \
+        --extra-index-url "${TORCH_INDEX}" \
         --index-strategy unsafe-best-match
+
 ENV PATH="/opt/venv/bin:${PATH}" \
     VIRTUAL_ENV=/opt/venv
 

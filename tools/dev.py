@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import mold_toolchain  # noqa: E402
 import sccache_toolchain  # noqa: E402
+import toolchains  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS = {"sccache": ROOT / "tools" / "sccache_pin.json", "mold": ROOT / "tools" / "mold_pin.json"}
@@ -43,7 +44,9 @@ PINS = {"sccache": ROOT / "tools" / "sccache_pin.json", "mold": ROOT / "tools" /
 #: commit changing any of them carries a passing container check for its key (KERNEL_STANDARDS §23 (3)).
 ENV_INPUTS = ("Dockerfile", ".devcontainer/devcontainer.json", ".devcontainer/compose.yaml", "requirements.lock",
               "tools/sccache_pin.json", "tools/mold_pin.json", "tools/dev.py", "tools/dev_config.py",
-              "tools/sccache_toolchain.py", "tools/mold_toolchain.py")
+              "tools/sccache_toolchain.py", "tools/mold_toolchain.py",
+              "tools/toolchains.py",
+              *sorted(str(p.relative_to(ROOT)) for p in (ROOT / "tools" / "toolchains").glob("*.json")))
 IMAGE_REPO = "rola-dev"
 #: the `rola_results` location of the container checks, one record per environment key
 RESULTS_ENVIRONMENT = "environment"
@@ -153,6 +156,11 @@ def venv_drift(python: str) -> list[str]:
     return sorted(f"{name}=={v}" for name, v in lock_pins().items() if have.get(name) != v.split("+")[0])
 
 
+def host_toolchain() -> toolchains.Toolchain:
+    """The declared toolchain of this machine's configured toolkit."""
+    return toolchains.for_ptxas(_version(dev_config.cuda_bin("ptxas")))
+
+
 def cmd_init(a) -> int:
     if a.image:
         _write_section("toolchain", {"ncu": _newest_ncu()}, force=True)
@@ -175,9 +183,10 @@ def cmd_init(a) -> int:
     base = dev_config.get("workspace.base_venv")
     drift = venv_drift(str(Path(base) / "bin" / "python")) if base else []
     if drift:
+        toolchain = host_toolchain()
         print(f"base venv {base}: installing the lock's {len(drift)} missing pin(s): {' '.join(drift)}")
         subprocess.run(["uv", "pip", "install", "--python", str(Path(base) / "bin" / "python"),
-                        "-r", str(ROOT / "requirements.lock"), "--extra-index-url", "https://download.pytorch.org/whl/cu124",
+                        "-r", str(ROOT / "requirements.lock"), "--extra-index-url", toolchain.torch_index,
                         "--index-strategy", "unsafe-best-match"], check=True)
     for site in link_results(a.image):
         print(f"rola_results: linked into {site}")
@@ -270,8 +279,8 @@ def cmd_check(a) -> int:
     ghz = dev_config.get("clock.ghz")
     row(True, f"clock: {'locks at ' + str(ghz) + ' GHz' if ghz else 'unlocked (rows carry their measured clock)'}")
     suite = Path(dev_config.get("workspace.suite"))
-    row((suite / "rola_bench" / "suite" / "engine.py").exists(), f"workspace.suite holds the measurement suite: {suite}",
-        "point workspace.suite at a rola-bench checkout carrying rola_bench/suite")
+    row((suite / "rola_bench" / "measure" / "engine.py").exists(), f"workspace.suite holds the measurement suite: {suite}",
+        "point workspace.suite at a rola-bench checkout carrying rola_bench/measure")
     row(Path(dev_config.get("workspace.worktrees")).is_dir(), f"workspace.worktrees: {dev_config.get('workspace.worktrees')}")
     root = Path(dev_config.get("store.root"))
     row((root / "rola_results" / "store.py").is_file(), f"store.root is a rola-results checkout: {root}",
@@ -422,14 +431,19 @@ def _mounts() -> list[str]:
     return mounts + ([f"{Path(wsl_lib).parent}:{Path(WSL_LIB_IN_IMAGE).parent}:ro"] if wsl_lib else [])
 
 
-#: run inside the container by `container check`, each a row: the environment check, the GPU and the reference library,
+#: run inside the container by `container check`, each a row: the environment check, the GPU and torch's flash backend,
 #: a lock held by the host seen as held, and an iteration build of a copy of the checkout imported
 CONTAINER_PROOFS = {
     "dev check": "python tools/dev.py check",
-    "GPU, torch and flash-attn": """python - <<'PY'
-import flash_attn, torch
+    "GPU, torch and its flash backend": """python - <<'PY'
+import torch
+import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 assert torch.cuda.is_available(), "no GPU"
-print(torch.cuda.get_device_name(0), flash_attn.__version__)
+q = torch.randn(1, 1, 64, 64, device="cuda", dtype=torch.bfloat16)
+with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+    F.scaled_dot_product_attention(q, q, q, is_causal=True)
+print(torch.cuda.get_device_name(0), torch.__version__)
 PY""",
     "a host-held lock is held here": """python - <<'PY'
 import fcntl, sys
@@ -451,6 +465,13 @@ python -c 'import rola; from rola._build_config import BUILD_CONFIG as c; print(
 }
 
 
+def _only_toolchain() -> toolchains.Toolchain:
+    declared = toolchains.records()
+    if len(declared) != 1:
+        raise SystemExit(f"several toolchains are declared ({sorted(declared)}); name one: container build --toolchain NAME")
+    return next(iter(declared.values()))
+
+
 def cmd_container(a) -> int:
     key = env_key()
     tag = f"{IMAGE_REPO}:{key[:12]}"
@@ -467,8 +488,12 @@ def cmd_container(a) -> int:
             for rel in ENV_INPUTS:
                 (Path(context) / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(ROOT / rel, Path(context) / rel)
-            return subprocess.run(["docker", "build", "--build-arg", f"ROLA_ENV_KEY={key}", "-t", tag, "-t",
-                                   f"{IMAGE_REPO}:latest", context]).returncode
+            toolchain = toolchains.named(a.toolchain) if a.toolchain else _only_toolchain()
+            args = {"ROLA_ENV_KEY": key, "ROLA_TOOLCHAIN": toolchain.name, "CUDA_BASE_IMAGE": toolchain.base_image,
+                    "CUDA_PACKAGES": " ".join(toolchain.packages), "TORCH_INDEX": toolchain.torch_index}
+            build_args = [x for name, value in args.items() for x in ("--build-arg", f"{name}={value}")]
+            return subprocess.run(["docker", "build", *build_args, "-t", tag, "-t", f"{IMAGE_REPO}:latest",
+                                   context]).returncode
     if a.action == "gate":
         return _container_gate()
 
@@ -478,20 +503,20 @@ def cmd_container(a) -> int:
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     holder.stdout.readline()
 
+    from rola_results import Store, checkout, portable
+
     volumes = [x for mount in _mounts() for x in ("-v", mount)]
     rows = []
     try:
         for what, script in CONTAINER_PROOFS.items():
             done = subprocess.run(["docker", "run", "--rm", "--gpus", "all", "--ipc", "host", *volumes, "-w",
                                    "/workspace/rola", tag, "bash", "-c", script], capture_output=True, text=True)
-            tail = (done.stdout + done.stderr).strip().splitlines()[-3:]
+            tail = [portable(line, ROOT) for line in (done.stdout + done.stderr).strip().splitlines()[-3:]]
             rows.append({"proof": what, "ok": done.returncode == 0, "tail": tail})
             print(f"{'ok ' if done.returncode == 0 else 'RED'}  {what}" + ("" if done.returncode == 0 else f"  -- {tail}"))
     finally:
         holder.stdin.close()
         holder.wait()
-
-    from rola_results import Store, checkout
 
     image_id = subprocess.run(["docker", "image", "inspect", "-f", "{{.Id}}", tag], capture_output=True, text=True).stdout
     ok = all(r["ok"] for r in rows)
@@ -559,6 +584,7 @@ def main() -> int:
     p.set_defaults(fn=cmd_store)
     p = sub.add_parser("container", help="the dev container: compose its mounts, build its image, check it, gate a commit")
     p.add_argument("action", choices=("compose", "build", "check", "gate"))
+    p.add_argument("--toolchain", help="build: the toolchain record to build the image for (default: the one declared)")
     p.set_defaults(fn=cmd_container)
     a = ap.parse_args()
     return a.fn(a)

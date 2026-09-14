@@ -31,9 +31,9 @@ python tools/dev.py worktree <name> <sha>   # a worktree, its pointer venv, its 
 
 ## 1. Host prerequisites
 
-* **A CUDA 12.4-capable NVIDIA driver.** This repo's own dev box runs driver
-  `595.95` against an RTX 3080 Ti (`sm_86`); the base image's toolkit is
-  12.4.1, so any driver new enough for CUDA 12.4 (>= 550.x) works.
+* **An NVIDIA driver for the toolchain's CUDA major.** The declared toolchain is `cu13` (CUDA 13.0,
+  `tools/toolchains/cu13.json`), so any driver >= 580 works. This repo's own dev box runs driver `595.95` against an
+  RTX 3080 Ti (`sm_86`).
 * **Docker**, with the NVIDIA container runtime wired in:
   * **Linux (native):** install `nvidia-container-toolkit`
     (https://github.com/NVIDIA/nvidia-container-toolkit), then
@@ -45,7 +45,7 @@ python tools/dev.py worktree <name> <sha>   # a worktree, its pointer venv, its 
     `nvidia-container-toolkit` exactly as the native-Linux step above, run
     from inside the WSL2 distro. Verify with:
     ```bash
-    docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+    docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi
     ```
     A working WSL2 GPU pass-through prints the host's GPU table from inside
     the container. Run it BEFORE anything else on a fresh machine;
@@ -68,19 +68,13 @@ Its last step is `tools/dev.py init --image`: the same one init a bare host runs
 repo's pins, and running `check --image`. A red check fails the image build -- the image built on 2026-08-28 went two
 weeks without `cuobjdump`, the Nsight Compute the pipe timeline needs, or flash-attn, and nothing said so.
 
-The build pins its own toolchain the same way the repo's build/ratify gates do
-(`docs/build.md` rule 1) — and this took an extra step, measured, not assumed:
-the base image `nvidia/cuda:12.4.1-devel-ubuntu22.04` does **not** ship the
-`ptxas` build the manifests were ratified under. Both that tag and
-`12.4.0-devel-ubuntu22.04` were checked (2026-08-29) and both report
-`V12.4.131, cuda_12.4.r12.4/compiler.34097967_0` — a later CUDA 12.4 package
-revision than `tools/manifests/sm_86.json`/`sm_80.json`'s pinned
-`V12.4.99, cuda_12.4.r12.4/compiler.33961263_0`. The Dockerfile downgrades
-`cuda-nvcc-12-4`, `cuda-nvvm-12-4` and `cuda-crt-12-4` to the exact `12.4.99-1`
-package version from NVIDIA's own apt repo and asserts the resulting
-`ptxas --version` string in the same build step; `cuda-cuobjdump-12-4` and
-`nsight-compute-2025.3.0` are pinned in that command too. `setup.py`'s own rule-1
-gate is the second, independent check.
+The image is built for a toolchain record (`tools/toolchains/<name>.json`; `--toolchain NAME` when more than one is
+declared). `container build` passes the record's base image, its exact apt package pins and its torch index as build
+arguments, and the Dockerfile fails the build unless `ptxas --version` is the record's string byte for byte -- the same
+comparison `setup.py`'s rule 1 makes, so a base tag carrying a newer patch (every CUDA 12.4 tag shipped V12.4.131
+against a V12.4.99 pin, measured 2026-08-29) cannot slip through. `cuobjdump` is one of the record's pins and
+`nsight-compute-2025.3.0` is pinned beside them. The attention reference needs no package: it is torch's own flash
+backend (`docs/measurement.md`).
 
 ## 3. Prove it, then open it
 
@@ -89,7 +83,7 @@ python tools/dev.py container check
 ```
 
 runs the proofs inside the image, with the host's mounts, and stores the result through `rola_results` at
-`environment`, under the environment key: `tools/dev.py check` inside; the GPU, torch and flash-attn; a lock
+`environment`, under the environment key: `tools/dev.py check` inside; the GPU and a call through torch's flash backend; a lock
 the HOST holds is seen as held inside (so one lock governs host and container, KERNEL_STANDARDS §14 addendum); and an
 iteration build of a copy of the checkout, imported. **A commit that changes any environment input needs a passing
 record for the key of what it stages -- the commit gate refuses it otherwise (KERNEL_STANDARDS §23 (3)).**
@@ -291,7 +285,7 @@ expects to measure.
 
 | Tool | Source | Role |
 |---|---|---|
-| `ptxas`/`nvcc` (CUDA 12.4.99) | base image | the ratified toolchain (`docs/build.md` rule 1) |
+| `ptxas`/`nvcc` | the toolchain record's apt pins (`cu13`: CUDA 13.0, V13.0.48) | the ratified toolchain (`docs/build.md` rule 1) |
 | `cuobjdump`, Nsight Compute 2025.3 | apt, pinned versions | cubin extraction (SASS gate, region ledger, composer); PM sampling (pipe timeline) |
 | `sccache` 0.17.0 | `tools/dev.py init --image` from `tools/sccache_pin.json`, verified | the compiler cache `docs/build.md#sccache` measures |
 | `ninja` | apt | the build's actual compile driver (`docs/build.md` step 5) |
