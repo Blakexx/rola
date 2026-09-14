@@ -9,18 +9,22 @@
 #
 # It runs pre-commit's own hook implementation against .pre-commit-config.yaml, so
 # what a commit is checked against is exactly what `pre-commit run --all-files` and
-# .github/workflows/lint.yml run.
+# .github/workflows/lint.yml run. It runs FROM THE CHECKOUT'S VENV (`git config
+# rola.venv`, which `init` and `worktree` write): requirements.lock pins every gate
+# tool there, so no hook resolves a tool or an interpreter from the host's own python.
 #
 # FAILING CLOSED IS THE POINT: a missing `pre-commit` refuses the commit rather than
 # letting it through unchecked, because an absent gate that says nothing is
 # indistinguishable from a gate that passed.
 set -euo pipefail
 
-if ! command -v pre-commit >/dev/null 2>&1; then
-  echo "pre-commit hook: refusing -- 'pre-commit' is not on PATH." >&2
-  echo "  pip install pre-commit   (the version .pre-commit-config.yaml pins its own tools to)" >&2
+venv="$(git config --get rola.venv || true)"
+if [ -z "$venv" ] || [ ! -x "$venv/bin/pre-commit" ]; then
+  echo "pre-commit hook: refusing -- this checkout names no venv carrying the gate's tools (git config rola.venv: '$venv')." >&2
+  echo "  python3 tools/dev.py init   (installs requirements.lock into workspace.base_venv and names it here)" >&2
   exit 1
 fi
+export PATH="$venv/bin:$PATH"
 
 exec pre-commit hook-impl \
   --config=.pre-commit-config.yaml \

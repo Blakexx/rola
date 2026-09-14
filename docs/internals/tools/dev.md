@@ -24,7 +24,7 @@ A key already in a file is kept unless `--force`. A pinned tool that is missing,
 version, is downloaded from the pin's release URL (`tools/sccache_pin.json`, `tools/mold_pin.json`). Its
 tarball sha256 is verified, and so is its binary sha256 where the pin has one. The whole release is unpacked
 under `host.tools_dir`, because the layout is part of the tool: `-fuse-ld=mold` selects the `ld.mold` next to
-`mold`. `init` then wires this checkout's commit gate (`core.hooksPath` per worktree) and runs `check`. The
+`mold`. `init` then wires this checkout's commit gate (`core.hooksPath` per worktree, and `rola.venv` naming the base venv the tracked hook runs from, where the lock pins every gate tool), names the same venv in the suite's and the store's checkouts, whose hooks read it too, and runs `check`. The
 clock is not set by `init`, because locking it asks for administrator consent once.
 
 **`check`** prints one row per dependency and exits 1 on any red:
@@ -76,9 +76,11 @@ path and bytes each, is the ENVIRONMENT KEY.
 
 **`store`** keeps the measurements store (`store.root`, a rola-results checkout): `init` links `rola_results` into
 every interpreter that measures here -- the base venv, each worktree's pointer venv (it borrows the base as a plain
-path, which reads none of the base's `.pth` files), python3's user site, and in the image the base venv at the store's
+path, which reads none of the base's `.pth` files), and in the image the base venv at the store's
 mount point -- by a one-line `rola_results.pth`, and `worktree` links each new venv; `commit -m` commits the records (`python -m
 rola_results commit`).
+
+`init`, `check`, `show`, `get` and `clock` run from whichever python starts them; every other command re-executes itself under `workspace.base_venv`, because the store and the container read `rola_results` and the host's own python carries nothing of this project.
 
 **`get`** prints one value for a shell caller. `cuda-home` resolves the toolkit, which the clang-tidy device
 scripts pass as `--cuda-path`.

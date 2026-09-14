@@ -485,7 +485,7 @@ self-test asserting each rule still fires on its own fixture (run it by hand
 after touching `tools/lint/rules/` or `tools/lint/fixtures/`, not on every
 commit).
 
-`pre-commit install` wires all three in (`.pre-commit-config.yaml`), scoped to
+`python3 tools/dev.py init` wires all three in (`.pre-commit-config.yaml`, run from the checkout's venv), scoped to
 `csrc/`. None is a gate on its own claim of correctness — a hit is a
 finding for a human to rule on, same as `ratify`'s backstop philosophy (§9):
 these checks should ordinarily catch nothing.

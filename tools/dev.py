@@ -110,26 +110,35 @@ def site_packages(venv: Path) -> Path:
 def link_results(image: bool) -> list[Path]:
     """`rola_results` importable from every interpreter that measures here, by a one-line `rola_results.pth` naming
     `store.root`: the base venv (the image's at its build, naming the store's mount point), and on a host each worktree's
-    pointer venv (it borrows the base as a plain path, which reads none of the base's .pth files) and python3's user
-    site."""
+    pointer venv (it borrows the base as a plain path, which reads none of the base's .pth files). Never the host's own
+    python: nothing here runs from it."""
     sites = [site_packages(Path(dev_config.get("workspace.base_venv")))]
     if not image:
         sites += [site_packages(v) for v in sorted(Path(dev_config.get("workspace.worktrees")).glob("venv-*"))
                   if (site_packages(v) / "zz_rola_base.pth").exists()]
-        system = shutil.which("python3", path=os.defpath)
-        if system:
-            sites.append(Path(subprocess.run([system, "-m", "site", "--user-site"], capture_output=True, text=True,
-                                             check=True).stdout.strip()))
     for site in sites:
         site.mkdir(parents=True, exist_ok=True)
         (site / "rola_results.pth").write_text(f"{dev_config.get('store.root')}\n")
     return sites
 
 
+#: the other checkouts whose tracked commit hooks run from this machine's base venv: the suite and the store
+GATED_CONSUMERS = ("workspace.suite", "store.root")
+
+
 def wire_hooks(checkout: Path) -> None:
-    """The commit gate as a property of the checkout: `core.hooksPath` set per worktree to the tracked hooks."""
+    """The commit gate as a property of the checkout: `core.hooksPath` set per worktree to the tracked hooks, and
+    `rola.venv` naming the venv they run from (the lock pins every gate tool), so no hook reaches the host's python."""
     subprocess.run(["git", "-C", str(checkout), "config", "extensions.worktreeConfig", "true"], check=True)
     subprocess.run(["git", "-C", str(checkout), "config", "--worktree", "core.hooksPath", "tools/git-hooks"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "config", "--worktree", "rola.venv", dev_config.get("workspace.base_venv")],
+                   check=True)
+
+
+def gate_venv(checkout: Path | str) -> str:
+    """The venv a checkout's commit hooks run from (`git config rola.venv`), or "" when none is named."""
+    done = subprocess.run(["git", "-C", str(checkout), "config", "--get", "rola.venv"], capture_output=True, text=True)
+    return done.stdout.strip()
 
 
 def env_key(read=lambda rel: (ROOT / rel).read_bytes()) -> str:
@@ -197,6 +206,10 @@ def cmd_init(a) -> int:
         print(f"rola_results: linked into {site}")
     if not a.image:
         wire_hooks(ROOT)
+        for key in GATED_CONSUMERS:
+            if (Path(dev_config.get(key)) / ".git").exists():
+                subprocess.run(["git", "-C", dev_config.get(key), "config", "rola.venv", dev_config.get("workspace.base_venv")],
+                               check=True)
         if dev_config.get("clock.ghz") is None:
             print("clock: unset -- this host measures UNLOCKED until `python tools/dev.py clock --mhz <MHz>` runs")
     return cmd_check(a)
@@ -273,9 +286,14 @@ def cmd_check(a) -> int:
         return _report(rows)
     readable = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--git-dir"], capture_output=True).returncode == 0
     hooks = subprocess.run(["git", "-C", str(ROOT), "config", "--get", "core.hooksPath"], capture_output=True, text=True)
-    row(not readable or hooks.stdout.strip() == "tools/git-hooks",
-        f"commit gate wired in {ROOT.name}" if readable else f"{ROOT}: no git repository visible here; commits are made "
-        "where it is", "python tools/dev.py init")
+    base = dev_config.get("workspace.base_venv")
+    row(not readable or (hooks.stdout.strip() == "tools/git-hooks" and gate_venv(ROOT) == base),
+        f"commit gate wired in {ROOT.name}, run from {base}" if readable else f"{ROOT}: no git repository visible here; "
+        "commits are made where it is", "python tools/dev.py init")
+    #: commits are made on the host (the image sees no repository), so the consumers' gates are the host's to check
+    for key in GATED_CONSUMERS if readable else ():
+        if (Path(dev_config.get(key)) / ".git").exists():
+            row(gate_venv(dev_config.get(key)) == base, f"{key}'s commit gate runs from {base}", "python tools/dev.py init")
     for key in ("host.lock_dir", "host.scratch"):
         path = Path(dev_config.get(key))
         path.mkdir(parents=True, exist_ok=True)
@@ -592,7 +610,24 @@ def main() -> int:
     p.add_argument("--toolchain", help="build: the toolchain record to build the image for (default: the one declared)")
     p.set_defaults(fn=cmd_container)
     a = ap.parse_args()
+    if a.cmd not in BOOTSTRAP:
+        _from_base_venv()
     return a.fn(a)
+
+
+#: the commands that make or read the environment itself, and so run from whichever python starts them
+BOOTSTRAP = ("init", "check", "show", "get", "clock")
+
+
+def _from_base_venv() -> None:
+    """Every other command runs from `workspace.base_venv`, re-executing this file there when another python started it:
+    the store and the container read `rola_results`, which only the venvs carry, never the host's own python."""
+    base = dev_config.get("workspace.base_venv")
+    python = Path(base or "") / "bin" / "python"
+    if not base or not python.is_file():
+        raise SystemExit(f"no base venv at workspace.base_venv ({base!r}): python3 tools/dev.py init")
+    if Path(sys.prefix).resolve() != Path(base).resolve():
+        os.execv(str(python), [str(python), str(Path(__file__).resolve()), *sys.argv[1:]])
 
 
 if __name__ == "__main__":

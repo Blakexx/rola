@@ -3,7 +3,7 @@
 # `[report-only]` prints its findings and exits 0; every other hook here refuses the
 # commit, and docs/internals/tools/lint.md carries the table of which is which.
 #
-#   pip install pre-commit && pre-commit install
+#   python3 tools/dev.py init   (wires core.hooksPath -> tools/git-hooks, run from the venv requirements.lock pins these tools in)
 #
 # Every hook is a CHECK, not a rewriter: a commit that fails formatting is
 # refused with the diff named, and the author runs the formatter deliberately.
