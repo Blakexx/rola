@@ -99,7 +99,12 @@ def base_venv_of(prefix: Path) -> str | None:
 
 
 def site_packages(venv: Path) -> Path:
-    return venv / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    """A venv's own site-packages, as its interpreter reports it: the Python running this tool may be another version."""
+    out = subprocess.run([str(venv / "bin" / "python"), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"],
+                         capture_output=True, text=True)
+    if out.returncode:
+        raise SystemExit(f"{venv}: no interpreter answers for its site-packages ({out.stderr.strip()[-200:]})")
+    return Path(out.stdout.strip())
 
 
 def link_results(image: bool) -> list[Path]:
