@@ -216,7 +216,7 @@ def parse_binary_spec(spec: str) -> dict:
             f"--binary needs worktree:PATH,venv:PATH (got {spec!r})")
     out.setdefault("label", Path(out["worktree"]).name)
     #: A LANE is a binary and a bench; `bench:` on a lane overrides the run's `--bench`, so
-    #: one interleaved, clock-locked run can hold several subjects (`tools/compare.py`).
+    #: one interleaved, clock-locked run can hold several subjects.
     #: `calls:` is the lane's call count (`bench.subjects.Subject.calls`), a lane's for the
     #: reason the schedule is: a tree from before the count spells a multi-call unit as a
     #: bench of its own, and its worker refuses a flag it has never heard of.

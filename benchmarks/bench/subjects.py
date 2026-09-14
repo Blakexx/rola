@@ -53,6 +53,10 @@ class Subject:
     #: the whole sequence in one launch set; a count above one prices what each call's fixed
     #: cost adds, and the difference between the two rows IS the per-call price.
     calls: tuple[int, ...] = (1,)
+    #: THE ARM DIALS it reads, each a property of one arm and never of a run (`bench.provider` names an arm by them):
+    #: `schedule`, the carry order policy (`rola.ops.carry.ORDER_POLICIES`), and `state`, the state arm (`STATE_ARMS`).
+    #: A dial a subject does not read has one value, its default, so it cannot be set where it would reach nothing.
+    dials: tuple[str, ...] = ()
 
 
 # ------------------------------------------------------------------ carry cells
@@ -181,7 +185,7 @@ def _atom_bits(read_levels, write_levels, widths):
 def prefill_op(fx) -> Arm:
     """THE WHOLE ROLA OP, as the layer calls it: `rola.ops.prefill` over the cell's drawn
     routes, gain and values -- the liveness pass, the carry and the intra, and the op's own
-    packing of its per-level inputs -- against one `attention_reference` call. The support words
+    packing of its per-level inputs. The support words
     are the producer's output by the op's contract, so they are built once here, as the
     producer would have emitted them, and never inside the timed call.
 
@@ -239,37 +243,6 @@ def prefill_op(fx) -> Arm:
         return out
 
     return Arm(name=name, call=run)
-
-
-def attention_reference(fx) -> Arm:
-    """THE REFERENCE the carry is measured against: causal attention at the cell's own point
-    -- one head of width `dv`, `L` tokens, bf16 -- through torch's flash backend: Dao's FlashAttention-2
-    compiled into torch, or the FA3 (Hopper) or FA4 (Blackwell) kernels once
-    `torch.nn.attention.activate_flash_attention_impl` has registered them. The capacity-fair
-    comparison is at N = L (`docs/measurement.md`);
-    a cell states its L, and this prices attention at that L so the two sit in one
-    interleaved, clock-locked run rather than one being extrapolated from a flop rate.
-    """
-    import torch
-    import torch.nn.functional as F
-    from torch.nn.attention import SDPBackend, current_flash_attention_impl, sdpa_kernel
-
-    spec = fx["cell"]
-    L, d = spec.tokens, spec.dv
-    g = torch.Generator(device="cuda").manual_seed(spec.seed)
-    q, k, v = (torch.randn(1, 1, L, d, device="cuda", dtype=torch.bfloat16, generator=g)
-               for _ in range(3))
-    #: THE BACKEND IS FORCED: restricted to flash, torch refuses a call flash cannot take instead
-    #: of running its math or memory-efficient backend, so every row measured Dao's kernel.
-    #: The row names torch's version and the implementation, so a number cites its reference.
-    impl = current_flash_attention_impl() or "FA2"
-
-    def run():
-        with torch.no_grad(), sdpa_kernel(SDPBackend.FLASH_ATTENTION):
-            return F.scaled_dot_product_attention(q, k, v, is_causal=True)
-
-    return Arm(name=f"attention_reference|{spec.name}|torch {torch.__version__} flash {impl}",
-               call=run)
 
 
 def liveness_pass(fx) -> Arm:
@@ -375,17 +348,14 @@ def decode_step(fx) -> Arm:
 SUBJECTS = {
     "carry_forward": Subject("carry_forward", "carry", carry_forward,
                              "the inter term: one carry launch over a whole cell",
-                             symbol="carry_kernel", stamp="carry_build_stamp"),
+                             symbol="carry_kernel", stamp="carry_build_stamp", dials=("schedule", "state")),
     "intra_forward": Subject("intra_forward", "carry", intra_forward,
                              "the within-window term at the shared window",
                              symbol="intra_kernel", stamp="intra_build_stamp"),
     "prefill_op": Subject("prefill_op", "carry", prefill_op,
                           "the whole RoLA prefill op as the layer calls it: liveness, carry, "
                           "intra and the op's packing",
-                          symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4)),
-    "attention_reference": Subject("attention_reference", "carry", attention_reference,
-                                   "causal FlashAttention at the cell's L and dv, one head",
-                                   symbol="flash_fwd_kernel", stamp="csrc_build_stamp"),
+                          symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4), dials=("state",)),
     "liveness_pass": Subject("liveness_pass", "carry", liveness_pass,
                              "both sides' class-1 liveness words",
                              symbol="liveness_pass", stamp="csrc_build_stamp"),

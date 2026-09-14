@@ -88,7 +88,8 @@ implementation differs it is noted at the row.
 ## The reference
 
 Every reported carry number sits beside FlashAttention at the same cell, measured in the
-same interleaved, clock-locked run: the `attention_reference` subject, causal, one head of
+same interleaved, clock-locked run (`tools/compare.py`): rola-bench's attention arm
+(`rola_bench/measure/attention.py`, a provider of the interleaving driver), causal, one head of
 width `dv`, `L` tokens, bf16, through torch's flash backend: Dao's FlashAttention-2 compiled
 into torch, or FA3 (Hopper) and FA4 (Blackwell) once `torch.nn.attention.activate_flash_attention_impl`
 registers them. The backend is forced, so torch refuses a call flash cannot take rather than

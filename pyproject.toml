@@ -20,10 +20,8 @@ classifiers     = [
 # and its round schedule -- not the kernel -- set the number the gate read once the
 # committed spread narrowed to a device-event IQR. `rola_results` holds the record
 # now (docs/measurement.md), and nothing else in the tree imports the plugin.
-# THE ATTENTION REFERENCE every reported carry number sits beside (`attention_reference` in
-# benchmarks/bench/subjects.py) is torch's own flash backend -- Dao's FlashAttention kernels
-# compiled into torch -- so it needs no package here: every host runs the one baseline its
-# torch carries, and the row records torch's version and the active flash implementation.
+# THE ATTENTION REFERENCE every reported carry number sits beside is rola-bench's arm (torch's own
+# flash backend, docs/measurement.md), so it needs no package here.
 bench = ["matplotlib", "pandas"]
 # `entmax` (DeepSPIN) is the fp64 REFERENCE the routing gates are anchored to -- the
 # paper authors' own implementation, pure python with torch as its only dependency.
