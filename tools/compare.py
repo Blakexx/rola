@@ -83,7 +83,7 @@ def arm_specs(rola_arms: list[dict], foreign: list[dict]):
 def compare(args) -> dict:
     from rola_devtools.interleave import interleave
 
-    from bench.driver import CELLS
+    from benchmarks.cells.registry import CELLS
 
     if args.cell not in CELLS:
         raise SystemExit(f"unknown cell {args.cell!r}; registered: {sorted(CELLS)}")

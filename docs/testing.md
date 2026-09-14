@@ -598,14 +598,13 @@ anywhere, it is a defect — fix it rather than adding a second lock beside it.
 **EVERY GPU ENTRY POINT LOCKS ITSELF.** The lock used to be half-and-half:
 `tools/probe_cells.py` and `tools/sanitize_oracle.py` took it internally, but pytest
 and the chunk-arm bench harness relied on the CALLER wrapping the command in an
-external `flock` — and `bench.discipline.require_gpu_lock` REFUSED a bare invocation
-to enforce that. The other side showed its own failure mode: an external `flock`
+external `flock` — and the harness REFUSED a bare invocation to enforce that. The other side showed its own failure mode: an external `flock`
 wrapping a tool that ALSO locks itself deadlocks (per-open-file-description
 semantics — the wrapper's own lock blocks the wrapped process's identical
 `fcntl.flock` call forever). Both harnesses now share ONE design: every GPU
 entry point — pytest (a session-scoped `gpu_lock()` fixture in `tests/conftest.py`),
-`tools/probe_cells.py`, `tools/sanitize_oracle.py`, `bench.discipline.disciplined`
-(and so every `benchmarks/bench` driver) — takes `gpu_lock()` itself and is invoked
+`tools/probe_cells.py`, `tools/sanitize_oracle.py`, `tools/compare.py` — takes
+`gpu_lock()` itself and is invoked
 BARE. The lock is REENTRANT (`ROLA_GPU_LOCK_HELD` in the environment), so a tool that
 itself locks and then launches another self-locking tool as a subprocess (`tools/
 sanitize_oracle.py` launching `compute-sanitizer python -m pytest ...`) cannot
@@ -638,28 +637,20 @@ not a correctness gate and must never be able to fail a merge.
 ## Measurement, and the tests that guard it
 
 Performance work has its own document — **`docs/measurement.md`** — because the
-instruments are as much a subject of review as the kernel is: one stopwatch
-(`cuda_events`), one harness that acquires its own discipline, and one append-only
+instruments are as much a subject of review as the kernel is: one method (rola-devtools'
+interleaving driver, run by `tools/compare.py`), one stopwatch per comparison, and one
 record, stored through `rola_results` in the measurements store (`store.root`).
 
-Three test files hold that machinery to the same non-vacuity standard as everything
-else here. Each plants the violation its instrument exists to catch and requires the
-refusal; none launches a kernel.
+The tests that hold that machinery to the non-vacuity standard live beside the code they
+guard. Each plants the violation its instrument exists to catch and requires the refusal;
+none launches a kernel.
 
 | file | what it plants |
 |---|---|
-| `tests/unit/test_perf_ledger.py` | a row missing its provenance, a row from an unknown schema, a shift smaller than its own scatter, a single unlucky run, an effect with no significance behind it |
-| `tests/unit/test_chunk_bench_harness.py` | pre-existing drift found while touching this row — the file this cites is not in the current tree (`find` came up empty), and its old plant ("a bare invocation with no `flock` ancestor") described `require_gpu_lock`'s ancestor-check design, since replaced with self-locking (`bench.discipline.disciplined` now takes `gpu_lock()` itself); a successor row, if this coverage is re-added, plants a `gpu_lock()` acquisition failure instead. Left named here as a finding, not silently deleted. |
-| `tests/unit/test_chunk_latency_regression.py` | `bench`-marked and opt-in: HEAD's per-cell latency against the committed baseline, read-only |
-
-`test_probe_harness.py` (the discipline gates: a lock held by another process, a
-clock that never settles, a corrupt ncu section file, a subcommand offering to
-skip the lock) and `benchmarks/test_latency_regression.py` (a baseline taken with
-a different stopwatch, and one that does not say which) went with the probe
-harness. **Their claims are re-anchored** in the two files above, which
-is the chunk-arm harness card's planted-violation obligation discharged
-([`measurement.md`](measurement.md)); the ncu section-file row has no successor
-because the successor takes no counters yet.
+| rola-devtools `tests/test_interleave.py` | a warmup under the floor, an even rep count, two stopwatches in one comparison, an arm its provider does not have, a provider printing into the protocol; the null gate (one arm in two workers) |
+| rola-devtools `tests/test_verdict.py` | a shift smaller than its own scatter, a round count below the one the test can decide at, a single unlucky run, an effect with no significance behind it, a spread of zero at the stopwatch's resolution |
+| rola-results `rola_results/test_verdict.py` | stored sessions: an unchanged candidate, a slow session flagged and then confirmed, a baseline filtered by its label |
+| `tests/unit/test_bench_provider.py` | a point whose facts are not its cell's, an unregistered cell, a foreign arm missing a field; no arm carries a dial its subject does not read |
 
 `python tools/ratify.py --self-test` is the same discipline on the codegen side and
 is listed arm by arm in `docs/ratification.md`.

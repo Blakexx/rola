@@ -84,14 +84,14 @@ import torch
 import torch.nn as nn
 from torch.nn.attention import SDPBackend, sdpa_kernel
 
-from bench.regression import settle_clocks
 from rola import LayerContinuation, RoLA, RouteProducer, union_routing
 from rola import state as rola_state
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT / "tools") not in sys.path:
     sys.path.insert(0, str(_ROOT / "tools"))
-from gpu_lock import gpu_lock  # noqa: E402 -- path insert must precede this import
+import clock_lock  # noqa: E402 -- path insert must precede this import
+from gpu_lock import gpu_lock  # noqa: E402
 
 #: Carried verbatim from `benchmark_rola_v3_layer.py`: a ~6x first-cell inflation was
 #: MEASURED there (10.8 ms first vs 1.74 ms for the same cell measured second), from
@@ -448,20 +448,12 @@ def main() -> None:
     with gpu_lock():
         if not torch.cuda.is_available():
             raise SystemExit("this benchmark requires CUDA")
-        # Item 0b's protocol, for the reason that item states: this box idles at ~220 MHz
-        # of a ~2100 MHz rating, so the FIRST cell of a sweep is timed on a ramping clock
-        # and the smallest `L` -- the end the honesty rules forbid cherry-picking -- is
-        # exactly the one that inflates. Reported on stderr so the `--json` stdout of a
-        # piped run stays what it was.
-        clock_info = settle_clocks()
-        print(f"clock-settle: {clock_info}", file=sys.stderr)
-        if not clock_info["settled"]:
-            # Gate-1 remediation finding 3: an unsettled clock must not be a silent
-            # precondition failure. Every row this run produces is stamped
-            # `clock_settled: False` below so a reader of the JSON (not just the stderr
-            # log) can see the run's timings are not comparable to a settled baseline.
-            print(f"WARNING: clock did not settle before this sweep: {clock_info}",
-                  file=sys.stderr)
+        # THE CLOCK LOCK (tools/clock_lock.py): the host holds the SM clock for the sweep, proven by the device's own
+        # read, so the first cell is not timed on a ramping clock. A host with no clock declared runs unlocked, and
+        # every row says which.
+        from rola.ops import carry as carry_ops
+
+        clock = clock_lock.engage(carry_ops.sm_clock_ghz)
 
         branches = [int(s) for s in args.branches.split(",")]
         seq_lens = [int(s) for s in args.seq_lens.split(",")]
@@ -496,7 +488,10 @@ def main() -> None:
                                       backend=backend, reps=args.reps, warmup=args.warmup)
                 else:
                     raise SystemExit(f"unknown arm {arm!r}")
-                row["clock_settled"] = clock_info["settled"]
+                ghz = carry_ops.sm_clock_ghz()
+                row["clock_locked_ghz"] = clock["ghz"] if clock else None
+                row["clock_ghz"] = ghz
+                row["clock_held"] = clock is not None and clock_lock.within(ghz, clock)
                 rows.append(row)
                 print(json.dumps(row), flush=True)
                 if args.json:  # write incrementally: an OOM later must not lose earlier rows

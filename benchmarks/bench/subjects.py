@@ -3,7 +3,7 @@
 """WHAT is timed: one lean callable per kernel this line carries.
 
 A subject takes a REGISTRY cell, builds everything the launch does not pay for, and
-returns a :class:`bench.pairing.Arm` whose call issues exactly the launch being priced.
+returns a :class:`Launch` whose call issues exactly the launch being priced.
 The roster mirrors the oracle roster one for one -- a bench roster that does not match
 the correctness roster is a roster with kernels nobody measures -- and it includes the
 carry. A subject that is absent from the roster while its kernel exists is the defect the
@@ -28,7 +28,13 @@ from dataclasses import dataclass
 
 import torch
 
-from bench.pairing import Arm
+
+@dataclass(frozen=True)
+class Launch:
+    """One thing to time: a name and the zero-argument callable that issues it."""
+
+    name: str
+    call: Callable[[], object]
 
 
 @dataclass(frozen=True)
@@ -37,7 +43,7 @@ class Subject:
 
     name: str
     kind: str
-    build: Callable[[dict], Arm]
+    build: Callable[[dict], Launch]
     what: str
     #: THE BODY'S OWN NAME, for `ncu -k regex:`. A PREFIX would capture whichever kernel
     #: of the family launches first, and that is not the same kernel on two binaries -- a
@@ -114,7 +120,7 @@ def _state_arm(fx, descriptor, bh: int = 1):
     return plane, plane, slots.to(torch.int32).reshape(1, pages).repeat(bh, 1)
 
 
-def carry_forward(fx) -> Arm:
+def carry_forward(fx) -> Launch:
     """The inter term: one carry launch over a whole cell, state advanced in place.
 
     The operands are the registry's own `carry_call`, so this prices the same tensors
@@ -136,10 +142,10 @@ def carry_forward(fx) -> Arm:
         return carry_ops.carry_forward(routes, v, state_in=state_in, state_out=state_out,
                                        page_table=page_table, schedule=schedule, **call)
 
-    return Arm(name=f"carry_forward|{spec.name}|{fx.get('state_arm', 'fresh')}", call=run)
+    return Launch(name=f"carry_forward|{spec.name}|{fx.get('state_arm', 'fresh')}", call=run)
 
 
-def intra_forward(fx) -> Arm:
+def intra_forward(fx) -> Launch:
     """The within-window term on the same cell, at the window the two kernels share.
 
     THE WINDOW IS THE CARRY'S CONSTANT, not the intra arm's default: the two kernels run
@@ -171,7 +177,7 @@ def intra_forward(fx) -> Arm:
         return intra_ops.intra_forward(pread, pwrite, gwrite, v, sread, swrite, modes,
                                        window=carry_ops.WINDOW)
 
-    return Arm(name=f"intra_forward|{spec.name}", call=run)
+    return Launch(name=f"intra_forward|{spec.name}", call=run)
 
 
 def _atom_bits(read_levels, write_levels, widths):
@@ -182,7 +188,7 @@ def _atom_bits(read_levels, write_levels, widths):
     return atom_bits(pack_side(write_levels), widths, pack_side(read_levels))
 
 
-def prefill_op(fx) -> Arm:
+def prefill_op(fx) -> Launch:
     """THE WHOLE ROLA OP, as the layer calls it: `rola.ops.prefill` over the cell's drawn
     routes, gain and values -- the liveness pass, the carry and the intra, and the op's own
     packing of its per-level inputs. The support words
@@ -242,10 +248,10 @@ def prefill_op(fx) -> Arm:
                                       page_table=page_table)
         return out
 
-    return Arm(name=name, call=run)
+    return Launch(name=name, call=run)
 
 
-def liveness_pass(fx) -> Arm:
+def liveness_pass(fx) -> Launch:
     """The class-1 liveness words for both sides -- the pass every carry call reads."""
     from benchmarks.cells import realize
     from rola.engine.facts import liveness as lv
@@ -261,7 +267,7 @@ def liveness_pass(fx) -> Arm:
     def run():
         return liveness_words(read, write, layout, statics, statics)
 
-    return Arm(name=f"liveness_pass|{spec.name}", call=run)
+    return Launch(name=f"liveness_pass|{spec.name}", call=run)
 
 
 def _modes_of(spec):
@@ -284,7 +290,7 @@ def _modes_of(spec):
 
 # ------------------------------------------------------------------ layer cells
 
-def entmax_solve(fx) -> Arm:
+def entmax_solve(fx) -> Launch:
     """The producer's batched multi-level solve, on this cell's own routing.
 
     The logits are drawn once from the cell's seed and held: what is priced is the
@@ -303,10 +309,10 @@ def entmax_solve(fx) -> Arm:
     def run():
         return production_routing_factor_levels(read_logits, write_logits, routing)
 
-    return Arm(name=f"entmax_solve|{spec.name}", call=run)
+    return Launch(name=f"entmax_solve|{spec.name}", call=run)
 
 
-def decode_step(fx) -> Arm:
+def decode_step(fx) -> Launch:
     """ONE carried single-token step, on a state the seeding call populated.
 
     The state is MUTATED by the call, which is what a decode step is; repeated timing
@@ -341,7 +347,7 @@ def decode_step(fx) -> Arm:
             y, _ = decode_forward(producer(token), v_token, state)
         return y
 
-    return Arm(name=f"decode_step|{spec.name}", call=run)
+    return Launch(name=f"decode_step|{spec.name}", call=run)
 
 
 #: THE ROSTER: one entry per kernel this line carries, plus the carry, whose arm refuses.

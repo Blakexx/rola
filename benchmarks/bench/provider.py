@@ -15,7 +15,7 @@ timed, and refuses the arm by name when either fails: from a fact the device pro
 subject's family (its stamp entry; a path or a hash cannot catch a stale binary), and that `import rola` resolved inside
 this checkout.
 
-The call times one launch between two CUDA events (`bench.pairing`'s canonical instrument) and returns milliseconds.
+The call times one launch between two CUDA events (the canonical instrument, `cuda_events`) and returns milliseconds.
 The cell an arm reports is the registry cell's facts beside the arm's dials and the binary's: the manifest digest, the
 family stamp, the device, torch, the assembler, and the SM clock read when the arm was built (docs/measurement.md).
 """
@@ -38,8 +38,8 @@ def arms(point: dict) -> dict:
     """Every arm `point`'s cell carries, each as a builder."""
     from itertools import product
 
-    from bench.driver import CELLS
     from bench.subjects import STATE_ARMS, SUBJECTS, applicable
+    from benchmarks.cells.registry import CELLS
     from rola.ops.carry import ORDER_POLICIES
 
     if not set(point) <= {"cell", "tokens", "d_v"} or point.get("cell") not in CELLS:

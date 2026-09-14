@@ -26,27 +26,23 @@ with everything the launch does not pay for built outside the timed callable. Th
 mirrors the oracle roster one for one — a bench roster that does not match the correctness
 roster is a roster with kernels nobody measures — and it includes the carry, whose body
 does not exist on this line and whose arm therefore refuses by name rather than reporting
-a number for something that did not run. `driver.py` is one driver's whole body;
-`pairing.py` is the interleaved paired-ratio engine; `discipline.py` is the
-preconditions, enforced; `stats.py` and `regression.py` are whether a difference is real;
-`store.py` and `ledger.py` are where a number lives afterwards.
+a number for something that did not run. `provider.py` is the roster as arms of
+rola-devtools' interleaving driver: an arm is a subject with its dials
+(`carry_forward@schedule=identity`), built in its own checkout's venv.
 
-**`benchmarks/unit/` — one driver per registered bench.** Each is `bench/driver.py` plus
-the name of its subject, so the discipline cannot be acquired in five slightly different
-ways. An arm spec is `subject@cell`, both halves names from the registry, so a command
-line is citable and a row's `arm` field reads the same way.
-
-**THE LOCK: this harness takes it itself, and every driver is invoked BARE.**
-`bench.discipline.disciplined` holds `tools/gpu_lock.py`'s `gpu_lock()` for its whole
-body; never wrap a driver in an external `flock` on the same path (it self-deadlocks).
+**`tools/compare.py` — THE COMPARISON.** Arms of rola checkouts, and of other libraries, at
+one registered cell, interleaved call by call under one stopwatch
+(`docs/internals/tools/compare.md`). It takes the GPU lock and the clock lock itself and is
+invoked BARE; never wrap it in an external `flock` on the same path (it self-deadlocks).
+Whether a stored difference is a regression is `python -m rola_results verdict`.
 
 ```bash
-python benchmarks/unit/bench_liveness.py --tier landing
-python benchmarks/unit/bench_intra_forward.py --tier landing --cells flagship-alt-k4
-python benchmarks/unit/bench_entmax.py --tier landing
-python benchmarks/unit/bench_decode_step.py --tier landing
-python benchmarks/unit/bench_carry_forward.py --tier landing   # refuses: no body yet
+python tools/compare.py --cell flagship-alt-k4 --arm label:first,arm:carry_forward \
+    --arm label:identity,arm:carry_forward@schedule=identity
 ```
+
+**`benchmarks/unit/` — the carry's part harness and its calibration** (`bench_carry_parts.py`,
+`bench_carry_calib.py`), gated against `bench/carry_model.py`'s budgets.
 
 **`tools/probe_cells.py` — the A/B orchestrator, and the only cross-binary instrument.**
 It defines no step, no cell and no shape: it runs a REGISTERED BENCH over REGISTERED

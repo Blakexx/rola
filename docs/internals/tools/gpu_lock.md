@@ -2,14 +2,14 @@
 
 `gpu_lock()` is the one primitive every GPU-touching entry point (pytest,
 `tools/probe_cells.py`, `tools/sanitize_oracle.py`,
-`benchmarks/bench/discipline.py`) takes itself, reentrant by construction
+`tools/compare.py`) takes itself, reentrant by construction
 (this file's own module docstring covers the mechanism).
 
 ## Two modes (LOCKS brief, 2026-08-29)
 
 `mode="exclusive"` (default, every pre-existing bare `gpu_lock()` call keeps
 this behavior) excludes every other holder, either mode — for MEASURED work:
-`tools/probe_cells.py`, `ncu`, `benchmarks/bench/discipline.py`.
+`tools/probe_cells.py`, `ncu`, `tools/compare.py`.
 `mode="shared"` admits up to `GPU_SHARED_SLOTS` (default 2) concurrent
 holders — for CORRECTNESS work that does not corrupt another correctness
 run's answer by sharing the device: the pytest oracle/integration/cuda-marked
