@@ -19,8 +19,9 @@ appears. Two kinds, both data:
   builds the fixture and checks `layer_manifest.json`, the committed INTEGER statistics
   every constructor realizes — a statistic is not a fixture, and the manifest exists so a
   drift in the RNG, the solver or the producer announces itself as a diff.
-* `registry.py` — every cell by name with its kind, and `runnable()`: the cells this checkout's binary runs (a carry
-  cell where the binary carries its arm), refusing a binary without an arm the tree ships.
+* `registry.py` — every cell by name with its kind, and `registry()`: these files as cells in rola-devtools' sense (each
+  names its data provider, `carry_cell` or `layer_cell`) with any other registry files, cells and the points that group
+  them by runner.
 
 **`benchmarks/bench/` — the library.** `subjects.py` is the roster: one lean callable per
 kernel this line carries, each taking a registry cell and returning the launch to time,
@@ -28,18 +29,19 @@ with everything the launch does not pay for built outside the timed callable. Th
 mirrors the oracle roster one for one — a bench roster that does not match the correctness
 roster is a roster with kernels nobody measures — and it includes the carry, whose body
 does not exist on this line and whose arm therefore refuses by name rather than reporting
-a number for something that did not run. `provider.py` is the roster as arms of
-rola-devtools' interleaving driver: an arm is a subject with its dials
-(`carry_forward@schedule=identity`), built in its own checkout's venv.
+a number for something that did not run. `provider.py` is rola's runner: given a cell's
+data it offers the subjects this binary runs on it, with their dials
+(`carry_forward@schedule=identity`), or refuses the cell by name; arms build in their own
+checkout's venv.
 
-**`tools/compare.py` — THE COMPARISON.** Arms of rola checkouts, and of other libraries, at
-one registered cell, interleaved call by call under one stopwatch
+**`tools/compare.py` — THE COMPARISON.** Arms of rola checkouts, and of other libraries, on
+the cells of one point, interleaved call by call under one stopwatch
 (`docs/internals/tools/compare.md`). It takes the GPU lock and the clock lock itself and is
 invoked BARE; never wrap it in an external `flock` on the same path (it self-deadlocks).
 Whether a stored difference is a regression is `python -m rola_results verdict`.
 
 ```bash
-python tools/compare.py --cell flagship-alt-k4 --arm label:first,arm:carry_forward \
+python tools/compare.py --cells flagship-alt-k4 --arm label:first,arm:carry_forward \
     --arm label:identity,arm:carry_forward@schedule=identity
 ```
 

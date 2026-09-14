@@ -142,6 +142,11 @@ def _validate(record: dict) -> CellSpec:
     return spec
 
 
+def carry_cell(name: str, **params) -> CellSpec:
+    """A carry cell's data provider (`carry_cells.json` names it): the record's parameters, validated."""
+    return _validate({"name": name, **params})
+
+
 def carry_cells(tier: str | None = None) -> tuple[CellSpec, ...]:
     """The registry, validated. ``tier`` selects the readers a cell is declared for."""
     records = json.loads(_REGISTRY.read_text())["cells"]

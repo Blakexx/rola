@@ -142,6 +142,15 @@ def _pack_operands(read_levels, write_levels, g_write, v):
     return pread, pwrite, gwrite, v_bh, v_bthd
 
 
+def _intra_level_width(D: int) -> int | None:
+    """The level width the intra kernel ships at depth ``D`` and the op's window, or None
+    where it ships none: one width PER DEPTH, never membership in the widths of every depth."""
+    try:
+        return intra_ops._shipped_level_width(D, WINDOW)
+    except ValueError:
+        return None
+
+
 def prefill(read_levels, write_levels, g_write, v, widths, *, modes, sread, swrite,
             state_in: torch.Tensor | None = None,
             state_out: torch.Tensor | None = None,
@@ -185,12 +194,13 @@ def prefill(read_levels, write_levels, g_write, v, widths, *, modes, sread, swri
     D = len(widths)
     if len(modes) != D:
         raise ValueError(f"{D} levels want {D} support modes; got {len(modes)}")
-    if len(set(widths)) != 1 or widths[0] not in LEVEL_WIDTHS:
+    shipped = _intra_level_width(D)
+    if len(set(widths)) != 1 or widths[0] != shipped:
         raise ValueError(
-            f"the combined prefill is built at one uniform level width out of "
-            f"{LEVEL_WIDTHS} (the intra kernel's instantiations); got widths "
-            f"{tuple(widths)}. A topology neither family carries is an inter-only "
-            f"cell -- call rola.ops.carry.carry_forward directly.")
+            f"the combined prefill is built at the intra kernel's one uniform level width "
+            f"at depth {D} ({shipped}, read off its arms); got widths {tuple(widths)}. A "
+            f"topology neither family carries is an inter-only cell -- call "
+            f"rola.ops.carry.carry_forward directly.")
     length = read_levels[0].shape[1]
     if length % WINDOW:
         raise ValueError(

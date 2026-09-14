@@ -66,20 +66,22 @@ class LayerCellSpec:
         return getattr(torch, _DTYPES[self.dtype])
 
 
+def layer_cell(name: str, **params) -> LayerCellSpec:
+    """A layer cell's data provider (`layer_cells.json` names it): the record's constructor, checked."""
+    cell = LayerCellSpec(name=name, widths=tuple(params["widths"]), B=params["B"], tokens=params["tokens"],
+                         H=params["H"], hidden=params["hidden"], dv=params["dv"], alpha=params["alpha"],
+                         logit_gain=params["logit_gain"], dtype=params["dtype"], seed=params["seed"],
+                         decode_steps=params["decode_steps"], note=params["note"])
+    if cell.dtype not in _DTYPES:
+        raise ValueError(f"{cell.name}: dtype {cell.dtype!r} is not one of {sorted(_DTYPES)}")
+    return cell
+
+
 def layer_cells() -> tuple[LayerCellSpec, ...]:
-    records = json.loads(_REGISTRY.read_text())["cells"]
-    cells = tuple(LayerCellSpec(name=r["name"], widths=tuple(r["widths"]), B=r["B"],
-                                tokens=r["tokens"], H=r["H"], hidden=r["hidden"],
-                                dv=r["dv"], alpha=r["alpha"],
-                                logit_gain=r["logit_gain"], dtype=r["dtype"],
-                                seed=r["seed"], decode_steps=r["decode_steps"],
-                                note=r["note"]) for r in records)
+    cells = tuple(layer_cell(**r) for r in json.loads(_REGISTRY.read_text())["cells"])
     names = [c.name for c in cells]
     if len(set(names)) != len(names):
         raise ValueError("two layer cells share a name; a name is a published identity")
-    for cell in cells:
-        if cell.dtype not in _DTYPES:
-            raise ValueError(f"{cell.name}: dtype {cell.dtype!r} is not one of {sorted(_DTYPES)}")
     return cells
 
 

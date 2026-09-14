@@ -5,8 +5,8 @@ stored with its provenance. This document is what that sentence means.
 
 | layer | where | answers |
 |---|---|---|
-| cells | `benchmarks/cells/` (`registry.py`) | WHAT shape and draw is measured: one name, one cell, everywhere; `runnable()` is which cells a binary runs, refusing one without a shipped arm |
-| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` | WHICH launch is timed, and each arm's dials |
+| cells and points | `benchmarks/cells/` (`registry.py`), rola-devtools' `rola_devtools.cells`, other repositories' registries | WHAT is measured: a cell is a data provider and its parameters, named once; a point groups cells by runner and states what they hold equal |
+| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, each arm's dials, and which cells this binary refuses |
 | method | rola-devtools' `rola_devtools.interleave`, run by `tools/compare.py` | HOW: interleaved call by call, paired within a rep |
 | preconditions | `tools/compare.py`, `bench/provider.py` | what the box and the binary must be first |
 | statistics | rola-devtools' `rola_devtools.verdict` | whether a difference is real |
@@ -19,10 +19,11 @@ and a number taken here are the same measurement. `tools/probe_cells.py` runs th
 ## The method
 
 `tools/compare.py` (`docs/internals/tools/compare.md`) runs the interleaving driver over arms of rola checkouts and of
-other libraries at one registered cell. Each arm environment gets one worker process; every arm is warmed past the
-driver's floor of 10 calls; then every rep of every round calls every arm once, in a fresh random order, and each sample
-is one call on the arm's own stopwatch. Reps are odd, so a round's median is one of its samples, and a paired ratio is
-taken within a rep, so drift slower than a rep is common to both arms. The driver refuses a warmup under the floor, an
+other libraries on the cells of one point: every arm runs on every cell the point sends its runner, a row is one arm on
+one cell. Each arm environment gets one worker process; every row is warmed past the driver's floor of 10 calls; then
+every rep of every round calls every row once, in a fresh random order, and each sample is one call on the arm's own
+stopwatch. Reps are odd, so a round's median is one of its samples, and a paired ratio is taken within a rep and within a
+cell, so drift slower than a rep is common to both rows. The driver refuses a warmup under the floor, an
 even rep count, and two stopwatches in one comparison.
 
 Call by call, because drift on this host is the size of the effects measured: its sustained clock has two states ~17 %
@@ -172,7 +173,7 @@ and a timing only compares within the session that interleaved it.
 | location | writer | the semantics | a sample's output |
 |---|---|---|---|
 | `probe_cells` | `tools/probe_cells.py` | each binary's commit, tree digest, manifest, family stamp and lane (bench, calls, schedule); the cells, state arm, counts, device software, clock lock | every (binary, cell) row |
-| `compare` | `tools/compare.py --record` | the point, the matching rule, each arm's label and name with its commit and diff (a foreign arm's provider), the counts, the seed, the reference | the driver's whole result |
+| `compare` | `tools/compare.py --record` | the point with its cell records and claim, each arm's label and name with its commit and diff (a foreign arm's runner), the counts, the seed, the reference | the driver's whole result |
 | `suite/<module>` | rola-bench's measurement suite | the module, unit, identities and dependencies | the instrument's raw JSON |
 | `calibration` | `benchmarks/unit/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline`, `pipe_timeline.scale` | `tools/pipe_timeline.py` | the cell, binary and scale; a calibration's composition | the series and summary; the plateau |

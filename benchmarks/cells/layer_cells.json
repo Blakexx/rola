@@ -1,5 +1,6 @@
 {
  "schema": 1,
+ "data": "benchmarks.cells.layer:layer_cell",
  "note": "THE LAYER CELLS, AS DATA. A record is a CONSTRUCTOR and a SEED: `build()` is deterministic from it, and a document cites a cell BY NAME and never by a description of its density. Two numbers carrying the same cell name are commensurable; two carrying different names are not. A STATISTIC IS NOT A FIXTURE -- the realized statistics live in layer_manifest.json, which is checked against these constructors, never a substitute for them.",
  "fields": {
   "name": "the cell's identity; documents and ledger rows cite it, so a name is never reused or renamed",

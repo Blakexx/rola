@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "data": "benchmarks.cells:carry_cell",
   "note": "THE CARRY FAMILY'S CELLS, AS DATA. One record per cell; tests, tools/probe_cells.py and the benches read this file instead of each keeping their own copy. A record is a DECLARATION of a draw and a shape, never of an arm: the arm key is (D, DV, warps_per_cta) and is derived from `widths`, `dv` and `warps_per_cta` by rola.ops.carry.",
   "fields": {
     "name": "the cell's identity; a seed is derived from it (crc32) so a failure reproduces from its own name",

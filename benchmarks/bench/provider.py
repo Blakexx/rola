@@ -1,26 +1,34 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""THE PROVIDER: this checkout's bench subjects as arms of the interleaving driver (`rola_devtools.interleave`).
+"""ROLA'S RUNNER: this checkout's bench subjects as arms of the interleaving driver (`rola_devtools.interleave`).
 
-    ArmSpec(label, "bench.provider:arms", "carry_forward@schedule=identity", python=<the checkout's venv python>,
-            cwd=<the checkout>, env={"PYTHONPATH": "<the checkout>:<the checkout>/benchmarks"})
+    ArmSpec(label, "bench.provider:arms", "carry_forward@schedule=identity", runner="rola",
+            python=<the checkout's venv python>, cwd=<the checkout>,
+            env={"PYTHONPATH": "<the checkout>:<the checkout>/benchmarks"})
 
-A point names a registered cell (`benchmarks/cells`), and may state the facts another library's arms read from it
-(`tokens`, `d_v`), which must be that cell's: the point is what a comparison holds equal. An ARM is a subject that applies to
-that cell (`bench.subjects.SUBJECTS`) with its dials, which belong to the arm and never to the run: its name is the
-subject, then `@calls=N` for a call count other than one, `@schedule=S` for a carry order other than `first`, and
-`@state=S` for a state arm other than `fresh`, each only where the subject reads that dial (`Subject.calls`,
-`Subject.dials`). Only the arms a comparison asks for are built. Building one proves two things before anything is
-timed, and refuses the arm by name when either fails: from a fact the device produces, that this binary carries the
-subject's family (its stamp entry; a path or a hash cannot catch a stale binary), and that `import rola` resolved inside
-this checkout.
+The driver calls `arms` with the DATA of each cell a point sends the rola runner (`rola_devtools.cells.build`): a carry
+cell (`benchmarks.cells:carry_cell`, a shape and a draw) or a layer cell (`benchmarks.cells.layer:layer_cell`, a
+constructor). It returns a builder for every arm this checkout runs on that cell, or refuses the cell by raising:
+- any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
+  (`ROLA_CARRY_ARMS`) measures a subset of the tree;
+- a carry cell whose carry arm (D, DV, warps_per_cta) the binary does not carry;
+- data that is neither kind.
+An arm is a subject that applies to the cell (`bench.subjects.applicable`, the cell's own facts) and whose kernel this
+binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `prefill_op`,
+the decode arm for `decode_step`), with its dials: its name is the subject, then `@calls=N` for a call count other than
+one, `@schedule=S` for a carry order other than `first`, and `@state=S` for a state arm other than `fresh`, each only
+where the subject reads that dial (`Subject.calls`, `Subject.dials`). Only the arms a comparison asks for are built.
+Building one proves two things before anything is timed, and refuses the arm by name when either fails: from a fact the
+device produces, that this binary carries the subject's family (its stamp entry; a path or a hash cannot catch a stale
+binary), and that `import rola` resolved inside this checkout.
 
 The call times one launch between two CUDA events (the canonical instrument, `cuda_events`) and returns milliseconds.
-The cell an arm reports is the registry cell's facts beside the arm's dials and the binary's: the manifest digest, the
-family stamp, the device, torch, the assembler, and the SM clock read when the arm was built (docs/measurement.md).
+What an arm reports is the cell's facts beside the arm's dials and the binary's: the manifest digest, the family stamp,
+the device, torch, the assembler, and the SM clock read when the arm was built (docs/measurement.md).
 """
 from __future__ import annotations
 
+import sys
 from functools import partial
 from pathlib import Path
 
@@ -34,29 +42,70 @@ def arm_name(subject: str, calls: int = 1, schedule: str = "first", state: str =
         + (f"@state={state}" if state != "fresh" else "")
 
 
-def arms(point: dict) -> dict:
-    """Every arm `point`'s cell carries, each as a builder."""
+def arms(data) -> dict:
+    """Every arm this checkout runs on a cell's data, each as a builder; raises to refuse the cell."""
     from itertools import product
 
     from bench.subjects import STATE_ARMS, SUBJECTS, applicable
-    from benchmarks.cells.registry import CELLS
+    from benchmarks.cells import CellSpec
+    from benchmarks.cells.layer import LayerCellSpec
+    from rola.ops import carry
     from rola.ops.carry import ORDER_POLICIES
 
-    if not set(point) <= {"cell", "tokens", "d_v"} or point.get("cell") not in CELLS:
-        raise KeyError(f"a point names one registered cell (benchmarks/cells) and at most its tokens and d_v, got {point!r}")
-    kind, spec = CELLS[point["cell"]]
-    stated = {"tokens": spec.tokens, "d_v": spec.dv}
-    if any(point[key] != value for key, value in stated.items() if key in point):
-        raise ValueError(f"the point states {point}, but {spec.name} is {stated}")
+    _refuse_a_partial_binary()
+    if isinstance(data, CellSpec):
+        kind = "carry"
+        if data.arm not in {tuple(arm) for arm in carry.arms()}:
+            raise LookupError(f"{data.name}: this binary carries no carry arm {data.arm} (D, DV, warps_per_cta); it "
+                              f"carries {sorted(tuple(arm) for arm in carry.arms())}")
+    elif isinstance(data, LayerCellSpec):
+        kind = "layer"
+    else:
+        raise TypeError(f"rola's runner takes a carry cell (benchmarks.cells:carry_cell) or a layer cell "
+                        f"(benchmarks.cells.layer:layer_cell), got {type(data).__name__}")
     out = {}
     for subject in SUBJECTS.values():
+        if not _kernel_carried(subject.name, data):
+            continue
         schedules = tuple(ORDER_POLICIES) if "schedule" in subject.dials else ("first",)
         states = STATE_ARMS if "state" in subject.dials else ("fresh",)
         for calls, schedule, state in product(subject.calls, schedules, states):
-            if subject.name in applicable(spec, kind, calls):
-                out[arm_name(subject.name, calls, schedule, state)] = partial(_build, subject.name, kind, spec, calls,
+            if subject.name in applicable(data, kind, calls):
+                out[arm_name(subject.name, calls, schedule, state)] = partial(_build, subject.name, kind, data, calls,
                                                                               schedule, state)
     return out
+
+
+def _refuse_a_partial_binary() -> None:
+    from rola.ops import carry
+
+    if str(CHECKOUT / "tools") not in sys.path:
+        sys.path.insert(0, str(CHECKOUT / "tools"))
+    import gen_shards
+
+    shipped = {tuple(gen_shards.CARRY_ARMS[i]) for i in gen_shards.CARRY_SHIPPED_ARMS}
+    built = {tuple(arm) for arm in carry.arms()}
+    if shipped - built:
+        raise RuntimeError(f"this binary carries {sorted(built)} and lacks the shipped arms {sorted(shipped - built)}: an "
+                           "iteration build (ROLA_CARRY_ARMS) measures a subset of the tree; build the shipped set")
+
+
+def _kernel_carried(subject: str, spec) -> bool:
+    """Whether this binary carries the kernel `subject` launches at the cell's shape (the cell's own facts are
+    `bench.subjects.applicable`'s)."""
+    from rola.ops import carry, decode, intra
+    from rola.ops.prefill import _intra_level_width
+
+    if subject == "prefill_op":
+        return len(set(spec.widths)) == 1 and _intra_level_width(len(spec.widths)) == spec.widths[0]
+    if subject == "intra_forward":
+        widths = {lw for levels, lw, window, _smem in intra.arms() if levels == len(spec.widths) and window == carry.WINDOW}
+        return bool(widths) and max(spec.widths) <= min(widths)
+    if subject == "decode_step":
+        rows = decode.arms()
+        padded = [dv for dv, _d, _decay in rows if dv >= spec.dv]
+        return bool(padded) and (min(padded), len(spec.widths), False) in rows
+    return True
 
 
 def _build(name: str, kind: str, spec, calls: int, schedule: str, state: str):

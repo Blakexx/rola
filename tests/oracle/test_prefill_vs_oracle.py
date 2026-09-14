@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+from gen_shards import CARRY_ARMS  # tools/ is on the path (the root conftest)
 
 from benchmarks.cells import carry_cells, conservative_activity, liveness_words, realize
 from rola.ops import carry as carry_ops
@@ -30,7 +31,7 @@ from rola.ops import intra as intra_ops
 from rola.ops.constants import READOUT_EPS
 from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal
-from rola.ops.prefill import prefill
+from rola.ops.prefill import WINDOW, prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
 from tests.oracle.fixtures import canonical_from_plane, relative
 from tests.oracle.tolerances import BF16_RTOL
@@ -43,11 +44,15 @@ INTRA_TOPOLOGY = {2: intra_ops.LEVEL_WIDTH, 3: intra_ops.LEVEL_WIDTH_DEEP3,
                   4: intra_ops.LEVEL_WIDTH_DEEP4}
 
 #: The registry's cells the combined operator can run: the dense backing, a fresh state,
-#: the shipped value width, and a topology both families carry.
+#: the shipped value width, a topology both families carry, a carry arm this tree declares
+#: (`tools/manifests/shipped_set.json`; no build of it carries another) and whole windows
+#: (the intra kernel's tile grid).
 CELLS = tuple(c for c in carry_cells("oracle")
               if c.backing == "dense" and c.state == "fresh" and c.dv == 64
               and len(set(c.widths)) == 1
-              and INTRA_TOPOLOGY.get(c.D) == c.widths[0])
+              and INTRA_TOPOLOGY.get(c.D) == c.widths[0]
+              and c.arm in {tuple(row) for row in CARRY_ARMS}
+              and c.tokens % WINDOW == 0)
 IDS = [c.name for c in CELLS]
 
 
@@ -226,5 +231,11 @@ def test_the_combined_operator_refuses_what_it_has_no_kernel_for():
     drawn = realize(spec)
     with pytest.raises(ValueError, match="level width"):
         prefill(drawn.read, drawn.write, drawn.gain, drawn.v, (64, 64),
+                modes=modes_of(spec), sread=intra_ops.pack_support(drawn.read),
+                swrite=intra_ops.pack_support(drawn.write))
+    #: A width another depth ships is not this depth's: depth 3's 16 passes a check that asks
+    #: membership in every depth's widths, and then the kernel refuses the support words' shape.
+    with pytest.raises(ValueError, match="at depth 2"):
+        prefill(drawn.read, drawn.write, drawn.gain, drawn.v, (16, 16),
                 modes=modes_of(spec), sread=intra_ops.pack_support(drawn.read),
                 swrite=intra_ops.pack_support(drawn.write))

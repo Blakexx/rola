@@ -647,10 +647,11 @@ none launches a kernel.
 
 | file | what it plants |
 |---|---|
-| rola-devtools `tests/test_interleave.py` | a warmup under the floor, an even rep count, two stopwatches in one comparison, an arm its provider does not have, a provider printing into the protocol; the null gate (one arm in two workers) |
+| rola-devtools `tests/test_interleave.py` | a warmup under the floor, an even rep count, two stopwatches in one comparison, an arm its runner does not have, a cell its runner refuses, a point sending an arm's runner no cell, a runner printing into the protocol; pairing within a cell; the null gate (one arm in two workers) |
+| rola-devtools `tests/test_cells.py` | a name registered twice, a point naming an absent cell or a runner with none, a cell with no data provider, a point whose cells break its `equal` claim |
 | rola-devtools `tests/test_verdict.py` | a shift smaller than its own scatter, a round count below the one the test can decide at, a single unlucky run, an effect with no significance behind it, a spread of zero at the stopwatch's resolution |
 | rola-results `rola_results/test_verdict.py` | stored sessions: an unchanged candidate, a slow session flagged and then confirmed, a baseline filtered by its label |
-| `tests/unit/test_bench_provider.py` | a point whose facts are not its cell's, an unregistered cell, a foreign arm missing a field; no arm carries a dial its subject does not read |
+| `tests/unit/test_bench_provider.py` | an uncarried carry arm, an iteration build, another library's data, a binary without the intra or decode kernel a subject launches, a point narrowed to a cell it lacks, a foreign arm missing a field; no arm carries a dial its subject does not read |
 
 `python tools/ratify.py --self-test` is the same discipline on the codegen side and
 is listed arm by arm in `docs/ratification.md`.
