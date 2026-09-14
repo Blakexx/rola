@@ -64,10 +64,9 @@ and the check reads the declaration in BOTH directions — a declared-absent nam
 actually carries fails too, because the passage is then telling a reader the opposite of
 the truth.
 
-**A bare commit hash cited anywhere in this tree resolves in the source
-repository named by [`docs/provenance.md`](../provenance.md)
-(`flash-linear-attention-rola`, branch `rola-v3`), not in this one, whose history
-begins at the extraction.**
+**A commit hash cited in this tree resolves in this repository, unless it predates the
+extraction (2026-08-01): those name commits of the retired pre-extraction fork and
+resolve in no published repository ([`docs/provenance.md`](../provenance.md)).**
 
 ## What this tree does not hold, and where it is
 

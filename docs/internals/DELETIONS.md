@@ -173,18 +173,17 @@ dead code. The [dormant register](#dormant) below is the answer to that mistake.
 
 ## Pre-extraction removals
 
-This repository's history begins at the extraction, so a bare commit hash cited
-anywhere in this tree resolves in the source repository named by
-[`docs/provenance.md`](../provenance.md) — `flash-linear-attention-rola`, branch
-`rola-v3` — and **not** here. The rows below carry that repository's hashes.
+This repository's history begins at the extraction. The rows below carry hashes of the
+pre-extraction fork, whose history was retired and is not published
+([`docs/provenance.md`](../provenance.md)): they record what happened and resolve nowhere.
 
-| Commit (`flash-linear-attention-rola` @ `rola-v3`) | What | Invariant it leaves behind |
+| Commit (pre-extraction fork) | What | Invariant it leaves behind |
 |---|---|---|
 | `c3c2f845` (2026-08-01) | The register-resident consumer: its kernel header (also named `consumer_kernel.cuh`, a DIFFERENT kernel from this tree's file of that name), `intra_gram.cuh` and the `gram` intra lowering, `consumer_matrix.def` and its eight shard translation units, the `intra_lowering` template axis, and the analytic SMEM mirror | One consumer kernel family, so what the planner prices and what the driver launches are the same object: [`consumer.md`](consumer.md#one-consumer) |
 | `c3c2f845` (2026-08-01) | The intra-kernel tracer: `v3_trace.cuh`, `v3_trace_host.{cu,cuh}` and the capture scripts, whose 27 `V3T*` emission sites were all in that consumer | No trace-emission site exists in the shipped consumer: [`consumer.md`](consumer.md#tracer-retired) |
 | pre-extraction | The V2 CUDA page-plan producer and its eight pybind entries | The page table is published by the torch arena in `rola/ops/paging.py`: [`rola_api.md`](rola_api.md#deleted-page-plan) |
 
-The ledger does not reconstruct what that repository's history already holds.
+The ledger does not reconstruct that retired history.
 | 2026-08-15 | P65 S2 | **The forcing census** -- `tools/ratify.py`'s `--force-ctas N` flag, its `-DROLA_FORCE_CTAS=N` define and `compile_and_parse`'s `defines` parameter | A DEAD INSTRUMENT: nothing in `csrc/` has read `ROLA_FORCE_CTAS` since the launch bounds became derived (`design::cta_target`), so the flag compiled the shipped bound and reported it as a candidate's. The measurement it named survives as a scratch-tree edit of the bound itself ([`../measurement.md`](../measurement.md)), which is also what keeps a forced bound unratifiable: the shipped tool no longer has the lever. Revival = git (this row's commit, parent). |
 | 2026-08-07 | P39 | **The `D`-free residency/footprint query** (`kQueryD` in `consumer.cu`, and the four-argument `rola_consumer_occupancy(decay, BC, DV, GT)` / `rola_consumer_smem_bytes(decay, BC, DV, GT)` ABI) | AN ABI NARROWING, forced by measurement rather than by taste: the query answered at a fixed `D = 2` on the stated ground that "`D` moves only the `[D][BC]` digit table". The amplitude prefetch slab makes that false -- it carries one 16-byte chunk per token per side for every level beyond the first -- so a residency answer at the wrong `D` is the wrong arm's, and `select_window`'s residency rule consumes exactly that answer. Both entry points now take `D` between `DV` and `GT`; `select_window` passes `len(schedule.read_amps)`. Revival = git (this row's commit, parent). |
 
