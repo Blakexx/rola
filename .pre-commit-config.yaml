@@ -139,3 +139,12 @@ repos:
         entry: python3 tools/lint/ratchet.py work_codes
         pass_filenames: false
         always_run: true
+      # THE DOC REFERENCES (tools/docrefs.py, docs/internals/tools/docrefs.md): every citation a doc makes is pinned;
+      # a new one is read and accepted, a pin no doc makes is pruned, the broken backlog only shrinks. A changed
+      # target waits in `python3 tools/docrefs.py pending` for the docs pass.
+      - id: docrefs
+        name: "doc references pinned (new citations accepted, broken backlog only shrinks)"
+        language: system
+        entry: python3 tools/docrefs.py
+        pass_filenames: false
+        always_run: true

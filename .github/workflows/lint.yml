@@ -74,6 +74,8 @@ jobs:
           python3 tools/lint/ratchet.py drift_guards
           python3 tools/lint/ratchet.py r9_enforcement
           python3 tools/lint/ratchet.py vulture
+      - name: every doc reference is pinned (tools/docrefs.py)
+        run: python3 tools/docrefs.py
       - name: every ratchet lint's fixtures still fire
         run: |
           python3 tools/lint/drift_guards.py --test-fixtures
