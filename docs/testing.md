@@ -562,7 +562,6 @@ pytest tests/unit tests/oracle -m "not cuda"                                 # C
 pytest tests/unit -m cuda                           # tests/unit's CUDA-marked rows
 pytest tests/oracle                                 # kernels vs the fp64/torch baselines, incl. The families
 pytest tests/integration                            # composition, dispatch, two-branches-agree
-pytest tests/oracle/test_oracle_vs_fla.py   # one-time, opt-in: environment.fla_crosscheck true in the dev config -- see below
 ROLA_GRADCHECK_INSURANCE=1 pytest tests/oracle/test_backward_family.py  # one-time, opt-in -- see above
 ```
 
@@ -588,13 +587,13 @@ unique-assertion audit that sized this (evidence:
 a mutant-proven charge, every two-branches-agree row is census-required, and the
 conformance families are new coverage at 4.5 s.
 
-`tests/oracle/test_oracle_vs_fla.py` is SKIPPED BY DEFAULT and that is the design.
-It checks the oracle's recurrence against `flash-linear-attention`'s naive GLA
-loop under a renaming, once, to catch a transcription error that every in-tree
-gate would be blind to -- and then stops, because a fast-moving kernel library
-is not something this tree takes a standing dependency on. Measured at adoption
-(fla 0.4.2): worst `2.98e-08`, which is float32's resolution, since FLA
-accumulates there.
+THE ORACLE HAS NO OUTSIDE ANCHOR, by Blake's ruling of 2026-09-15: the one-time
+cross-check against `flash-linear-attention`'s naive GLA loop is DELETED
+(`docs/internals/DELETIONS.md`) rather than kept as a test the tree runs only when
+someone remembers to set a flag -- a default-off gate reports a skip where it should
+report a failure, which is how it sat unrunnable for ten days in August. The
+recurrence's claim to BE the gated linear-attention loop is held by review of the
+eleven lines it is written in and by the mutants its own tier plants.
 
 **THE LOCK IS `/tmp/rola_gpu.lock` — that exact path, with an underscore.** `flock`
 is advisory and keyed on a NAME, so a second spelling excludes nothing and silently

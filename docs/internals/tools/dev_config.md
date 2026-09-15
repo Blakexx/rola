@@ -22,7 +22,7 @@ bootstrap), and `python tools/dev.py init` links the `workspace.devtools` checko
 | `clock.json` | `ghz`, `lock`, `unlock` (null `ghz`: the host measures unlocked) |
 | `store.json` | `root` (the measurements store: a rola-results checkout) |
 | `workspace.json` | `suite` (the rola-bench checkout whose root `declare.py` measures this tree), `worktrees` (the one folder worktrees live in), `base_venv` (the venv pointer venvs borrow from) |
-| `environment.json` | `image_digest` (inside the dev container), `fla_crosscheck` |
+| `environment.json` | `image_digest` (inside the dev container) |
 
 Each key's type, default and meaning are declared in `SCHEMA`. `python tools/dev.py show` prints every
 resolved value and the file it came from ([dev.md](dev.md)).

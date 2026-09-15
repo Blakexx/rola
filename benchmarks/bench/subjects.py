@@ -52,12 +52,17 @@ def _restore(state_in):
 
 @dataclass(frozen=True)
 class Subject:
-    """One registered bench: what it prices, which cell kind it takes, how it builds."""
+    """One registered bench: what it prices, at which LEVEL, which cell kind it takes, how it builds."""
 
     name: str
     kind: str
     build: Callable[[dict], Launch]
     what: str
+    #: THE LEVEL IT PRICES (Blake, 2026-09-15), recorded with every sample so a reading never crosses two of them:
+    #: `kernel` is one family's launches and nothing around them; `op` is everything the op does over bare operands and
+    #: a state -- the facts, the paging, the packing and the kernels -- as `rola_op` calls it; `layer` adds the
+    #: projections that produce the routing, and is the ONLY level at which this library is compared with another.
+    level: str
     #: THE BODY'S OWN NAME, for `ncu -k regex:`. A PREFIX would capture whichever kernel
     #: of the family launches first, and that is not the same kernel on two binaries -- a
     #: tip whose family launches a preliminary pass ahead of the body matches that pass
@@ -177,12 +182,15 @@ def _atom_bits(read_levels, write_levels, widths):
     return atom_bits(pack_side(write_levels), widths, pack_side(read_levels))
 
 
-def prefill_op(fx) -> Launch:
-    """THE WHOLE ROLA OP, as the layer calls it: `rola.ops.prefill` over the cell's drawn
-    routes, gain and values -- the liveness pass, the carry and the intra, and the op's own
-    packing of its per-level inputs. The support words
-    are the producer's output by the op's contract, so they are built once here, as the
-    producer would have emitted them, and never inside the timed call.
+def carry_intra(fx) -> Launch:
+    """THE TWO KERNELS AS ONE OPERATOR: `rola.ops.prefill` over the cell's drawn routes, gain and values -- the
+    liveness pass, the carry and the intra, and that seam's own packing of its per-level inputs.
+
+    A KERNEL-LEVEL SUBJECT, not the op (Blake, 2026-09-15). The support words are the producer's output and the activity
+    bits are the facts pass's, so both are built once here, outside the timed call, exactly as `rola.ops.prefill`'s
+    contract says they are the caller's. What an OP-level number would add -- producing those facts, planning and
+    committing the pages, the packing the op owns -- is not timed here and has no live path to time until the prefill
+    arm is rebuilt (`rola.interface.rola_op`).
 
     AT `calls` ABOVE ONE the same sequence runs as that many calls over whole windows, the
     state carried through one plane zeroed per launch set: what a caller that prefills in
@@ -220,11 +228,11 @@ def prefill_op(fx) -> Launch:
     if calls == 1:
         chain = None
         state_in, state_out, page_table = _binding(fx, drawn, descriptor)
-        name = f"prefill_op|{spec.name}"
+        name = f"carry_intra|{spec.name}"
     else:
         chain = carry_ops.state_plane(descriptor, 1)
         state_in, state_out, page_table = chain, chain, None
-        name = f"prefill_op|{spec.name}|calls={calls}"
+        name = f"carry_intra|{spec.name}|calls={calls}"
 
     def run():
         if chain is not None:
@@ -351,25 +359,31 @@ def decode_step(fx) -> Launch:
 SUBJECTS = {
     "carry_forward": Subject("carry_forward", "carry", carry_forward,
                              "the inter term: one carry launch over a whole cell",
-                             symbol="carry_kernel", stamp="carry_build_stamp", dials=("schedule",)),
+                             level="kernel", symbol="carry_kernel", stamp="carry_build_stamp", dials=("schedule",)),
     "intra_forward": Subject("intra_forward", "carry", intra_forward,
                              "the within-window term at the shared window",
-                             symbol="intra_kernel", stamp="intra_build_stamp"),
-    "prefill_op": Subject("prefill_op", "carry", prefill_op,
-                          "the whole RoLA prefill op as the layer calls it: liveness, carry, "
-                          "intra and the op's packing",
-                          symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4)),
+                             level="kernel", symbol="intra_kernel", stamp="intra_build_stamp"),
+    "carry_intra": Subject("carry_intra", "carry", carry_intra,
+                           "the carry and the intra as one operator, over facts and support words the caller built: "
+                           "the two kernels and the pair's own packing, never the op's facts or paging",
+                           level="kernel", symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4)),
     "liveness_pass": Subject("liveness_pass", "carry", liveness_pass,
                              "both sides' class-1 liveness words",
-                             symbol="liveness_pass", stamp="csrc_build_stamp"),
+                             level="kernel", symbol="liveness_pass", stamp="csrc_build_stamp"),
     "entmax_solve": Subject("entmax_solve", "layer", entmax_solve,
                             "the producer's batched multi-level solve",
-                            symbol="(union|factor|softmax)_forward_kernel",
+                            level="kernel", symbol="(union|factor|softmax)_forward_kernel",
                             stamp="csrc_build_stamp"),
     "decode_step": Subject("decode_step", "layer", decode_step,
-                           "one carried single-token step",
-                           symbol="decode_step_kernel", stamp="rola_decode_build_stamp"),
+                           "one carried single-token step through the engine: the facts pass, the pages it commits "
+                           "and the kernels, as the op runs them",
+                           level="op", symbol="decode_step_kernel", stamp="rola_decode_build_stamp"),
 }
+
+#: THE LEVELS A SUBJECT MAY PRICE, and what each owes (`Subject.level`). rola has no `layer` subject on this line: the
+#: prefill arm (`rola.interface.rola_op`) refuses since the rebuild deleted the shipped chunk consumer, so neither the
+#: op's prefill path nor a layer around it has anything to time. Decode is the one op-level path that runs.
+LEVELS = ("kernel", "op", "layer")
 
 
 def _shared_window() -> int:

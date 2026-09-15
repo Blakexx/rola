@@ -84,13 +84,6 @@ U_BF16 = 2.0 ** -8
 CARRY_FOLD_RTOL = 2 * U_BF16
 CARRY_READOUT_RTOL = 5 * U_BF16
 
-#: The FLA cross-check's bound, and it is float32's rather than a fitted number: FLA accumulates in float32, whose unit
-#: roundoff is 6e-8, over a sum of `N <= 64` leaves, so a slot's error is held to `1e-5` of its envelope. MEASURED
-#: 2026-09-14: the worst slot at 3.5e-7 of its envelope (0.035 of the bound), more than a decade of headroom while still
-#: far tighter than any transcription error could hide in -- an off-by-one index or a gate applied on the wrong side of
-#: the deposit moves a slot by O(its terms), not by 1e-7.
-FLOAT32_FLOOR = 1e-5
-
 #: THE PRODUCTION ENTMAX SOLVE'S RATIFIED TOLERANCES against the fp64 reference solve (values and their gradients),
 #: and the stored bf16 levels' (`tests/integration/test_production_levels.py` states their derivation beside the seam).
 #: Never loosened.
@@ -107,13 +100,12 @@ class Output:
     within ``min_i max(rtol_i·s, atol_i)``: one clause is `allclose`'s rule, each further clause another hinge in that
     curve, and a clause at ``rtol = 0`` is a pure absolute cap. ``rtol`` is the multilinear envelope budget
     (`fixtures.allowances`), None for an output that has no envelope. Every gate names its output kind here; no gate
-    states its own numbers. ``measured`` is False for a kind no run on this machine has measured a frontier for.
+    states its own numbers.
     """
 
     name: str
     clauses: tuple[tuple[float, float], ...]
     rtol: float | None = None
-    measured: bool = True
 
 
 #: THE CLAUSES ARE MEASURED, and these are the measurements (`pytest --oracle-margins=FILE`, read with
@@ -143,16 +135,9 @@ ENTMAX_GRADIENTS = Output("entmax gradients", clauses=((0.0, 5.96e-5), (ENTMAX_G
 STORED_LEVELS = Output("stored bf16 levels", clauses=((0.0, 1.52e-1), (BF16_RTOL, BF16_RTOL)))
 STORED_ROUTE = Output("stored route", clauses=((0.0, 2 * STORED_ROUTE_ATOL), (STORED_ROUTE_RTOL, STORED_ROUTE_ATOL)))
 
-#: THE CROSS-CHECK'S KINDS CARRY NO CLAUSES YET: `tests/oracle/test_oracle_vs_fla.py` is opt-in
-#: (`environment.fla_crosscheck`) and flash-linear-attention is not installed on this machine, so no run has measured
-#: their frontier and no clause of them would be a measurement. They are graded by their envelope alone until one does.
-FLA_OUTPUT = Output("FLA naive GLA output", clauses=(), rtol=FLOAT32_FLOOR, measured=False)
-FLA_STATE = Output("FLA naive GLA state", clauses=(), rtol=FLOAT32_FLOOR, measured=False)
-
 #: EVERY OUTPUT KIND, for the test that holds each to declaring its clauses and their measurement.
 OUTPUTS = (CARRY_NUM, CARRY_DEN, CARRY_STATE, PREFILL_READOUT, PREFILL_STATE, DECODE_Y, DECODE_STATE, INTRA_OUTPUT,
-           INTRA_MASS, PROJECTION_LOGITS, ENTMAX_VALUES, ENTMAX_GRADIENTS, STORED_LEVELS, STORED_ROUTE, FLA_OUTPUT,
-           FLA_STATE)
+           INTRA_MASS, PROJECTION_LOGITS, ENTMAX_VALUES, ENTMAX_GRADIENTS, STORED_LEVELS, STORED_ROUTE)
 
 #: Where the per-slot check records its margins: `--oracle-margins`, set by `tests/conftest.py`; None records nothing.
 MARGINS_FILE = None

@@ -6,7 +6,7 @@ stored with its provenance. This document is what that sentence means.
 | layer | where | answers |
 |---|---|---|
 | cells | rola-devtools' central registry `rola_devtools.cells` (rola's reading: `benchmarks/cells/`) | WHAT is measured: an input, named once for every package, with its draw, seed and proven regime |
-| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, each arm's dials, its untimed reset, and which cells this binary cannot run |
+| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, at which LEVEL, each arm's dials, its untimed reset, and which cells this binary cannot run |
 | declarations | `declare.py` (this checkout's targets), rola-bench's `declare.py` (checkouts composed) | WHAT RUNS: the build, the instruments, the timing registrations and sessions, the stores, as targets of `rola_devtools.build` |
 | method | rola-devtools' `rola_devtools.timing` (`measure_timing`) | HOW: interleaved call by call, one call at a time, in a fresh random order each rep |
 | preconditions | the targets' requirements (`rola_devtools.build.resources`), `bench/provider.py` | what the box and the binary must be first |
@@ -52,6 +52,22 @@ Not a checklist: the requirements a target holds and the runner's setup do each 
 | binary identity | building an arm asks the device for the subject's family stamp and refuses the arm without it: a path or a hash passes against a stale extension, a device-side fact does not. |
 | extension identity | `import rola` must resolve inside the entry's own checkout, or the arm is refused: an editable install in a shared venv otherwise answers with another tree's kernel while the record carries this tree's commit. |
 | tree identity | every stored sample carries each checkout's commit and the sha256 of its tracked diff; a dirty tree is stamped, not refused. |
+
+## The three levels, and what a comparison may cross
+
+Blake, 2026-09-15: the LAYER holds the projections and produces the routing (RoLA's analogue of QKV); the OP takes those
+bare operands and a state and produces the next state and the readout -- the facts, the paging, the packing and the
+kernels; a KERNEL runs its own launches and nothing around them. Every subject states the level it prices
+(`Subject.level`) and every sample records it, so a reading pairs entries of ONE level and `python -m rola_results
+verdict` refuses a pair of two. A comparison between this library and another is therefore a LAYER comparison: RoLA's
+own layer against attention's, because RoLA's number includes the state its capacity buys.
+
+What this line can measure today: the KERNEL level (`carry_forward`, `intra_forward`, `carry_intra` -- the carry and the
+intra as one operator over facts the caller built -- `liveness_pass`, `entmax_solve`) and one OP-level path
+(`decode_step`, through the engine's decode DAG, which runs the facts pass and commits the pages it writes). There is no
+op-level prefill and no layer subject: `rola.interface.rola_op` refuses on prefill since the box-native rebuild deleted
+the shipped chunk consumer, so the chunk DAG has no live path to time. The flash reference is a layer entry, and until a
+RoLA layer runs beside it, a session that holds both is two levels measured in one place, not a comparison.
 
 ## The reference
 

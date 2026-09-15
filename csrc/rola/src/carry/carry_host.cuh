@@ -72,6 +72,20 @@ inline void refuse_operand(const char* name, const Tensor& t, Dtype dtype, Shape
   STD_TORCH_CHECK(t.sizes() == want, name, " is ", shape(want), ", got ", shape(t.sizes()));
 }
 
+//: A PAGED STATE: the pool a page table's slots index, `[pages, kAtomLeaves, dv + 1]` fp32, whose page count is the
+//: caller's commitment and not a shape this call derives.
+inline void refuse_pool(const char* name, const Tensor& t, int64_t dv) {
+  STD_TORCH_CHECK(t.is_cuda() && t.is_contiguous(), name, " is a contiguous CUDA tensor");
+  STD_TORCH_CHECK(t.scalar_type() == Dtype::Float, name, " is ", Dtype::Float, ", got ",
+                  t.scalar_type());
+  STD_TORCH_CHECK(t.dim() == 3 && t.size(0) >= 1 && t.size(1) == kAtomLeaves && t.size(2) == dv + 1,
+                  name, " is a page pool [pages, ", kAtomLeaves, ", DV + 1] = [pages, ",
+                  kAtomLeaves, ", ", dv + 1, "] with a page table, got ", shape(t.sizes()));
+  STD_TORCH_CHECK(
+      t.numel() * (int64_t)sizeof(float) < 0x100000000LL, name,
+      " is larger than 4 GiB: a slot's byte offset is a 32-bit displacement off the pool's base");
+}
+
 }  // namespace host
 
 //: THE CALL DERIVED: every refusal applied, the parameter block filled but for the ledger.
@@ -111,10 +125,20 @@ inline CarryCall derive_carry_call(const Tensor& read, const Tensor& write, cons
   host::refuse_operand("den", den, Dtype::Float, {BH, L});
   host::refuse_operand("liveness", liveness, Dtype::Int, {BH, 2, wtot, words});
   host::refuse_operand("activity", activity, Dtype::Byte, {BH, pages});
-  if (page_table) host::refuse_operand("page_table", *page_table, Dtype::Int, {BH, pages});
-  const std::vector<int64_t> plane{BH, pages, (int64_t)kAtomLeaves, dv + 1};
-  if (state_in) host::refuse_operand("state_in", *state_in, Dtype::Float, plane);
-  if (state_out) host::refuse_operand("state_out", *state_out, Dtype::Float, plane);
+  //: THE STATE'S SHAPE IS THE PAGE TABLE'S TO DECIDE. Without a table the slot IS the page, so the state is the whole
+  //: plane, one page an atom of every stream. With one, the state is the POOL its slots index and its leading extent is
+  //: a CAPACITY: the pages this call touches were committed before it ran (the pre-analysis reads the activity bits and
+  //: allocates), so a pool holding fewer pages than the state has atoms is the point of paging, not an error.
+  //: -- see docs/internals/state.md#four-shapes
+  if (page_table) {
+    host::refuse_operand("page_table", *page_table, Dtype::Int, {BH, pages});
+    if (state_in) host::refuse_pool("state_in", *state_in, dv);
+    if (state_out) host::refuse_pool("state_out", *state_out, dv);
+  } else {
+    const std::vector<int64_t> plane{BH, pages, (int64_t)kAtomLeaves, dv + 1};
+    if (state_in) host::refuse_operand("state_in", *state_in, Dtype::Float, plane);
+    if (state_out) host::refuse_operand("state_out", *state_out, Dtype::Float, plane);
+  }
   STD_TORCH_CHECK(!state_in || !state_out || state_in->data_ptr() == state_out->data_ptr(),
                   "a carried state is advanced IN PLACE: the exit sweep stores only the pages this "
                   "call writes, so two planes would silently drop the rest");

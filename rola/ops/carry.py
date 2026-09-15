@@ -384,8 +384,26 @@ def _refuse_operands(routes, v, descriptor: StateFormat, liveness, activity):
     return bh, length
 
 
-def _refuse_state(name: str, plane, descriptor: StateFormat, bh: int) -> None:
+def _refuse_state(name: str, plane, descriptor: StateFormat, bh: int, paged: bool) -> None:
+    """THE STATE'S SHAPE IS THE PAGE TABLE'S TO DECIDE.
+
+    DENSE (no table): the slot IS the page, so the state is the whole plane,
+    ``[BH, N / 16, 16, DV + 1]`` in CANONICAL leaf order, stored as split bf16 planes.
+    PAGED: the state is the POOL the table's slots index, ``[pages, 16, DV + 1]``, and
+    its page count is the caller's COMMITMENT: the pre-analysis reads the activity bits
+    and allocates the pages this call will touch before it runs, so the kernel never
+    reaches a page that was not committed and a pool smaller than the state's atom count
+    is what paging is for (`rola.ops.paging.PageArena`, `docs/internals/state.md`).
+    """
     if plane is None:
+        return
+    if paged:
+        want = (PAGE_LEAVES, descriptor.cols)
+        if plane.dim() != 3 or tuple(plane.shape[1:]) != want or plane.shape[0] < 1:
+            raise CarryRefusal(
+                f"{name} is {tuple(plane.shape)}; with a page table a state is the page "
+                f"pool [pages, {PAGE_LEAVES}, DV + 1] = [pages, {want[0]}, {want[1]}] the "
+                f"table's slots index.")
         return
     want = (bh, descriptor.N // PAGE_LEAVES, PAGE_LEAVES, descriptor.cols)
     if tuple(plane.shape) != want:
@@ -410,8 +428,9 @@ def carry_forward(routes: RoutePlanes, v: torch.Tensor, *, descriptor: StateForm
 
     Every shape argument is the DESCRIPTOR's. ``page_table`` is the ``[BH, N / 16]``
     int32 slot table; ``None`` is the dense backing, where the slot IS the page, so the
-    two backings are one kernel, one ABI and one accumulation order. Passing neither
-    state plane is the NULL-STATE call.
+    two backings are one kernel, one ABI and one accumulation order. With a table the
+    state is the page POOL its slots index (`_refuse_state`), committed by the caller
+    before the call. Passing neither state plane is the NULL-STATE call.
 
     The refusals below are the API's own envelope and run first; the extension's entry
     then applies the KERNEL boundary's shape law to the same call.
@@ -420,8 +439,8 @@ def carry_forward(routes: RoutePlanes, v: torch.Tensor, *, descriptor: StateForm
     _refuse_launch(launch)
     _refuse_geometry(geometry, descriptor, launch)
     bh, length = _refuse_operands(routes, v, descriptor, liveness, activity)
-    _refuse_state("state_in", state_in, descriptor, bh)
-    _refuse_state("state_out", state_out, descriptor, bh)
+    _refuse_state("state_in", state_in, descriptor, bh, page_table is not None)
+    _refuse_state("state_out", state_out, descriptor, bh, page_table is not None)
 
     #: ZEROED, not empty: the readout REDUCES into these planes (one contribution per
     #: owner box per token), so they are an accumulator the kernel adds into and never a
@@ -467,8 +486,8 @@ def carry_backward(routes: RoutePlanes, v: torch.Tensor, d_num: torch.Tensor,
             raise CarryRefusal(
                 f"{name} is {tuple(seed.shape)} {seed.dtype}; the reverse seeds are the "
                 f"forward's outputs, {want} fp32.")
-    _refuse_state("state_in", state_in, descriptor, bh)
-    _refuse_state("d_state_out", d_state_out, descriptor, bh)
+    _refuse_state("state_in", state_in, descriptor, bh, page_table is not None)
+    _refuse_state("d_state_out", d_state_out, descriptor, bh, page_table is not None)
 
     return extension().carry_backward(
         routes.read, routes.write, routes.gain, v, d_num, d_den,

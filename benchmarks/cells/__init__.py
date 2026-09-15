@@ -125,8 +125,9 @@ def carry_call(cell: CarryCell, bh: int):
 
 def state_binding(cell: CarryCell, drawn: RealizedCell, desc, bh: int):
     """``(state_in, state_out, page_table)`` the cell's `state` and `backing` bind, allocated once, outside any timed call:
-    `none` binds no plane, `fresh` a plane out, `carried` its drawn entry state in, advanced in place; the `paged`
-    backing addresses the plane through a slot table permuted from the cell's seed."""
+    `none` binds no plane, `fresh` a plane out, `carried` its drawn entry state in, advanced in place. The `dense`
+    backing hands the whole plane; the `paged` backing hands the PAGE POOL and a slot table permuted from the cell's
+    seed, which is the shape a paged caller's pre-analysis commits (`docs/internals/state.md`)."""
     import torch
 
     from rola.ops import carry as carry_ops
@@ -141,10 +142,16 @@ def state_binding(cell: CarryCell, drawn: RealizedCell, desc, bh: int):
         plane, state_in = carry_ops.state_plane(desc, bh), None
     if cell.backing == "dense":
         return state_in, plane, None
+    #: THE PAGED BINDING: the state becomes the POOL a slot table indexes (`rola.ops.carry._refuse_state`), one page an
+    #: atom of every stream -- this cell commits every page, because its call states the conservative activity -- and the
+    #: table permutes each stream's pages inside its own range, from the cell's seed, so the mapping a paged call pays
+    #: for is exercised rather than an identity.
     pages = desc.N // carry_ops.PAGE_LEAVES
     gen = torch.Generator(device="cuda").manual_seed(cell.seed)
-    slots = torch.argsort(torch.rand(pages, device="cuda", generator=gen))
-    return state_in, plane, slots.to(torch.int32).reshape(1, pages).repeat(bh, 1)
+    slots = torch.stack([torch.argsort(torch.rand(pages, device="cuda", generator=gen)) + stream * pages
+                         for stream in range(bh)])
+    pool = plane.reshape(bh * pages, carry_ops.PAGE_LEAVES, desc.cols)
+    return (None if state_in is None else pool), pool, slots.to(torch.int32)
 
 
 __all__ = ["DEPOSIT_TOKEN", "WARPS_PER_CTA", "CarryCell", "RealizedCell", "arm_key", "by_name", "carry_call", "carry_cells",

@@ -172,11 +172,12 @@ def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
     pages = desc.N // carry_ops.PAGE_LEAVES
     gen = torch.Generator(device="cuda").manual_seed(spec.seed)
     slots = torch.argsort(torch.rand(pages, device="cuda", generator=gen))
-    plane = carry_ops.state_plane(desc, 1)
-    drawn, _, _, plane = run(spec, state_out=plane,
-                             page_table=slots.to(torch.int32).reshape(1, pages))
+    #: a POOL, which is what a table's slots index (`rola.ops.carry._refuse_state`), here holding a page per atom
+    pool = carry_ops.state_plane(desc, 1).reshape(pages, carry_ops.PAGE_LEAVES, desc.cols)
+    drawn, _, _, pool = run(spec, state_out=pool,
+                            page_table=slots.to(torch.int32).reshape(1, pages))
     (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
-    assert_slots_close(canonical_from_plane(plane[0, slots].unsqueeze(0)), s_ref.reshape(1, spec.N, spec.dv + 1),
+    assert_slots_close(canonical_from_plane(pool[slots].unsqueeze(0)), s_ref.reshape(1, spec.N, spec.dv + 1),
                        output=CARRY_STATE, envelope=s_env.reshape(1, spec.N, spec.dv + 1),
                        what=f"{spec.name} paged state")
 
@@ -256,11 +257,12 @@ def test_the_two_backings_write_the_same_pages():
 
     gen = torch.Generator(device="cuda").manual_seed(spec.seed)
     slots = torch.argsort(torch.rand(pages, device="cuda", generator=gen))
-    paged = carry_ops.state_plane(desc, 1)
+    #: a POOL of one page an atom, which is the paged state's shape (`rola.ops.carry._refuse_state`)
+    paged = carry_ops.state_plane(desc, 1).reshape(pages, carry_ops.PAGE_LEAVES, desc.cols)
     run(spec, state_out=paged, page_table=slots.to(torch.int32).reshape(1, pages))
 
     floor = max(float((dense - again).abs().max()), float(dense.abs().max()) * 2.0 ** -16)
-    assert float((paged[0, slots] - dense[0]).abs().max()) <= floor, (
+    assert float((paged[slots] - dense[0]).abs().max()) <= floor, (
         "the paged backing wrote different pages than the dense one; the two backings are "
         "one kernel, so a difference past the fold's floor is an addressing bug")
 
@@ -363,6 +365,9 @@ def test_a_window_with_nothing_live_passes_the_state_through_bit_for_bit(name):
 
     for activity in (_honest_activity(drawn, desc), None):
         plane = _occupied_plane(spec)
+        if table is not None:
+            #: with a table the state is the POOL its slots index, one page an atom here
+            plane = plane.reshape(pages, carry_ops.PAGE_LEAVES, desc.cols)
         before = plane.clone()
         _, num, den, _ = run(spec, state_in=plane, state_out=plane, page_table=table,
                              activity=activity)

@@ -63,10 +63,6 @@ def test_a_slot_whose_allowance_is_zero_must_be_exact_and_a_non_finite_slot_fail
 def test_every_output_kind_declares_measured_clauses_no_tighter_than_its_own_budget():
     assert len({output.name for output in OUTPUTS}) == len(OUTPUTS)
     for output in OUTPUTS:
-        if not output.measured:
-            assert output.clauses == (), f"{output.name} is marked unmeasured, so it declares no clause"
-            assert output.rtol is not None, f"{output.name} has neither clauses nor an envelope, so it grades nothing"
-            continue
         assert output.clauses, f"{output.name} declares no clause"
         for rtol, atol in output.clauses:
             assert atol >= 0.0 and rtol >= 0.0, f"{output.name}: a clause is a pair of non-negative numbers"

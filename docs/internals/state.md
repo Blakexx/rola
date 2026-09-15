@@ -243,7 +243,17 @@ through and allocates nothing (ruling 2026-09-08). Neither is the NULL-STATE cal
 nothing comes in, nothing goes out, no sweep runs. `state_in` alone is READ-ONLY: the
 readout against a frozen state, the folds accumulate in registers and are never stored.
 `state_out` alone is a FRESH sequence: a zero state, no entry sweep, the box stored whole
-at exit. Both, the SAME tensor, ADVANCE the plane in place. The state lives in the
+at exit. Both, the SAME tensor, ADVANCE the plane in place.
+
+**THE PAGE TABLE DECIDES THE SHAPE.** Without a table the slot IS the page, so a state is
+the whole plane, `[BH, N / 16, 16, DV + 1]` fp32 in canonical leaf order. With one, a
+state is the POOL the table's slots index, `[pages, 16, DV + 1]`, and its page count is
+the CALLER'S COMMITMENT rather than a shape the call derives: the pre-analysis reads the
+activity bits and allocates the pages the call will touch before it runs (Blake,
+2026-09-15), so the kernel never reaches a page nobody committed, and a pool smaller than
+the state's atom count is what paging is for. An atom with no slot reads as zero and is
+never stored. Both shapes are refused at the surface (`rola.ops.carry._refuse_state`) and
+again at the kernel boundary (`csrc/rola/src/carry/carry_host.cuh`'s `refuse_pool`). The state lives in the
 register file between the two sweeps -- the exit sweep is a whole store of the box's
 written atoms, never a read-modify-write of bytes -- which is why the out plane needs no
 prior contents and why in and out may be one tensor. A plane comes from

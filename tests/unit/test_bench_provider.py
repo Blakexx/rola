@@ -42,18 +42,18 @@ def binary(monkeypatch):
 
 def test_an_arm_is_named_by_its_subject_its_non_default_dials_and_its_construction():
     assert provider.arm_name("carry_forward") == "carry_forward"
-    assert provider.arm_name("prefill_op", calls=4) == "prefill_op@calls=4"
+    assert provider.arm_name("carry_intra", calls=4) == "carry_intra@calls=4"
     assert provider.arm_name("carry_forward", schedule="identity") == "carry_forward@schedule=identity"
     assert provider.arm_name("decode_step", construction="chunk-decode-w16") == "decode_step@layer=chunk-decode-w16"
 
 
 def test_a_cells_arms_are_the_subjects_it_takes_under_the_dials_each_reads(binary):
     names = set(provider.arms(by_name("flagship-alt-k4")))
-    assert {"carry_forward", "carry_forward@schedule=identity", "liveness_pass", "intra_forward", "prefill_op"} <= names
+    assert {"carry_forward", "carry_forward@schedule=identity", "liveness_pass", "intra_forward", "carry_intra"} <= names
     assert not any("@schedule=" in name for name in names if not name.startswith("carry_forward"))
     assert all("schedule" in SUBJECTS[name.split("@")[0]].dials for name in names if "@schedule=" in name)
     #: a partial window has no intra grid: the combined op is not offered
-    assert not any(name.startswith(("prefill_op", "intra_forward")) for name in provider.arms(by_name("flat-small-alt-k16")))
+    assert not any(name.startswith(("carry_intra", "intra_forward")) for name in provider.arms(by_name("flat-small-alt-k16")))
 
 
 def test_a_layer_cells_arms_are_its_declared_constructions(binary):
@@ -67,7 +67,7 @@ def test_a_layer_cells_arms_are_its_declared_constructions(binary):
 def test_an_arm_is_offered_only_where_the_binary_carries_its_kernel(binary):
     binary.intra = []
     names = set(provider.arms(by_name("flagship-alt-k4")))
-    assert "carry_forward" in names and not any(name.startswith(("prefill_op", "intra_forward")) for name in names)
+    assert "carry_forward" in names and not any(name.startswith(("carry_intra", "intra_forward")) for name in names)
     assert "decode_step@layer=chunk-decode-w16" in provider.arms(by_name(DECODE_CELL))
     binary.decode = []
     assert not any(name.startswith("decode_step") for name in provider.arms(by_name(DECODE_CELL)))

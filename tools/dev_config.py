@@ -70,7 +70,6 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
     "environment": {
         "image_digest": Key("str", "", "inside the dev container: sha256 of the Dockerfile the image was built from"),
-        "fla_crosscheck": Key("bool", False, "flash-linear-attention is installed: run the oracle's one-time FLA check"),
     },
 }
 

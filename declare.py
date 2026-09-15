@@ -13,7 +13,7 @@ one session and one memory pass over the cells, every result stored.
 Per checkout: `binary` (the gated build, held on every host slot, cached while its binary stands), `environment` (the
 machine facts, every run), the instruments of `INSTRUMENTS` (SASS and the register walk once, cached; the phase clock,
 pipe counters, stall census, timeline and the intra roofline on every carry cell, every run, holding the GPU), and with
-a timing server the timing registrations: `carry_forward` and `prefill_op` on the carry cells, `entmax_solve@layer=C`
+a timing server the timing registrations: `carry_forward` and `carry_intra` on the carry cells, `entmax_solve@layer=C`
 and `decode_step@layer=C` for each RoLA construction on the layer cells declared for it, and the clock reader. Every
 target depends on the binary and the environment, whose outputs reach its key. This file imports nothing of rola's: it
 reads the constructions from `benchmarks/cells/layer.py` by path.
@@ -54,7 +54,7 @@ INSTRUMENTS = {
     "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}", "--no-record"], True, {"gpu": "all"}, []),
     "roofline": ("benchmarks/bench_intra.py", ["--cells", "{cell}"], True, {"gpu": "all"}, []),
 }
-CARRY_ARMS = ("carry_forward", "prefill_op")
+CARRY_ARMS = ("carry_forward", "carry_intra")
 LAYER_ARMS = ("entmax_solve", "decode_step")
 #: seconds an instrument may run on one cell
 INSTRUMENT_TIMEOUT_S = 3600

@@ -26,7 +26,7 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     out = declared(f"flagship-dense,flagship-alt-k4,{SPARSE},{DECODE}")
     labels = set(out["targets"])
     assert {"rola/binary", "rola/environment", "rola/sass", "rola/registers", "rola/phases", "rola/roofline",
-            "rola/carry_forward", "rola/prefill_op", "rola/clock", "session", "memory", "store/session", "store/memory",
+            "rola/carry_forward", "rola/carry_intra", "rola/clock", "session", "memory", "store/session", "store/memory",
             "store/sass", "timing-server", "timing-server-stop"} <= labels
     assert {"rola/entmax_solve@layer=chunk-sparse-gain8", "rola/entmax_solve@layer=chunk-decode-w16",
             "rola/decode_step@layer=chunk-decode-w16"} <= labels

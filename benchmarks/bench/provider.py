@@ -11,7 +11,7 @@ and returns a builder for every arm this checkout runs on it, or refuses the cel
 `benchmarks/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
 through `oneshot_argv`.
 An arm is a subject that applies to the cell (`bench.subjects.applicable`, the cell's own facts) and whose kernel this
-binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `prefill_op`,
+binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `carry_intra`,
 the decode arm for `decode_step`), with its dials: its name is the subject, then `@calls=N` for a call count other than
 one and `@schedule=S` for a carry order other than `first`, each only where the subject reads that dial
 (`Subject.calls`, `Subject.dials`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
@@ -98,7 +98,7 @@ def _kernel_carried(subject: str, spec, construction) -> bool:
     from rola.ops import carry, decode, intra
     from rola.ops.prefill import _intra_level_width
 
-    if subject == "prefill_op":
+    if subject == "carry_intra":
         return len(set(spec.widths)) == 1 and _intra_level_width(len(spec.widths)) == spec.widths[0]
     if subject == "intra_forward":
         widths = {lw for levels, lw, window, _smem in intra.arms() if levels == len(spec.widths) and window == carry.WINDOW}
@@ -146,7 +146,8 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
         return start.elapsed_time(end)
 
     widths = spec.widths if kind == "carry" else construction.widths
-    cell = {"cell": spec.name, "kind": kind, "subject": name, "calls": calls, "schedule": fx["schedule"],
+    cell = {"cell": spec.name, "kind": kind, "subject": name, "level": subject.level, "calls": calls,
+            "schedule": fx["schedule"],
             "state": getattr(spec, "state", None), "backing": getattr(spec, "backing", None),
             "construction": construction and construction.name, "tokens": spec.tokens, "d_v": spec.dv,
             "widths": list(widths),
