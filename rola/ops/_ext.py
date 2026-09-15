@@ -34,10 +34,82 @@ from functools import lru_cache
 #: ``MODULE_NAME``.
 _IMPORT_ERROR: ImportError | None = None
 try:
-    from rola import _C as _rola_cuda
+    from rola import _C  # noqa: F401 -- loading the library registers torch.ops.rola
 except ImportError as e:  # noqa: BLE001
-    _rola_cuda = None
+    _C = None
     _IMPORT_ERROR = e
+
+
+class RoLAVmmOwner:
+    """The CUDA-driver VMM backing of a page arena (``csrc/rola/src/paging/vmm_owner.cuh``), held by the extension under
+    an integer handle: the operators take the handle, and this object is the handle's Python face. Releasing it drops
+    the extension's reference; a tensor view of the arena keeps the owner alive past that."""
+
+    backing_kind = "cuda_driver_vmm"
+    _FACTS = ("closed", "mapped_capacity_pages", "dense_limit_pages", "committed_bytes", "virtual_bytes",
+              "allocation_granularity", "chunk_pages")
+
+    def __init__(self, ops, handle: int) -> None:
+        self._ops, self._handle = ops, handle
+
+    def _facts(self) -> dict:
+        return dict(zip(self._FACTS, self._ops.vmm_facts(self._handle), strict=True))
+
+    def base(self):
+        return self._ops.vmm_base(self._handle)
+
+    def grow(self, required_pages: int) -> None:
+        self._ops.vmm_grow(self._handle, required_pages)
+
+    def rollback_to(self, mapped_capacity_pages: int) -> None:
+        self._ops.vmm_rollback_to(self._handle, mapped_capacity_pages)
+
+    def reset(self) -> None:
+        self._ops.vmm_reset(self._handle)
+
+    def close(self) -> None:
+        self._ops.vmm_close(self._handle)
+
+    def __del__(self) -> None:
+        handle, self._handle = getattr(self, "_handle", None), None
+        if handle is not None:
+            self._ops.vmm_release(handle)
+
+    closed = property(lambda self: bool(self._facts()["closed"]))
+    mapped_capacity_pages = property(lambda self: self._facts()["mapped_capacity_pages"])
+    dense_limit_pages = property(lambda self: self._facts()["dense_limit_pages"])
+    committed_bytes = property(lambda self: self._facts()["committed_bytes"])
+    virtual_bytes = property(lambda self: self._facts()["virtual_bytes"])
+    allocation_granularity = property(lambda self: self._facts()["allocation_granularity"])
+    chunk_pages = property(lambda self: self._facts()["chunk_pages"])
+
+
+class _Extension:
+    """rola's operators (``torch.ops.rola``) under the names the package calls them by, and the VMM owner's handle as an
+    object."""
+
+    def __init__(self, ops) -> None:
+        self._ops = ops
+
+    def __getattr__(self, name: str):
+        return getattr(self._ops, name)
+
+    def rola_vmm_probe(self, device: int) -> dict:
+        found_device, supported, granularity, reason = self._ops.vmm_probe(device)
+        return {"device": found_device, "supported": supported, "allocation_granularity": granularity,
+                "reason": reason}
+
+    def rola_vmm_create(self, device: int, dense_limit_pages: int, page_rows: int, page_cols: int,
+                        target_chunk_bytes: int = 64 * 1024 * 1024) -> RoLAVmmOwner:
+        return RoLAVmmOwner(self._ops, self._ops.vmm_create(device, dense_limit_pages, page_rows, page_cols,
+                                                            target_chunk_bytes))
+
+
+_rola_cuda: _Extension | None = None
+if _C is not None:
+    import torch
+
+    _rola_cuda = _Extension(torch.ops.rola)
 
 
 _MISSING = """\

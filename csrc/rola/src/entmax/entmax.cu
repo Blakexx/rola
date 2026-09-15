@@ -16,8 +16,7 @@
 #include <cub/warp/warp_reduce.cuh>
 #include <cub/warp/warp_scan.cuh>
 
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAGuard.h>
+#include "common/torch_seam.cuh"
 
 #include "common/arch_runtime.cuh"
 #include "dispatch_switch.cuh"
@@ -408,13 +407,13 @@ __global__ __launch_bounds__(BLOCK_THREADS, MIN_BLOCKS_PER_SM) void union_backwa
 // count is unchanged from the Triton lowering: docs/internals/entmax/entmax.md#launch-shape
 // ---------------------------------------------------------------------------
 template <typename LogitT, typename OutT>
-void launch_forward(const torch::Tensor& rl, const torch::Tensor& wl, torch::Tensor& mid,
-                    torch::Tensor& sup, torch::Tensor& rv, torch::Tensor& wv,
-                    const LevelTable& table, int levels, int w_pad, int heads, double alpha) {
+void launch_forward(const Tensor& rl, const Tensor& wl, Tensor& mid, Tensor& sup, Tensor& rv,
+                    Tensor& wv, const LevelTable& table, int levels, int w_pad, int heads,
+                    double alpha) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/entmax.md#nstreams
   const int n_streams = rl.size(0) * heads, tokens = rl.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   const bool a15 = alpha == 1.5;
 
   //: THE LAUNCH IS WRITTEN ONCE, and the `(lane width, items per thread)` pair is -- see docs/internals/entmax/entmax.md#kwpad
@@ -426,25 +425,25 @@ void launch_forward(const torch::Tensor& rl, const torch::Tensor& wl, torch::Ten
         bool_switch(a15, [&](auto A15) {
           union_forward_kernel<kLaneWidth, kItemsPerThread, decltype(A15)::value, LogitT, OutT>
               <<<grid, BLOCK_THREADS, 0, stream>>>(
-                  (const LogitT*)rl.data_ptr(), (const LogitT*)wl.data_ptr(), mid.data_ptr<float>(),
-                  sup.data_ptr<int32_t>(), (OutT*)rv.data_ptr(), (OutT*)wv.data_ptr(), tokens,
-                  heads, table, five_logits(rl, heads), five_logits(wl, heads), five(mid), five(rv),
-                  five(wv), five(sup));
+                  (const LogitT*)rl.data_ptr(), (const LogitT*)wl.data_ptr(),
+                  mid.mutable_data_ptr<float>(), sup.mutable_data_ptr<int32_t>(),
+                  (OutT*)rv.data_ptr(), (OutT*)wv.data_ptr(), tokens, heads, table,
+                  five_logits(rl, heads), five_logits(wl, heads), five(mid), five(rv), five(wv),
+                  five(sup));
         });
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 template <typename LogitT, typename OutT>
-void launch_backward(const torch::Tensor& rl, const torch::Tensor& wl, const torch::Tensor& mid,
-                     const torch::Tensor& sup, const torch::Tensor& rv, const torch::Tensor& wv,
-                     const torch::Tensor& dr, const torch::Tensor& dw, torch::Tensor& drl,
-                     torch::Tensor& dwl, const LevelTable& table, int levels, int w_pad, int heads,
-                     double alpha) {
+void launch_backward(const Tensor& rl, const Tensor& wl, const Tensor& mid, const Tensor& sup,
+                     const Tensor& rv, const Tensor& wv, const Tensor& dr, const Tensor& dw,
+                     Tensor& drl, Tensor& dwl, const LevelTable& table, int levels, int w_pad,
+                     int heads, double alpha) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/entmax.md#nstreams-2
   const int n_streams = drl.size(0) * heads, tokens = drl.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   const bool a15 = alpha == 1.5;
 
   int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
@@ -455,22 +454,22 @@ void launch_backward(const torch::Tensor& rl, const torch::Tensor& wl, const tor
         bool_switch(a15, [&](auto A15) {
           union_backward_kernel<kLaneWidth, kItemsPerThread, decltype(A15)::value, LogitT, OutT>
               <<<grid, BLOCK_THREADS, 0, stream>>>(
-                  (const LogitT*)rl.data_ptr(), (const LogitT*)wl.data_ptr(), mid.data_ptr<float>(),
-                  sup.data_ptr<int32_t>(), (const OutT*)rv.data_ptr(), (const OutT*)wv.data_ptr(),
+                  (const LogitT*)rl.data_ptr(), (const LogitT*)wl.data_ptr(),
+                  mid.mutable_data_ptr<float>(), sup.mutable_data_ptr<int32_t>(),
+                  (const OutT*)rv.data_ptr(), (const OutT*)wv.data_ptr(),
                   (const OutT*)dr.data_ptr(), (const OutT*)dw.data_ptr(), (LogitT*)drl.data_ptr(),
                   (LogitT*)dwl.data_ptr(), tokens, heads, table, five_logits(rl, heads),
                   five_logits(wl, heads), five(mid), five(rv), five(wv), five(dr), five(dw),
                   five_logits(drl, heads), five_logits(dwl, heads), five(sup));
         });
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 }  // namespace detail
 
-void union_forward(const torch::Tensor& read_logits, const torch::Tensor& write_logits,
-                   torch::Tensor& midpoint_values, torch::Tensor& support_words,
-                   torch::Tensor& read_values, torch::Tensor& write_values,
+void union_forward(const Tensor& read_logits, const Tensor& write_logits, Tensor& midpoint_values,
+                   Tensor& support_words, Tensor& read_values, Tensor& write_values,
                    const std::vector<int64_t>& logit_offsets,
                    const std::vector<int64_t>& value_offsets,
                    const std::vector<int64_t>& midpoint_offsets,
@@ -478,15 +477,15 @@ void union_forward(const torch::Tensor& read_logits, const torch::Tensor& write_
                    int64_t heads, double alpha) {
   check_arch_table();
   detail::check_logits(read_logits);
-  TORCH_CHECK(read_logits.scalar_type() == write_logits.scalar_type(),
-              "read/write routing logits must share a dtype");
-  TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "union entmax supports alpha 1.5 / 2.0 only");
-  TORCH_CHECK(read_values.scalar_type() == write_values.scalar_type(),
-              "read/write route values must share a dtype");
+  STD_TORCH_CHECK(read_logits.scalar_type() == write_logits.scalar_type(),
+                  "read/write routing logits must share a dtype");
+  STD_TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "union entmax supports alpha 1.5 / 2.0 only");
+  STD_TORCH_CHECK(read_values.scalar_type() == write_values.scalar_type(),
+                  "read/write route values must share a dtype");
   const auto table =
       detail::build_table(logit_offsets, value_offsets, support_offsets, widths, midpoint_offsets);
   const int levels = (int)widths.size(), w_pad = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(read_logits.device());
+  const DeviceGuard guard(read_logits.get_device_index());
   detail::logit_value_switch(
       read_logits.scalar_type(), read_values.scalar_type(), [&](auto L, auto V) {
         detail::launch_forward<decltype(L), decltype(V)>(read_logits, write_logits, midpoint_values,
@@ -495,11 +494,10 @@ void union_forward(const torch::Tensor& read_logits, const torch::Tensor& write_
       });
 }
 
-void union_backward(const torch::Tensor& read_logits, const torch::Tensor& write_logits,
-                    const torch::Tensor& midpoint_values, const torch::Tensor& support_words,
-                    const torch::Tensor& read_values, const torch::Tensor& write_values,
-                    const torch::Tensor& d_read, const torch::Tensor& d_write,
-                    torch::Tensor& d_read_logits, torch::Tensor& d_write_logits,
+void union_backward(const Tensor& read_logits, const Tensor& write_logits,
+                    const Tensor& midpoint_values, const Tensor& support_words,
+                    const Tensor& read_values, const Tensor& write_values, const Tensor& d_read,
+                    const Tensor& d_write, Tensor& d_read_logits, Tensor& d_write_logits,
                     const std::vector<int64_t>& logit_offsets,
                     const std::vector<int64_t>& value_offsets,
                     const std::vector<int64_t>& midpoint_offsets,
@@ -507,13 +505,13 @@ void union_backward(const torch::Tensor& read_logits, const torch::Tensor& write
                     int64_t heads, double alpha) {
   check_arch_table();
   detail::check_logits(read_logits);
-  TORCH_CHECK(read_logits.scalar_type() == d_read_logits.scalar_type(),
-              "the union VJP writes logit gradients in the logits' own dtype");
-  TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "union entmax supports alpha 1.5 / 2.0 only");
+  STD_TORCH_CHECK(read_logits.scalar_type() == d_read_logits.scalar_type(),
+                  "the union VJP writes logit gradients in the logits' own dtype");
+  STD_TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "union entmax supports alpha 1.5 / 2.0 only");
   const auto table =
       detail::build_table(logit_offsets, value_offsets, support_offsets, widths, midpoint_offsets);
   const int levels = (int)widths.size(), w_pad = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(read_logits.device());
+  const DeviceGuard guard(read_logits.get_device_index());
   detail::logit_value_switch(read_logits.scalar_type(), read_values.scalar_type(),
                              [&](auto L, auto V) {
                                detail::launch_backward<decltype(L), decltype(V)>(

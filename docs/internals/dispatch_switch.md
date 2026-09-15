@@ -58,7 +58,7 @@ line has a source location a debugger and a profiler can name.
 | | axis | unmatched value |
 |---|---|---|
 | `bool_switch(value, body)` | one boolean | impossible — both arms exist |
-| `int_switch<VALUES...>(value, what, body)` | one integer over a CLOSED set | `TORCH_CHECK` naming the axis and the value |
+| `int_switch<VALUES...>(value, what, body)` | one integer over a CLOSED set | `STD_TORCH_CHECK` naming the axis and the value |
 
 **`int_switch`'s candidate set is part of the call.** The set is where the instantiated
 arms are declared, so a runtime value outside it is a NAMED REFUSAL and never a

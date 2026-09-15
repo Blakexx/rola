@@ -15,8 +15,7 @@
 #include <cub/warp/warp_reduce.cuh>
 #include <cub/warp/warp_scan.cuh>
 
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAGuard.h>
+#include "common/torch_seam.cuh"
 
 #include "common/arch_runtime.cuh"
 #include "dispatch_switch.cuh"
@@ -442,14 +441,14 @@ __global__ __launch_bounds__(BLOCK_THREADS, MIN_BLOCKS_PER_SM) void softmax_back
 // dtype -- docs/internals/entmax/factor.md#batched-levels
 // ---------------------------------------------------------------------------
 template <typename LogitT, typename OutT>
-void launch_factor_forward(const torch::Tensor& logits, const c10::optional<torch::Tensor>& mask,
-                           torch::Tensor& values, const c10::optional<torch::Tensor>& values_second,
-                           torch::Tensor& support, const LevelTable& table, int levels, int klass,
-                           int heads, double alpha) {
+void launch_factor_forward(const Tensor& logits, const std::optional<Tensor>& mask, Tensor& values,
+                           const std::optional<Tensor>& values_second, Tensor& support,
+                           const LevelTable& table, int levels, int klass, int heads,
+                           double alpha) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/factor.md#nstreams
   const int n_streams = logits.size(0) * heads, tokens = logits.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
       klass, "independent entmax padded width (MAX_BRANCH_WIDTH = 256)", [&](auto WPAD) {
         constexpr int kWPad = decltype(WPAD)::value;
@@ -460,23 +459,24 @@ void launch_factor_forward(const torch::Tensor& logits, const c10::optional<torc
               <<<grid, BLOCK_THREADS, 0, stream>>>(
                   (const LogitT*)logits.data_ptr(), ptr_or_null<const bool>(mask),
                   (OutT*)values.data_ptr(), ptr_or_null<OutT>(values_second),
-                  support.data_ptr<int32_t>(), tokens, heads, table, five_logits(logits, heads),
-                  five_or_zero(mask), five(values), five_or_zero(values_second), five(support));
+                  support.mutable_data_ptr<int32_t>(), tokens, heads, table,
+                  five_logits(logits, heads), five_or_zero(mask), five(values),
+                  five_or_zero(values_second), five(support));
         });
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 template <typename LogitT, typename OutT>
-void launch_factor_backward(const torch::Tensor& values, const torch::Tensor& support,
-                            const c10::optional<torch::Tensor>& mask, const torch::Tensor& d_values,
-                            const c10::optional<torch::Tensor>& d_values_second,
-                            torch::Tensor& d_logits, const LevelTable& table, int levels, int klass,
-                            int heads, bool accumulate, double alpha) {
+void launch_factor_backward(const Tensor& values, const Tensor& support,
+                            const std::optional<Tensor>& mask, const Tensor& d_values,
+                            const std::optional<Tensor>& d_values_second, Tensor& d_logits,
+                            const LevelTable& table, int levels, int klass, int heads,
+                            bool accumulate, double alpha) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/factor.md#nstreams-2
   const int n_streams = d_logits.size(0) * heads, tokens = d_logits.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
       klass, "independent entmax padded width (MAX_BRANCH_WIDTH = 256)", [&](auto WPAD) {
         constexpr int kWPad = decltype(WPAD)::value;
@@ -485,24 +485,24 @@ void launch_factor_backward(const torch::Tensor& values, const torch::Tensor& su
         bool_switch(alpha == 1.5, [&](auto A15) {
           factor_backward_kernel<kLaneWidth, kItemsPerThread, decltype(A15)::value, LogitT, OutT>
               <<<grid, BLOCK_THREADS, 0, stream>>>(
-                  (const OutT*)values.data_ptr(), support.data_ptr<int32_t>(),
+                  (const OutT*)values.data_ptr(), support.mutable_data_ptr<int32_t>(),
                   ptr_or_null<const bool>(mask), (const OutT*)d_values.data_ptr(),
                   ptr_or_null<const OutT>(d_values_second), (LogitT*)d_logits.data_ptr(), tokens,
                   heads, accumulate, table, five(values), five(support), five_or_zero(mask),
                   five(d_values), five_or_zero(d_values_second), five_logits(d_logits, heads));
         });
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 template <typename LogitT, typename OutT>
-void launch_softmax_forward(const torch::Tensor& logits, torch::Tensor& values,
-                            const c10::optional<torch::Tensor>& values_second,
-                            const LevelTable& table, int levels, int klass, int heads) {
+void launch_softmax_forward(const Tensor& logits, Tensor& values,
+                            const std::optional<Tensor>& values_second, const LevelTable& table,
+                            int levels, int klass, int heads) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/factor.md#nstreams-3
   const int n_streams = logits.size(0) * heads, tokens = logits.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
       klass, "softmax padded width (MAX_BRANCH_WIDTH = 256)", [&](auto WPAD) {
         constexpr int kWPad = decltype(WPAD)::value;
@@ -514,18 +514,18 @@ void launch_softmax_forward(const torch::Tensor& logits, torch::Tensor& values,
                 ptr_or_null<OutT>(values_second), tokens, heads, table, five_logits(logits, heads),
                 five(values), five_or_zero(values_second));
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 template <typename LogitT, typename OutT>
-void launch_softmax_backward(const torch::Tensor& values, const torch::Tensor& d_values,
-                             const c10::optional<torch::Tensor>& d_values_second,
-                             torch::Tensor& d_logits, const LevelTable& table, int levels,
-                             int klass, int heads, bool accumulate) {
+void launch_softmax_backward(const Tensor& values, const Tensor& d_values,
+                             const std::optional<Tensor>& d_values_second, Tensor& d_logits,
+                             const LevelTable& table, int levels, int klass, int heads,
+                             bool accumulate) {
   //: A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`; -- see docs/internals/entmax/factor.md#nstreams-4
   const int n_streams = d_logits.size(0) * heads, tokens = d_logits.size(1);
   dim3 grid((tokens + WORD_TOKENS - 1) / WORD_TOKENS, n_streams, levels);
-  auto stream = at::cuda::getCurrentCUDAStream();
+  auto stream = current_stream();
   int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
       klass, "softmax padded width (MAX_BRANCH_WIDTH = 256)", [&](auto WPAD) {
         constexpr int kWPad = decltype(WPAD)::value;
@@ -538,33 +538,33 @@ void launch_softmax_backward(const torch::Tensor& values, const torch::Tensor& d
                 heads, accumulate, table, five(values), five(d_values),
                 five_or_zero(d_values_second), five_logits(d_logits, heads));
       });
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
-void check_values(const torch::Tensor& values, const c10::optional<torch::Tensor>& second) {
-  TORCH_CHECK(values.scalar_type() == torch::kFloat32 || values.scalar_type() == torch::kBFloat16,
-              "route values must be fp32 or bf16");
-  TORCH_CHECK(!second.has_value() || second->scalar_type() == values.scalar_type(),
-              "both route value outputs must share a dtype");
+void check_values(const Tensor& values, const std::optional<Tensor>& second) {
+  STD_TORCH_CHECK(values.scalar_type() == Dtype::Float || values.scalar_type() == Dtype::BFloat16,
+                  "route values must be fp32 or bf16");
+  STD_TORCH_CHECK(!second.has_value() || second->scalar_type() == values.scalar_type(),
+                  "both route value outputs must share a dtype");
 }
 
 }  // namespace detail
 
-void factor_forward(const torch::Tensor& logits, const c10::optional<torch::Tensor>& mask,
-                    torch::Tensor& values, const c10::optional<torch::Tensor>& values_second,
-                    torch::Tensor& support_words, const std::vector<int64_t>& logit_offsets,
+void factor_forward(const Tensor& logits, const std::optional<Tensor>& mask, Tensor& values,
+                    const std::optional<Tensor>& values_second, Tensor& support_words,
+                    const std::vector<int64_t>& logit_offsets,
                     const std::vector<int64_t>& value_offsets,
                     const std::vector<int64_t>& support_offsets, const std::vector<int64_t>& widths,
                     int64_t heads, double alpha) {
   check_arch_table();
   detail::check_logits(logits);
-  TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "independent entmax supports alpha 1.5 / 2.0 only");
-  TORCH_CHECK(support_offsets.size() == widths.size(),
-              "the entmax forward writes a support word per level");
+  STD_TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "independent entmax supports alpha 1.5 / 2.0 only");
+  STD_TORCH_CHECK(support_offsets.size() == widths.size(),
+                  "the entmax forward writes a support word per level");
   detail::check_values(values, values_second);
   const auto table = detail::build_table(logit_offsets, value_offsets, support_offsets, widths);
   const int klass = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(logits.device());
+  const DeviceGuard guard(logits.get_device_index());
   detail::logit_value_switch(logits.scalar_type(), values.scalar_type(), [&](auto L, auto V) {
     detail::launch_factor_forward<decltype(L), decltype(V)>(
         logits, mask, values, values_second, support_words, table, (int)widths.size(), klass,
@@ -572,9 +572,9 @@ void factor_forward(const torch::Tensor& logits, const c10::optional<torch::Tens
   });
 }
 
-void factor_backward(const torch::Tensor& values, const torch::Tensor& support_words,
-                     const c10::optional<torch::Tensor>& mask, const torch::Tensor& d_values,
-                     const c10::optional<torch::Tensor>& d_values_second, torch::Tensor& d_logits,
+void factor_backward(const Tensor& values, const Tensor& support_words,
+                     const std::optional<Tensor>& mask, const Tensor& d_values,
+                     const std::optional<Tensor>& d_values_second, Tensor& d_logits,
                      const std::vector<int64_t>& logit_offsets,
                      const std::vector<int64_t>& value_offsets,
                      const std::vector<int64_t>& support_offsets,
@@ -582,15 +582,15 @@ void factor_backward(const torch::Tensor& values, const torch::Tensor& support_w
                      double alpha) {
   check_arch_table();
   detail::check_logits(d_logits);
-  TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "independent entmax supports alpha 1.5 / 2.0 only");
-  TORCH_CHECK(support_offsets.size() == widths.size(),
-              "the entmax backward reads a support word per level");
+  STD_TORCH_CHECK(alpha == 1.5 || alpha == 2.0, "independent entmax supports alpha 1.5 / 2.0 only");
+  STD_TORCH_CHECK(support_offsets.size() == widths.size(),
+                  "the entmax backward reads a support word per level");
   detail::check_values(values, d_values_second);
-  TORCH_CHECK(d_values.scalar_type() == values.scalar_type(),
-              "cotangents must share the route values' dtype");
+  STD_TORCH_CHECK(d_values.scalar_type() == values.scalar_type(),
+                  "cotangents must share the route values' dtype");
   const auto table = detail::build_table(logit_offsets, value_offsets, support_offsets, widths);
   const int klass = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(d_logits.device());
+  const DeviceGuard guard(d_logits.get_device_index());
   detail::logit_value_switch(d_logits.scalar_type(), values.scalar_type(), [&](auto L, auto V) {
     detail::launch_factor_backward<decltype(L), decltype(V)>(
         values, support_words, mask, d_values, d_values_second, d_logits, table, (int)widths.size(),
@@ -598,8 +598,8 @@ void factor_backward(const torch::Tensor& values, const torch::Tensor& support_w
   });
 }
 
-void softmax_forward(const torch::Tensor& logits, torch::Tensor& values,
-                     const c10::optional<torch::Tensor>& values_second,
+void softmax_forward(const Tensor& logits, Tensor& values,
+                     const std::optional<Tensor>& values_second,
                      const std::vector<int64_t>& logit_offsets,
                      const std::vector<int64_t>& value_offsets, const std::vector<int64_t>& widths,
                      int64_t heads) {
@@ -608,26 +608,26 @@ void softmax_forward(const torch::Tensor& logits, torch::Tensor& values,
   detail::check_values(values, values_second);
   const auto table = detail::build_table(logit_offsets, value_offsets, {}, widths);
   const int klass = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(logits.device());
+  const DeviceGuard guard(logits.get_device_index());
   detail::logit_value_switch(logits.scalar_type(), values.scalar_type(), [&](auto L, auto V) {
     detail::launch_softmax_forward<decltype(L), decltype(V)>(logits, values, values_second, table,
                                                              (int)widths.size(), klass, (int)heads);
   });
 }
 
-void softmax_backward(const torch::Tensor& values, const torch::Tensor& d_values,
-                      const c10::optional<torch::Tensor>& d_values_second, torch::Tensor& d_logits,
+void softmax_backward(const Tensor& values, const Tensor& d_values,
+                      const std::optional<Tensor>& d_values_second, Tensor& d_logits,
                       const std::vector<int64_t>& logit_offsets,
                       const std::vector<int64_t>& value_offsets, const std::vector<int64_t>& widths,
                       bool accumulate, int64_t heads) {
   check_arch_table();
   detail::check_logits(d_logits);
   detail::check_values(values, d_values_second);
-  TORCH_CHECK(d_values.scalar_type() == values.scalar_type(),
-              "cotangents must share the route values' dtype");
+  STD_TORCH_CHECK(d_values.scalar_type() == values.scalar_type(),
+                  "cotangents must share the route values' dtype");
   const auto table = detail::build_table(logit_offsets, value_offsets, {}, widths);
   const int klass = detail::padded_width((int)widths[0]);
-  const at::cuda::CUDAGuard guard(d_logits.device());
+  const DeviceGuard guard(d_logits.get_device_index());
   detail::logit_value_switch(d_logits.scalar_type(), values.scalar_type(), [&](auto L, auto V) {
     detail::launch_softmax_backward<decltype(L), decltype(V)>(values, d_values, d_values_second,
                                                               d_logits, table, (int)widths.size(),

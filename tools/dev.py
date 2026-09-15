@@ -473,7 +473,7 @@ def cmd_worktree(a) -> int:
     (site / "zz_rola_base.pth").write_text(f"{site_packages(Path(base))}\n")
     for pth, key in LINKED.items():
         (site / pth).write_text(f"{dev_config.get(key)}\n")
-    main_so = sorted((main / "rola").glob("_C.cpython-*.so"))
+    main_so = sorted((main / "rola").glob("_C*.so"))
     same = subprocess.run(["git", "-C", str(main), "rev-parse", "HEAD"], capture_output=True, text=True).stdout == \
         subprocess.run(["git", "-C", str(worktree), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
     install = [str(venv / "bin" / "python"), "-m", "pip", "install", "-e", ".", "--no-deps", "--no-build-isolation"]

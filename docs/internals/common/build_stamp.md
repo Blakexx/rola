@@ -16,6 +16,9 @@ A one-thread kernel returns `ROLA_CSRC_STAMP`: 60 bits of the sha256 of
 `csrc/rola/src`, the same digest `tools/ratify.py` records as `source.csrc_sha256`.
 The value is written by the device out of a constant this translation unit compiled
 in, so it is a fact about the loaded fatbin and not about the host process that asks.
+The kernel is in a named namespace, `rola::stampdet`, and not an anonymous one: nvcc
+mangles an anonymous-namespace kernel with a hash of the build path, and a manifest
+keyed on that name would refuse the same kernel built in another directory.
 
 `tests/unit/test_build_stamp.py` is what makes it a gate rather than a number: the
 value the fatbin returns must EQUAL what this tree hashes to right now. The test reads

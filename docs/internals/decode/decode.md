@@ -948,7 +948,7 @@ multiply the matrix by eight for a few hundred bytes of gather,
 [`decode_fold.md#the-dtype-arms`](decode_fold.md#the-dtype-arms)), and — the axis this rung
 removed — no ADDRESS-SPACE arm: the factor tables are shared memory unconditionally, at
 every shipped topology, so there is no second arm for a template parameter to select
-between. `d_v` is restricted to `{32, 64}` by a `TORCH_CHECK`, and `D` outside `[1, 4]` is
+between. `d_v` is restricted to `{32, 64}` by a `STD_TORCH_CHECK`, and `D` outside `[1, 4]` is
 refused in the dispatch's `default`.
 
 ## <a id="producer-width-mirror"></a>33. Why the producer-width mirror is bound separately
@@ -973,7 +973,7 @@ rather than as a plausible zero is what a gate wants.
 
 ## <a id="smem-refusal"></a>35. The staged-amplitude SMEM budget is a declared capacity
 
-The host entry queries `cudaDevAttrMaxSharedMemoryPerBlock` and `TORCH_CHECK`s
+The host entry queries `cudaDevAttrMaxSharedMemoryPerBlock` and `STD_TORCH_CHECK`s
 `decode_step_smem_bytes(...)` against it, naming `sum_l width_l` in the message. That
 function's total is the staged amplitude rows, the dial row, the token value, the
 cross-warp fold buffer and BOTH factor-table blocks (the digit masks, the owner liveness
@@ -1492,7 +1492,7 @@ them either way is what keeps the two backings ONE ABI:
 docs/internals/decode/decode_api.md#the-step
 
 <a id="torch-check"></a>
-### `TORCH_CHECK`
+### `STD_TORCH_CHECK`
 
 THE ATOM'S PLACE IN THE LATTICE, required of a PAGED backing only, and now ONE
 condition where the interleaved order needed two: a unit is a contiguous aligned run,
@@ -1859,7 +1859,7 @@ the binary carries them, so a subset build is SELF-IDENTIFYING rather than merel
 smaller: docs/internals/decode/decode_api.md#arm-subset
 
 <a id="torchcheck"></a>
-### `TORCH_CHECK`
+### `STD_TORCH_CHECK`
 
 The instantiation matrix is `DV(2) x D(4) x DECAY(2) = 16`. What is NOT an axis --
 `BT`, `BC`, the lattice's `(k, m)` and every operand's storage type -- is the

@@ -43,11 +43,11 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO / "csrc" / "rola" / "src"
 ARCH_CAPS = SRC / "common" / "arch_caps.cuh"
 
-#: THE ENTRY LIST IS THE PYBIND TRANSLATION UNIT'S OWN. Every entry the extension
-#: offers is an ``m.def`` here and nowhere else, so a family cannot join the module
+#: THE ENTRY LIST IS THE REGISTRATION TRANSLATION UNIT'S OWN. Every operator the extension
+#: offers is an ``m.impl`` here and nowhere else, so a family cannot join the library
 #: without appearing in this scan -- which a per-header glob could not promise, since a
 #: family may declare its entries in its kernel header rather than in an ``*_api.cuh``.
-PYBIND_TU = REPO / "csrc" / "rola" / "rola_api.cpp"
+REGISTRATION_TU = REPO / "csrc" / "rola" / "rola_api.cpp"
 
 #: The device translation units an entry's definition may live in.
 DEVICE_TUS = tuple(sorted(SRC.glob("*/*.cu")))
@@ -67,34 +67,34 @@ _LAUNCHLESS = {
     "carry_sub_boxes": "a host derivation over the descriptor; no device work",
     "rola_decode_capacity": "a host derivation over the descriptor; no device work",
     "rola_decode_producer_width_mirror": "returns a compiled-in width",
-    "rola_vmm_create": "a driver allocation, not a kernel launch",
-    "rola_vmm_probe": "a driver capability probe, not a kernel launch",
+    "vmm_create": "a driver allocation, not a kernel launch",
+    "vmm_probe": "a driver capability probe, not a kernel launch",
+    "vmm_release": "drops the registry's reference to a driver allocation",
+    "vmm_base": "a tensor view over a driver allocation, not a kernel launch",
+    "vmm_grow": "maps driver memory, not a kernel launch",
+    "vmm_rollback_to": "unmaps driver memory, not a kernel launch",
+    "vmm_reset": "a logical reset of a driver allocation",
+    "vmm_close": "releases a driver allocation",
+    "vmm_facts": "reads a driver allocation's bookkeeping",
     "carry_census": "a cudaFuncGetAttributes query of the compiled arms, not a kernel launch",
+    "carry_ledger_bind": "binds the device buffer the next carry launch adds into; issues no launch",
 }
 
 
-def _pybind_entries() -> list[tuple[str, str | None]]:
-    """``(python name, C++ function or None)`` for every ``m.def``, in declaration order.
-
-    An entry bound to a lambda in this translation unit has no named function; its body
-    is searched where it is written. Both forms are captured, because "it is spelled as
-    a lambda" is not a reason for an entry to escape the gate.
-    """
-    text = PYBIND_TU.read_text()
-    out = []
-    for m in re.finditer(r'm\.def\(\s*"(\w+)"\s*(?:,\s*&([\w:]+))?', text):
-        out.append((m.group(1), m.group(2)))
-    return out
+def _registered_entries() -> list[tuple[str, str]]:
+    """``(operator name, C++ function)`` for every ``m.impl``, in registration order. An operator's implementation is
+    always a named function (``TORCH_BOX(&fn)``), in a device translation unit or in this one."""
+    text = REGISTRATION_TU.read_text()
+    return [(m.group(1), m.group(2)) for m in re.finditer(r'm\.impl\(\s*"(\w+)"\s*,\s*TORCH_BOX\(&([\w:]+)\)\)', text)]
 
 
-ENTRIES = [(name, (fn.rsplit("::", 1)[-1] if fn else name))
-           for name, fn in _pybind_entries() if name not in _LAUNCHLESS]
+ENTRIES = [(name, fn.rsplit("::", 1)[-1]) for name, fn in _registered_entries() if name not in _LAUNCHLESS]
 
 
 def test_the_entry_surfaces_are_declared_where_this_gate_looks():
     """The scan has something to scan: an entry list that came back empty would
     otherwise make this whole file vacuously green."""
-    assert _pybind_entries(), f"no m.def entries found in {PYBIND_TU}"
+    assert _registered_entries(), f"no m.impl entries found in {REGISTRATION_TU}"
     assert ENTRIES, "every declared entry is exempt; the gate would be vacuous"
 
 
@@ -143,15 +143,14 @@ def test_every_launching_entry_passes_the_gate_first(name: str, entry: str):
     from being added without it.
     """
     match = None
-    for path in (*DEVICE_TUS, PYBIND_TU):
+    for path in (*DEVICE_TUS, REGISTRATION_TU):
         match = re.search(rf"^[\w:<>,\s&*]+?\b{entry}\(.*?\)\s*\{{\n(.*?)\n^\}}",
                           path.read_text(), re.M | re.S)
         if match:
             break
     assert match, (
-        f"cannot find the definition of {entry}; it is declared to the module, so it is "
-        f"either a named function in a device translation unit or a lambda in "
-        f"{PYBIND_TU.name}")
+        f"cannot find the definition of {entry}; it is registered as an operator, so it is "
+        f"a named function in a device translation unit or in {REGISTRATION_TU.name}")
     first = next(line.strip() for line in match.group(1).splitlines() if line.strip())
     assert first == "check_arch_table();", (
         f"{name} launches, so the closed-world arch refusal must be its "

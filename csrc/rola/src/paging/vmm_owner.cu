@@ -1,6 +1,6 @@
 #include "vmm_owner.cuh"
 
-#include <c10/cuda/CUDAGuard.h>
+#include "common/torch_seam.cuh"
 #include <cuda_runtime_api.h>
 
 #include <algorithm>
@@ -41,32 +41,34 @@ void VmmOwner::initialize_driver() {
 }
 
 void VmmOwner::check(CUresult result, const char* operation) {
-  TORCH_CHECK(result == CUDA_SUCCESS, "CUDA VMM ", operation, " failed: ", driver_error(result));
+  STD_TORCH_CHECK(result == CUDA_SUCCESS, "CUDA VMM ", operation,
+                  " failed: ", driver_error(result));
 }
 
 std::size_t VmmOwner::round_up(std::size_t value, std::size_t alignment) {
-  TORCH_CHECK(alignment != 0 && value <= std::numeric_limits<std::size_t>::max() - (alignment - 1),
-              "CUDA VMM size overflows size_t");
+  STD_TORCH_CHECK(
+      alignment != 0 && value <= std::numeric_limits<std::size_t>::max() - (alignment - 1),
+      "CUDA VMM size overflows size_t");
   return ((value + alignment - 1) / alignment) * alignment;
 }
 
 std::uint64_t VmmOwner::checked_mul(std::uint64_t lhs, std::uint64_t rhs, const char* what) {
-  TORCH_CHECK(rhs == 0 || lhs <= std::numeric_limits<std::uint64_t>::max() / rhs, "CUDA VMM ", what,
-              " overflows uint64");
+  STD_TORCH_CHECK(rhs == 0 || lhs <= std::numeric_limits<std::uint64_t>::max() / rhs, "CUDA VMM ",
+                  what, " overflows uint64");
   return lhs * rhs;
 }
 
 std::size_t VmmOwner::checked_size(std::uint64_t value, const char* what) {
-  TORCH_CHECK(value <= std::numeric_limits<std::size_t>::max(), "CUDA VMM ", what,
-              " exceeds host size_t");
+  STD_TORCH_CHECK(value <= std::numeric_limits<std::size_t>::max(), "CUDA VMM ", what,
+                  " exceeds host size_t");
   return static_cast<std::size_t>(value);
 }
 
 int VmmOwner::normalize_device(int device) {
   if (device >= 0) return device;
   int current = -1;
-  TORCH_CHECK(cudaGetDevice(&current) == cudaSuccess && current >= 0,
-              "CUDA VMM could not resolve the current CUDA device");
+  STD_TORCH_CHECK(cudaGetDevice(&current) == cudaSuccess && current >= 0,
+                  "CUDA VMM could not resolve the current CUDA device");
   return current;
 }
 
@@ -99,7 +101,7 @@ VmmProbe VmmOwner::probe(int device) {
     return result;
   }
 
-  c10::cuda::CUDAGuard guard(device);
+  DeviceGuard guard(device);
   auto prop = allocation_prop(device);
   std::size_t granularity = 0;
   status = cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
@@ -151,12 +153,12 @@ VmmProbe VmmOwner::probe(int device) {
 std::shared_ptr<VmmOwner> VmmOwner::create(int device, std::int64_t dense_limit_pages,
                                            std::int64_t page_rows, std::int64_t page_cols,
                                            std::int64_t target_chunk_bytes) {
-  TORCH_CHECK(dense_limit_pages > 0 && page_rows > 0 && page_cols > 0,
-              "CUDA VMM page geometry must be positive");
+  STD_TORCH_CHECK(dense_limit_pages > 0 && page_rows > 0 && page_cols > 0,
+                  "CUDA VMM page geometry must be positive");
   const auto normalized_device = normalize_device(device);
   const auto capability = probe(normalized_device);
-  TORCH_CHECK(capability.supported, "the RoLA page arena's VMM backing requires CUDA virtual ",
-              "memory management on device ", capability.device, "; ", capability.reason);
+  STD_TORCH_CHECK(capability.supported, "the RoLA page arena's VMM backing requires CUDA virtual ",
+                  "memory management on device ", capability.device, "; ", capability.reason);
   auto owner = std::shared_ptr<VmmOwner>(
       new VmmOwner(capability.device, dense_limit_pages, page_rows, page_cols,
                    capability.allocation_granularity, target_chunk_bytes));
@@ -174,7 +176,7 @@ VmmOwner::VmmOwner(int device, std::int64_t dense_limit_pages, std::int64_t page
       page_cols_(page_cols),
       allocation_granularity_(allocation_granularity),
       view_tracker_(std::make_shared<ViewTracker>()) {
-  TORCH_CHECK(target_chunk_bytes > 0, "CUDA VMM target_chunk_bytes must be positive");
+  STD_TORCH_CHECK(target_chunk_bytes > 0, "CUDA VMM target_chunk_bytes must be positive");
   const auto elements = checked_mul(static_cast<std::uint64_t>(page_rows),
                                     static_cast<std::uint64_t>(page_cols), "page element count");
   const auto bytes = checked_mul(elements, sizeof(float), "page byte count");
@@ -186,7 +188,7 @@ VmmOwner::VmmOwner(int device, std::int64_t dense_limit_pages, std::int64_t page
 }
 
 void VmmOwner::reserve_plane() {
-  c10::cuda::CUDAGuard guard(device_);
+  DeviceGuard guard(device_);
   const auto payload =
       checked_mul(static_cast<std::uint64_t>(page_bytes_),
                   static_cast<std::uint64_t>(dense_limit_pages_), "virtual extent");
@@ -199,11 +201,11 @@ void VmmOwner::map_initial_chunk() {
 }
 
 void VmmOwner::grow(std::int64_t required_pages) {
-  TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
-  TORCH_CHECK(required_pages >= 0 && required_pages <= dense_limit_pages_,
-              "CUDA VMM required page count exceeds the reserved maximum");
+  STD_TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
+  STD_TORCH_CHECK(required_pages >= 0 && required_pages <= dense_limit_pages_,
+                  "CUDA VMM required page count exceeds the reserved maximum");
   if (required_pages <= mapped_capacity_pages()) return;
-  c10::cuda::CUDAGuard guard(device_);
+  DeviceGuard guard(device_);
   const auto current_pages = mapped_capacity_pages();
   const auto max_chunks = (dense_limit_pages_ + chunk_pages_ - 1) / chunk_pages_;
   const auto required_chunks = (required_pages + chunk_pages_ - 1) / chunk_pages_;
@@ -217,7 +219,8 @@ void VmmOwner::grow(std::int64_t required_pages) {
                             "growth extent"),
                allocation_granularity_);
   if (target_bytes <= mapped_bytes_) return;
-  TORCH_CHECK(target_bytes <= virtual_bytes_, "CUDA VMM growth exceeds reserved virtual extent");
+  STD_TORCH_CHECK(target_bytes <= virtual_bytes_,
+                  "CUDA VMM growth exceeds reserved virtual extent");
 
   const auto bytes = target_bytes - mapped_bytes_;
   auto prop = allocation_prop(device_);
@@ -225,8 +228,8 @@ void VmmOwner::grow(std::int64_t required_pages) {
   bool mapped = false;
   check(cuMemCreate(&handle, bytes, &prop, 0), "cuMemCreate");
   try {
-    TORCH_CHECK(mapped_bytes_ <= std::numeric_limits<CUdeviceptr>::max() - address_,
-                "CUDA VMM mapped address overflows CUdeviceptr");
+    STD_TORCH_CHECK(mapped_bytes_ <= std::numeric_limits<CUdeviceptr>::max() - address_,
+                    "CUDA VMM mapped address overflows CUdeviceptr");
     const auto address = address_ + mapped_bytes_;
     check(cuMemMap(address, bytes, 0, handle, 0), "cuMemMap");
     mapped = true;
@@ -246,10 +249,10 @@ void VmmOwner::grow(std::int64_t required_pages) {
 }
 
 void VmmOwner::remove_latest_chunk() {
-  TORCH_CHECK(!chunks_.empty(), "CUDA VMM rollback has no committed growth chunk");
+  STD_TORCH_CHECK(!chunks_.empty(), "CUDA VMM rollback has no committed growth chunk");
   const auto chunk = chunks_.back();
-  TORCH_CHECK(chunk.address + chunk.bytes == address_ + mapped_bytes_,
-              "CUDA VMM rollback chunk does not end at the mapped extent");
+  STD_TORCH_CHECK(chunk.address + chunk.bytes == address_ + mapped_bytes_,
+                  "CUDA VMM rollback chunk does not end at the mapped extent");
   check(cuMemUnmap(chunk.address, chunk.bytes), "rollback cuMemUnmap");
   check(cuMemRelease(chunk.handle), "rollback cuMemRelease");
   chunks_.pop_back();
@@ -257,12 +260,12 @@ void VmmOwner::remove_latest_chunk() {
 }
 
 void VmmOwner::rollback_to(std::int64_t target_pages) {
-  TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
-  TORCH_CHECK(target_pages >= 0 && target_pages <= mapped_capacity_pages(),
-              "CUDA VMM rollback capacity is outside the mapped extent");
-  c10::cuda::CUDAGuard guard(device_);
-  TORCH_CHECK(cudaDeviceSynchronize() == cudaSuccess,
-              "CUDA VMM rollback could not quiesce the device");
+  STD_TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
+  STD_TORCH_CHECK(target_pages >= 0 && target_pages <= mapped_capacity_pages(),
+                  "CUDA VMM rollback capacity is outside the mapped extent");
+  DeviceGuard guard(device_);
+  STD_TORCH_CHECK(cudaDeviceSynchronize() == cudaSuccess,
+                  "CUDA VMM rollback could not quiesce the device");
   if (target_pages == mapped_capacity_pages()) return;
 
   const auto target =
@@ -270,32 +273,32 @@ void VmmOwner::rollback_to(std::int64_t target_pages) {
                                         static_cast<std::uint64_t>(page_bytes_), "rollback extent"),
                             "rollback extent"),
                allocation_granularity_);
-  TORCH_CHECK(target <= mapped_bytes_, "CUDA VMM rollback target exceeds mapped extent");
+  STD_TORCH_CHECK(target <= mapped_bytes_, "CUDA VMM rollback target exceeds mapped extent");
   // A target inside a chunk rounds UP to that chunk's end, which would silently keep more
   // than was asked for. Naming it here is what makes the refusal describe the caller's
   // mistake rather than the consistency check it would otherwise trip later.
-  TORCH_CHECK(page_bytes_ != 0
-                  && std::min<std::int64_t>(static_cast<std::int64_t>(target / page_bytes_),
-                                            dense_limit_pages_)
-                         == target_pages,
-              "CUDA VMM rollback target is not a committed chunk boundary: ", target_pages,
-              " pages rounds up to a mapping of ", target / page_bytes_, " pages");
+  STD_TORCH_CHECK(page_bytes_ != 0
+                      && std::min<std::int64_t>(static_cast<std::int64_t>(target / page_bytes_),
+                                                dense_limit_pages_)
+                             == target_pages,
+                  "CUDA VMM rollback target is not a committed chunk boundary: ", target_pages,
+                  " pages rounds up to a mapping of ", target / page_bytes_, " pages");
   std::size_t boundary = 0;
   bool found = target == 0;
   for (const auto& chunk : chunks_) {
-    TORCH_CHECK(boundary <= std::numeric_limits<std::size_t>::max() - chunk.bytes,
-                "CUDA VMM rollback boundary overflows size_t");
+    STD_TORCH_CHECK(boundary <= std::numeric_limits<std::size_t>::max() - chunk.bytes,
+                    "CUDA VMM rollback boundary overflows size_t");
     boundary += chunk.bytes;
     found = found || boundary == target;
   }
-  TORCH_CHECK(found, "CUDA VMM rollback target is not a committed chunk boundary");
-  TORCH_CHECK(!chunks_.empty() && target >= chunks_.front().bytes,
-              "CUDA VMM rollback cannot remove the initial headroom chunk");
+  STD_TORCH_CHECK(found, "CUDA VMM rollback target is not a committed chunk boundary");
+  STD_TORCH_CHECK(!chunks_.empty() && target >= chunks_.front().bytes,
+                  "CUDA VMM rollback cannot remove the initial headroom chunk");
 
   while (mapped_bytes_ > target) remove_latest_chunk();
-  TORCH_CHECK(mapped_bytes_ == target, "CUDA VMM rollback did not restore the plane exactly");
-  TORCH_CHECK(mapped_capacity_pages() == target_pages,
-              "CUDA VMM rollback did not restore the requested prior capacity");
+  STD_TORCH_CHECK(mapped_bytes_ == target, "CUDA VMM rollback did not restore the plane exactly");
+  STD_TORCH_CHECK(mapped_capacity_pages() == target_pages,
+                  "CUDA VMM rollback did not restore the requested prior capacity");
   committed_bytes_ = static_cast<std::uint64_t>(mapped_bytes_);
 }
 
@@ -305,24 +308,23 @@ std::int64_t VmmOwner::mapped_capacity_pages() const {
       std::min<std::size_t>(pages, static_cast<std::size_t>(dense_limit_pages_)));
 }
 
-torch::Tensor VmmOwner::base() {
-  TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
+Tensor VmmOwner::base() {
+  STD_TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
   view_tracker_->live_views.fetch_add(1, std::memory_order_relaxed);
   auto tracker = view_tracker_;
-  const std::vector<std::int64_t> shape{dense_limit_pages_, page_rows_, page_cols_};
-  auto options = torch::TensorOptions().device(torch::kCUDA, device_).dtype(torch::kFloat32);
+  const std::vector<std::int64_t> sizes{dense_limit_pages_, page_rows_, page_cols_};
+  const std::vector<std::int64_t> strides{page_rows_ * page_cols_, page_cols_, 1};
   // Keep the driver allocation alive for every tensor view. This prevents a
   // caller holding a slice from outliving the native owner and observing an
   // unmapped raw pointer.
   auto owner_lifetime = shared_from_this();
   try {
-    return at::from_blob(
-        reinterpret_cast<void*>(address_), shape,
-        [tracker, owner_lifetime](void*) {
-          tracker->live_views.fetch_sub(1, std::memory_order_relaxed);
-          (void)owner_lifetime;
-        },
-        options);
+    return torch::stable::from_blob(reinterpret_cast<void*>(address_), sizes, strides,
+                                    cuda_device(device_), Dtype::Float,
+                                    [tracker, owner_lifetime](void*) {
+                                      tracker->live_views.fetch_sub(1, std::memory_order_relaxed);
+                                      (void)owner_lifetime;
+                                    });
   } catch (...) {
     view_tracker_->live_views.fetch_sub(1, std::memory_order_relaxed);
     throw;
@@ -330,7 +332,7 @@ torch::Tensor VmmOwner::base() {
 }
 
 void VmmOwner::reset() {
-  TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
+  STD_TORCH_CHECK(!closed_, "CUDA VMM owner is closed");
   // Reset is intentionally logical only. Mappings and their stable addresses survive.
 }
 
@@ -350,18 +352,18 @@ void VmmOwner::release_plane() noexcept {
 
 void VmmOwner::close() {
   if (closed_) return;
-  TORCH_CHECK(view_tracker_->live_views.load(std::memory_order_acquire) == 0,
-              "cannot close CUDA VMM owner while exported tensor views are live");
-  c10::cuda::CUDAGuard guard(device_);
-  TORCH_CHECK(cudaDeviceSynchronize() == cudaSuccess,
-              "CUDA VMM close could not quiesce the device");
+  STD_TORCH_CHECK(view_tracker_->live_views.load(std::memory_order_acquire) == 0,
+                  "cannot close CUDA VMM owner while exported tensor views are live");
+  DeviceGuard guard(device_);
+  STD_TORCH_CHECK(cudaDeviceSynchronize() == cudaSuccess,
+                  "CUDA VMM close could not quiesce the device");
   release_plane();
   closed_ = true;
 }
 
 bool VmmOwner::quiesce() noexcept {
   try {
-    c10::cuda::CUDAGuard guard(device_);
+    DeviceGuard guard(device_);
     return cudaDeviceSynchronize() == cudaSuccess;
   } catch (...) {
     return false;
@@ -375,7 +377,7 @@ VmmOwner::~VmmOwner() noexcept {
     // tearing it down under in-flight CUDA work; process teardown reclaims it.
     if (quiesce()) {
       try {
-        c10::cuda::CUDAGuard guard(device_);
+        DeviceGuard guard(device_);
         release_plane();
       } catch (...) {
         // Destructors cannot report driver failures.

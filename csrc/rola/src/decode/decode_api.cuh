@@ -3,7 +3,7 @@
 // THE DECODE PATH'S HOST-FACING DECLARATIONS -- the ONLY decode header
 // `csrc/rola/rola_api.cpp` includes; see docs/internals/decode/decode_api.md#note-l3
 
-#include <torch/extension.h>
+#include "common/torch_seam.cuh"
 
 #include <cstdint>
 #include <vector>
@@ -22,14 +22,15 @@ rola_decode_build_stamp();  // device-side build fact; see decode_api.md#roladec
 std::vector<std::vector<int64_t>> rola_decode_arms();  // see decode_api.md#roladecodearms
 
 //: THE WHOLE STEP IN ONE LAUNCH -- fold, factor, walk, AND ITS OWN ADMISSION -- see docs/internals/decode/decode_api.md#note-l43
-at::Tensor rola_decode_forward(
-    std::vector<at::Tensor> read, std::vector<at::Tensor> write, std::vector<int64_t> normalize,
-    c10::optional<at::Tensor> dials, at::Tensor g_write, at::Tensor v, at::Tensor state,
-    at::Tensor ws, at::Tensor ctr, at::Tensor growth, at::Tensor growth_any, at::Tensor growth_ctr,
-    at::Tensor done, at::Tensor atom_bits, std::vector<int64_t> level_widths,
-    std::vector<int64_t> level_row_offsets, int64_t lattice_k, int64_t lattice_m, int64_t n_split,
-    double eps, c10::optional<at::Tensor> page_table, c10::optional<at::Tensor> pool_slots,
-    c10::optional<at::Tensor> pool_cursor, c10::optional<at::Tensor> pool_map);
+Tensor rola_decode_forward(std::vector<Tensor> read, std::vector<Tensor> write,
+                           std::vector<int64_t> normalize, std::optional<Tensor> dials,
+                           Tensor g_write, Tensor v, Tensor state, Tensor ws, Tensor ctr,
+                           Tensor growth, Tensor growth_any, Tensor growth_ctr, Tensor done,
+                           Tensor atom_bits, std::vector<int64_t> level_widths,
+                           std::vector<int64_t> level_row_offsets, int64_t lattice_k,
+                           int64_t lattice_m, int64_t n_split, double eps,
+                           std::optional<Tensor> page_table, std::optional<Tensor> pool_slots,
+                           std::optional<Tensor> pool_cursor, std::optional<Tensor> pool_map);
 
 }  // namespace decode
 }  // namespace rola

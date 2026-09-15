@@ -3,7 +3,7 @@
 // No kernel is instantiated here and none is launched.
 // See docs/internals/common/geom_api.md
 
-#include <torch/extension.h>
+#include "common/torch_seam.cuh"
 
 #include "common/geom.cuh"
 #include "common/geom_api.cuh"
@@ -17,20 +17,22 @@ static CarryGeomRT derive_block(const std::vector<int64_t>& widths, int64_t leve
                                 int dv, int nsr, int nsw) {
   int w[kGeomMaxLevels] = {1, 1, 1, 1};
   const int D = (int)widths.size();
-  TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the routing depth is one to four levels, got ", D);
+  STD_TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the routing depth is one to four levels, got ",
+                  D);
   for (int l = 0; l < D; ++l) w[l] = (int)widths[l];
   CarryGeomRT geo{};
   CarveOrder order{};
   carve_order_of_modes(D, (uint32_t)level_modes, order);
   const char* err = derive_carry_geom(D, w, bc, dv, order, nsr, nsw, geo);
-  TORCH_CHECK(err == nullptr, "the addressing block refuses this call: ", err == nullptr ? "" : err,
-              " (widths=", widths, ", BC=", bc, ", level_modes=", level_modes, ")");
-  TORCH_CHECK(geo.wtot % 8 == 0,
-              "the packed amplitude row must be a whole number of sixteen-byte granules: "
-              "sum_l B_l = ",
-              geo.wtot);
+  STD_TORCH_CHECK(err == nullptr,
+                  "the addressing block refuses this call: ", err == nullptr ? "" : err,
+                  " (widths=", shape(widths), ", BC=", bc, ", level_modes=", level_modes, ")");
+  STD_TORCH_CHECK(geo.wtot % 8 == 0,
+                  "the packed amplitude row must be a whole number of sixteen-byte granules: "
+                  "sum_l B_l = ",
+                  geo.wtot);
   for (int l = 0; l < D; ++l)
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         geo.col_base[l] % geo.r.row_span[l] == 0 && geo.col_base[l] % geo.w.row_span[l] == 0,
         "level ", l, "'s column base ", geo.col_base[l],
         " is not a whole number of the runs read out of it (read ", geo.r.row_span[l], ", write ",
@@ -89,9 +91,10 @@ std::vector<int64_t> geometry(std::vector<int64_t> widths, int64_t level_modes, 
 
 std::vector<std::vector<int64_t>> sub_box_set(int64_t depth, int64_t box_leaves, int64_t workers) {
   const int D = (int)depth;
-  TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the shape set is generated to depth four, got ", D);
-  TORCH_CHECK(geom_ilog2((int)box_leaves) >= 0 && geom_ilog2((int)workers) >= 0,
-              "the box and the worker count are powers of two");
+  STD_TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the shape set is generated to depth four, got ",
+                  D);
+  STD_TORCH_CHECK(geom_ilog2((int)box_leaves) >= 0 && geom_ilog2((int)workers) >= 0,
+                  "the box and the worker count are powers of two");
   const SubBoxSet set = sub_boxes(D, (int)box_leaves, (int)workers);
   std::vector<std::vector<int64_t>> out;
   for (int a = 0; a < set.count; ++a) {

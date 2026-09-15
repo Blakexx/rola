@@ -5,7 +5,7 @@
 #include <type_traits>
 #include <utility>
 
-#include <torch/extension.h>
+#include <torch/headeronly/util/Exception.h>
 
 namespace rola {
 
@@ -26,7 +26,7 @@ inline void int_switch(int value, const char* what, Body&& body) {
   //: An expansion over the candidate set, evaluated left to right: exactly one arm -- see docs/internals/dispatch_switch.md#near-line-31
   (void)std::initializer_list<int>{
       (value == VALUES ? (body(std::integral_constant<int, VALUES>{}), matched = true, 0) : 0)...};
-  TORCH_CHECK(matched, what, " is outside the instantiated set, got ", value);
+  STD_TORCH_CHECK(matched, what, " is outside the instantiated set, got ", value);
 }
 
 }  // namespace rola

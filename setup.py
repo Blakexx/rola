@@ -221,8 +221,8 @@ import torch  # noqa: F401 -- the extension links against it and must load first
 name = Path(sys.argv[1]).name.split(".")[0]  # the module's init symbol is PyInit_<name>
 spec = importlib.util.spec_from_file_location(name, sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-print(json.dumps([list(row) for row in mod.carry_arms()]))
+spec.loader.exec_module(mod)  # loading the library registers torch.ops.rola
+print(json.dumps([list(row) for row in torch.ops.rola.carry_arms()]))
 """
 
 
@@ -355,12 +355,16 @@ def _decode_arm_subset() -> list[str]:
 #: cases, so there is ONE layout, the repo root stays clean, and the module cannot be
 #: imported by accident from a working directory that merely happens to contain it.
 #:
-#: This is a PACKAGING name only. ``PYBIND11_MODULE(TORCH_EXTENSION_NAME, ...)`` takes
-#: it from this constant, so nothing in ``csrc/`` names it; the C++ namespaces
-#: (``rola``, ``rola::paging``) and every kernel symbol are untouched.
+#: This is a PACKAGING name: the registration TU's ``PyInit__C`` is the one place csrc
+#: spells its last component, and the operators it registers live in ``torch.ops.rola``;
+#: the C++ namespaces (``rola``, ``rola::paging``) and every kernel symbol are untouched.
 #: The manifests key on MANGLED KERNEL NAMES, and the module-init symbol they do not
-#: contain is the only thing this rename can move.
+#: contain is the only thing this name can move.
 MODULE_NAME = "rola._C"
+
+#: THE STABLE ABI TARGET (`tools/build_flags.py`'s `TORCH_MIN`, docs/build.md#stable-abi): every compile targets it, and
+#: `CUDAExtension(py_limited_api=True)` builds the module object against Python's limited API, defining the flag itself.
+STABLE_DEFINES = list(build_flags.STABLE_DEFINES)
 
 
 # ---------------------------------------------------------------------------
@@ -725,8 +729,9 @@ def build_parts_extension():
         name=PARTS_MODULE_NAME,
         sources=PARTS_SOURCES,
         include_dirs=[str(CSRC / "src"), str(CUTLASS_DIR / "include"), str(ROOT / "build" / "generated")],
-        extra_compile_args={"cxx": ["-O3", "-std=c++20"], "nvcc": nvcc_flags},
+        extra_compile_args={"cxx": ["-O3", "-std=c++20", *STABLE_DEFINES], "nvcc": nvcc_flags + STABLE_DEFINES},
         extra_link_args=_link_flags(),
+        py_limited_api=True,
     )
 
 
@@ -759,8 +764,9 @@ def build_extension():
         #: The vendored CuTe/CUTLASS headers come LAST, so a repository header always
         #: wins a name collision and the vendored tree can never shadow ours.
         include_dirs=[str(CSRC / "src"), str(CUTLASS_DIR / "include"), str(generated_dir)],
-        extra_compile_args={"cxx": ["-O3", "-std=c++20"], "nvcc": nvcc_flags},
+        extra_compile_args={"cxx": ["-O3", "-std=c++20", *STABLE_DEFINES], "nvcc": nvcc_flags + STABLE_DEFINES},
         extra_link_args=ldflags,
+        py_limited_api=True,
     )
 
 

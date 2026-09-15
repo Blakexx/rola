@@ -6,7 +6,7 @@ readme          = "README.md"
 license         = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors         = [{ name = "Blake Bottum" }]
-dependencies    = ["torch", "einops"]
+dependencies    = ["torch>=2.13", "einops"]
 keywords        = ["cuda", "attention", "linear-attention", "pytorch", "kernels"]
 classifiers     = [
   "Programming Language :: Python :: 3",

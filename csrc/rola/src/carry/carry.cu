@@ -6,7 +6,7 @@
 // See docs/internals/carry/carry.md
 #include "carry/carry_api.cuh"
 
-#include <c10/cuda/CUDAStream.h>
+#include "common/torch_seam.cuh"
 
 #include "carry/box.cuh"
 #include "carry/carry_arm_abi.cuh"
@@ -31,14 +31,14 @@ int64_t g_phase_ledger_ctas = 0;
 
 }  // namespace
 
-void carry_forward(const at::Tensor& read, const at::Tensor& write, const at::Tensor& gain,
-                   const at::Tensor& v, at::Tensor& num, at::Tensor& den,
-                   const std::vector<int64_t>& widths, int64_t dv, int64_t page_bits,
-                   int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
-                   const std::vector<int64_t>& schedule, const at::Tensor& liveness,
-                   const at::Tensor& activity, const c10::optional<at::Tensor>& state_in,
-                   const c10::optional<at::Tensor>& state_out,
-                   const c10::optional<at::Tensor>& page_table) {
+void carry_forward(const Tensor& read, const Tensor& write, const Tensor& gain, const Tensor& v,
+                   Tensor& num, Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
+                   int64_t page_bits, int64_t warps_per_cta,
+                   const std::vector<int64_t>& carve_order, const std::vector<int64_t>& schedule,
+                   const Tensor& liveness, const Tensor& activity,
+                   const std::optional<Tensor>& state_in, const std::optional<Tensor>& state_out,
+                   const std::optional<Tensor>& page_table) {
+  check_arch_table();
   CarryCall call =
       derive_carry_call(read, write, gain, v, num, den, widths, dv, page_bits, warps_per_cta,
                         carve_order, schedule, liveness, activity, state_in, state_out, page_table);
@@ -47,10 +47,11 @@ void carry_forward(const at::Tensor& read, const at::Tensor& write, const at::Te
   const int D = (int)widths.size();
   p.ledger = g_phase_ledger;
   if (p.ledger != nullptr)
-    TORCH_CHECK(g_phase_ledger_ctas >= (int64_t)p.g.owners * BH, "the bound phase ledger covers ",
-                g_phase_ledger_ctas, " CTAs, the launch needs ", (int64_t)p.g.owners * BH);
+    STD_TORCH_CHECK(g_phase_ledger_ctas >= (int64_t)p.g.owners * BH,
+                    "the bound phase ledger covers ", g_phase_ledger_ctas,
+                    " CTAs, the launch needs ", (int64_t)p.g.owners * BH);
 
-  const auto stream = at::cuda::getCurrentCUDAStream();
+  const auto stream = current_stream();
   cudaError_t status = cudaSuccess;
   bool launched = false;
   arm_switch<CarryArmSet>(D, (int)dv, (int)warps_per_cta, [&](auto A) {
@@ -63,20 +64,21 @@ void carry_forward(const at::Tensor& read, const at::Tensor& write, const at::Te
     ROLA_CARRY_ARM_SET_X(ROLA_CARRY_ARM_CALL)
 #undef ROLA_CARRY_ARM_CALL
   });
-  TORCH_CHECK(launched, "the carry arm set resolved a member that carries no launch");
-  TORCH_CHECK(status == cudaSuccess, "the carry launch failed: ", cudaGetErrorString(status));
+  STD_TORCH_CHECK(launched, "the carry arm set resolved a member that carries no launch");
+  STD_TORCH_CHECK(status == cudaSuccess, "the carry launch failed: ", cudaGetErrorString(status));
 }
 
-void carry_ledger_bind(const std::optional<at::Tensor>& ledger) {
+void carry_ledger_bind(const std::optional<Tensor>& ledger) {
   if (!ledger) {
     g_phase_ledger = nullptr;
     g_phase_ledger_ctas = 0;
     return;
   }
-  TORCH_CHECK(ledger->is_cuda() && ledger->scalar_type() == at::kLong && ledger->dim() == 3
-                  && ledger->size(2) == kPhases && ledger->is_contiguous(),
-              "the phase ledger is a contiguous CUDA int64 tensor [ctas][warps][", kPhases, "]");
-  g_phase_ledger = reinterpret_cast<long long*>(ledger->data_ptr<int64_t>());
+  STD_TORCH_CHECK(ledger->is_cuda() && ledger->scalar_type() == Dtype::Long && ledger->dim() == 3
+                      && ledger->size(2) == kPhases && ledger->is_contiguous(),
+                  "the phase ledger is a contiguous CUDA int64 tensor [ctas][warps][", kPhases,
+                  "]");
+  g_phase_ledger = reinterpret_cast<long long*>(ledger->mutable_data_ptr<int64_t>());
   g_phase_ledger_ctas = ledger->size(0);
 }
 
@@ -94,11 +96,11 @@ __global__ void carry_stamp_kernel(int* out) {
 
 int64_t carry_build_stamp() {
   check_arch_table();
-  auto buf = at::empty({4}, at::TensorOptions().dtype(at::kInt).device(at::kCUDA));
-  stamp::carry_stamp_kernel<<<1, 1, 0, at::cuda::getCurrentCUDAStream()>>>(buf.data_ptr<int32_t>());
-  TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the carry build stamp did not run");
-  const auto host = buf.to(at::kCPU);
-  const int32_t* f = host.data_ptr<int32_t>();
+  auto buf = empty_cuda({4}, Dtype::Int);
+  stamp::carry_stamp_kernel<<<1, 1, 0, current_stream()>>>(buf.mutable_data_ptr<int32_t>());
+  STD_TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the carry build stamp did not run");
+  const auto host = to_cpu(buf);
+  const int32_t* f = host.const_data_ptr<int32_t>();
   //: THE FOUR FACTS AS ONE NUMBER, the way every other family's stamp reads: a mixed
   //: radix wide enough that no field can carry into its neighbour.
   return ((((int64_t)f[0] * 1000003 + f[1]) * 1000003) + f[2]) * 16 + f[3];

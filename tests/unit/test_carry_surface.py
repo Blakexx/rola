@@ -20,6 +20,7 @@ what is under test is the contract and not the arithmetic (that is the oracle ti
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 import torch
@@ -301,14 +302,11 @@ def test_the_arms_and_the_census_agree_on_what_is_built():
 
 def test_the_reverse_pass_is_the_only_stub():
     """THE ONLY REFUSING STUB IN THIS TREE is the carry reverse entry. A second would mean
-    some other family had been half-deleted, which the no-fallback rule forbids."""
-    from rola.ops._ext import extension
+    some other family had been half-deleted, which the no-fallback rule forbids. A stub is an
+    operator registered to an `*_unimplemented` function (csrc/rola/rola_api.cpp)."""
+    import re
 
-    stubs = []
-    for name in dir(extension()):
-        if not name.startswith("carry_"):
-            continue
-        doc = getattr(extension(), name).__doc__ or ""
-        if "CONTRACT ONLY" in doc or "only a BUILT kernel" in doc:
-            stubs.append(name)
-    assert sorted(stubs) == ["carry_backward"]
+    text = (Path(__file__).resolve().parents[2] / "csrc" / "rola" / "rola_api.cpp").read_text()
+    registered = re.findall(r'm\.impl\(\s*"(\w+)"\s*,\s*TORCH_BOX\(&([\w:]+)\)\)', text)
+    assert registered, "no operator registrations found; the scan would be vacuous"
+    assert sorted(name for name, fn in registered if fn.endswith("_unimplemented")) == ["carry_backward"]

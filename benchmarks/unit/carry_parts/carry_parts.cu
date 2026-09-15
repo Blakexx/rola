@@ -4,9 +4,12 @@
 // against a reference and its time against the model's floor (KERNEL_STANDARDS §19). A
 // bench instrument, built by the harness from the repo's headers; never shipped.
 // See docs/internals/carry/carry_kernel.md#part-harness
-#include <torch/extension.h>
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
 
-#include <c10/cuda/CUDAStream.h>
+#include <torch/csrc/stable/library.h>
+
+#include "common/torch_seam.cuh"
 
 #include "carry/carry_host.cuh"
 #include "carry/carry_kernel.cuh"
@@ -279,127 +282,165 @@ __global__ __launch_bounds__(BoxPlan<D, DV, WARPS>::kThreads, 1) void fold_part_
 constexpr int kD = 2, kDV = 64, kW = 8;
 using FlagPlan = BoxPlan<kD, kDV, kW>;
 
-std::vector<at::Tensor> head_part(const at::Tensor& read, const at::Tensor& write,
-                                  const at::Tensor& gain, const at::Tensor& v, at::Tensor& num,
-                                  at::Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
-                                  int64_t page_bits, int64_t warps_per_cta,
-                                  const std::vector<int64_t>& carve_order,
-                                  const std::vector<int64_t>& schedule, const at::Tensor& liveness,
-                                  const at::Tensor& activity, int64_t reps) {
+std::vector<Tensor> head_part(const Tensor& read, const Tensor& write, const Tensor& gain,
+                              const Tensor& v, Tensor& num, Tensor& den,
+                              const std::vector<int64_t>& widths, int64_t dv, int64_t page_bits,
+                              int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
+                              const std::vector<int64_t>& schedule, const Tensor& liveness,
+                              const Tensor& activity, int64_t reps) {
   CarryCall call = derive_carry_call(read, write, gain, v, num, den, widths, dv, page_bits,
                                      warps_per_cta, carve_order, schedule, liveness, activity,
-                                     c10::nullopt, c10::nullopt, c10::nullopt);
-  TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
-              "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
+                                     std::nullopt, std::nullopt, std::nullopt);
+  STD_TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
+                  "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
   const CarryParams& p = call.p;
   const int64_t BH = call.BH, owners = p.g.owners;
   const int64_t nWindows = (p.L + kWindow - 1) / kWindow;
-  const auto opts = at::TensorOptions().device(read.device());
-  at::Tensor order = at::empty({BH, owners, nWindows, kWindow}, opts.dtype(at::kShort));
-  at::Tensor tilemask = at::empty({BH, owners, nWindows, FlagPlan::kTiles}, opts.dtype(at::kShort));
-  at::Tensor live = at::empty({BH, owners, nWindows, 2}, opts.dtype(at::kInt));
-  at::Tensor warpwords =
-      at::empty({BH, owners, nWindows, kW, FlagPlan::kRounds}, opts.dtype(at::kInt));
-  at::Tensor unionw = at::empty({BH, owners, nWindows, FlagPlan::kRounds}, opts.dtype(at::kInt));
-  at::Tensor prefix =
-      at::empty({BH, owners, nWindows, FlagPlan::kRounds + 1}, opts.dtype(at::kShort));
+  const int32_t device = read.get_device_index();
+  Tensor order = empty_cuda({BH, owners, nWindows, kWindow}, Dtype::Short, device);
+  Tensor tilemask = empty_cuda({BH, owners, nWindows, FlagPlan::kTiles}, Dtype::Short, device);
+  Tensor live = empty_cuda({BH, owners, nWindows, 2}, Dtype::Int, device);
+  Tensor warpwords = empty_cuda({BH, owners, nWindows, kW, FlagPlan::kRounds}, Dtype::Int, device);
+  Tensor unionw = empty_cuda({BH, owners, nWindows, FlagPlan::kRounds}, Dtype::Int, device);
+  Tensor prefix = empty_cuda({BH, owners, nWindows, FlagPlan::kRounds + 1}, Dtype::Short, device);
   auto* kern = head_part_kernel<kD, kDV, kW>;
   static bool attr = false;
   if (!attr) {
-    TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                     FlagPlan::kSmemBytes)
-                    == cudaSuccess,
-                "smem attribute");
+    STD_TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                         FlagPlan::kSmemBytes)
+                        == cudaSuccess,
+                    "smem attribute");
     attr = true;
   }
   kern<<<dim3((unsigned)owners, (unsigned)BH), FlagPlan::kThreads, FlagPlan::kSmemBytes,
-         at::cuda::getCurrentCUDAStream()>>>(
-      p, reinterpret_cast<uint16_t*>(order.data_ptr<int16_t>()),
-      reinterpret_cast<uint16_t*>(tilemask.data_ptr<int16_t>()), live.data_ptr<int32_t>(),
-      reinterpret_cast<uint32_t*>(warpwords.data_ptr<int32_t>()),
-      reinterpret_cast<uint32_t*>(unionw.data_ptr<int32_t>()),
-      reinterpret_cast<uint16_t*>(prefix.data_ptr<int16_t>()), (int)reps);
-  TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the head part did not launch");
+         current_stream()>>>(p, reinterpret_cast<uint16_t*>(order.mutable_data_ptr<int16_t>()),
+                             reinterpret_cast<uint16_t*>(tilemask.mutable_data_ptr<int16_t>()),
+                             live.mutable_data_ptr<int32_t>(),
+                             reinterpret_cast<uint32_t*>(warpwords.mutable_data_ptr<int32_t>()),
+                             reinterpret_cast<uint32_t*>(unionw.mutable_data_ptr<int32_t>()),
+                             reinterpret_cast<uint16_t*>(prefix.mutable_data_ptr<int16_t>()),
+                             (int)reps);
+  STD_TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the head part did not launch");
   return {order, tilemask, live, warpwords, unionw, prefix};
 }
 
-at::Tensor fill_part(const at::Tensor& read, const at::Tensor& write, const at::Tensor& gain,
-                     const at::Tensor& v, at::Tensor& num, at::Tensor& den,
-                     const std::vector<int64_t>& widths, int64_t dv, int64_t page_bits,
-                     int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
-                     const std::vector<int64_t>& schedule, const at::Tensor& liveness,
-                     const at::Tensor& activity, int64_t reps) {
+Tensor fill_part(const Tensor& read, const Tensor& write, const Tensor& gain, const Tensor& v,
+                 Tensor& num, Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
+                 int64_t page_bits, int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
+                 const std::vector<int64_t>& schedule, const Tensor& liveness,
+                 const Tensor& activity, int64_t reps) {
   CarryCall call = derive_carry_call(read, write, gain, v, num, den, widths, dv, page_bits,
                                      warps_per_cta, carve_order, schedule, liveness, activity,
-                                     c10::nullopt, c10::nullopt, c10::nullopt);
-  TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
-              "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
+                                     std::nullopt, std::nullopt, std::nullopt);
+  STD_TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
+                  "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
   const CarryParams& p = call.p;
   const int64_t BH = call.BH, owners = p.g.owners;
   const int64_t nWindows = (p.L + kWindow - 1) / kWindow;
-  TORCH_CHECK(BH == 1, "the fill part copies out owners of one batch row");
-  at::Tensor slots = at::zeros({kOutOwners, nWindows, kMaxChunks, FlagPlan::kPoolSlotBytes},
-                               at::TensorOptions().device(read.device()).dtype(at::kByte));
+  STD_TORCH_CHECK(BH == 1, "the fill part copies out owners of one batch row");
+  Tensor slots = zeros_cuda({kOutOwners, nWindows, kMaxChunks, FlagPlan::kPoolSlotBytes},
+                            Dtype::Byte, read.get_device_index());
   auto* kern = fill_part_kernel<kD, kDV, kW>;
   static bool attr = false;
   if (!attr) {
-    TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                     FlagPlan::kSmemBytes)
-                    == cudaSuccess,
-                "smem attribute");
+    STD_TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                         FlagPlan::kSmemBytes)
+                        == cudaSuccess,
+                    "smem attribute");
     attr = true;
   }
   kern<<<dim3((unsigned)owners, (unsigned)BH), FlagPlan::kThreads, FlagPlan::kSmemBytes,
-         at::cuda::getCurrentCUDAStream()>>>(p, slots.data_ptr<uint8_t>(), (int)reps);
-  TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the fill part did not launch");
+         current_stream()>>>(p, slots.mutable_data_ptr<uint8_t>(), (int)reps);
+  STD_TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the fill part did not launch");
   return slots;
 }
 
-std::vector<at::Tensor> fold_part(const at::Tensor& read, const at::Tensor& write,
-                                  const at::Tensor& gain, const at::Tensor& v, at::Tensor& num,
-                                  at::Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
-                                  int64_t page_bits, int64_t warps_per_cta,
-                                  const std::vector<int64_t>& carve_order,
-                                  const std::vector<int64_t>& schedule, const at::Tensor& liveness,
-                                  const at::Tensor& activity, int64_t reps) {
+std::vector<Tensor> fold_part(const Tensor& read, const Tensor& write, const Tensor& gain,
+                              const Tensor& v, Tensor& num, Tensor& den,
+                              const std::vector<int64_t>& widths, int64_t dv, int64_t page_bits,
+                              int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
+                              const std::vector<int64_t>& schedule, const Tensor& liveness,
+                              const Tensor& activity, int64_t reps) {
   CarryCall call = derive_carry_call(read, write, gain, v, num, den, widths, dv, page_bits,
                                      warps_per_cta, carve_order, schedule, liveness, activity,
-                                     c10::nullopt, c10::nullopt, c10::nullopt);
-  TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
-              "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
+                                     std::nullopt, std::nullopt, std::nullopt);
+  STD_TORCH_CHECK((int)widths.size() == kD && dv == kDV && warps_per_cta == kW,
+                  "the part harness is built for the flagship arm (D=2, DV=64, 8 warps)");
   const CarryParams& p = call.p;
   const int64_t BH = call.BH, owners = p.g.owners;
-  const auto opts = at::TensorOptions().device(read.device()).dtype(at::kFloat);
-  at::Tensor state = at::zeros({BH, owners, kW, 32, FlagPlan::kDealt, FlagPlan::kNT, 4}, opts);
-  at::Tensor mass = at::zeros({BH, owners, kW, 32, FlagPlan::kDealt, 4}, opts);
+  Tensor state = zeros_cuda({BH, owners, kW, 32, FlagPlan::kDealt, FlagPlan::kNT, 4}, Dtype::Float,
+                            read.get_device_index());
+  Tensor mass =
+      zeros_cuda({BH, owners, kW, 32, FlagPlan::kDealt, 4}, Dtype::Float, read.get_device_index());
   auto* kern = fold_part_kernel<kD, kDV, kW>;
   static bool attr = false;
   if (!attr) {
-    TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                     FlagPlan::kSmemBytes)
-                    == cudaSuccess,
-                "smem attribute");
+    STD_TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                         FlagPlan::kSmemBytes)
+                        == cudaSuccess,
+                    "smem attribute");
     attr = true;
   }
   kern<<<dim3((unsigned)owners, (unsigned)BH), FlagPlan::kThreads, FlagPlan::kSmemBytes,
-         at::cuda::getCurrentCUDAStream()>>>(p, state.data_ptr<float>(), mass.data_ptr<float>(),
-                                             (int)reps);
-  TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the fold part did not launch");
+         current_stream()>>>(p, state.mutable_data_ptr<float>(), mass.mutable_data_ptr<float>(),
+                             (int)reps);
+  STD_TORCH_CHECK(cudaGetLastError() == cudaSuccess, "the fold part did not launch");
   return {state, mass};
 }
 
 }  // namespace rola::carry::parts
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("head_part", &rola::carry::parts::head_part);
-  m.def("fill_part", &rola::carry::parts::fill_part);
-  m.def("fold_part", &rola::carry::parts::fold_part);
-  m.def("pool_geometry", [] {
-    using P = rola::carry::parts::FlagPlan;
-    return std::vector<int64_t>{P::kPoolTok,         P::kPoolRows,    P::kPoolSlotBytes,
-                                P::kVRowBytes,       P::kPoolVOffset, P::kPoolInnerOffset,
-                                P::kPoolOuterOffset, P::kVChunks,     P::kPoolGainOffset};
-  });
-  m.def("smem_bytes", [] { return (int64_t)rola::carry::parts::FlagPlan::kSmemBytes; });
-  m.def("calibrate", &rola::carry::calib::calibrate);
+namespace {
+
+std::vector<int64_t> pool_geometry() {
+  using P = rola::carry::parts::FlagPlan;
+  return {P::kPoolTok,         P::kPoolRows,    P::kPoolSlotBytes,
+          P::kVRowBytes,       P::kPoolVOffset, P::kPoolInnerOffset,
+          P::kPoolOuterOffset, P::kVChunks,     P::kPoolGainOffset};
+}
+
+int64_t smem_bytes() { return (int64_t)rola::carry::parts::FlagPlan::kSmemBytes; }
+
+}  // namespace
+
+//: THE PART HARNESS'S OPERATORS (`torch.ops.rola_parts`), through the stable ABI like the extension's own.
+STABLE_TORCH_LIBRARY(rola_parts, m) {
+  m.def(
+      "head_part(Tensor read, Tensor write, Tensor gain, Tensor v, Tensor(a!) num, Tensor(b!) den, int[] widths, "
+      "int dv, int page_bits, int warps_per_cta, int[] carve_order, int[] schedule, Tensor liveness, Tensor activity, "
+      "int reps) -> Tensor[]");
+  m.def(
+      "fill_part(Tensor read, Tensor write, Tensor gain, Tensor v, Tensor(a!) num, Tensor(b!) den, int[] widths, "
+      "int dv, int page_bits, int warps_per_cta, int[] carve_order, int[] schedule, Tensor liveness, Tensor activity, "
+      "int reps) -> Tensor");
+  m.def(
+      "fold_part(Tensor read, Tensor write, Tensor gain, Tensor v, Tensor(a!) num, Tensor(b!) den, int[] widths, "
+      "int dv, int page_bits, int warps_per_cta, int[] carve_order, int[] schedule, Tensor liveness, Tensor activity, "
+      "int reps) -> Tensor[]");
+  m.def("pool_geometry() -> int[]");
+  m.def("smem_bytes() -> int");
+  m.def(
+      "calibrate(int warps, int mode, int burst, int iters, int owners, Tensor(a!) out, Tensor src) -> ()");
+}
+
+STABLE_TORCH_LIBRARY_IMPL(rola_parts, CompositeExplicitAutograd, m) {
+  m.impl("head_part", TORCH_BOX(&rola::carry::parts::head_part));
+  m.impl("fill_part", TORCH_BOX(&rola::carry::parts::fill_part));
+  m.impl("fold_part", TORCH_BOX(&rola::carry::parts::fold_part));
+  m.impl("pool_geometry", TORCH_BOX(&pool_geometry));
+  m.impl("smem_bytes", TORCH_BOX(&smem_bytes));
+  m.impl("calibrate", TORCH_BOX(&rola::carry::calib::calibrate));
+}
+
+extern "C" PyObject* PyInit__C_parts(void) {
+  static PyModuleDef module = {PyModuleDef_HEAD_INIT,
+                               "_C_parts",
+                               "the part harness's operators, torch.ops.rola_parts",
+                               -1,
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr};
+  return PyModule_Create(&module);
 }

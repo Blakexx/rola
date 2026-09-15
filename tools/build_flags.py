@@ -60,8 +60,9 @@ def torch_extension_cache_key_flags(name: str = "_C") -> list[str]:
     kernel-only `.cu` TUs `tools/ratify.py` compiles:
     `--compiler-options '-fPIC'` (`_write_ninja_file`'s `cuda_flags +=
     ['--compiler-options', "'-fPIC'"]`, unconditional for any CUDA compile) and
-    `-DTORCH_EXTENSION_NAME=<name> -DTORCH_API_INCLUDE_EXTENSION_H` plus
-    `_get_pybind11_abi_build_flags()` (`common_cflags`, added to every source).
+    `-DTORCH_EXTENSION_NAME=<name> -DTORCH_API_INCLUDE_EXTENSION_H` plus, for a
+    `py_limited_api` extension, `-DPy_LIMITED_API=<torch's minimum CPython>` and this
+    project's stable-ABI target (`STABLE_DEFINES`), all added to every source.
     `tools/ratify.py`'s standalone recompile has never modeled either
     (deliberately: inert for the shipped kernel TUs, per the FLAG FIDELITY note
     in `setup.py`'s module docstring), which was harmless before sccache
@@ -75,14 +76,22 @@ def torch_extension_cache_key_flags(name: str = "_C") -> list[str]:
     and `docs/build.md#sccache`. Adding them to the COMPILE INVOCATION (not to
     the ratified flag list) closes the gap without touching what the manifest
     certifies: neither flag moves what `ptxas` assembles in a TU that never
-    expands the pybind macros and has no host code `-fPIC` would change the
+    expands a Python or torch macro and has no host code `-fPIC` would change the
     codegen of, which is exactly why they were safe to omit from ratification
     and are safe to add here.
     """
-    from torch.utils.cpp_extension import _get_pybind11_abi_build_flags
+    from torch.utils.cpp_extension import min_supported_cpython
     return ["--compiler-options", "'-fPIC'",
             f"-DTORCH_EXTENSION_NAME={name}", "-DTORCH_API_INCLUDE_EXTENSION_H",
-            *(str(x) for x in _get_pybind11_abi_build_flags())]
+            f"-DPy_LIMITED_API={min_supported_cpython}", *STABLE_DEFINES]
+
+
+#: THE STABLE ABI TARGET (docs/build.md#stable-abi): the extension is built against torch's stable C shim and
+#: header-only types only, pinned to the oldest torch whose stable surface carries everything the host code uses (the
+#: native handle of the current CUDA stream arrived in 2.13), so one binary loads under every torch from there on. The
+#: build passes these to every compile (`setup.py`); ratification's recompile passes them for cache-key fidelity.
+TORCH_MIN = (2, 13)
+STABLE_DEFINES = (f"-DTORCH_TARGET_VERSION=0x{(TORCH_MIN[0] << 56) | (TORCH_MIN[1] << 48):016x}",)
 
 
 #: THE `-MP` INSURANCE. It adds a phony make target per header to the dependency

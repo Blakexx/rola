@@ -138,7 +138,7 @@ Three properties make this safe to have:
 * **A subset binary is SELF-IDENTIFYING and refuses what it lacks.**
   `rola.ops.decode.arms()` returns the `(d_v, D, decay)` rows the fatbin actually
   carries, read off the same list the build compiled from; asking the launch for any
-  other shape is a `TORCH_CHECK` refusal naming the arm, never a mis-launch.
+  other shape is a `STD_TORCH_CHECK` refusal naming the arm, never a mis-launch.
 * **It is NOT SHIPPABLE, and the build says so.** The two post-build gates prove the
   fatbin carries EVERY ratified instantiation in its assigned shard; a subset carries
   fewer by construction, so they are skipped — announced in a banner, in this one
@@ -401,16 +401,30 @@ compilers import it. Pre-existing; recording the flag list in the manifest's
 
 ```bash
 python -c "from rola import _build_config; print(_build_config.show())"
-cuobjdump --list-ptx rola_cuda.cpython-*.so     # must list NOTHING
+cuobjdump --list-ptx rola/_C.abi3.so     # must list NOTHING
 python tools/ratify.py --arch 80 --arch 86       # must PASS
 ```
 
 The shipped `.so` carries 8 ELF images and **0 PTX images**. That is not a
 side effect; it is rule 2, checked.
 
+## <a id="stable-abi"></a>The binary targets torch's stable ABI
+
+The extension is built against torch's **stable** C shim and header-only types and against nothing of torch's C++ ABI:
+every kernel's host code goes through `csrc/rola/src/common/torch_seam.cuh`, and the registration TU declares operators
+(`torch.ops.rola.*`) instead of binding a pybind module ([`internals/rola_api.md`](internals/rola_api.md)). `setup.py`
+pins the targeted minimum (`tools/build_flags.py`'s `TORCH_MIN = (2, 13)`, passed as `-DTORCH_TARGET_VERSION`, so any stable call newer than the
+minimum fails to compile) and builds the module object against Python's limited API (`py_limited_api=True`, the
+`_C.abi3.so` name). One binary therefore loads under every torch from 2.13 on and every CPython from 3.10 on.
+
+2.13 is the minimum because it is the first torch whose stable surface has everything the host code uses; the newest
+piece is the native handle of the current CUDA stream. Raising the minimum is a one-line change in `tools/build_flags.py`; lowering
+it needs every call above the new minimum replaced first, and the compiler names each one. The gate for a change here is
+a build against the minimum torch and the battery on the minimum and on the newest.
+
 ## Dependencies
 
-`torch` and `einops`. Not `transformers` (the HF model classes stay in the fork),
+`torch` (2.13 or newer) and `einops`. Not `transformers` (the HF model classes stay in the fork),
 not `fla`, not `triton` — the kernels are CUDA. `rola` itself imports neither.
 
 ## Standards lint

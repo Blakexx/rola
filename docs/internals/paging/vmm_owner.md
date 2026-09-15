@@ -27,7 +27,7 @@ allocation handle mapped at the end of the mapped prefix; *granularity* is
 granularity. The reservation is address space, not memory, and it is why the arena has no
 ceiling parameter: reserving for the worst case costs nothing to reserve.
 
-`base()` then hands out an `at::from_blob` tensor spanning the **entire** reserved extent,
+`base()` then hands out a `torch::stable::from_blob` tensor spanning the **entire** reserved extent,
 shaped `[dense_limit_pages, page_rows, page_cols]` fp32.
 
 **Only the prefix reported by `mapped_capacity_pages()` is mapped and may be touched.**
@@ -141,17 +141,17 @@ Every tensor `base()` returns carries a deleter that captures two things: the sh
 The `shared_from_this` capture keeps the driver allocation alive for every tensor view.
 **This prevents a caller holding a slice from outliving the native owner and observing an
 unmapped raw pointer.** It is the reason `VmmOwner` derives from `enable_shared_from_this`
-and the reason the pybind class is held by `std::shared_ptr` (see
+and the reason the extension's handle registry holds it by `std::shared_ptr` (see
 [`../rola_api.md`](../rola_api.md#vmm-binding)). It is also the whole answer to "can torch
-view driver memory without a copy?": `at::from_blob` over the reservation, with a deleter
+view driver memory without a copy?": `torch::stable::from_blob` over the reservation, with a deleter
 that owns the lifetime, is the mechanism — no pluggable allocator, no copy, and nothing the
 caching allocator can undo.
 
-The counter is the other half: `close()` `TORCH_CHECK`s that `live_views == 0` and refuses
+The counter is the other half: `close()` `STD_TORCH_CHECK`s that `live_views == 0` and refuses
 to proceed while any exported view exists. Lifetime extension alone would let `close()`
 unmap under a live view; the counter turns that into a loud error at the call site instead.
 
-The increment happens BEFORE `at::from_blob`, and the `catch` decrements it if construction
+The increment happens BEFORE `torch::stable::from_blob`, and the `catch` decrements it if construction
 throws — so a failed view never leaks a count that would permanently block `close()`.
 
 ## <a id="destruction"></a>7. Destruction leaks rather than races
@@ -169,7 +169,7 @@ failures. `release_plane()` is `noexcept` and unmaps chunks in REVERSE order bef
 the address reservation, mirroring the order they were mapped in.
 
 `close()` is the path that *can* report: it quiesces, releases, and marks `closed_`, and
-every mutating method `TORCH_CHECK`s `!closed_` afterwards.
+every mutating method `STD_TORCH_CHECK`s `!closed_` afterwards.
 
 ## <a id="overflow-discipline"></a>8. Arithmetic that cannot silently wrap
 

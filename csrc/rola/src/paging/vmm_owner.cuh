@@ -1,7 +1,6 @@
 #pragma once
 
-#include <torch/extension.h>
-#include <ATen/ops/from_blob.h>
+#include "common/torch_seam.cuh"
 
 #include <cuda.h>
 
@@ -40,7 +39,7 @@ class VmmOwner final : public std::enable_shared_from_this<VmmOwner> {
 
   // A contiguous logical view over the WHOLE reserved range. Only the prefix reported by
   // mapped_capacity_pages is mapped and may be touched.
-  torch::Tensor base();
+  Tensor base();
 
   void grow(std::int64_t required_pages);
   void rollback_to(std::int64_t target_pages);

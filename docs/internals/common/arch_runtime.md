@@ -37,13 +37,14 @@ Three things are asserted, in order:
 
 ## Where it is called
 
-Every entry point that reaches a kernel launch — the liveness pass, the standalone
-intra forward and reverse passes, the entmax and softmax routing forward/backward
-families, and the T=1 decode step and its residency query — calls
-`check_arch_table()` as the first statement of its body. `tests/unit/test_closed_world_arch_gate.py`
-scans the pybind translation unit's own entry list and asserts this for every entry
-that is not named as launch-less (an arm census, a build stamp, or a host-only
-derivation over the descriptor).
+Every entry point that reaches a kernel launch — the carry forward pass, the SM clock
+read, the liveness pass, the standalone intra forward pass, the entmax and softmax
+routing forward/backward families, and the T=1 decode step and its residency query —
+calls `check_arch_table()` as the first statement of its body.
+`tests/unit/test_closed_world_arch_gate.py` scans the registration translation unit's own
+operator list and asserts this for every entry that is not named as launch-less (an arm
+census, a build stamp, a host-only derivation over the descriptor, a ledger binding, or a
+VMM driver operation).
 
 ## Why its own translation unit
 

@@ -27,10 +27,8 @@
 // reproducibility divergence, the barrier ledger, and the derivation that collapses the
 // causal intra Gram into UPDATE-THEN-READ: docs/internals/decode/decode.md
 
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAException.h>
+#include "common/torch_seam.cuh"
 #include <cuda_bf16.h>
-#include <torch/extension.h>
 
 #include "common/arch_runtime.cuh"
 #include "common/state_page.cuh"
@@ -567,16 +565,17 @@ std::vector<std::vector<int64_t>> rola_decode_arms() {
 
 void launch_decode_step(const DecodeParams& p, int d_v, bool decay, int64_t smem_budget) {
   //: The instantiation matrix is `DV(2) x D(4) x DECAY(2) = 16`. What is NOT an axis -- -- see docs/internals/decode/decode.md#torchcheck
-  TORCH_CHECK(d_v == 32 || d_v == 64, "decode instantiates d_v in {32, 64}, got ", d_v);
+  STD_TORCH_CHECK(d_v == 32 || d_v == 64, "decode instantiates d_v in {32, 64}, got ", d_v);
   const int cols = d_v + 1;
   const size_t smem = decode_step_smem_bytes(p.total_rows, d_v, cols, decay, p.mask_total,
                                              p.omask_total, p.olist_total, p.dlist_total);
-  TORCH_CHECK(static_cast<int64_t>(smem) <= smem_budget, "the decode step's staged operands need ",
-              smem, " B of shared memory against a per-block budget of ", smem_budget,
-              " B; sum_l width_l = ", p.total_rows,
-              ". This is a declared capacity, refused loudly rather than taken as a "
-              "slower path.");
-  auto stream = at::cuda::getCurrentCUDAStream();
+  STD_TORCH_CHECK(static_cast<int64_t>(smem) <= smem_budget,
+                  "the decode step's staged operands need ", smem,
+                  " B of shared memory against a per-block budget of ", smem_budget,
+                  " B; sum_l width_l = ", p.total_rows,
+                  ". This is a declared capacity, refused loudly rather than taken as a "
+                  "slower path.");
+  auto stream = current_stream();
   //: ONE LAUNCH SITE. Each axis arrives as an `integral_constant`, so the three -- see docs/internals/decode/decode.md#launch
   auto launch = [&](auto DV, auto LEVELS, auto DECAY) {
     detail::decode_step_kernel<decltype(DV)::value, decltype(LEVELS)::value, decltype(DECAY)::value>
@@ -591,12 +590,12 @@ void launch_decode_step(const DecodeParams& p, int d_v, bool decay, int64_t smem
   }
   ROLA_DECODE_ARMS(ROLA_DECODE_TRY)
 #undef ROLA_DECODE_TRY
-  TORCH_CHECK(matched, "this binary does not carry the decode arm (d_v = ", d_v, ", D = ", p.D,
-              ", decay = ", decay,
-              "). A full build carries every declared arm; an ITERATION build "
-              "(ROLA_DECODE_ARMS) carries a subset and is not shippable -- "
-              "rola.ops.decode.arms() lists what this one has.");
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  STD_TORCH_CHECK(matched, "this binary does not carry the decode arm (d_v = ", d_v, ", D = ", p.D,
+                  ", decay = ", decay,
+                  "). A full build carries every declared arm; an ITERATION build "
+                  "(ROLA_DECODE_ARMS) carries a subset and is not shippable -- "
+                  "rola.ops.decode.arms() lists what this one has.");
+  ROLA_CUDA_LAUNCH_CHECK();
 }
 
 // ---------------------------------------------------------------------------
@@ -605,48 +604,51 @@ void launch_decode_step(const DecodeParams& p, int d_v, bool decay, int64_t smem
 
 namespace detail {
 
-void check_f32(const at::Tensor& t, const char* name) {
-  TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
-  TORCH_CHECK(t.scalar_type() == at::kFloat, name, " must be float32, got ", t.scalar_type());
-  TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
+void check_f32(const Tensor& t, const char* name) {
+  STD_TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
+  STD_TORCH_CHECK(t.scalar_type() == Dtype::Float, name, " must be float32, got ", t.scalar_type());
+  STD_TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
 }
 
-void check_i32(const at::Tensor& t, const char* name) {
-  TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
-  TORCH_CHECK(t.scalar_type() == at::kInt, name, " must be int32, got ", t.scalar_type());
-  TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
+void check_i32(const Tensor& t, const char* name) {
+  STD_TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
+  STD_TORCH_CHECK(t.scalar_type() == Dtype::Int, name, " must be int32, got ", t.scalar_type());
+  STD_TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
 }
 
 //: ONE FLOATING AXIS OVER THE CLOSED SET THE PRODUCER AND THE VALUE PROJECTION EMIT: an -- see docs/internals/decode/decode.md#isbf16
-int is_bf16(at::ScalarType dtype, const char* what) {
-  TORCH_CHECK(dtype == at::kFloat || dtype == at::kBFloat16, what,
-              " must be float32 or bfloat16, got ", dtype);
-  return dtype == at::kBFloat16 ? 1 : 0;
+int is_bf16(Dtype dtype, const char* what) {
+  STD_TORCH_CHECK(dtype == Dtype::Float || dtype == Dtype::BFloat16, what,
+                  " must be float32 or bfloat16, got ", dtype);
+  return dtype == Dtype::BFloat16 ? 1 : 0;
 }
 
 //: The `[B, 1, H, W] -> [B * H, W]` fold as an ADDRESS. `T != 1` is refused -- the fold -- see docs/internals/decode/decode.md#spanof
-Span span_of(const at::Tensor& t, int64_t BH, int64_t width, const char* name) {
-  TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
-  TORCH_CHECK(t.dim() == 4 && t.size(1) == 1, name, " must be [B, 1, H, W], got ", t.sizes());
-  TORCH_CHECK(t.size(0) * t.size(2) == BH, name, " folds to ", t.size(0) * t.size(2),
-              " batch-heads against ", BH);
-  TORCH_CHECK(width == 0 || t.size(3) == width, name, " is ", t.size(3), " wide against ", width);
+Span span_of(const Tensor& t, int64_t BH, int64_t width, const char* name) {
+  STD_TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
+  STD_TORCH_CHECK(t.dim() == 4 && t.size(1) == 1, name, " must be [B, 1, H, W], got ",
+                  shape(t.sizes()));
+  STD_TORCH_CHECK(t.size(0) * t.size(2) == BH, name, " folds to ", t.size(0) * t.size(2),
+                  " batch-heads against ", BH);
+  STD_TORCH_CHECK(width == 0 || t.size(3) == width, name, " is ", t.size(3), " wide against ",
+                  width);
   return Span{t.data_ptr(), t.stride(0), t.stride(2), t.stride(3)};
 }
 
-Span scalar_span_of(const at::Tensor& t, int64_t BH, const char* name) {
-  TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
-  TORCH_CHECK(t.dim() == 3 && t.size(1) == 1, name, " must be [B, 1, H], got ", t.sizes());
-  TORCH_CHECK(t.size(0) * t.size(2) == BH, name, " folds to ", t.size(0) * t.size(2),
-              " batch-heads against ", BH);
+Span scalar_span_of(const Tensor& t, int64_t BH, const char* name) {
+  STD_TORCH_CHECK(t.is_cuda(), name, " must be a CUDA tensor");
+  STD_TORCH_CHECK(t.dim() == 3 && t.size(1) == 1, name, " must be [B, 1, H], got ",
+                  shape(t.sizes()));
+  STD_TORCH_CHECK(t.size(0) * t.size(2) == BH, name, " folds to ", t.size(0) * t.size(2),
+                  " batch-heads against ", BH);
   return Span{t.data_ptr(), t.stride(0), t.stride(2), 0};
 }
 
 int ilog2_exact(int64_t x, const char* what) {
-  TORCH_CHECK(x >= 1, what, " must be positive, got ", x);
+  STD_TORCH_CHECK(x >= 1, what, " must be positive, got ", x);
   int e = 0;
   while ((int64_t{1} << e) < x) ++e;
-  TORCH_CHECK((int64_t{1} << e) == x, what, " must be a power of two, got ", x);
+  STD_TORCH_CHECK((int64_t{1} << e) == x, what, " must be a power of two, got ", x);
   return e;
 }
 
@@ -654,8 +656,8 @@ int ilog2_exact(int64_t x, const char* what) {
 void fill_lattice(DecodeParams& p, int64_t k, int64_t m, int64_t N) {
   const int kappa = ilog2_exact(k, "the lattice span k");
   const int j = ilog2_exact(m, "the lattice capacity m");
-  TORCH_CHECK(k <= kDecodeMaxSpan, "the lattice span k = ", k, " exceeds the decode path's ",
-              kDecodeMaxSpan);
+  STD_TORCH_CHECK(k <= kDecodeMaxSpan, "the lattice span k = ", k, " exceeds the decode path's ",
+                  kDecodeMaxSpan);
   p.lat_k = static_cast<int>(k);
 
   const int D = p.D;
@@ -679,17 +681,17 @@ void fill_lattice(DecodeParams& p, int64_t k, int64_t m, int64_t N) {
                       ? a_inner
                       : j_outer / (D - 1) + ((l >= (D - 1) - (j_outer % (D - 1))) ? 1 : 0);
     p.lat_s[l] = p.lat_k << a;
-    TORCH_CHECK(p.lat_s[l] <= kDecodeMaxSpan, "level ", l, "'s owner span k*m_l = ", p.lat_s[l],
-                " exceeds the decode path's ", kDecodeMaxSpan);
-    TORCH_CHECK(p.level_width[l] % p.lat_s[l] == 0, "level ", l, " of width ", p.level_width[l],
-                " is not a whole number of owner spans k*m_l = ", p.lat_s[l],
-                " (an owner sits inside a level)");
+    STD_TORCH_CHECK(p.lat_s[l] <= kDecodeMaxSpan, "level ", l, "'s owner span k*m_l = ", p.lat_s[l],
+                    " exceeds the decode path's ", kDecodeMaxSpan);
+    STD_TORCH_CHECK(p.level_width[l] % p.lat_s[l] == 0, "level ", l, " of width ", p.level_width[l],
+                    " is not a whole number of owner spans k*m_l = ", p.lat_s[l],
+                    " (an owner sits inside a level)");
     p.lat_g[l] = p.level_width[l] / p.lat_s[l];
     bc *= p.lat_s[l];
     owners *= p.lat_g[l];
     local_bits += kappa + a;
   }
-  TORCH_CHECK(owners * bc == N, "the lattice partitions ", owners * bc, " leaves against ", N);
+  STD_TORCH_CHECK(owners * bc == N, "the lattice partitions ", owners * bc, " leaves against ", N);
   p.lat_local_bits = local_bits;
 
   //: `BoxPlan::run_shift`: level `l`'s run offset sits at `log2 prod_{l\' > l} s_l\'` in the -- see docs/internals/decode/decode.md#gsuf
@@ -727,9 +729,9 @@ void fill_lattice(DecodeParams& p, int64_t k, int64_t m, int64_t N) {
     olist_total += p.lat_g[l];
     p.dlist_off[l] = dlist_total;
     if (l < D - 1) dlist_total += p.level_width[l];
-    TORCH_CHECK(p.lat_g[l] <= kDecodeThreads, "level ", l, "'s owner grid is ", p.lat_g[l],
-                " wide against the ", kDecodeThreads,
-                " threads that ballot its liveness in one block pass");
+    STD_TORCH_CHECK(p.lat_g[l] <= kDecodeThreads, "level ", l, "'s owner grid is ", p.lat_g[l],
+                    " wide against the ", kDecodeThreads,
+                    " threads that ballot its liveness in one block pass");
   }
   p.mask_total = mask_total;
   p.omask_total = omask_total;
@@ -738,30 +740,30 @@ void fill_lattice(DecodeParams& p, int64_t k, int64_t m, int64_t N) {
 }
 
 //: The per-level geometry every decode entry validates the same way, filled into `p` and -- see docs/internals/decode/decode.md#filllevels
-int fill_levels(DecodeParams& p, const std::vector<at::Tensor>& levels,
+int fill_levels(DecodeParams& p, const std::vector<Tensor>& levels,
                 const std::vector<int64_t>& level_widths, int64_t BH, int64_t N) {
   int total_rows = 0;
   int64_t expect_n = 1;
   for (int l = 0; l < p.D; ++l) {
     const int width = static_cast<int>(level_widths[l]);
-    TORCH_CHECK(width >= 1 && width <= kDecodeMaxLevelWidth, "level ", l, " width ", width,
-                " exceeds the decode path's capacity ", kDecodeMaxLevelWidth,
-                " (see kProducerMaxBranchWidth)");
+    STD_TORCH_CHECK(width >= 1 && width <= kDecodeMaxLevelWidth, "level ", l, " width ", width,
+                    " exceeds the decode path's capacity ", kDecodeMaxLevelWidth,
+                    " (see kProducerMaxBranchWidth)");
     p.write[l] = span_of(levels[l], BH, width, "write[l]");
     p.level_width[l] = width;
     p.level_amp_offset[l] = total_rows;
     total_rows += width;
     expect_n *= width;
   }
-  TORCH_CHECK(expect_n == N, "prod(level_widths) = ", expect_n,
-              " disagrees with the state's leaf axis ", N);
+  STD_TORCH_CHECK(expect_n == N, "prod(level_widths) = ", expect_n,
+                  " disagrees with the state's leaf axis ", N);
   return total_rows;
 }
 
 int64_t smem_budget_of(int64_t device_index) {
   int smem_per_block = 0;
-  C10_CUDA_CHECK(cudaDeviceGetAttribute(&smem_per_block, cudaDevAttrMaxSharedMemoryPerBlock,
-                                        static_cast<int>(device_index)));
+  ROLA_CUDA_CHECK(cudaDeviceGetAttribute(&smem_per_block, cudaDevAttrMaxSharedMemoryPerBlock,
+                                         static_cast<int>(device_index)));
   return smem_per_block;
 }
 
@@ -775,37 +777,39 @@ int64_t rola_decode_producer_width_mirror() { return kProducerMaxBranchWidth; }
 //: THE STEP'S DECLARED RESIDENCY, in CTAs per SM, read off the same `constexpr` -- see docs/internals/decode/decode.md#rola-decode-residency
 int64_t rola_decode_residency(bool decay, int64_t levels) {
   check_arch_table();
-  TORCH_CHECK(levels >= 1 && levels <= kMaxLevels, "D must be in [1, 4], got ", levels);
+  STD_TORCH_CHECK(levels >= 1 && levels <= kMaxLevels, "D must be in [1, 4], got ", levels);
   return decode_step_blocks_per_sm(decay, static_cast<int>(levels));
 }
 
 //: THE BUILD STAMP: a path or hash check cannot catch a stale `.so` at the right path, -- see docs/internals/decode/decode.md#roladecodebuildstamp
 int64_t rola_decode_build_stamp() {
-  auto out = at::empty({1}, at::TensorOptions().dtype(at::kLong).device(at::kCUDA));
-  detail::stampdet::decode_stamp_kernel<<<1, 1, 0, at::cuda::getCurrentCUDAStream()>>>(
-      out.data_ptr<int64_t>());
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
-  return out.cpu().item<int64_t>();
+  auto out = empty_cuda({1}, Dtype::Long);
+  detail::stampdet::decode_stamp_kernel<<<1, 1, 0, current_stream()>>>(
+      out.mutable_data_ptr<int64_t>());
+  ROLA_CUDA_LAUNCH_CHECK();
+  return item<int64_t>(out);
 }
 
-at::Tensor rola_decode_forward(
-    std::vector<at::Tensor> read, std::vector<at::Tensor> write, std::vector<int64_t> normalize,
-    c10::optional<at::Tensor> dials, at::Tensor g_write, at::Tensor v, at::Tensor state,
-    at::Tensor ws, at::Tensor ctr, at::Tensor growth, at::Tensor growth_any, at::Tensor growth_ctr,
-    at::Tensor done, at::Tensor atom_bits, std::vector<int64_t> level_widths,
-    std::vector<int64_t> level_row_offsets, int64_t lattice_k, int64_t lattice_m, int64_t n_split,
-    double eps, c10::optional<at::Tensor> page_table, c10::optional<at::Tensor> pool_slots,
-    c10::optional<at::Tensor> pool_cursor, c10::optional<at::Tensor> pool_map) {
+Tensor rola_decode_forward(std::vector<Tensor> read, std::vector<Tensor> write,
+                           std::vector<int64_t> normalize, std::optional<Tensor> dials,
+                           Tensor g_write, Tensor v, Tensor state, Tensor ws, Tensor ctr,
+                           Tensor growth, Tensor growth_any, Tensor growth_ctr, Tensor done,
+                           Tensor atom_bits, std::vector<int64_t> level_widths,
+                           std::vector<int64_t> level_row_offsets, int64_t lattice_k,
+                           int64_t lattice_m, int64_t n_split, double eps,
+                           std::optional<Tensor> page_table, std::optional<Tensor> pool_slots,
+                           std::optional<Tensor> pool_cursor, std::optional<Tensor> pool_map) {
   check_arch_table();
   const int D = static_cast<int>(read.size());
-  TORCH_CHECK(D >= 1 && D <= kMaxLevels, "D must be in [1, 4], got ", D);
-  TORCH_CHECK(static_cast<int>(write.size()) == D && static_cast<int>(normalize.size()) == D
-                  && static_cast<int>(level_widths.size()) == D
-                  && static_cast<int>(level_row_offsets.size()) == D,
-              "read, write, normalize and the two per-level integer vectors must each "
-              "have D entries");
+  STD_TORCH_CHECK(D >= 1 && D <= kMaxLevels, "D must be in [1, 4], got ", D);
+  STD_TORCH_CHECK(static_cast<int>(write.size()) == D && static_cast<int>(normalize.size()) == D
+                      && static_cast<int>(level_widths.size()) == D
+                      && static_cast<int>(level_row_offsets.size()) == D,
+                  "read, write, normalize and the two per-level integer vectors must each "
+                  "have D entries");
 
-  TORCH_CHECK(v.dim() == 4 && v.size(1) == 1, "v must be [B, 1, H, d_v], got ", v.sizes());
+  STD_TORCH_CHECK(v.dim() == 4 && v.size(1) == 1, "v must be [B, 1, H, d_v], got ",
+                  shape(v.sizes()));
   const int BH = static_cast<int>(v.size(0) * v.size(2));
   const int H = static_cast<int>(v.size(2));
   const int d_v = static_cast<int>(v.size(3));
@@ -820,41 +824,42 @@ at::Tensor rola_decode_forward(
   int atoms_per_bh = 0;
   int32_t* page_ptr = nullptr;
   if (page_table.has_value()) {
-    at::Tensor& tbl = *page_table;
+    Tensor& tbl = *page_table;
     detail::check_i32(tbl, "page_table");
-    TORCH_CHECK(tbl.dim() == 2 && tbl.size(0) == BH, "page_table must be [BH, N / ", kAtomLeaves,
-                "] int32");
+    STD_TORCH_CHECK(tbl.dim() == 2 && tbl.size(0) == BH, "page_table must be [BH, N / ",
+                    kAtomLeaves, "] int32");
     atoms_per_bh = static_cast<int>(tbl.size(1));
     N = static_cast<int64_t>(atoms_per_bh) * kAtomLeaves;
-    TORCH_CHECK(state.dim() == 3 && state.size(1) == kAtomLeaves && state.size(2) == cols,
-                "under a page table the state is the arena's plane, [slots, ", kAtomLeaves,
-                ", d_v + 1]");
+    STD_TORCH_CHECK(state.dim() == 3 && state.size(1) == kAtomLeaves && state.size(2) == cols,
+                    "under a page table the state is the arena's plane, [slots, ", kAtomLeaves,
+                    ", d_v + 1]");
     page_ptr = tbl.mutable_data_ptr<int32_t>();
   } else {
-    TORCH_CHECK(state.dim() == 3 && state.size(0) == BH && state.size(2) == cols,
-                "state must be [BH, N, d_v + 1]");
+    STD_TORCH_CHECK(state.dim() == 3 && state.size(0) == BH && state.size(2) == cols,
+                    "state must be [BH, N, d_v + 1]");
     N = 1;
     for (auto w : level_widths) N *= w;
-    TORCH_CHECK(N % kAtomLeaves == 0,
-                "THERE IS NO RAGGED STATE: N = prod_l B_l must be a whole number of ", kAtomLeaves,
-                "-leaf pages, and a lawful routing makes it one (every B_l a "
-                "power of two at or above 16). PREFILL AND DECODE SHARE ONE ADMISSION "
-                "LAW; got N = ",
-                N);
+    STD_TORCH_CHECK(N % kAtomLeaves == 0,
+                    "THERE IS NO RAGGED STATE: N = prod_l B_l must be a whole number of ",
+                    kAtomLeaves,
+                    "-leaf pages, and a lawful routing makes it one (every B_l a "
+                    "power of two at or above 16). PREFILL AND DECODE SHARE ONE ADMISSION "
+                    "LAW; got N = ",
+                    N);
     atoms_per_bh = static_cast<int>(N / kAtomLeaves);
-    TORCH_CHECK(state.size(1) == N, "a dense state is [BH, N, d_v + 1] with N = ", N, "; got ",
-                state.size(1));
+    STD_TORCH_CHECK(state.size(1) == N, "a dense state is [BH, N, d_v + 1] with N = ", N, "; got ",
+                    state.size(1));
   }
 
   DecodeParams p{};
   p.D = D;
   const int total_rows = detail::fill_levels(p, write, level_widths, BH, N);
   detail::fill_lattice(p, lattice_k, lattice_m, N);
-  const at::ScalarType level_dtype = read[0].scalar_type();
+  const Dtype level_dtype = read[0].scalar_type();
   for (int l = 0; l < D; ++l) {
     p.read[l] = detail::span_of(read[l], BH, p.level_width[l], "read[l]");
-    TORCH_CHECK(read[l].scalar_type() == level_dtype && write[l].scalar_type() == level_dtype,
-                "every routing level shares one dtype; level ", l, " disagrees");
+    STD_TORCH_CHECK(read[l].scalar_type() == level_dtype && write[l].scalar_type() == level_dtype,
+                    "every routing level shares one dtype; level ", l, " disagrees");
     p.normalize[l] = normalize[l] != 0 ? 1 : 0;
     p.level_row_offset[l] = static_cast<int>(level_row_offsets[l]);
   }
@@ -864,78 +869,78 @@ at::Tensor rola_decode_forward(
   p.g_bf16 = detail::is_bf16(g_write.scalar_type(), "g_write");
   p.v_bf16 = detail::is_bf16(v.scalar_type(), "v");
 
-  TORCH_CHECK(n_split >= 1, "n_split must be >= 1, got ", n_split);
-  TORCH_CHECK(ws.dim() == 3 && ws.size(0) == BH && ws.size(1) == n_split && ws.size(2) == cols,
-              "ws must be [BH, n_split, cols]");
-  TORCH_CHECK(ctr.dim() == 1 && ctr.size(0) == BH, "ctr must be [BH] int32");
+  STD_TORCH_CHECK(n_split >= 1, "n_split must be >= 1, got ", n_split);
+  STD_TORCH_CHECK(ws.dim() == 3 && ws.size(0) == BH && ws.size(1) == n_split && ws.size(2) == cols,
+                  "ws must be [BH, n_split, cols]");
+  STD_TORCH_CHECK(ctr.dim() == 1 && ctr.size(0) == BH, "ctr must be [BH] int32");
 
   //: THE ADMISSION BUFFERS, checked whichever backing this is: the step's own -- see docs/internals/decode/decode.md#note-l1131
   detail::check_i32(growth, "growth");
   detail::check_i32(growth_any, "growth_any");
   detail::check_i32(growth_ctr, "growth_ctr");
   detail::check_i32(done, "done");
-  TORCH_CHECK(growth.dim() == 1 && growth.size(0) == BH, "growth must be [BH] int32");
-  TORCH_CHECK(done.dim() == 1 && done.size(0) == BH, "done must be [BH] int32");
-  TORCH_CHECK(growth_any.dim() == 1 && growth_any.size(0) == 1, "growth_any must be [1] int32");
-  TORCH_CHECK(growth_ctr.dim() == 1 && growth_ctr.size(0) == 1, "growth_ctr must be [1] int32");
-  TORCH_CHECK(
-      atom_bits.is_cuda() && atom_bits.scalar_type() == at::kBool && atom_bits.is_contiguous(),
+  STD_TORCH_CHECK(growth.dim() == 1 && growth.size(0) == BH, "growth must be [BH] int32");
+  STD_TORCH_CHECK(done.dim() == 1 && done.size(0) == BH, "done must be [BH] int32");
+  STD_TORCH_CHECK(growth_any.dim() == 1 && growth_any.size(0) == 1, "growth_any must be [1] int32");
+  STD_TORCH_CHECK(growth_ctr.dim() == 1 && growth_ctr.size(0) == 1, "growth_ctr must be [1] int32");
+  STD_TORCH_CHECK(
+      atom_bits.is_cuda() && atom_bits.scalar_type() == Dtype::Bool && atom_bits.is_contiguous(),
       "atom_bits must be a contiguous CUDA bool tensor, got ", atom_bits.scalar_type());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       atom_bits.dim() == 2 && atom_bits.size(0) == BH && atom_bits.size(1) == N / kAtomLeaves,
-      "atom_bits must be [BH, N / ", kAtomLeaves, "] bool, got ", atom_bits.sizes());
+      "atom_bits must be [BH, N / ", kAtomLeaves, "] bool, got ", shape(atom_bits.sizes()));
 
   //: THE ATOM'S PLACE IN THE LATTICE, required of a PAGED backing only, and now -- see docs/internals/decode/decode.md#torch-check
-  TORCH_CHECK(page_ptr == nullptr || p.lat_local_bits >= kAtomShift,
-              "a paged decode needs one walk unit's leaves to hold a whole number of ", kAtomLeaves,
-              "-leaf atoms, and this (k, m) gives an owner only ", (1 << p.lat_local_bits),
-              " (the innermost span must cover an atom)");
+  STD_TORCH_CHECK(page_ptr == nullptr || p.lat_local_bits >= kAtomShift,
+                  "a paged decode needs one walk unit's leaves to hold a whole number of ",
+                  kAtomLeaves, "-leaf atoms, and this (k, m) gives an owner only ",
+                  (1 << p.lat_local_bits), " (the innermost span must cover an atom)");
 
   const bool decay = dials.has_value();
-  const int64_t budget = detail::smem_budget_of(v.device().index());
+  const int64_t budget = detail::smem_budget_of(v.get_device_index());
 
   if (decay) {
     detail::check_f32(*dials, "dials");
-    TORCH_CHECK(dials->dim() == 2 && dials->size(0) == H && dials->size(1) == total_rows,
-                "dials must be [H, sum_l width_l]");
-    p.dials = dials->data_ptr<float>();
+    STD_TORCH_CHECK(dials->dim() == 2 && dials->size(0) == H && dials->size(1) == total_rows,
+                    "dials must be [H, sum_l width_l]");
+    p.dials = dials->mutable_data_ptr<float>();
   }
 
   //: `empty`, not `zeros`: every element is written, so a zero-fill is a launch the -- see docs/internals/decode/decode.md#y
-  auto y = at::empty({BH, d_v}, v.options().dtype(at::kFloat));
-  p.state = state.data_ptr<float>();
+  auto y = empty_cuda({BH, d_v}, Dtype::Float, v.get_device_index());
+  p.state = state.mutable_data_ptr<float>();
   p.page_tbl = page_ptr;
   p.atoms_per_bh = atoms_per_bh;
-  p.y = y.data_ptr<float>();
-  p.ws = ws.data_ptr<float>();
-  p.ctr = ctr.data_ptr<int32_t>();
-  p.growth = growth.data_ptr<int32_t>();
-  p.growth_any = growth_any.data_ptr<int32_t>();
-  p.growth_ctr = growth_ctr.data_ptr<int32_t>();
-  p.done = done.data_ptr<int32_t>();
-  p.atom_bits = atom_bits.data_ptr<bool>();
+  p.y = y.mutable_data_ptr<float>();
+  p.ws = ws.mutable_data_ptr<float>();
+  p.ctr = ctr.mutable_data_ptr<int32_t>();
+  p.growth = growth.mutable_data_ptr<int32_t>();
+  p.growth_any = growth_any.mutable_data_ptr<int32_t>();
+  p.growth_ctr = growth_ctr.mutable_data_ptr<int32_t>();
+  p.done = done.mutable_data_ptr<int32_t>();
+  p.atom_bits = atom_bits.mutable_data_ptr<bool>();
 
   //: THE SLACK POOL, present or absent as ONE decision -- three buffers and a capacity, -- see docs/internals/decode/decode.md#pooled
   const bool pooled = pool_slots.has_value();
-  TORCH_CHECK(pooled == pool_cursor.has_value() && pooled == pool_map.has_value(),
-              "the slack pool is its three buffers together: pass pool_slots, pool_cursor "
-              "and pool_map, or none of them");
+  STD_TORCH_CHECK(pooled == pool_cursor.has_value() && pooled == pool_map.has_value(),
+                  "the slack pool is its three buffers together: pass pool_slots, pool_cursor "
+                  "and pool_map, or none of them");
   if (pooled) {
-    TORCH_CHECK(page_table.has_value(),
-                "a slack pool admits into a page table and this state is dense-backed");
+    STD_TORCH_CHECK(page_table.has_value(),
+                    "a slack pool admits into a page table and this state is dense-backed");
     detail::check_i32(*pool_slots, "pool_slots");
     detail::check_i32(*pool_cursor, "pool_cursor");
     detail::check_i32(*pool_map, "pool_map");
-    TORCH_CHECK(pool_slots->dim() == 2 && pool_slots->size(0) == BH,
-                "pool_slots must be [BH, pool_cap] int32, got ", pool_slots->sizes());
-    TORCH_CHECK(pool_cursor->dim() == 1 && pool_cursor->size(0) == BH,
-                "pool_cursor must be [BH] int32");
-    TORCH_CHECK(
+    STD_TORCH_CHECK(pool_slots->dim() == 2 && pool_slots->size(0) == BH,
+                    "pool_slots must be [BH, pool_cap] int32, got ", shape(pool_slots->sizes()));
+    STD_TORCH_CHECK(pool_cursor->dim() == 1 && pool_cursor->size(0) == BH,
+                    "pool_cursor must be [BH] int32");
+    STD_TORCH_CHECK(
         pool_map->dim() == 2 && pool_map->size(0) == BH && pool_map->size(1) == atoms_per_bh,
         "pool_map must be the page table's shape [BH, N / ", kAtomLeaves, "] int32");
-    p.pool_slots = pool_slots->data_ptr<int32_t>();
-    p.pool_cursor = pool_cursor->data_ptr<int32_t>();
-    p.pool_map = pool_map->data_ptr<int32_t>();
+    p.pool_slots = pool_slots->mutable_data_ptr<int32_t>();
+    p.pool_cursor = pool_cursor->mutable_data_ptr<int32_t>();
+    p.pool_map = pool_map->mutable_data_ptr<int32_t>();
     p.pool_cap = static_cast<int>(pool_slots->size(1));
   }
   p.N = N;

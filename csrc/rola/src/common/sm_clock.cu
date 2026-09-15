@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // See docs/internals/common/sm_clock.md
 
-#include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAException.h>
-#include <torch/extension.h>
+#include "common/arch_runtime.cuh"
+#include "common/torch_seam.cuh"
 
 namespace rola {
 
@@ -36,13 +35,16 @@ __global__ void sm_clock_kernel(long long spin, unsigned long long* out) {
 }  // namespace clockdet
 
 double sm_clock_ghz(int64_t spin_cycles) {
-  auto out = at::zeros({3}, at::TensorOptions().dtype(at::kLong).device(at::kCUDA));
-  const int sms = at::cuda::getCurrentDeviceProperties()->multiProcessorCount;
-  clockdet::sm_clock_kernel<<<sms, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
-      (long long)spin_cycles, reinterpret_cast<unsigned long long*>(out.data_ptr<int64_t>()));
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
-  const auto h = out.cpu();
-  const double cycles = (double)h[0].item<int64_t>(), ns = (double)h[1].item<int64_t>();
+  check_arch_table();
+  auto out = zeros_cuda({3}, Dtype::Long);
+  const int sms = current_device_properties().multiProcessorCount;
+  clockdet::sm_clock_kernel<<<sms, 128, 0, current_stream()>>>(
+      (long long)spin_cycles,
+      reinterpret_cast<unsigned long long*>(out.mutable_data_ptr<int64_t>()));
+  ROLA_CUDA_LAUNCH_CHECK();
+  const auto h = to_cpu(out);
+  const double cycles = (double)h.const_data_ptr<int64_t>()[0],
+               ns = (double)h.const_data_ptr<int64_t>()[1];
   return ns > 0 ? cycles / ns : 0.0;
 }
 

@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <vector>
 
-#include <torch/types.h>
+#include "common/torch_seam.cuh"
 
 #ifdef __CUDACC__
 #include <cub/warp/warp_merge_sort.cuh>
@@ -214,29 +214,29 @@ struct LevelTable {
 };
 
 //: The tuple a tensor's own RANK implies: rank-4 is the tile-major arena (no -- see docs/internals/entmax/entmax.md#five
-inline Strides five(const torch::Tensor& t) {
+inline Strides five(const Tensor& t) {
   if (t.dim() == 4) return {t.stride(0), 0, 0, t.stride(2), t.stride(1), t.stride(3)};
   return {t.stride(0), 0, t.stride(1), t.stride(2), 0, 0};
 }
 
 //: THE LOGIT PLANE, in whichever of its two layouts the caller holds it: token- -- see docs/internals/entmax/entmax.md#five-logits
-inline Strides five_logits(const torch::Tensor& t, int heads) {
-  TORCH_CHECK(heads >= 1, "the stream split needs heads >= 1; 1 is one head");
+inline Strides five_logits(const Tensor& t, int heads) {
+  STD_TORCH_CHECK(heads >= 1, "the stream split needs heads >= 1; 1 is one head");
   if (t.dim() == 4) {
-    TORCH_CHECK(t.size(2) == heads, "a token-major logit plane's head axis must be `heads`");
+    STD_TORCH_CHECK(t.size(2) == heads, "a token-major logit plane's head axis must be `heads`");
     return {t.stride(0), t.stride(2), t.stride(1), t.stride(3), 0, 0};
   }
-  TORCH_CHECK(heads == 1, "a flat [BH, T, W] logit plane declares no split (heads == 1)");
+  STD_TORCH_CHECK(heads == 1, "a flat [BH, T, W] logit plane declares no split (heads == 1)");
   return {t.stride(0), 0, t.stride(1), t.stride(2), 0, 0};
 }
 
-inline Strides five_or_zero(const c10::optional<torch::Tensor>& t) {
+inline Strides five_or_zero(const std::optional<Tensor>& t) {
   if (!t.has_value()) return {0, 0, 0, 0, 0, 0};
   return five(*t);
 }
 
 template <typename T>
-T* ptr_or_null(const c10::optional<torch::Tensor>& t) {
+T* ptr_or_null(const std::optional<Tensor>& t) {
   return t.has_value() ? (T*)t->data_ptr() : nullptr;
 }
 
@@ -253,18 +253,18 @@ inline LevelTable build_table(const std::vector<int64_t>& logit_off,
                               const std::vector<int64_t>& widths,
                               const std::vector<int64_t>& midpoint_off = {}) {
   const int n = (int)widths.size();
-  TORCH_CHECK(n > 0 && n <= MAX_BATCHED_LEVELS, "batched level count must be in [1, ",
-              MAX_BATCHED_LEVELS, "], got ", n);
-  TORCH_CHECK((int)logit_off.size() == n && (int)value_off.size() == n,
-              "level offset tables must match the width table");
-  TORCH_CHECK(support_off.empty() || (int)support_off.size() == n,
-              "support offset table must match the width table");
+  STD_TORCH_CHECK(n > 0 && n <= MAX_BATCHED_LEVELS, "batched level count must be in [1, ",
+                  MAX_BATCHED_LEVELS, "], got ", n);
+  STD_TORCH_CHECK((int)logit_off.size() == n && (int)value_off.size() == n,
+                  "level offset tables must match the width table");
+  STD_TORCH_CHECK(support_off.empty() || (int)support_off.size() == n,
+                  "support offset table must match the width table");
   const int klass = padded_width((int)widths[0]);
   LevelTable table{};
   for (int i = 0; i < n; ++i) {
-    TORCH_CHECK(padded_width((int)widths[i]) == klass,
-                "a batched solve must be one width class; level ", i, " has width ", widths[i],
-                " against class ", klass);
+    STD_TORCH_CHECK(padded_width((int)widths[i]) == klass,
+                    "a batched solve must be one width class; level ", i, " has width ", widths[i],
+                    " against class ", klass);
     table.logit_off[i] = logit_off[i];
     table.value_off[i] = value_off[i];
     table.support_off[i] = support_off.empty() ? 0 : support_off[i];
@@ -281,25 +281,25 @@ inline LevelTable build_table(const std::vector<int64_t>& logit_off,
 #ifdef __CUDACC__
 namespace detail {
 //: THE LOGIT PLANE IS bf16 ON THE SHIPPED PATH -- the router GEMM runs bf16 operands on -- see docs/internals/entmax/entmax.md#checklogits
-inline void check_logits(const torch::Tensor& logits) {
-  TORCH_CHECK(logits.is_cuda(), "routing logits must be CUDA");
-  TORCH_CHECK(logits.scalar_type() == torch::kFloat32 || logits.scalar_type() == torch::kBFloat16,
-              "routing logits must be fp32 or bf16");
+inline void check_logits(const Tensor& logits) {
+  STD_TORCH_CHECK(logits.is_cuda(), "routing logits must be CUDA");
+  STD_TORCH_CHECK(logits.scalar_type() == Dtype::Float || logits.scalar_type() == Dtype::BFloat16,
+                  "routing logits must be fp32 or bf16");
 }
 
 template <typename Body>
-inline void logit_value_switch(at::ScalarType logit, at::ScalarType value, Body&& body) {
-  TORCH_CHECK(logit == torch::kFloat32 || logit == torch::kBFloat16,
-              "routing logits must be fp32 or bf16");
-  TORCH_CHECK(value == torch::kFloat32 || value == torch::kBFloat16,
-              "route values must be fp32 or bf16");
-  if (logit == torch::kFloat32) {
-    if (value == torch::kFloat32)
+inline void logit_value_switch(Dtype logit, Dtype value, Body&& body) {
+  STD_TORCH_CHECK(logit == Dtype::Float || logit == Dtype::BFloat16,
+                  "routing logits must be fp32 or bf16");
+  STD_TORCH_CHECK(value == Dtype::Float || value == Dtype::BFloat16,
+                  "route values must be fp32 or bf16");
+  if (logit == Dtype::Float) {
+    if (value == Dtype::Float)
       body(float{}, float{});
     else
       body(float{}, __nv_bfloat16{});
   } else {
-    if (value == torch::kFloat32)
+    if (value == Dtype::Float)
       body(__nv_bfloat16{}, float{});
     else
       body(__nv_bfloat16{}, __nv_bfloat16{});
@@ -309,20 +309,18 @@ inline void logit_value_switch(at::ScalarType logit, at::ScalarType value, Body&
 #endif  // __CUDACC__
 
 //: ONE LAUNCH, MANY LEVELS: the entries take BASE tensors plus per-level COLUMN -- see docs/internals/entmax/entmax.md#union-forward
-void union_forward(const torch::Tensor& read_logits, const torch::Tensor& write_logits,
-                   torch::Tensor& midpoint_values, torch::Tensor& support_words,
-                   torch::Tensor& read_values, torch::Tensor& write_values,
+void union_forward(const Tensor& read_logits, const Tensor& write_logits, Tensor& midpoint_values,
+                   Tensor& support_words, Tensor& read_values, Tensor& write_values,
                    const std::vector<int64_t>& logit_offsets,
                    const std::vector<int64_t>& value_offsets,
                    const std::vector<int64_t>& midpoint_offsets,
                    const std::vector<int64_t>& support_offsets, const std::vector<int64_t>& widths,
                    int64_t heads, double alpha);
 
-void union_backward(const torch::Tensor& read_logits, const torch::Tensor& write_logits,
-                    const torch::Tensor& midpoint_values, const torch::Tensor& support_words,
-                    const torch::Tensor& read_values, const torch::Tensor& write_values,
-                    const torch::Tensor& d_read, const torch::Tensor& d_write,
-                    torch::Tensor& d_read_logits, torch::Tensor& d_write_logits,
+void union_backward(const Tensor& read_logits, const Tensor& write_logits,
+                    const Tensor& midpoint_values, const Tensor& support_words,
+                    const Tensor& read_values, const Tensor& write_values, const Tensor& d_read,
+                    const Tensor& d_write, Tensor& d_read_logits, Tensor& d_write_logits,
                     const std::vector<int64_t>& logit_offsets,
                     const std::vector<int64_t>& value_offsets,
                     const std::vector<int64_t>& midpoint_offsets,

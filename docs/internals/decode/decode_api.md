@@ -62,7 +62,7 @@ written into the call — and `matched` is `int_switch`'s own refusal mechanism,
 **THE BUILT SET IS READ BACK OFF THE SAME LIST.** `rola_decode_arms()` expands
 `ROLA_DECODE_ARMS` a second time to push `[d_v, D, decay]` rows into a vector, so
 `rola.ops.decode.arms()` cannot disagree with what was compiled — there is one list and
-both readings expand it. An arm the binary does not carry is a `TORCH_CHECK` refusal
+both readings expand it. An arm the binary does not carry is a `STD_TORCH_CHECK` refusal
 naming the shape, never a silent miss.
 
 **A SUBSET BINARY IS NOT SHIPPABLE** and the build announces it: the fatbin and manifest
@@ -106,7 +106,7 @@ argument checks and workspace contracts are documented with the definition, in
 
 ## <a id="paged-state"></a>3. `page_table` — which backing the state is
 
-The trailing `c10::optional<at::Tensor> page_table` is the whole ABI difference
+The trailing `std::optional<Tensor> page_table` is the whole ABI difference
 between the two backings, and it is what the entry validates differently:
 
 * **absent** — `state` is the dense `[BH, N, d_v + 1]` plane and `N` is its own middle

@@ -2,7 +2,7 @@
 // pybind TU. See docs/internals/common/geom_api.md
 #pragma once
 
-#include <torch/extension.h>
+#include <torch/headeronly/util/Exception.h>
 
 #include <cstdint>
 #include <vector>

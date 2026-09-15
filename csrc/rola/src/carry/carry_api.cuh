@@ -3,24 +3,23 @@
 #pragma once
 #include <optional>
 
-#include <torch/extension.h>
+#include "common/torch_seam.cuh"
 
 #include <cstdint>
 #include <vector>
 
 namespace rola::carry {
 
-void carry_forward(const at::Tensor& read, const at::Tensor& write, const at::Tensor& gain,
-                   const at::Tensor& v, at::Tensor& num, at::Tensor& den,
-                   const std::vector<int64_t>& widths, int64_t dv, int64_t page_bits,
-                   int64_t warps_per_cta, const std::vector<int64_t>& carve_order,
-                   const std::vector<int64_t>& schedule, const at::Tensor& liveness,
-                   const at::Tensor& activity, const c10::optional<at::Tensor>& state_in,
-                   const c10::optional<at::Tensor>& state_out,
-                   const c10::optional<at::Tensor>& page_table);
+void carry_forward(const Tensor& read, const Tensor& write, const Tensor& gain, const Tensor& v,
+                   Tensor& num, Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
+                   int64_t page_bits, int64_t warps_per_cta,
+                   const std::vector<int64_t>& carve_order, const std::vector<int64_t>& schedule,
+                   const Tensor& liveness, const Tensor& activity,
+                   const std::optional<Tensor>& state_in, const std::optional<Tensor>& state_out,
+                   const std::optional<Tensor>& page_table);
 
 //: the phase ledger binding (a debug instrument; None unbinds). -- carry_kernel.md#phase-ledger
-void carry_ledger_bind(const std::optional<at::Tensor>& ledger);
+void carry_ledger_bind(const std::optional<Tensor>& ledger);
 int64_t carry_build_stamp();
 std::vector<std::vector<int64_t>> carry_census();
 std::vector<std::vector<int64_t>> carry_arms();

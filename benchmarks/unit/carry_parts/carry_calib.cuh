@@ -6,8 +6,6 @@
 // See docs/internals/carry/calibration.md
 #pragma once
 
-#include <c10/cuda/CUDAStream.h>
-
 #include "common/ops.cuh"
 #include "common/static_for.cuh"
 
@@ -32,14 +30,15 @@ constexpr int kCalibSmemBytes = 96416;
 
 struct CalibParams {
   int iters;
-  float* out;        //: the reduction target, `[owners][16 rows][256 lanes]` floats
-  const char* src;   //: the copy source, `[owners][256 lanes][16]` bytes
+  float* out;       //: the reduction target, `[owners][16 rows][256 lanes]` floats
+  const char* src;  //: the copy source, `[owners][256 lanes][16]` bytes
 };
 
 //: ONE CALIBRATION: `Mode` run `iters` times by every warp, `Burst` operations a unit where a unit has
 //: several; each warp's results reach a stored sink so nothing is dead.
 template <int Warps, int Mode, int Burst>
-__global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(__grid_constant__ const CalibParams c) {
+__global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
+    __grid_constant__ const CalibParams c) {
   extern __shared__ __align__(16) char smem_raw[];
   const ops::SmemAddr base = ops::smem_addr(smem_raw);
   const int owner = (int)blockIdx.x;
@@ -74,7 +73,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(__grid_constant__ 
 
   if constexpr (Mode == kSharedLoad || Mode == kSharedStore) {
     rola::static_for<Burst>([&](auto Kc) {
-      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), (uint32_t)tid);
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4),
+                            (uint32_t)tid);
     });
     __syncwarp();
     uint32_t acc = 0u;
@@ -96,7 +96,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(__grid_constant__ 
     //: `Burst` two-n-tile `ldmatrix.trans` loads a unit, each its own line: the readout's B and the
     //: fold's operand loads, whose short-scoreboard stalls hold back the HMMAs that consume them.
     rola::static_for<Burst>([&](auto Kc) {
-      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), (uint32_t)tid);
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4),
+                            (uint32_t)tid);
     });
     __syncwarp();
     uint32_t acc = 0u;
@@ -119,8 +120,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(__grid_constant__ 
     for (int i = 0; i < c.iters; ++i) {
       rola::static_for<Burst>([&](auto Kc) {
         constexpr int k = decltype(Kc)::value;
-        const uint32_t off = Mode == kAsyncCopy ? (uint32_t)(k * 128 + (lane & 7) * 16)
-                                                : (uint32_t)(k * 128);
+        const uint32_t off =
+            Mode == kAsyncCopy ? (uint32_t)(k * 128 + (lane & 7) * 16) : (uint32_t)(k * 128);
         ops::stage_run<16>(lines + off + (uint32_t)((lane >> 3) * 128 * Burst), row);
       });
       ops::stage_commit();
@@ -193,26 +194,30 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(__grid_constant__ 
 //: ONE LAUNCH of calibration (warps, mode, burst) over `owners` CTAs, `iters` units a warp; returns once
 //: the stream has finished it. The caller times it.
 inline void calibrate(int64_t warps, int64_t mode, int64_t burst, int64_t iters, int64_t owners,
-                      at::Tensor& out, const at::Tensor& src) {
-  TORCH_CHECK(out.is_cuda() && out.dtype() == at::kFloat && out.numel() >= owners * 16 * 256,
-              "calibrate: out is a CUDA float32 tensor of owners x 16 x 256");
-  TORCH_CHECK(src.is_cuda() && src.dtype() == at::kByte && src.numel() >= owners * 256 * 16,
-              "calibrate: src is a CUDA uint8 tensor of owners x 256 x 16");
-  const CalibParams c{(int)iters, out.data_ptr<float>(), reinterpret_cast<const char*>(src.data_ptr<uint8_t>())};
+                      Tensor& out, const Tensor& src) {
+  STD_TORCH_CHECK(
+      out.is_cuda() && out.scalar_type() == Dtype::Float && out.numel() >= owners * 16 * 256,
+      "calibrate: out is a CUDA float32 tensor of owners x 16 x 256");
+  STD_TORCH_CHECK(
+      src.is_cuda() && src.scalar_type() == Dtype::Byte && src.numel() >= owners * 256 * 16,
+      "calibrate: src is a CUDA uint8 tensor of owners x 256 x 16");
+  const CalibParams c{(int)iters, out.mutable_data_ptr<float>(),
+                      reinterpret_cast<const char*>(src.mutable_data_ptr<uint8_t>())};
   bool found = false;
 #define ROLA_CALIB_LAUNCH(W_, M_, B_)                                                               \
   if (!found && warps == (W_) && mode == (M_) && burst == (B_)) {                                   \
     auto* kern = calib_kernel<(W_), (M_), (B_)>;                                                    \
-    TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, kCalibSmemBytes) \
+    STD_TORCH_CHECK(cudaFuncSetAttribute(kern, cudaFuncAttributeMaxDynamicSharedMemorySize, kCalibSmemBytes) \
                     == cudaSuccess,                                                                   \
                 "calibrate: smem attribute");                                                         \
-    kern<<<dim3((unsigned)owners, 1u), (W_) * 32, kCalibSmemBytes, at::cuda::getCurrentCUDAStream()>>>(c); \
+    kern<<<dim3((unsigned)owners, 1u), (W_) * 32, kCalibSmemBytes, current_stream()>>>(c); \
     found = true;                                                                                     \
   }
   ROLA_CALIB_SET_X(ROLA_CALIB_LAUNCH)
 #undef ROLA_CALIB_LAUNCH
-  TORCH_CHECK(found, "calibrate: no calibration (warps ", warps, ", mode ", mode, ", burst ", burst, ")");
-  TORCH_CHECK(cudaGetLastError() == cudaSuccess, "calibrate: the launch failed");
+  STD_TORCH_CHECK(found, "calibrate: no calibration (warps ", warps, ", mode ", mode, ", burst ",
+                  burst, ")");
+  STD_TORCH_CHECK(cudaGetLastError() == cudaSuccess, "calibrate: the launch failed");
 }
 
 }  // namespace rola::carry::calib

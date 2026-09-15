@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <torch/extension.h>
+#include "common/torch_seam.cuh"
 
 #include <cstdint>
 
@@ -26,10 +26,9 @@ constexpr int kWidthDeep3 = 16;
 constexpr int kWidthDeep4 = 16;
 
 // `window` selects the built arm; `L % window` must be zero, refused per arm; see intra.md#intra-forward
-void intra_forward(const at::Tensor& pread, const at::Tensor& pwrite, const at::Tensor& gwrite,
-                   const at::Tensor& v, const at::Tensor& sread, const at::Tensor& swrite,
-                   at::Tensor& o, at::Tensor& den, int64_t levels, int64_t width,
-                   int64_t level_modes, int64_t window);
+void intra_forward(const Tensor& pread, const Tensor& pwrite, const Tensor& gwrite, const Tensor& v,
+                   const Tensor& sread, const Tensor& swrite, Tensor& o, Tensor& den,
+                   int64_t levels, int64_t width, int64_t level_modes, int64_t window);
 
 std::vector<std::vector<int64_t>> intra_arms();  // the built (levels, width, window) arms
 int64_t intra_build_stamp();  // device-side build fact; see intra.md#intrabuildstamp

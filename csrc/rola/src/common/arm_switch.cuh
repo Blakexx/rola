@@ -3,7 +3,7 @@
 // host side: see docs/internals/common/arm_switch.md
 #pragma once
 
-#include <c10/util/Exception.h>
+#include <torch/headeronly/util/Exception.h>
 
 #include <string>
 #include <type_traits>
@@ -80,13 +80,13 @@ inline void arm_switch(int D, int dv, int warps_per_cta, Body&& body) {
                 "a build carries a subset of the declared arms; a set larger than the "
                 "declaration means the selection and the declaration disagree");
   const int hits = ArmSet::visit(D, dv, warps_per_cta, std::forward<Body>(body));
-  TORCH_CHECK(hits <= 1, "the ", ArmSet::family, " arm set covers ", ArmSet::key, " = (", D, ", ",
-              dv, ", ", warps_per_cta, ") ", hits,
-              " times; an arm set is a set and each key selects one body");
-  TORCH_CHECK(hits == 1, "this build carries no ", ArmSet::family, " arm for ", ArmSet::key, " = (",
-              D, ", ", dv, ", ", warps_per_cta, "); the field that misses is ",
-              ArmSet::offending_field(D, dv, warps_per_cta), ". It carries ", ArmSet::count, " of ",
-              ArmSet::declared, " declared arms: ", ArmSet::members());
+  STD_TORCH_CHECK(hits <= 1, "the ", ArmSet::family, " arm set covers ", ArmSet::key, " = (", D,
+                  ", ", dv, ", ", warps_per_cta, ") ", hits,
+                  " times; an arm set is a set and each key selects one body");
+  STD_TORCH_CHECK(hits == 1, "this build carries no ", ArmSet::family, " arm for ", ArmSet::key,
+                  " = (", D, ", ", dv, ", ", warps_per_cta, "); the field that misses is ",
+                  ArmSet::offending_field(D, dv, warps_per_cta), ". It carries ", ArmSet::count,
+                  " of ", ArmSet::declared, " declared arms: ", ArmSet::members());
 }
 
 }  // namespace rola

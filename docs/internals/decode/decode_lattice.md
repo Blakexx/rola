@@ -374,7 +374,7 @@ bound.
 ## <a id="the-refusals"></a>5. `fill_lattice` — the box's constraints, as runtime checks
 
 Decode takes its lattice as DATA, not as a template arm, so every constraint
-`box.cuh`'s `BoxPlan` states as a `static_assert` is a `TORCH_CHECK` in
+`box.cuh`'s `BoxPlan` states as a `static_assert` is a `STD_TORCH_CHECK` in
 `decode.cu::fill_lattice`:
 
 - `k` and `m` are exact powers of two;
