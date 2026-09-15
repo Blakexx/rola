@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""R9 ENFORCEMENT LINT (LINT2 item 6, KERNEL_STANDARDS "§R9 ENFORCEMENT: A
-STRUCTURE BRANCH FAILS LOUD AT EVERY LAYER", G4 DRIFT GUARD "the R9
-enforcement clause is MECHANICAL", G_FOUNDATION G5). REPORT-ONLY.
+"""R9 ENFORCEMENT LINT (KERNEL_STANDARDS "§R9 ENFORCEMENT: A STRUCTURE BRANCH FAILS LOUD AT EVERY
+LAYER"). Gated by `tools/lint/ratchet.py r9_enforcement`.
 
 R9 says a CTA-uniform branch on structure (a runtime switch/if-chain over an
 admissible set the declaration fixes -- a "geometry-block field": a decay
@@ -14,8 +13,7 @@ but it CAN see, textually, whether a switch/if-chain's fallback branch calls
 `__trap()` and whether the construct is ANNOTATED as drawing its cases from a
 generator.
 
-THE MARKER THIS LINT DEFINES (none exists in the tree yet -- G2/G5 are the
-stages that adopt it): a comment `// R9-CASES: <case-set name>` on the line
+THE MARKER THIS LINT DEFINES (none exists in the tree yet): a comment `// R9-CASES: <case-set name>` on the line
 immediately above the `switch`/first `if` of a structure branch, naming the
 generated set of admissible cases it covers (e.g. the term-kind enumeration a
 future `decode_lattice` generator emits). A structure branch with a trapping
@@ -38,7 +36,8 @@ value is `decode_lattice.cuh::kind_bits`'s `switch (kind)` -- three explicit
 cases plus a bare `default: return r & ~w;` (the fourth legitimate case,
 `kKindRmW`, folded into the default rather than named) and no marker. This is
 exactly the shape R9's addendum forbids ("a trapping default, never a
-fallthrough"); reported here, not fixed (report-only; G2/G5 fix or ratify it).
+fallthrough"); the decode family's fix is a `uniform_switch`, and until it lands the finding is the
+ratchet's baseline.
 """
 from __future__ import annotations
 

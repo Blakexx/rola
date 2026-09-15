@@ -1,0 +1,341 @@
+{
+ "lint": "vulture",
+ "findings": [
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "unused function 'carry_cell' (60% confidence)",
+   "line_sha256": "1fe1f6bdfcba1bc2",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/registry.py",
+   "message": "unused variable 'GROUPS' (60% confidence)",
+   "line_sha256": "3ab9d34881d86e05",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "unused function 'arm_of' (60% confidence)",
+   "line_sha256": "53ece8ae80d350b0",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/liveness.py",
+   "message": "unused method 'token_bit' (60% confidence)",
+   "line_sha256": "39ef5a0eab2828df",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/plan.py",
+   "message": "unused property 'total_rows' (60% confidence)",
+   "line_sha256": "ec9ed03568670a9c",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/plan.py",
+   "message": "unused variable 'union_table' (60% confidence)",
+   "line_sha256": "e45a450f4c3e4e43",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/plan.py",
+   "message": "unused variable 'v_row_bytes' (60% confidence)",
+   "line_sha256": "c2ece699ba6e3de9",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/plan.py",
+   "message": "unused variable 'y_dtype' (60% confidence)",
+   "line_sha256": "ea5c17e4e1ac53de",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "7f344b4b34f30beb",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "unused method 'state_size' (60% confidence)",
+   "line_sha256": "708b6daa1e3f39d4",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "unused variable 'sequence_length' (100% confidence)",
+   "line_sha256": "708b6daa1e3f39d4",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/_ext.py",
+   "message": "unused variable 'backing_kind' (60% confidence)",
+   "line_sha256": "cf2ac74a3387c636",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/_ext.py",
+   "message": "unused variable 'closed' (60% confidence)",
+   "line_sha256": "f90477403f621e6e",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "unused attribute 'owners_total' (60% confidence)",
+   "line_sha256": "eefcfb9eb9ea2a28",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "unused property 'allocated_fraction' (60% confidence)",
+   "line_sha256": "ec9ed03568670a9c",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "unused property 'free' (60% confidence)",
+   "line_sha256": "ec9ed03568670a9c",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "unused variable 'owners_total' (60% confidence)",
+   "line_sha256": "3dcacbf30e3d1e4f",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/activations.py",
+   "message": "unused variable 'support_differentiable' (60% confidence)",
+   "line_sha256": "b9cfdd6fec6e5b1e",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/decay.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "1cbfd784d72bdf78",
+   "count": 2
+  },
+  {
+   "path": "rola/routing/decay.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "9e81f5db532ca5f8",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/production.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "ab645c3c887f7976",
+   "count": 4
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "7f344b4b34f30beb",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/side_gain.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "03116de215c7fc70",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/types.py",
+   "message": "unused variable 'Activation' (60% confidence)",
+   "line_sha256": "95551eb3a4fa8723",
+   "count": 1
+  },
+  {
+   "path": "tests/conftest.py",
+   "message": "unused function '_gpu_lock_held' (60% confidence)",
+   "line_sha256": "672a04c99fe0bc76",
+   "count": 1
+  },
+  {
+   "path": "tests/conftest.py",
+   "message": "unused function '_host_budget_worker_slot' (60% confidence)",
+   "line_sha256": "c335996442f659c1",
+   "count": 1
+  },
+  {
+   "path": "tests/conftest.py",
+   "message": "unused function '_take_gpu_lock' (60% confidence)",
+   "line_sha256": "00677a725fa651d9",
+   "count": 1
+  },
+  {
+   "path": "tests/conftest.py",
+   "message": "unused function 'poison_torch_memory' (60% confidence)",
+   "line_sha256": "f3b285783344eda1",
+   "count": 1
+  },
+  {
+   "path": "tests/integration/stream_discipline.py",
+   "message": "unused function 'assert_agrees_under_launch_blocking' (60% confidence)",
+   "line_sha256": "f3078daa9b431a7d",
+   "count": 1
+  },
+  {
+   "path": "tests/integration/test_production_levels.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "f09a439cf834840c",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/families.py",
+   "message": "unused method 'instantiation_values' (60% confidence)",
+   "line_sha256": "568ea14c20fdbdec",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/families.py",
+   "message": "unused property 'runs_on_kernel' (60% confidence)",
+   "line_sha256": "ec9ed03568670a9c",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/fixtures.py",
+   "message": "unused function 'require_arm' (60% confidence)",
+   "line_sha256": "03544bc8fcab06a1",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/fixtures.py",
+   "message": "unused method 'ref_levels' (60% confidence)",
+   "line_sha256": "20e6a95334ac5990",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/fixtures.py",
+   "message": "unused method 'state_in_plane' (60% confidence)",
+   "line_sha256": "69da0f7b93b94664",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused function 'assert_nonvacuous' (60% confidence)",
+   "line_sha256": "3bdf2ccaf8635104",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused function 'build_case' (60% confidence)",
+   "line_sha256": "af8868949004f46b",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused method '_all_read_only' (60% confidence)",
+   "line_sha256": "6417750d7835944c",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused method '_chunk_boundary' (60% confidence)",
+   "line_sha256": "6fb6f0184eefee58",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused method '_imbalanced_heads' (60% confidence)",
+   "line_sha256": "957f9d6df485be66",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/generators.py",
+   "message": "unused method '_stratified' (60% confidence)",
+   "line_sha256": "fe1a8dfea200fc7c",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/instantiation.py",
+   "message": "unused variable 'AXIS_BY_NAME' (60% confidence)",
+   "line_sha256": "011f913f887e290b",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/instantiation.py",
+   "message": "unused variable 'REFUSAL_CLAUSES' (60% confidence)",
+   "line_sha256": "1b821aa5f2caf251",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/oracle_fixtures.py",
+   "message": "unused function '_output_charge' (60% confidence)",
+   "line_sha256": "cbddc4e3ece7a39b",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/test_padding_seam.py",
+   "message": "unused variable 'pytestmark_decode' (60% confidence)",
+   "line_sha256": "6663926091bb9ed0",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_api_contract.py",
+   "message": "unused method 'forward' (60% confidence)",
+   "line_sha256": "f09a439cf834840c",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_carry_geometry.py",
+   "message": "unused variable 'PK' (60% confidence)",
+   "line_sha256": "91a0fddaca695832",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_carry_geometry.py",
+   "message": "unused variable 'WPS' (60% confidence)",
+   "line_sha256": "91a0fddaca695832",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_exchange_law.py",
+   "message": "unused variable 'base_mask' (60% confidence)",
+   "line_sha256": "a260aa83c3d1a034",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_exchange_law.py",
+   "message": "unused variable 'base_mask' (60% confidence)",
+   "line_sha256": "d11e1854a1858792",
+   "count": 1
+  },
+  {
+   "path": "tools/build_flags.py",
+   "message": "unused variable 'DEPFILE_FLAGS' (60% confidence)",
+   "line_sha256": "cfd84f8154868f3f",
+   "count": 1
+  },
+  {
+   "path": "tools/build_lock.py",
+   "message": "unused variable 'GLOBAL_CICC_SLOTS' (60% confidence)",
+   "line_sha256": "2e5b3fbdc55a3c08",
+   "count": 1
+  },
+  {
+   "path": "tools/gen_shards.py",
+   "message": "unused function 'declaration_matches_table' (60% confidence)",
+   "line_sha256": "34bcf9d184f0ef93",
+   "count": 1
+  },
+  {
+   "path": "tools/pipe_timeline.py",
+   "message": "unused variable 'width_us' (100% confidence)",
+   "line_sha256": "f72883d5f80ddb96",
+   "count": 1
+  },
+  {
+   "path": "tools/wheels.py",
+   "message": "unused attribute 'compress_type' (60% confidence)",
+   "line_sha256": "6aafda8a554ecbc3",
+   "count": 1
+  },
+  {
+   "path": "tools/wheels.py",
+   "message": "unused attribute 'external_attr' (60% confidence)",
+   "line_sha256": "881d740c653ae04a",
+   "count": 1
+  }
+ ]
+}

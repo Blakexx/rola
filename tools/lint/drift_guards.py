@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""THE DRIFT GUARDS. REPORT-ONLY.
+"""THE DRIFT GUARDS, gated by `tools/lint/ratchet.py drift_guards`.
 
 Each law below was ratified with a stage that removed a mechanism, and each one is a
 law precisely because the removed mechanism is CHEAP TO REINTRODUCE: a template axis
@@ -8,9 +8,8 @@ fit, a `float*` view of a page, an `if` on the depth in a host entry. A law that
 lives in a document is re-broken by the next person who has not read it, so each has a
 mechanical check here, run on every commit and printed.
 
-REPORT-ONLY means: this file always exits 0. It is an INVENTORY -- what the tree looks
-like against the laws today -- and the inventory is what the flip to a gating hook is
-sized from. A rule that fires on the shipped tree is not thereby wrong; it is the work.
+This file prints an INVENTORY and exits 0; the ratchet is the gate. A commit may not add a finding, and the findings
+the tree carries are its baseline. A rule that fires on the shipped tree is not thereby wrong; it is the work.
 
 EVERY RULE IS A HEURISTIC OVER TEXT, and says so in its own docstring: a finding is a
 question for a reviewer, not a proof. What makes the set worth running is that all of
@@ -509,7 +508,7 @@ def main() -> int:
         for f in findings:
             print(f"  {f}")
     print(f"drift_guards: {total} finding(s) over "
-          f"{len(a.rule or RULES)} rule(s) -- REPORT ONLY")
+          f"{len(a.rule or RULES)} rule(s)")
     return 0
 
 

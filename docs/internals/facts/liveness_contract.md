@@ -17,7 +17,7 @@ rectangle in digit space that the geometry block derives
 
 ## Two classes, and nothing between them
 
-Blake's ruling of 2026-08-29 (card `G_FOUNDATION.md`, "ONE GEOMETRY-INDEPENDENT
+Blake's ruling of 2026-08-29 (the foundation card, "ONE GEOMETRY-INDEPENDENT
 LIVENESS PASS") admits exactly two classes of fact.
 
 * **CLASS 1 — the raw bitlists**, `O(Σ_l B_l × L)` per side, stored once. One bit per

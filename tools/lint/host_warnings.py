@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HOST warnings dry-compile (REPORT-ONLY).
+"""HOST warnings dry-compile (gating: an on-target warning fails the commit).
 
 Recompiles every HOST TU (`.cpp` entries in `compile_commands.json`, the same
 scope `tools/lint/run_clang_tidy.sh` names -- currently exactly one,

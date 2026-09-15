@@ -66,13 +66,20 @@ jobs:
         run: |
           pip install "rola-devtools @ git+https://github.com/Blakexx/rola-devtools@3318da1c25ecf4f46389b204a23e93ec3a4eb23a"
           python3 -m rola_devtools.mirror --check
-      - name: drift guards + R9 enforcement (report-only, printed for the log)
+      - name: the ratchets (new findings fail; each baseline only shrinks)
         run: |
-          python3 tools/lint/drift_guards.py
-          python3 tools/lint/r9_enforcement.py
-      - name: every report-only lint's fixtures still fire
+          pip install vulture==2.16
+          python3 tools/lint/ratchet.py work_codes
+          python3 tools/lint/ratchet.py constant_parameters
+          python3 tools/lint/ratchet.py drift_guards
+          python3 tools/lint/ratchet.py r9_enforcement
+          python3 tools/lint/ratchet.py vulture
+      - name: every ratchet lint's fixtures still fire
         run: |
           python3 tools/lint/drift_guards.py --test-fixtures
+          python3 tools/lint/constant_parameters.py --test-fixtures
+          python3 tools/lint/r9_enforcement.py --test-fixtures
+          tools/lint/run_vulture.sh --test-fixtures
       - name: clang-tidy (host-only TUs)
         # Blake ruling, 2026-08-28: "pre-commit can never be green by
         # absence" -- tools/lint/run_clang_tidy.sh no longer skips; with no

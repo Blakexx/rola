@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""READABILITY SPACING LINT (LINT2 item 5, G_FOUNDATION G5, REPORT-ONLY until
-G5). Two checks, csrc (`.cu`/`.cuh`/`.cpp`/`.h`/`.hpp`, excluding
+"""READABILITY SPACING LINT (gating). Two checks, csrc (`.cu`/`.cuh`/`.cpp`/`.h`/`.hpp`, excluding
 csrc/third_party) AND Python (`rola/`, `tools/`, `tests/`, `benchmarks/`):
 
 1. A function/kernel BODY >= 40 LINES with ZERO BLANK LINES inside it. This

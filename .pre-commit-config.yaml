@@ -1,7 +1,6 @@
 # Lint gates, mirrored exactly by .github/workflows/lint.yml — one tool
-# version in both places, pinned, so a hook pass IS a CI pass. A hook named
-# `[report-only]` prints its findings and exits 0; every other hook here refuses the
-# commit, and docs/internals/tools/lint.md carries the table of which is which.
+# version in both places, pinned, so a hook pass IS a CI pass. Every hook here refuses the
+# commit; a `ratchet:` hook refuses only what the commit adds (docs/internals/tools/lint.md).
 #
 #   python3 tools/dev.py init   (wires core.hooksPath -> tools/git-hooks, run from the venv requirements.lock pins these tools in)
 #
@@ -106,20 +105,37 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # STILL REPORT-ONLY, each with the reason it cannot gate YET stated where the
-      # lint's own header states it. A hook here always exits 0: the finding is an
-      # inventory for a human to rule on, never a blocked commit -- the same backstop
-      # philosophy the gating hooks above are held to, applied to checks that are not
-      # clean enough to gate on this tip.
-      - id: r9-enforcement-report
-        name: "[report-only] R9 enforcement (device switch/if-chain traps + case markers)"
-        language: system
-        entry: python3 tools/lint/r9_enforcement.py
+      # THE RATCHETS (tools/lint/ratchet.py, docs/internals/tools/lint.md#ratchets): lints this tree does not pass
+      # yet. Each gates on what a commit ADDS against its baseline in tools/lint/baselines/, which only shrinks: a new
+      # finding fails, a fixed one must leave the baseline in the same commit, and a baseline may not gain an entry.
+      - id: ratchet-vulture
+        name: "ratchet: vulture (Python dead code)"
+        language: python
+        additional_dependencies: ["vulture==2.16"]
+        entry: python tools/lint/ratchet.py vulture
         pass_filenames: false
         always_run: true
-      - id: drift-guards-report
-        name: "[report-only] drift guards (the laws each deletion ratified)"
+      - id: ratchet-r9-enforcement
+        name: "ratchet: R9 enforcement (device switch/if-chain traps + case markers)"
         language: system
-        entry: python3 tools/lint/drift_guards.py
+        entry: python3 tools/lint/ratchet.py r9_enforcement
+        pass_filenames: false
+        always_run: true
+      - id: ratchet-drift-guards
+        name: "ratchet: drift guards (the laws each deletion ratified)"
+        language: system
+        entry: python3 tools/lint/ratchet.py drift_guards
+        pass_filenames: false
+        always_run: true
+      - id: ratchet-constant-parameters
+        name: "ratchet: constant parameters (a knob with one value is a constant)"
+        language: system
+        entry: python3 tools/lint/ratchet.py constant_parameters
+        pass_filenames: false
+        always_run: true
+      - id: ratchet-work-codes
+        name: "ratchet: campaign work codes"
+        language: system
+        entry: python3 tools/lint/ratchet.py work_codes
         pass_filenames: false
         always_run: true

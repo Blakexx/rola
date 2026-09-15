@@ -1,0 +1,809 @@
+{
+ "lint": "constant_parameters",
+ "findings": [
+  {
+   "path": "benchmarks/bench/carry_model.py",
+   "message": "budget(..., D=) is only ever 2 -- across every call in this tree, nothing moves it",
+   "line_sha256": "476b0e38936c9ab5",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/carry_model.py",
+   "message": "budget(..., dv=) is only ever 64 -- across every call in this tree, nothing moves it",
+   "line_sha256": "476b0e38936c9ab5",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/carry_model.py",
+   "message": "budget(..., wlen=) is only ever 512 -- across every call in this tree, nothing moves it",
+   "line_sha256": "476b0e38936c9ab5",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/carry_model.py",
+   "message": "cell_liveness(..., window=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "052a26c1bd76e433",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/provider.py",
+   "message": "arm_name(..., calls=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "313711b9d9f1a6da",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/provider.py",
+   "message": "arm_name(..., state=) is only ever 'fresh' -- across every call in this tree, nothing moves it",
+   "line_sha256": "313711b9d9f1a6da",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/provider.py",
+   "message": "oneshot_argv(..., arm=) is only ever 'carry_forward' -- across every call in this tree, nothing moves it",
+   "line_sha256": "b8fb11a07ad28722",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/subjects.py",
+   "message": "_state_arm(..., bh=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "30b4522d8db7c6b9",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench/subjects.py",
+   "message": "applicable(..., calls=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "9d131a45630289e5",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/bench_intra.py",
+   "message": "peak_flops(..., device=) is only ever 0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "78c6eaaf00bbf290",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "carry_call(..., bh=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "952d43c0b6fb26c1",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "carry_call(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
+   "line_sha256": "952d43c0b6fb26c1",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "carry_cells(..., tier=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "050ba9b188b7bf1a",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "conservative_activity(..., BH=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "49046d84746bb7eb",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "conservative_activity(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
+   "line_sha256": "49046d84746bb7eb",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "realize(..., B=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "7874b21adcea5270",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/cells/__init__.py",
+   "message": "realize(..., H=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "7874b21adcea5270",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "call_args(..., schedule_name=) is only ever 'first' -- across every call in this tree, nothing moves it",
+   "line_sha256": "4463dc45fee5d97a",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "check_fold(..., reps=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "922fecc6732ee568",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "check_fold(..., warps=) is only ever 8 -- across every call in this tree, nothing moves it",
+   "line_sha256": "922fecc6732ee568",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "check_head(..., warps=) is only ever 8 -- across every call in this tree, nothing moves it",
+   "line_sha256": "ba7fe269903ef34d",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "main(..., argv=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c17e86139ce1c29d",
+   "count": 1
+  },
+  {
+   "path": "benchmarks/unit/bench_carry_parts.py",
+   "message": "time_ms(..., iters=) is only ever 20 -- across every call in this tree, nothing moves it",
+   "line_sha256": "01597f865f8294e2",
+   "count": 1
+  },
+  {
+   "path": "rola/_state.py",
+   "message": "__init__(..., strategy=) is only ever 'mutable' -- across every call in this tree, nothing moves it",
+   "line_sha256": "d3f4d67e03cb2460",
+   "count": 1
+  },
+  {
+   "path": "rola/_state.py",
+   "message": "clone(..., strategy=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "be4a110899634130",
+   "count": 1
+  },
+  {
+   "path": "rola/_state.py",
+   "message": "state(..., pool_slack=) is only ever 0.0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "faeb4a1fc4a4b884",
+   "count": 1
+  },
+  {
+   "path": "rola/_state.py",
+   "message": "state(..., strategy=) is only ever 'mutable' -- across every call in this tree, nothing moves it",
+   "line_sha256": "faeb4a1fc4a4b884",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/dags/decode_dag.py",
+   "message": "decode_step_gated(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "1a431a3c0cc7a5fa",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/dags/decode_dag.py",
+   "message": "decode_step_gated(..., expert=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "1a431a3c0cc7a5fa",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "arm_refusal(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "5cea1532aa1f89af",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "envelope_clauses(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "f27902d8203328eb",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "envelope_refusal(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "df07150e6c3bef75",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "require_envelope(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "f61f1d26dd7710f9",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/call.py",
+   "message": "require_envelope(..., state=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "f61f1d26dd7710f9",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/operands.py",
+   "message": "operands_of(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "0d5a632aac94d0c1",
+   "count": 1
+  },
+  {
+   "path": "rola/engine/facts/planes.py",
+   "message": "atom_bits(..., read_plane=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "594ea7ab189a04c4",
+   "count": 1
+  },
+  {
+   "path": "rola/interface.py",
+   "message": "rola_op(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "cddee77c772c6898",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "__init__(..., d_v=) is only ever 64 -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "__init__(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "__init__(..., expert=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "__init__(..., layer_idx=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "forward(..., attention_mask=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "7f344b4b34f30beb",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "forward(..., continuation=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "7f344b4b34f30beb",
+   "count": 1
+  },
+  {
+   "path": "rola/layer.py",
+   "message": "state_size(..., sequence_length=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "708b6daa1e3f39d4",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "carry_backward(..., d_state_out=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "e4c127833d929146",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "carry_backward(..., page_table=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "e4c127833d929146",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "carry_backward(..., state_in=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "e4c127833d929146",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "lattice_of_canonical(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
+   "line_sha256": "753b2b268e94c5aa",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "select_schedule(..., level_modes=) is only ever 0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "3b62479bd9311377",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/carry.py",
+   "message": "state_plane(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
+   "line_sha256": "98cfb8c6176102f7",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decay.py",
+   "message": "validate_compact_decay_theta(..., name=) is only ever 'decay_theta' -- across every call in this tree, nothing moves it",
+   "line_sha256": "1dacac26bf15dd76",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decay.py",
+   "message": "validate_compact_log_gamma(..., name=) is only ever 'log_gamma' -- across every call in this tree, nothing moves it",
+   "line_sha256": "172236bcb140230f",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "_decode_step(..., decay=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c36ddf7ee69c2d2d",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "_decode_step(..., normalize=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c36ddf7ee69c2d2d",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "_decode_step(..., page_table=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c36ddf7ee69c2d2d",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "_decode_step(..., pool=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c36ddf7ee69c2d2d",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "_decode_step(..., workspace=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c36ddf7ee69c2d2d",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "derive_decode_geometry(..., n_split=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "aff4ba6418e9b5e8",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/intra.py",
+   "message": "intra_forward_padded(..., den=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "59318f223cdfa1be",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/intra.py",
+   "message": "intra_forward_padded(..., o=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "59318f223cdfa1be",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/naive.py",
+   "message": "naive_rola(..., initial_state=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "dd74aede62965ace",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/naive.py",
+   "message": "naive_rola(..., output_final_state=) is only ever False -- across every call in this tree, nothing moves it",
+   "line_sha256": "dd74aede62965ace",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "__init__(..., backing=) is only ever 'auto' -- across every call in this tree, nothing moves it",
+   "line_sha256": "eae6fb03e6794fea",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "__init__(..., extent_atoms=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "eae6fb03e6794fea",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/paging.py",
+   "message": "__init__(..., pool_slack=) is only ever 0.0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "eae6fb03e6794fea",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/decay.py",
+   "message": "__init__(..., scope=) is only ever 'state' -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/production.py",
+   "message": "production_factor(..., activation=) is only ever 'entmax' -- across every call in this tree, nothing moves it",
+   "line_sha256": "d18cfb8e300da4c0",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/production.py",
+   "message": "production_factor(..., alpha=) is only ever 1.5 -- across every call in this tree, nothing moves it",
+   "line_sha256": "d18cfb8e300da4c0",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/production.py",
+   "message": "production_factor(..., mask=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d18cfb8e300da4c0",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/production.py",
+   "message": "production_routing_factors(..., token_origin=) is only ever 0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "38fb91a1e9a4ab80",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/entmax/reference.py",
+   "message": "entmax_forward(..., dim=) is only ever -1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "6d91a47c17342777",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "__init__(..., bias=) is only ever False -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "__init__(..., gain=) is only ever True -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "__init__(..., gain_bias_init=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "__init__(..., gain_config=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "forward(..., write_stream=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "7f344b4b34f30beb",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "split_routing(..., alpha=) is only ever 1.5 -- across every call in this tree, nothing moves it",
+   "line_sha256": "b6c53523513c1581",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "split_routing(..., sparse_duty=) is only ever 'write' -- across every call in this tree, nothing moves it",
+   "line_sha256": "b6c53523513c1581",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/producer.py",
+   "message": "union_routing(..., alpha=) is only ever 1.5 -- across every call in this tree, nothing moves it",
+   "line_sha256": "f738b9ad9833e6d1",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/projection.py",
+   "message": "packed_router_logits(..., h_w=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "0c6c0b53e40d5eb1",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/projection.py",
+   "message": "packed_router_logits(..., route_bias=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "0c6c0b53e40d5eb1",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/projection.py",
+   "message": "packed_router_logits_reference(..., h_w=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d43d764a2ff37fdf",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/projection.py",
+   "message": "packed_router_logits_reference(..., route_bias=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d43d764a2ff37fdf",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/reference.py",
+   "message": "routing_factors(..., token_origin=) is only ever 0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "76d8ee0d2419e9d9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/reference.py",
+   "message": "union_split(..., alpha=) is only ever 1.5 -- across every call in this tree, nothing moves it",
+   "line_sha256": "be7d939bb85b13c4",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/reference.py",
+   "message": "union_split(..., mask=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "be7d939bb85b13c4",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/side_gain.py",
+   "message": "__init__(..., bias_init=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "29b36ada7e7459c9",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/side_gain.py",
+   "message": "gain_layout(..., write_gain=) is only ever True -- across every call in this tree, nothing moves it",
+   "line_sha256": "f372f7616e3b0923",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/side_gain.py",
+   "message": "softplus_side_gain(..., bias=) is only ever 0.0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "73adb00aee5fa047",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/types.py",
+   "message": "entmax(..., alpha=) is only ever 1.5 -- across every call in this tree, nothing moves it",
+   "line_sha256": "c3787c4001b4f608",
+   "count": 1
+  },
+  {
+   "path": "rola/routing/types.py",
+   "message": "validate_packed_router(..., route_bias=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d92a69f180ec2519",
+   "count": 1
+  },
+  {
+   "path": "tools/build/ninjatracing.py",
+   "message": "to_chrome_trace(..., pid=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "98462a937e401947",
+   "count": 1
+  },
+  {
+   "path": "tools/build_flags.py",
+   "message": "nvcc_flags(..., nvcc_threads=) is only ever 2 -- across every call in this tree, nothing moves it",
+   "line_sha256": "848c48041c545ec7",
+   "count": 1
+  },
+  {
+   "path": "tools/build_flags.py",
+   "message": "torch_extension_cache_key_flags(..., name=) is only ever '_C' -- across every call in this tree, nothing moves it",
+   "line_sha256": "77ea2b0bfe96d153",
+   "count": 1
+  },
+  {
+   "path": "tools/compose_ledger.py",
+   "message": "_instrument(..., timeout=) is only ever 3600 -- across every call in this tree, nothing moves it",
+   "line_sha256": "181d2c35b91d5323",
+   "count": 1
+  },
+  {
+   "path": "tools/compose_ledger.py",
+   "message": "device_hash(..., arch=) is only ever 'sm_86' -- across every call in this tree, nothing moves it",
+   "line_sha256": "927b1e8d55b3991f",
+   "count": 1
+  },
+  {
+   "path": "tools/dev.py",
+   "message": "row(..., fix=) is only ever '' -- across every call in this tree, nothing moves it",
+   "line_sha256": "562dcb6fa7f57ed0",
+   "count": 1
+  },
+  {
+   "path": "tools/gpu_lock.py",
+   "message": "gpu_lock(..., path=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "9ce2d56507a9db39",
+   "count": 1
+  },
+  {
+   "path": "tools/host_budget.py",
+   "message": "acquire(..., n=) is only ever 1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "abafe4be21d52333",
+   "count": 1
+  },
+  {
+   "path": "tools/host_budget.py",
+   "message": "file_lock(..., label=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "096ff84455ff7754",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/constant_parameters.py",
+   "message": "findings(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "0a81c4e7fb530607",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/constant_parameters.py",
+   "message": "python_files(..., roots=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "3a0559acc644c67d",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_arm_axes(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "2a7fa48bfc01c8fe",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_bytes_equal(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "65feb04cf5fc5527",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_comments_describe_the_present(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "3524e9d0339e8813",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_device_switch_is_uniform(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "9b0261f0dcae7670",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_host_dispatch_is_arm_switch(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "02e885b1db3b1cfb",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_one_admission_law(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "b81e68e430058e34",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_one_body_per_family(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d6274501b321643f",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_one_derivation_site(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "a9b41419eaacdefc",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_second_arm_table(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "69bda20875d43b40",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_single_value_axis(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "9f4b629999459ac2",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/drift_guards.py",
+   "message": "rule_state_float_view(..., files=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "5e9d15bdfd526d5f",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/lint_standards.py",
+   "message": "_citable_text(..., in_docstring=) is only ever False -- across every call in this tree, nothing moves it",
+   "line_sha256": "c18ea24d4b863283",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/lint_standards.py",
+   "message": "_code_text(..., docstrings=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "fa92273c752ea4ea",
+   "count": 1
+  },
+  {
+   "path": "tools/lint/r9_enforcement.py",
+   "message": "has_marker_above(..., lookback=) is only ever 3 -- across every call in this tree, nothing moves it",
+   "line_sha256": "9b0b2e5a64c6ce50",
+   "count": 1
+  },
+  {
+   "path": "tools/oracle_dual_run.py",
+   "message": "clipped(..., dim=) is only ever -1 -- across every call in this tree, nothing moves it",
+   "line_sha256": "5735b6fb5f742747",
+   "count": 1
+  },
+  {
+   "path": "tools/oracle_dual_run.py",
+   "message": "clipped(..., mask=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "5735b6fb5f742747",
+   "count": 1
+  },
+  {
+   "path": "tools/pipe_timeline.py",
+   "message": "chart(..., width_us=) is only ever 1.0 -- across every call in this tree, nothing moves it",
+   "line_sha256": "f72883d5f80ddb96",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "carry_arm_paths(..., arms=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "ec13b9ea90111eca",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "census_report(..., hot=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "1e0f70a9a070f37d",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "check_derivation(..., record=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "d81b297bbaf72cd1",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "csrc_stamp(..., digest=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "139b702b4a258936",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "csrc_stamp_header(..., digest=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "bac7f1e58a300010",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "load_manifest(..., name=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "e8fbca2466555c2b",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "manifest_path(..., name=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "5103285bb6317ddc",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "measure_units(..., arms=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "414a87c9af7b7232",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "measure_units(..., jobs=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "414a87c9af7b7232",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "sass_scan(..., wanted=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "71f8365a3bc9a45c",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "toolchain(..., name=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "f2e5650176f8b7f5",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "tu_paths(..., arms=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "39d3b39f16db8b84",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "tu_paths(..., shards=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "39d3b39f16db8b84",
+   "count": 1
+  },
+  {
+   "path": "tools/ratify.py",
+   "message": "write_csrc_stamp(..., digest=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "ec52e248e0accd8b",
+   "count": 1
+  },
+  {
+   "path": "tools/region_ledger.py",
+   "message": "of(..., components=) is only ever None -- across every call in this tree, nothing moves it",
+   "line_sha256": "c5e1d1e421164ebb",
+   "count": 1
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{
+ "lint": "r9_enforcement",
+ "findings": [
+  {
+   "path": "csrc/rola/src/decode/decode_lattice.cuh",
+   "message": "switch (kind) -- default is not __trap(), no `// R9-CASES:` marker above the switch",
+   "line_sha256": "6e3e44e259f5b70b",
+   "count": 1
+  }
+ ]
+}

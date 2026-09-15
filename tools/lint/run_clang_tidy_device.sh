@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# DEVICE clang-tidy (LINT2 item 1, G_FOUNDATION G5 "dead-code lints", REPORT-ONLY
-# until G5 flips it): compiles this codebase's TORCH-FREE device TUs -- the per-arm
+# DEVICE clang-tidy (gating: an on-target finding fails it): compiles this codebase's TORCH-FREE device TUs -- the per-arm
 # carry instantiations (`csrc/rola/src/instantiations/carry_arm_*.cu`, raw-pointer
 # ABI -- rola-build skill's "the torch-header floor") -- through clang's CUDA
 # frontend (`--cuda-host-only`) and runs the checks in
@@ -28,8 +27,8 @@
 #   * `-ferror-limit=0` is required (default 20 aborts before reaching the
 #     arm's own code); clang-tidy still reports "Found compiler error(s)" and
 #     a nonzero PROCESS exit even when it emitted real, on-target findings
-#     first -- this script's own exit code is always 0 (report-only); read
-#     the printed finding counts, not `$?`.
+#     first -- so this script counts the on-target findings itself and exits 1
+#     on any; clang-tidy's own `$?` is never read.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

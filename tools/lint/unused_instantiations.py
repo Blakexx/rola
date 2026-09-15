@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""UNUSED-INSTANTIATION CHECK (LINT2 item 3, G_FOUNDATION G5, REPORT-ONLY until
-G5, when it starts DELETING the ones it finds).
+"""UNUSED-INSTANTIATION CHECK (gating).
 
 Every `__global__` FUNCTION TEMPLATE declared anywhere under `csrc/rola/` must
 be present, mangled, in at least one binary's symbol table -- "at least one"
@@ -30,7 +29,7 @@ below, explicitly marked NOT CHECKED, rather than silently flagged as unused.
 A real `__device__` liveness check needs a symbol dump off the actual `.cubin`
 (`cuobjdump --dump-elf`, filtered to STT_FUNC entries, which DOES preserve
 non-inlined `__device__` symbols) cross-referenced against which are actually
-called -- out of scope for this report-only stage; named here as the gap.
+called -- out of scope for this check; named here as the gap.
 
 METHOD for `__global__` (heuristic, not a real C++ parser -- see LIMITS below):
   1. Find every `__global__` qualifier in a `.cu`/`.cuh` under csrc/rola/

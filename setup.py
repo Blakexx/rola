@@ -999,7 +999,7 @@ EXTRAS = {
     #: `PIN.json`'s `why_this_is_the_only_guard`: the dual-run protocol imports the same installed package on both its
     #: sides and cannot see this drift itself.
     "test": ["pytest", "pytest-xdist", "entmax==1.3"],
-    "dev": ["pytest", "ruff==0.14.10", "pre-commit==4.6.2", "clang-format==19.1.7",
+    "dev": ["pytest", "ruff==0.14.10", "pre-commit==4.6.2", "vulture==2.16", "clang-format==19.1.7",
             "ast-grep-cli==0.45.2"],
 }
 

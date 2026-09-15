@@ -329,7 +329,7 @@ ledger, and never a second code path.
 NOTHING in the shipped kernel bodies. The block landed as a FOUNDATION piece
 (G2-EXTRACT): the parent carry bodies on this branch are the MO/B-templated ones whose
 geometry is compile-time, and they are the parity reference that the pipelined body (F-P)
-is measured against — "the old body is never retrofitted again" (`G_FOUNDATION`, THE CUT).
+is measured against — "the old body is never retrofitted again" (Blake's ruling on the foundation card, "THE CUT").
 What held the two derivations together while the parent still built was
 `tests/unit/test_carry_geometry.py`'s live re-read of the parent binary's own compile-time
 census, arm by arm; C0 deleted `carry_build_stamp`/`carry_arms` from the extension

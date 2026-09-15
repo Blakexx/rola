@@ -809,8 +809,9 @@ def _work_code_files():
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
+            #: a ratchet's baseline quotes the findings it holds (tools/lint/ratchet.py), so it is not prose
             if (path.suffix in _WORK_CODE_SUFFIXES and "third_party" not in path.parts
-                    and "__pycache__" not in path.parts):
+                    and "__pycache__" not in path.parts and path.parent != ROOT / "tools" / "lint" / "baselines"):
                 yield path
 
 

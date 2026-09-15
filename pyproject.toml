@@ -72,23 +72,11 @@ force-sort-within-sections = false
 # would interleave the four groups and delete the only documentation the list has.
 "rola/__init__.py" = ["RUF022"]
 
-# LINT2 (G_FOUNDATION G5 "readability lints", REPORT-ONLY until G5): E30x
-# (pycodestyle's blank-line-spacing family, E301-E306) is NOT added to
-# `[tool.ruff.lint].select` above -- ruff 0.16.5 gates E301-E306 behind
-# `--preview` (measured: `ruff check --select E3 .` with no `--preview` warns
-# "Selection E3 has no effect" and finds nothing, even though the full "E"
-# family is already selected above), so touching the main `select`/`ignore`
-# here would either do nothing (no `--preview`) or turn the GATING
-# `ruff-check` hook red on 40 pre-existing violations (with `--preview`,
-# measured on this tree 2026-08-29) -- exactly what "report-only" forbids.
-# This table is read ONLY by `tools/lint/run_ruff_e3.sh`'s report-only
-# pre-commit stage (`ruff check --select E3 --preview --exit-zero`, driven by
-# the codes below, never by ruff itself -- `[tool.rola_lint]` is not a ruff
-# config key, so ruff silently ignores this table): the E30x SELECTION lives
-# here, declared, without moving what the gating hook enforces today. G5's
-# flip is: fix the 40 violations, move these codes into the real `select`
-# above, and delete this table.
-[tool.rola_lint.report_only]
+# E30x (pycodestyle's blank-line-spacing family, E301-E306) is not in `[tool.ruff.lint].select` above: ruff gates the
+# family behind `--preview`, and turning preview on there would gate every other family's preview rules too. This table
+# is read only by `tools/lint/run_ruff_e3.sh`, which runs `ruff check --select E3 --preview` and fails the commit on any
+# finding; ruff itself ignores it (`[tool.rola_lint]` is not a ruff key).
+[tool.rola_lint.preview]
 ruff_preview_select = ["E3"]
 
 [tool.pytest.ini_options]

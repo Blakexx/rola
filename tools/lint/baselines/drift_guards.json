@@ -1,0 +1,125 @@
+{
+ "lint": "drift_guards",
+ "findings": [
+  {
+   "path": "benchmarks/bench/subjects.py",
+   "message": "'STATE_ARMS' is a literal arm table outside tools/gen_shards.py",
+   "line_sha256": "9e3be9cee4f6cb45",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/carry.cu",
+   "message": "'carry_stamp_kernel' is a second body beside 'carry_kernel' in the same family",
+   "line_sha256": "f0a376ec6c2edcbd",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/carry_host.cuh",
+   "message": "'derive_carry_geom' is instantiated outside the geometry block (common/geom.cuh, common/geom.cu, common/geom_api.cuh)",
+   "line_sha256": "528892633ee2f908",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/carry_kernel.cuh",
+   "message": "a comment describing a past state ('the old'): //: tiles as warps; the old two-a-warp deal in the constructor left half the war",
+   "line_sha256": "7464a0c028b28700",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/carry_kernel.cuh",
+   "message": "kernel template axis 'WARPS' is not one of the declared arm key ['D', 'DV', 'warps_per_cta']",
+   "line_sha256": "0bd4b5fe1eb0e162",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/params.cuh",
+   "message": "a float* view of state storage: const float* state_in;",
+   "line_sha256": "f5bfd3f879341e38",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/carry/params.cuh",
+   "message": "a float* view of state storage: float* state_out;",
+   "line_sha256": "69a5dd197d0777c8",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/common/ops.cuh",
+   "message": "a comment describing a past state ('the old'): //: A SHARED COUNTER'S TAKE: the old value, the counter advanced by `v`; explici",
+   "line_sha256": "4e177c690d29a821",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/decode/decode.cuh",
+   "message": "a float* view of state storage: float* state;       // DENSE [BH,N,cols] or PAGED [slots,kAtomLeaves,cols]; see decode.md#",
+   "line_sha256": "8b5015bbcac10df0",
+   "count": 1
+  },
+  {
+   "path": "csrc/rola/src/decode/decode_lattice.cuh",
+   "message": "a device switch on 'kind' that is not a uniform_switch<Set>",
+   "line_sha256": "6e3e44e259f5b70b",
+   "count": 1
+  },
+  {
+   "path": "rola/ops/decode.py",
+   "message": "a comment naming the work code 'K53': \"\"\"DECODE'S OP ENTRY, THE SAME DESCRIPTOR CHECK AS PREFILL (K53).",
+   "line_sha256": "942322dd781d5cf1",
+   "count": 1
+  },
+  {
+   "path": "tests/integration/test_decode_graph_step.py",
+   "message": "a storage identity claim made with torch.equal: assert torch.equal(landed, eager_state.materialize())",
+   "line_sha256": "a2781f2d0a093cc0",
+   "count": 1
+  },
+  {
+   "path": "tests/integration/test_decode_paging.py",
+   "message": "'_ARMS' is a literal arm table outside tools/gen_shards.py",
+   "line_sha256": "9ba217ecf73f5742",
+   "count": 1
+  },
+  {
+   "path": "tests/integration/test_decode_paging.py",
+   "message": "a storage identity claim made with torch.equal: assert torch.equal(from_split_planes(dense_out).view(BH, config.N, _COLS),",
+   "line_sha256": "cc0a53315cbab9a3",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/instantiation.py",
+   "message": "'CHUNK_ARMS' is a literal arm table outside tools/gen_shards.py",
+   "line_sha256": "2fe472063cbe21b3",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/test_atom_bitmap.py",
+   "message": "'_ARMS' is a literal arm table outside tools/gen_shards.py",
+   "line_sha256": "6625f832e1db4b36",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/test_decode_vs_oracle.py",
+   "message": "a storage identity claim made with torch.equal: assert torch.equal(a[\"state\"], b[\"state\"]), \"decode's state is not run-reproducible\"",
+   "line_sha256": "61286e59e08c8f5b",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/test_decode_vs_oracle.py",
+   "message": "a storage identity claim made with torch.equal: assert torch.equal(ref[\"state\"], got[\"state\"])",
+   "line_sha256": "7521d3fcc75fa53b",
+   "count": 1
+  },
+  {
+   "path": "tests/oracle/test_decode_vs_oracle.py",
+   "message": "a storage identity claim made with torch.equal: assert torch.equal(ref[\"state\"], got[\"state\"]), (",
+   "line_sha256": "5fcb693d5638ba48",
+   "count": 1
+  },
+  {
+   "path": "tests/unit/test_carry_geometry.py",
+   "message": "'ARM_PARAMS' is a literal arm table outside tools/gen_shards.py",
+   "line_sha256": "2ba2d0f50111ab87",
+   "count": 1
+  }
+ ]
+}
