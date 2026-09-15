@@ -105,18 +105,32 @@ def environment_key() -> str:
 
 class Instrument(Unit):
     """One run of a checkout instrument through its JSON command line: `python <tool> <args> --json <ws>/out.json`; its
-    record is the instrument's own output. `{binary}` in an argument is the built extension's path in the checkout."""
+    record is the instrument's own output. `{binary}` in an argument is the built extension's path in the checkout.
+    `cell` is the carry cell the instrument launches, or None: a cell whose carry arm the binary does not carry is a
+    refusal, not a failure of the instrument."""
 
-    def __init__(self, location: str, tool: str, args: list, data: list, repeatable: bool, timeout: int) -> None:
+    def __init__(self, location: str, tool: str, args: list, data: list, repeatable: bool, timeout: int,
+                 cell: str | None) -> None:
         self.location, self.tool, self.args, self.data = location, tool, list(args), list(data)
-        self.repeatable, self.timeout = repeatable, timeout
+        self.repeatable, self.timeout, self.cell = repeatable, timeout, cell
 
     def identity(self) -> dict:
         return {"binary": binary_key(), "code": code_key(self.tool, tuple(self.data)),
                 "environment": environment_key(), "args": self.args}
 
     def setup(self, ws: Path):
-        return binary().relative_to(CHECKOUT).as_posix()
+        path = binary().relative_to(CHECKOUT).as_posix()
+        if self.cell is not None:
+            _tools()
+            from benchmarks.cells import by_name
+            from rola.ops import carry
+
+            arm = by_name(self.cell).arm
+            carried = sorted(tuple(a) for a in carry.arms())
+            if arm not in carried:
+                raise Refusal(f"{self.cell}: this binary carries no carry arm {arm} (D, DV, warps_per_cta); it carries "
+                              f"{carried}")
+        return path
 
     def execute(self, prepared, ws: Path) -> None:
         args = [a.replace("{binary}", prepared) for a in self.args]
@@ -133,8 +147,8 @@ class Timeline(Instrument):
     """`tools/pipe_timeline.py` writes `<out>.json` beside its capture instead of taking `--json`."""
 
     def __init__(self, cell: str) -> None:
-        super().__init__("rola/carry.timeline", "tools/pipe_timeline.py", ["--cell", cell], [CELLS[0]], True, INSTRUMENT_TIMEOUT_S)
-        self.cell = cell
+        super().__init__("rola/carry.timeline", "tools/pipe_timeline.py", ["--cell", cell], [CELLS[0]], True, INSTRUMENT_TIMEOUT_S,
+                         cell)
 
     def execute(self, prepared, ws: Path) -> None:
         done = run_command([sys.executable, self.tool, "--cell", self.cell, "--out", str(ws / "tl"), "--no-record"],
@@ -234,11 +248,12 @@ def graph() -> list[Node]:
     census_data = [CELLS[0], "tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"]
     nodes = [Node("carry.sass", here + "Instrument", {"location": "rola/carry.sass", "tool": "tools/sass_gate.py",
                                                        "args": ["{binary}"], "data": [], "repeatable": False,
-                                                       "timeout": 900}),
+                                                       "timeout": 900, "cell": None}),
              Node("carry.registers@arm0", here + "Instrument",
                   {"location": "rola/carry.registers", "tool": "tools/life_ranges.py",
                    "args": ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"],
-                   "data": ["csrc/rola/src", "build/generated/carry_parts.inc"], "repeatable": False, "timeout": 1800})]
+                   "data": ["csrc/rola/src", "build/generated/carry_parts.inc"], "repeatable": False, "timeout": 1800,
+                   "cell": None})]
     for cell, kind in cells().items():
         if kind == "carry":
             for module, tool, extra, data in (("carry.phases", "tools/phase_ledger.py", ["--launches", "1"], [CELLS[0]]),
@@ -246,7 +261,7 @@ def graph() -> list[Node]:
                                               ("carry.census", "tools/stall_census.py", [], census_data)):
                 nodes.append(Node(f"{module}@{cell}", here + "Instrument",
                                   {"location": f"rola/{module}", "tool": tool, "args": [cell, *extra], "data": data,
-                                   "repeatable": True, "timeout": INSTRUMENT_TIMEOUT_S}))
+                                   "repeatable": True, "timeout": INSTRUMENT_TIMEOUT_S, "cell": cell}))
             nodes.append(Node(f"carry.timeline@{cell}", here + "Timeline", {"cell": cell}))
         for subject in SUBJECTS[kind]:
             nodes.append(Node(f"time.{subject}@{cell}", here + "Arm", {"cell": cell, "arm": subject}))
