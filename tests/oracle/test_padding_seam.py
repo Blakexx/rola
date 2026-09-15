@@ -42,6 +42,7 @@ from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
 from tests.oracle.fixtures import assert_slots_close, oracle_run
 from tests.oracle.oracle_fixtures import _simplex
+from tests.oracle.tolerances import INTRA_OUTPUT
 
 # ---------------------------------------------------------------------------
 # PREFILL: the fp64 naive is the ONE ground truth on this line (no kernel body)
@@ -282,4 +283,4 @@ def test_intra_padded_nonpow2_levels_and_d_v_match_the_oracle():
         gwrite_bh, v_token_major, (DENSE_BOTH,) * len(widths), window=window)
     y_kernel = (o / (den.unsqueeze(-1) + READOUT_EPS)).view(B, H, window, d_v).permute(0, 2, 1, 3)
 
-    assert_slots_close(y_kernel, oracle.y, envelope=oracle.y_envelope, what="the padded intra readout")
+    assert_slots_close(y_kernel, oracle.y, output=INTRA_OUTPUT, envelope=oracle.y_envelope, what="the padded intra readout")

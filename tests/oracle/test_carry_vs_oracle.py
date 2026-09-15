@@ -42,7 +42,7 @@ from tests.oracle.fixtures import (
     plane_from_canonical,
     relative,
 )
-from tests.oracle.tolerances import CARRY_FOLD_RTOL, CARRY_READOUT_RTOL
+from tests.oracle.tolerances import CARRY_DEN, CARRY_NUM, CARRY_STATE
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
@@ -93,11 +93,11 @@ def check(spec, drawn, num, den, plane, bh=1):
     envelope) and the state."""
     want, env = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
     names = ("num", "den", "state")
-    for got, w, e, name in zip(kernel_slots(spec, num, den, plane, bh), want, env, names):
+    for got, w, e, name, output in zip(kernel_slots(spec, num, den, plane, bh), want, env, names,
+                                       (CARRY_NUM, CARRY_DEN, CARRY_STATE)):
         w = w.reshape(got.shape) if name == "state" else w
         e = e.reshape(got.shape) if name == "state" else e
-        assert_slots_close(got, w, envelope=e, what=f"{spec.name} {name}",
-                           rtol=CARRY_FOLD_RTOL if name == "state" else CARRY_READOUT_RTOL)
+        assert_slots_close(got, w, output=output, envelope=e, what=f"{spec.name} {name}")
 
 
 def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
@@ -107,9 +107,9 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     drawn, num, den, plane = run(spec)
     (n_ref, _, s_ref), (n_env, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
     got_num, _, got_state = kernel_slots(spec, num, den, plane)
-    assert_planted_errors_fail(got_num, n_ref, envelope=n_env, what=f"{spec.name} num", rtol=CARRY_READOUT_RTOL)
-    assert_planted_errors_fail(got_state, s_ref.reshape(got_state.shape), envelope=s_env.reshape(got_state.shape),
-                               what=f"{spec.name} state", rtol=CARRY_FOLD_RTOL)
+    assert_planted_errors_fail(got_num, n_ref, output=CARRY_NUM, envelope=n_env, what=f"{spec.name} num")
+    assert_planted_errors_fail(got_state, s_ref.reshape(got_state.shape), output=CARRY_STATE,
+                               envelope=s_env.reshape(got_state.shape), what=f"{spec.name} state")
 
 
 # ------------------------------------------------------------- the registry itself
@@ -160,7 +160,7 @@ def test_the_folded_state_is_the_fp64_reference(spec):
     drawn, _, _, plane = run(spec)
     (_, _, s_ref), (_, _, s_env) = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
     assert_slots_close(canonical_from_plane(plane), s_ref.reshape(1, spec.N, spec.dv + 1),
-                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} state", rtol=CARRY_FOLD_RTOL)
+                       output=CARRY_STATE, envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} state")
 
 
 def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
@@ -177,8 +177,8 @@ def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
                              page_table=slots.to(torch.int32).reshape(1, pages))
     (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
     assert_slots_close(canonical_from_plane(plane[0, slots].unsqueeze(0)), s_ref.reshape(1, spec.N, spec.dv + 1),
-                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} paged state",
-                       rtol=CARRY_FOLD_RTOL)
+                       output=CARRY_STATE, envelope=s_env.reshape(1, spec.N, spec.dv + 1),
+                       what=f"{spec.name} paged state")
 
 
 def test_a_carried_state_is_advanced_in_place():

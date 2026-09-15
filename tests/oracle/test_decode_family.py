@@ -44,6 +44,7 @@ from rola.routing.factors import RouteFactors
 from rola.routing.types import LeafMassDecay
 from tests.oracle.fixtures import assert_slots_close, oracle_run
 from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
+from tests.oracle.tolerances import DECODE_STATE, DECODE_Y
 
 pytestmark = [
     pytest.mark.cuda,
@@ -162,9 +163,9 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
             fs["v"], fs["read"], fs["write"], fs["g_write"],
             config, state, decay=decay, workspace=workspace)
         ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
-        assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"y at step {s}")
+        assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"y at step {s}")
         canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
-        assert_slots_close(canonical, ref.state, envelope=ref.state_envelope, what=f"the state at step {s}")
+        assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what=f"the state at step {s}")
 
         R = _leaf_product(step["read"], _WIDTHS) != 0
         written = (_leaf_product(pre["write"], _WIDTHS) != 0).any(dim=1, keepdim=True)
@@ -210,8 +211,8 @@ def test_the_horizon_is_conformant_at_every_checkpoint_not_just_the_end():
         ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
         if s in _CHECKPOINTS:
             canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
-            assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"y at checkpoint {s}")
-            assert_slots_close(canonical, ref.state, envelope=ref.state_envelope, what=f"the state at checkpoint {s}")
+            assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"y at checkpoint {s}")
+            assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what=f"the state at checkpoint {s}")
     # NON-VACUITY: the horizon must actually accumulate fp32-vs-fp64 distance —
     # a zero at the far end would mean the comparison is comparing nothing.
     assert bool((canonical.double() != ref.state).any())
@@ -269,7 +270,7 @@ def test_the_decode_split_is_performance_only_under_drift():
             f"the {name} carrier's STATE differs from the single-CTA one: the "
             "launch split moved stored numbers")
         for s, (y, ref) in enumerate(zip(ys, refs)):
-            assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"{name}, y at step {s} under drift")
+            assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"{name}, y at step {s} under drift")
 
     # The certificates half: an arm mismatch REFUSES rather than degrades.
     step = _f32(steps[0])

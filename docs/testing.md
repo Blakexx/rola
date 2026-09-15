@@ -189,10 +189,14 @@ forward, state and both gradients.
    reviewer sign-off. Tightening needs none of that.
 6. **A tolerance is only half of a claim; the other half is what the error is
    divided by.** Every kernel-vs-oracle comparison is PER SLOT
-   (`tests.oracle.fixtures.assert_slots_close`): each output slot's error is held
-   to `BF16_RTOL` times that slot's envelope, the sum of the sizes of the terms it
-   adds up, which the same fp64 reference computes on `|v|`
-   (`fixtures.oracle_run`). Never a global max: the readout is a ratio whose
+   (`tests.oracle.fixtures.assert_slots_close`) and names the OUTPUT KIND it
+   grades (`tests/oracle/tolerances.py`). A kind holds each slot to its CLAUSES --
+   `(rtol, atol)` pairs, one of which fails a slot whose relative and absolute
+   errors both exceed it, measured with their frontier and never tighter than the
+   kind's own budget -- and, where the output is multilinear, to `rtol` times that
+   slot's envelope, the sum of the sizes of the terms it adds up, which the same
+   fp64 reference computes on `|v|` (`fixtures.oracle_run`). The tightest binds and
+   the failure says which. Never a global max: the readout is a ratio whose
    denominator is accumulated write mass, so `|y|` at the cold start exceeds the
    rest of the sequence by up to `2.4e4` at `T = 8192`, and a single normalizer set
    by that token was measured BIT-IDENTICAL between two arms it was supposed to

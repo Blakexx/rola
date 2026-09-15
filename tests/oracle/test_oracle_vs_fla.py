@@ -69,6 +69,7 @@ from rola.routing.types import (
     Topology,
 )
 from tests.oracle.fixtures import assert_slots_close, oracle_run
+from tests.oracle.tolerances import FLA_OUTPUT, FLA_STATE
 
 pytestmark = pytest.mark.skipif(
     not dev_config.get("environment.fla_crosscheck"),
@@ -78,15 +79,6 @@ pytestmark = pytest.mark.skipif(
 
 _ROUTING = IndependentRouting(
     width=1, read=SoftmaxActivation(), write=SoftmaxActivation())
-
-#: The bound, and it is float32's rather than a fitted number: FLA accumulates in
-#: float32, whose unit roundoff is 6e-8, over a sum of `N <= 64` leaves, so a slot's
-#: error is held to `1e-5` of its envelope (`tests.oracle.fixtures.assert_slots_close`).
-#: MEASURED 2026-09-14: the worst slot at 3.5e-7 of its envelope (0.035 of the bound),
-#: so it leaves more than a decade of headroom while still being far tighter than any
-#: transcription error could hide in -- an off-by-one index or a gate applied on
-#: the wrong side of the deposit moves a slot by O(its terms), not by 1e-7.
-FLOAT32_FLOOR = 1e-5
 
 
 @pytest.mark.parametrize("widths", [(8, 8), (4, 4, 4)])
@@ -156,5 +148,5 @@ def test_the_oracle_recurrence_is_flas_naive_gla_under_a_renaming(widths, decay_
     assert float(readout.abs().max()) > 1e-3, "FLA's output is ~0; the fixture is degenerate"
 
     #: past float32's floor, a disagreement is a transcription error, not a rounding difference.
-    assert_slots_close(readout, y, envelope=ref.y_envelope, rtol=FLOAT32_FLOOR, what="FLA's naive GLA output")
-    assert_slots_close(h, state, envelope=ref.state_envelope, rtol=FLOAT32_FLOOR, what="FLA's naive GLA final state")
+    assert_slots_close(readout, y, output=FLA_OUTPUT, envelope=ref.y_envelope, what="FLA's naive GLA output")
+    assert_slots_close(h, state, output=FLA_STATE, envelope=ref.state_envelope, what="FLA's naive GLA final state")

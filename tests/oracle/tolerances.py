@@ -11,16 +11,30 @@ That is the point of the module: a tolerance restated per file is a tolerance
 that can be widened in one file by somebody who did not have to say so in a
 diff a reviewer of the numeric contract would read.
 
-THE RULE IS PER SLOT (`tests.oracle.fixtures.assert_slots_close`): the kernel's
-error on each output slot is at most `BF16_RTOL` times that slot's ENVELOPE,
-the sum of the sizes of the terms the slot adds up, which the same fp64
-reference computes when run on `|v|` (`fixtures.oracle_run`; every routing
-weight, gain and decay factor is non-negative). A readout `num / (den + eps)`
-adds `|y|` for its denominator's rounding; a denominator or a mass column is its
-own envelope. A gate whose output is not a sum of non-negative weights times
-values (the entmax solve, its gradients, the producer's amplitudes) compares per
-element in `torch.testing.assert_close`'s form and states its own derived
-tolerances beside the claim.
+THE RULE IS PER SLOT (`tests.oracle.fixtures.assert_slots_close`), and every
+kernel-vs-oracle gate names the OUTPUT KIND it grades (`Output` below), which
+carries the whole rule for that output:
+
+- ITS CLAUSES, the shared form (Blake, 2026-09-15). A clause is an `(rtol, atol)`
+  pair and FAILS a slot whose relative error exceeds `rtol` AND whose absolute
+  error exceeds `atol`, so a slot of size `s` passes within
+  `min_i max(rtol_i * s, atol_i)`: one clause is `allclose`'s own rule, a clause
+  at `rtol = 0` is a pure absolute cap, and each further clause is another hinge
+  in that curve. Every gate in the tree is held this way -- the carry, prefill,
+  decode and intra kernels, the entmax solve and its gradients, the producer's
+  stored levels and routes -- so one rule reads every oracle comparison and no
+  gate states tolerances of its own.
+- ITS ENVELOPE, where the output is MULTILINEAR: at most `rtol` times the sum of
+  the sizes of the terms the slot adds up, which the same fp64 reference computes
+  when run on `|v|` (`fixtures.oracle_run`; every routing weight, gain and decay
+  factor is non-negative). A readout `num / (den + eps)` adds `|y|` for its
+  denominator's rounding; a denominator or a mass column is its own envelope.
+  No curve over slot size can separate a slot that is small because its terms
+  cancelled from one that is small because its terms were small; the envelope
+  gives each slot its own allowance from its own terms, which is why it sits
+  beside the clauses rather than replacing them.
+
+The tightest of the two binds, and a failure names which one it was.
 
 MEASURED 2026-09-14 (`pytest --oracle-margins=<file>` records every comparison):
 the worst error over its allowance under its budget, and the smallest uniform
@@ -49,6 +63,8 @@ which a global maximum passes by construction.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 #: The derived bf16 family budget. See the module docstring for the derivation.
 BF16_RTOL = 1e-2
 
@@ -67,6 +83,76 @@ U_BF16 = 2.0 ** -8
 #: five u (1.95%) and outside the family budget above.
 CARRY_FOLD_RTOL = 2 * U_BF16
 CARRY_READOUT_RTOL = 5 * U_BF16
+
+#: The FLA cross-check's bound, and it is float32's rather than a fitted number: FLA accumulates in float32, whose unit
+#: roundoff is 6e-8, over a sum of `N <= 64` leaves, so a slot's error is held to `1e-5` of its envelope. MEASURED
+#: 2026-09-14: the worst slot at 3.5e-7 of its envelope (0.035 of the bound), more than a decade of headroom while still
+#: far tighter than any transcription error could hide in -- an off-by-one index or a gate applied on the wrong side of
+#: the deposit moves a slot by O(its terms), not by 1e-7.
+FLOAT32_FLOOR = 1e-5
+
+#: THE PRODUCTION ENTMAX SOLVE'S RATIFIED TOLERANCES against the fp64 reference solve (values and their gradients),
+#: and the stored bf16 levels' (`tests/integration/test_production_levels.py` states their derivation beside the seam).
+#: Never loosened.
+ENTMAX_RTOL, ENTMAX_ATOL = 2e-5, 2e-6
+ENTMAX_GRAD_RTOL, ENTMAX_GRAD_ATOL = 5e-5, 5e-6
+STORED_ROUTE_RTOL, STORED_ROUTE_ATOL = 4e-3, 2e-3
+
+
+@dataclass(frozen=True)
+class Output:
+    """ONE KIND OF ORACLE-GRADED OUTPUT: the clauses every slot of it is held to, and on a multilinear output the
+    envelope budget. A clause ``(rtol, atol)`` FAILS a slot whose relative error exceeds ``rtol`` AND whose absolute
+    error exceeds ``atol`` (Blake, 2026-09-15: ``OR(AND(r1, a1), AND(r2, a2), ...)``), so a slot of size ``s`` passes
+    within ``min_i max(rtol_i·s, atol_i)``: one clause is `allclose`'s rule, each further clause another hinge in that
+    curve, and a clause at ``rtol = 0`` is a pure absolute cap. ``rtol`` is the multilinear envelope budget
+    (`fixtures.allowances`), None for an output that has no envelope. Every gate names its output kind here; no gate
+    states its own numbers. ``measured`` is False for a kind no run on this machine has measured a frontier for.
+    """
+
+    name: str
+    clauses: tuple[tuple[float, float], ...]
+    rtol: float | None = None
+    measured: bool = True
+
+
+#: THE CLAUSES ARE MEASURED, and these are the measurements (`pytest --oracle-margins=FILE`, read with
+#: `fixtures.frontier_rtols`): for each relative error, the largest ABSOLUTE error any slot past it took on the whole
+#: battery, from the comparisons that passed. A clause declares that relative error with twice that absolute error, so
+#: no measured slot is inside a clause it fails; clauses below the output's own declared budget are not declared at all,
+#: because a draw that reached the budget would fail one. A kind's numbers are re-measured when the cells or the
+#: hardware change, and tightening is always the safe direction. MEASURED 2026-09-15 on RTX 3080 Ti (sm_86), the oracle,
+#: integration and entmax tiers: 2,700 comparisons, the worst slot at 0.91 of its allowance (the carry state).
+CARRY_NUM = Output("carry numerator", rtol=CARRY_READOUT_RTOL,
+                   clauses=((0.0, 6.24e-2), (1e-1, 1.05e-3), (1e1, 3.96e-4), (1e2, 3.17e-5)))
+CARRY_DEN = Output("carry denominator", rtol=CARRY_READOUT_RTOL, clauses=((0.0, 5.47e-2), (1e-1, 0.0)))
+CARRY_STATE = Output("carry state", rtol=CARRY_FOLD_RTOL,
+                     clauses=((0.0, 4.02e-2), (CARRY_FOLD_RTOL, 8.34e-3), (1.0, 4.01e-3), (1e1, 1.90e-3),
+                              (1e2, 4.44e-4)))
+PREFILL_READOUT = Output("prefill readout", rtol=CARRY_READOUT_RTOL,
+                         clauses=((0.0, 2.86e-2), (1e-1, 1.24e-2), (1.0, 6.10e-3), (1e1, 3.01e-3), (1e2, 6.39e-4)))
+PREFILL_STATE = Output("prefill state", rtol=CARRY_FOLD_RTOL,
+                       clauses=((0.0, 4.02e-2), (CARRY_FOLD_RTOL, 8.34e-3), (1.0, 1.96e-3), (1e2, 4.44e-4)))
+DECODE_Y = Output("decode y", rtol=BF16_RTOL, clauses=((0.0, 3.52e-3), (1.0, 1.25e-3), (1e2, 3.35e-4)))
+DECODE_STATE = Output("decode state", rtol=BF16_RTOL, clauses=((0.0, 4.38e-7), (1e-2, 7.80e-9), (1e-1, 0.0)))
+INTRA_OUTPUT = Output("intra output", rtol=BF16_RTOL, clauses=((0.0, 1.66e-2), (1e-1, 7.74e-3)))
+INTRA_MASS = Output("intra mass", rtol=BF16_RTOL, clauses=((0.0, 9.88e-7), (1e-2, 0.0)))
+PROJECTION_LOGITS = Output("projection logits", rtol=U_BF16, clauses=((0.0, 1.32e-1), (1.0, 6.42e-2), (1e1, 0.0)))
+ENTMAX_VALUES = Output("entmax values", clauses=((0.0, 8.34e-2), (ENTMAX_RTOL, ENTMAX_ATOL)))
+ENTMAX_GRADIENTS = Output("entmax gradients", clauses=((0.0, 5.96e-5), (ENTMAX_GRAD_RTOL, ENTMAX_GRAD_ATOL)))
+STORED_LEVELS = Output("stored bf16 levels", clauses=((0.0, 1.52e-1), (BF16_RTOL, BF16_RTOL)))
+STORED_ROUTE = Output("stored route", clauses=((0.0, 2 * STORED_ROUTE_ATOL), (STORED_ROUTE_RTOL, STORED_ROUTE_ATOL)))
+
+#: THE CROSS-CHECK'S KINDS CARRY NO CLAUSES YET: `tests/oracle/test_oracle_vs_fla.py` is opt-in
+#: (`environment.fla_crosscheck`) and flash-linear-attention is not installed on this machine, so no run has measured
+#: their frontier and no clause of them would be a measurement. They are graded by their envelope alone until one does.
+FLA_OUTPUT = Output("FLA naive GLA output", clauses=(), rtol=FLOAT32_FLOOR, measured=False)
+FLA_STATE = Output("FLA naive GLA state", clauses=(), rtol=FLOAT32_FLOOR, measured=False)
+
+#: EVERY OUTPUT KIND, for the test that holds each to declaring its clauses and their measurement.
+OUTPUTS = (CARRY_NUM, CARRY_DEN, CARRY_STATE, PREFILL_READOUT, PREFILL_STATE, DECODE_Y, DECODE_STATE, INTRA_OUTPUT,
+           INTRA_MASS, PROJECTION_LOGITS, ENTMAX_VALUES, ENTMAX_GRADIENTS, STORED_LEVELS, STORED_ROUTE, FLA_OUTPUT,
+           FLA_STATE)
 
 #: Where the per-slot check records its margins: `--oracle-margins`, set by `tests/conftest.py`; None records nothing.
 MARGINS_FILE = None

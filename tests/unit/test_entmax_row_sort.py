@@ -31,13 +31,10 @@ import torch
 
 from rola.routing.entmax.production import production_routing_factor_levels
 from rola.routing.types import ResolvedRouting, UnionRouting
-from tests.unit.test_entmax_production import _PRODUCTION_ATOL, _PRODUCTION_RTOL
+from tests.oracle.fixtures import assert_slots_close
+from tests.oracle.tolerances import ENTMAX_VALUES
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-
-#: The family's ratified production tolerance, imported rather than restated so this file
-#: cannot drift from the gate that owns the number.
-_RTOL, _ATOL = _PRODUCTION_RTOL, _PRODUCTION_ATOL
 
 #: Every padded-width class, so every `(LW, IPT)` instantiation of both networks runs;
 #: the non-powers of two also drive the sentinel padding into the tied region.
@@ -102,10 +99,10 @@ def test_the_row_sort_is_bitwise_tie_order_independent(width, alpha, family):
     tag = f"{family} w={width} alpha={alpha}"
     for level, (a, b) in enumerate(zip(cuda_r, cpu_r)):
         assert torch.equal(a.cpu() != 0, b != 0), f"read level {level} support: {tag}"
-        torch.testing.assert_close(a.cpu(), b, rtol=_RTOL, atol=_ATOL)
+        assert_slots_close(a.cpu(), b, output=ENTMAX_VALUES, what=f"level {level}: {tag}")
     for level, (a, b) in enumerate(zip(cuda_w, cpu_w)):
         assert torch.equal(a.cpu() != 0, b != 0), f"write level {level} support: {tag}"
-        torch.testing.assert_close(a.cpu(), b, rtol=_RTOL, atol=_ATOL)
+        assert_slots_close(a.cpu(), b, output=ENTMAX_VALUES, what=f"level {level}: {tag}")
 
 
 @pytest.mark.cuda
@@ -131,10 +128,10 @@ def test_permuting_tied_columns_permutes_the_solve_exactly(width, alpha):
 
     for level, (a, b) in enumerate(zip(base_r, roll_r)):
         assert torch.equal(a.roll(3, dims=2) != 0, b != 0), f"read level {level} w={width}"
-        torch.testing.assert_close(a.roll(3, dims=2), b, rtol=_RTOL, atol=_ATOL)
+        assert_slots_close(a.roll(3, dims=2), b, output=ENTMAX_VALUES, what=f"level {level} w={width}")
     for level, (a, b) in enumerate(zip(base_w, roll_w)):
         assert torch.equal(a.roll(3, dims=2) != 0, b != 0), f"write level {level} w={width}"
-        torch.testing.assert_close(a.roll(3, dims=2), b, rtol=_RTOL, atol=_ATOL)
+        assert_slots_close(a.roll(3, dims=2), b, output=ENTMAX_VALUES, what=f"level {level} w={width}")
 
 
 @pytest.mark.cuda

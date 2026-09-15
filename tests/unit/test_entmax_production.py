@@ -17,21 +17,15 @@ from rola.routing.types import (
     TiedRouting,
     UnionRouting,
 )
+from tests.oracle.fixtures import assert_slots_close
+from tests.oracle.tolerances import ENTMAX_GRADIENTS, ENTMAX_VALUES, STORED_ROUTE
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="production entmax requires CUDA")
 
-_PRODUCTION_RTOL = 2e-5
-_PRODUCTION_ATOL = 2e-6
-_PRODUCTION_GRAD_RTOL = 5e-5
-_PRODUCTION_GRAD_ATOL = 5e-6
-_STORED_ROUTE_RTOL = 4e-3
-_STORED_ROUTE_ATOL = 2e-3
-
 
 def _assert_matches_oracle(actual, expected, *, gradient=False):
-    rtol = _PRODUCTION_GRAD_RTOL if gradient else _PRODUCTION_RTOL
-    atol = _PRODUCTION_GRAD_ATOL if gradient else _PRODUCTION_ATOL
-    torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol, check_dtype=False)
+    output = ENTMAX_GRADIENTS if gradient else ENTMAX_VALUES
+    assert_slots_close(actual, expected, output=output, what=f"the production solve ({output.name})")
 
 
 def _unpack_token_support(words, length):
@@ -71,12 +65,8 @@ def _assert_support_matches_stored_descriptor(descriptor):
 
 
 def _assert_descriptor_values_match_reference(actual, expected):
-    torch.testing.assert_close(
-        actual.read_values.float(), expected.read_values.float(),
-        rtol=_STORED_ROUTE_RTOL, atol=_STORED_ROUTE_ATOL, check_dtype=False)
-    torch.testing.assert_close(
-        actual.write_values.float(), expected.write_values.float(),
-        rtol=_STORED_ROUTE_RTOL, atol=_STORED_ROUTE_ATOL, check_dtype=False)
+    assert_slots_close(actual.read_values, expected.read_values, output=STORED_ROUTE, what="the stored read values")
+    assert_slots_close(actual.write_values, expected.write_values, output=STORED_ROUTE, what="the stored write values")
 
 
 def _descriptor_level_support(descriptor, level):

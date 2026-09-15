@@ -32,7 +32,7 @@ from rola.ops.paging import bytes_equal
 from rola.ops.prefill import prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
 from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, canonical_from_plane, oracle_run, relative
-from tests.oracle.tolerances import BF16_RTOL, CARRY_FOLD_RTOL, CARRY_READOUT_RTOL
+from tests.oracle.tolerances import BF16_RTOL, PREFILL_READOUT, PREFILL_STATE
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
@@ -145,11 +145,11 @@ def test_the_combined_operator_reaches_the_carry_launch_surface():
 def test_prefill_matches_the_fp64_oracle(spec):
     drawn, (num, den, plane) = call(spec)
     ref = oracle(drawn)
-    assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what=f"{spec.name} readout",
-                       rtol=CARRY_READOUT_RTOL)
+    assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
+                       what=f"{spec.name} readout")
     shape = (1, spec.N, spec.dv + 1)
-    assert_slots_close(canonical_from_plane(plane), ref.state.reshape(shape), envelope=ref.state_envelope.reshape(shape),
-                       what=f"{spec.name} state", rtol=CARRY_FOLD_RTOL)
+    assert_slots_close(canonical_from_plane(plane), ref.state.reshape(shape), output=PREFILL_STATE,
+                       envelope=ref.state_envelope.reshape(shape), what=f"{spec.name} state")
     del num, den, plane, ref
     torch.cuda.empty_cache()
 
@@ -167,15 +167,15 @@ def test_the_per_slot_rule_fails_what_a_global_max_passes():
     ref = oracle(drawn)
     y_ref, y_env = ref.y, ref.y_envelope
     y = readout(num, den, spec).double()
-    assert_planted_errors_fail(y, y_ref, envelope=y_env, what=f"{spec.name} readout", rtol=CARRY_READOUT_RTOL)
+    assert_planted_errors_fail(y, y_ref, output=PREFILL_READOUT, envelope=y_env, what=f"{spec.name} readout")
     small = y_ref.abs() < 0.99 * BF16_RTOL * float(y_ref.abs().max())
     zeroed = torch.where(small, torch.zeros_like(y), y)
     assert bool(small.any()) and relative(zeroed, y_ref) < BF16_RTOL, (
         f"zeroing the small slots moved the global form to {relative(zeroed, y_ref):.3e}; the premise is that it "
         "passes this mutant")
     with pytest.raises(AssertionError, match="slots are off the oracle"):
-        assert_slots_close(zeroed, y_ref, envelope=y_env, what="the readout with its small slots zeroed",
-                           rtol=CARRY_READOUT_RTOL)
+        assert_slots_close(zeroed, y_ref, output=PREFILL_READOUT, envelope=y_env,
+                           what="the readout with its small slots zeroed")
 
 
 def test_a_chained_call_equals_one_long_call():
@@ -217,8 +217,8 @@ def test_a_chained_call_equals_one_long_call():
     assert relative(num, whole[0]) < 1e-5
     assert relative(den, whole[1]) < 1e-5
     ref = oracle(drawn)
-    assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what="the chained readout",
-                       rtol=CARRY_READOUT_RTOL)
+    assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
+                       what="the chained readout")
 
 
 def test_the_intra_term_is_actually_present():
@@ -238,8 +238,8 @@ def test_the_intra_term_is_actually_present():
         launch=shape, state_out=carry_ops.state_plane(desc, 1))
     ref = oracle(drawn)
     with pytest.raises(AssertionError, match="slots are off the oracle"):
-        assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what="the inter term alone",
-                           rtol=CARRY_READOUT_RTOL)
+        assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
+                           what="the inter term alone")
 
 
 def test_the_combined_operator_refuses_what_it_has_no_kernel_for():

@@ -40,14 +40,8 @@ import torch
 
 from rola.routing.entmax.production import _overflow_free_delta
 from rola.routing.entmax.reference import entmax_tau
-
-#: The repo's ratified production tolerances. Values duplicated rather than imported
-#: because they are module-private in `tests/integration/test_production_levels.py:55-58`;
-#: that file is the provenance and the two must not drift.
-_PRODUCTION_RTOL = 2e-5
-_PRODUCTION_ATOL = 2e-6
-_PRODUCTION_GRAD_RTOL = 5e-5
-_PRODUCTION_GRAD_ATOL = 5e-6
+from tests.oracle.fixtures import assert_slots_close
+from tests.oracle.tolerances import ENTMAX_ATOL, ENTMAX_GRADIENTS, ENTMAX_RTOL, ENTMAX_VALUES
 
 _CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA entmax kernels")
 
@@ -168,11 +162,9 @@ def assert_support_exact(got_support, midpoint_fp32, alpha, ctx=""):
 
 
 def assert_values_close(got, want, ctx="", *, gradient=False):
-    """GATES B / C -- the ratified production tolerances vs the fp64 oracle."""
-    rtol = _PRODUCTION_GRAD_RTOL if gradient else _PRODUCTION_RTOL
-    atol = _PRODUCTION_GRAD_ATOL if gradient else _PRODUCTION_ATOL
-    torch.testing.assert_close(got.double(), want.double(), rtol=rtol, atol=atol,
-                               msg=lambda m: f"GATE {'C' if gradient else 'B'} FAILED{ctx}: {m}")
+    """GATES B / C -- the ratified production tolerances vs the fp64 oracle, per slot under their output kinds."""
+    assert_slots_close(got, want, output=ENTMAX_GRADIENTS if gradient else ENTMAX_VALUES,
+                       what=f"GATE {'C' if gradient else 'B'} FAILED{ctx}")
 
 
 def assert_off_support_zero(d_read_logits, d_write_logits, support, ctx=""):
@@ -234,9 +226,9 @@ def test_teeth_B_values_reject_beyond_tolerance(alpha):
     just inside it -- i.e. the tolerance is doing work in both directions."""
     read, write = _fixture(64, 65, 7, ties=True)
     _, values, _, _ = oracle_union(read, write, alpha)
-    assert_values_close(values * (1.0 + 0.1 * _PRODUCTION_RTOL), values)
+    assert_values_close(values * (1.0 + 0.1 * ENTMAX_RTOL), values)
     with pytest.raises(AssertionError, match="GATE B"):
-        assert_values_close(values * (1.0 + 10.0 * _PRODUCTION_RTOL) + 10.0 * _PRODUCTION_ATOL,
+        assert_values_close(values * (1.0 + 10.0 * ENTMAX_RTOL) + 10.0 * ENTMAX_ATOL,
                             values)
 
 
@@ -270,4 +262,4 @@ def test_teeth_oracle_is_tighter_than_fp32():
         mass = values.sum(dim=-1)
         assert float((mass - 1.0).abs().max()) < 1e-12, (
             f"fp64 oracle tau at alpha={alpha} does not normalize to 1 within 1e-12; "
-            f"it is not fit to judge an fp32 solve at rtol={_PRODUCTION_RTOL}")
+            f"it is not fit to judge an fp32 solve at rtol={ENTMAX_RTOL}")

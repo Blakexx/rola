@@ -37,6 +37,7 @@ from tests.oracle.intra_reference import (
     make_cell,
     slab_skip_rate,
 )
+from tests.oracle.tolerances import INTRA_MASS, INTRA_OUTPUT
 
 HEADS = 2
 LEVELS = 2
@@ -71,8 +72,8 @@ def _reference(pread, pwrite, gwrite, v_bh, levels, **kw):
 
 def _check(name, o, den, reference):
     (o_ref, den_ref), o_env = reference
-    assert_slots_close(o, o_ref, envelope=o_env, what=f"{name} output")
-    assert_slots_close(den, den_ref, envelope=den_ref, what=f"{name} mass")
+    assert_slots_close(o, o_ref, output=INTRA_OUTPUT, envelope=o_env, what=f"{name} output")
+    assert_slots_close(den, den_ref, output=INTRA_MASS, envelope=den_ref, what=f"{name} mass")
 
 
 @pytest.mark.parametrize("name,modes,k_tok,length,clustered,window",
@@ -94,8 +95,8 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     sread, swrite = cell_support(pread, pwrite)
     o, den = intra_forward(pread, pwrite, gwrite, as_token_major(v_bh, HEADS), sread, swrite, modes, window=window)
     (o_ref, den_ref), o_env = _reference(pread, pwrite, gwrite, v_bh, LEVELS, window=window)
-    assert_planted_errors_fail(o, o_ref, envelope=o_env, what=f"{name} output")
-    assert_planted_errors_fail(den, den_ref, envelope=den_ref, what=f"{name} mass")
+    assert_planted_errors_fail(o, o_ref, output=INTRA_OUTPUT, envelope=o_env, what=f"{name} output")
+    assert_planted_errors_fail(den, den_ref, output=INTRA_MASS, envelope=den_ref, what=f"{name} mass")
 
 
 #: THE DEEP CELLS.  A `(D, B, W)` arm whose level is narrower than the MMA's

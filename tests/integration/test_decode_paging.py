@@ -80,6 +80,7 @@ from tests.oracle.fixtures import assert_slots_close, oracle_run  # noqa: E402
 from tests.oracle.oracle_fixtures import (  # noqa: E402
     _topology as _build_topology,
 )
+from tests.oracle.tolerances import DECODE_STATE, DECODE_Y  # noqa: E402
 
 #: `(widths, BC)`. Every leaf count is a whole number of atoms, which is what a paged
 #: keying REQUIRES (`AtomKeying.__post_init__`); the depth axis is what varies, because
@@ -381,8 +382,8 @@ def test_a_step_grows_residency_by_exactly_its_new_atoms(arm):
         ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
     state = to_canonical(arena.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
-    assert_slots_close(ys[-1], ref.y, envelope=ref.y_envelope, what="the grown step's y")
-    assert_slots_close(state, ref.state, envelope=ref.state_envelope, what="the grown state")
+    assert_slots_close(ys[-1], ref.y, output=DECODE_Y, envelope=ref.y_envelope, what="the grown step's y")
+    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the grown state")
 
 
 @pytest.mark.parametrize("arm", _ARMS, ids=lambda a: "x".join(map(str, a[0])))
@@ -431,5 +432,5 @@ def test_a_pool_admitted_sequence_is_the_oracle_s_and_the_host_admitted_one_s(ar
         ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
     state = to_canonical(pooled.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
-    assert_slots_close(ys["pool"][-1], ref.y, envelope=ref.y_envelope, what="the pool-admitted y")
-    assert_slots_close(state, ref.state, envelope=ref.state_envelope, what="the pool-admitted state")
+    assert_slots_close(ys["pool"][-1], ref.y, output=DECODE_Y, envelope=ref.y_envelope, what="the pool-admitted y")
+    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the pool-admitted state")

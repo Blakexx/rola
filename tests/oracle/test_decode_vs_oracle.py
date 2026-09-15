@@ -57,6 +57,7 @@ from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.types import LeafMassDecay
 from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, oracle_run
 from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
+from tests.oracle.tolerances import DECODE_STATE, DECODE_Y
 
 pytestmark = [
     pytest.mark.cuda,
@@ -226,8 +227,8 @@ def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
 def _assert_oracle(out):
     """Every step's ``y`` and the final state, per slot against the chained oracle's envelopes."""
     for step, (y, (y_ref, y_envelope)) in enumerate(zip(out["y"], out["y_refs"])):
-        assert_slots_close(y, y_ref, envelope=y_envelope, what=f"decode y at step {step}")
-    assert_slots_close(out["state"], out["ref"].state, envelope=out["ref"].state_envelope, what="decode state")
+        assert_slots_close(y, y_ref, output=DECODE_Y, envelope=y_envelope, what=f"decode y at step {step}")
+    assert_slots_close(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope, what="decode state")
 
 
 # ---------------------------------------------------------------------------
@@ -278,8 +279,8 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     slots moved past their allowance fail."""
     out = _case((64, 64), 64, 2, 3, "global", 0.5, 0.4, seed=64, steps=16)
     y_ref, y_envelope = out["y_refs"][-1]
-    assert_planted_errors_fail(out["y"][-1], y_ref, envelope=y_envelope, what="decode y")
-    assert_planted_errors_fail(out["state"], out["ref"].state, envelope=out["ref"].state_envelope, what="decode state")
+    assert_planted_errors_fail(out["y"][-1], y_ref, output=DECODE_Y, envelope=y_envelope, what="decode y")
+    assert_planted_errors_fail(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope, what="decode state")
 
 
 def test_the_empty_support_corner_is_inert_rather_than_undefined():
@@ -329,7 +330,7 @@ def test_more_ctas_than_rows_is_inert(n_split):
     ref = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=1)
     got = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=n_split)
     assert torch.equal(ref["state"], got["state"])
-    assert_slots_close(got["y"][-1], ref["y"][-1], envelope=ref["ref"].y_envelope,
+    assert_slots_close(got["y"][-1], ref["y"][-1], output=DECODE_Y, envelope=ref["ref"].y_envelope,
                        what=f"y at n_split={n_split} against n_split=1")
 
 
@@ -431,7 +432,7 @@ def test_g2_state_is_invariant_across_n_split(widths):
         got = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, n_split=n_split)
         assert torch.equal(ref["state"], got["state"]), (
             f"state moved with n_split={n_split}; the row partition is not a partition")
-        assert_slots_close(got["y"][-1], ref["y"][-1], envelope=ref["ref"].y_envelope,
+        assert_slots_close(got["y"][-1], ref["y"][-1], output=DECODE_Y, envelope=ref["ref"].y_envelope,
                            what=f"y at n_split={n_split} against n_split=1")
 
 
@@ -537,6 +538,6 @@ def test_g7_prefill_decode_seam(widths):
         cat(pre["read_levels"], step_read), cat(pre["write_levels"], step_write),
         torch.cat([pre["g_write"], step_gw], dim=1), pre["topology"])
 
-    assert_slots_close(y_dec, ref.y[:, L:L + 1], envelope=ref.y_envelope[:, L:L + 1], what="y across the seam")
-    assert_slots_close(state_dec, ref.state, envelope=ref.state_envelope, what="the state across the seam")
+    assert_slots_close(y_dec, ref.y[:, L:L + 1], output=DECODE_Y, envelope=ref.y_envelope[:, L:L + 1], what="y across the seam")
+    assert_slots_close(state_dec, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the state across the seam")
     assert pre["y"].shape[1] == L

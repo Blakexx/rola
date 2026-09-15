@@ -8,6 +8,7 @@ so the fixtures state it explicitly and the kernel is never told.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from typing import NamedTuple
@@ -18,7 +19,6 @@ from rola.ops import carry as carry_ops
 from rola.ops.naive import naive_rola
 from rola.ops.paging import from_split_planes, to_split_planes
 from tests.oracle import tolerances
-from tests.oracle.tolerances import BF16_RTOL
 
 
 def simplex(shape, k_tok, gen, device, live=None):
@@ -108,31 +108,55 @@ def assert_fresh_binary():
     return carry_ops.build_stamp()
 
 
-def assert_slots_close(actual, reference, *, envelope, what, rtol=BF16_RTOL):
-    """THE ORACLE RULE, PER SLOT: the kernel and the oracle produce the same shape, and each slot's error is at most
-    ``rtol`` times that slot's ENVELOPE, the sum of the sizes of the terms the slot adds up (`oracle_run` computes it by
-    running the same fp64 reference on ``|v|``). Rounding each term costs a share of that term's size whether or not the
-    terms cancel, so a slot that is small because its terms cancel keeps their rounding, and a slot that is small
-    because its terms are small keeps nothing. ``rtol`` is the declared per-term budget, `BF16_RTOL` unless the gate
-    derives its own (`tolerances.py`). A slot whose terms are all zero must be exactly zero; a slot that is not finite
-    on either side fails. The failure names how many slots failed and the worst one, by its error over its allowance.
+def allowances(reference, output, envelope=None, derived_atol=0.0):
+    """Each slot's allowed error under `output` (`tolerances.Output`), and which term sets it: a clause ``(r, a)`` fails
+    a slot whose relative AND absolute errors both pass it, so under clause ``i`` a slot of size ``s = |oracle|`` may be
+    off by ``max(r·s, a + derived_atol)``; a multilinear output adds its envelope term ``rtol·envelope``; the allowance
+    is the smallest. Returns ``(allowance, binding)``, ``binding`` the index of the tightest clause per slot, or
+    ``len(clauses)`` where the envelope binds."""
+    s = reference.double().abs()
+    terms = [torch.clamp(r * s, min=a + derived_atol) for r, a in output.clauses]
+    if output.rtol is not None:
+        assert envelope is not None, f"{output.name} is multilinear: its gate states the envelope"
+        terms.append(output.rtol * envelope.double())
+    else:
+        assert envelope is None, f"{output.name} states no envelope budget, so a gate cannot hand it one"
+    if not terms:
+        return torch.full_like(s, math.inf), torch.zeros_like(s, dtype=torch.long)
+    allowance, binding = torch.stack(terms).min(dim=0)
+    return allowance, binding
+
+
+def assert_slots_close(actual, reference, *, output, what, envelope=None, derived_atol=0.0):
+    """THE ORACLE RULE, PER SLOT: the kernel and the oracle produce the same shape, and each slot's error is inside its
+    allowance (`allowances`): every clause of the output kind (`tolerances.py`, a list of ``(rtol, atol)`` pairs with
+    the measurements that set them), and on a multilinear output also ``rtol`` times the slot's ENVELOPE, the sum of the
+    sizes of the terms the slot adds up (`oracle_run` computes it by running the same fp64 reference on ``|v|``).
+    Rounding each term costs a share of that term's size whether or not the terms cancel, so a slot that is small
+    because its terms cancel keeps their rounding, and a slot that is small because its terms are small keeps nothing.
+    ``derived_atol`` is an absolute term the caller derives and states (an upstream seam's declared error), added to
+    every clause's atol, never a loosened constant. A slot whose allowance is zero must be exactly zero; a slot that is
+    not finite on either side fails. The failure names how many slots failed and the worst one: its error over its
+    allowance, and the clause or envelope that set the allowance.
     """
     a, r = actual.double(), reference.double()
-    assert a.shape == r.shape == envelope.shape, (
-        f"{what}: the kernel's shape {tuple(a.shape)}, the oracle's {tuple(r.shape)} and the envelope's "
-        f"{tuple(envelope.shape)} differ")
-    allowance = rtol * envelope.double()
+    assert a.shape == r.shape, f"{what}: the kernel's shape {tuple(a.shape)} is not the oracle's {tuple(r.shape)}"
+    if envelope is not None:
+        assert envelope.shape == r.shape, f"{what}: the envelope's shape {tuple(envelope.shape)} is not the oracle's"
+    allowance, binding = allowances(r, output, envelope, derived_atol)
     err = (a - r).abs()
     bad = ~(err <= allowance)
     ratio = torch.where(err == 0, 0.0, err / allowance).nan_to_num(nan=math.inf)
-    _record_margins(what, ratio, bad, r, allowance)
+    _record_margins(output, what, err, r, ratio, bad, binding)
     if bool(bad.any()):
         i = int(torch.argmax(ratio.flatten()))
         where = tuple(int(x) for x in torch.unravel_index(torch.tensor(i), a.shape))
+        term = int(binding.flatten()[i])
+        named = "the envelope" if term == len(output.clauses) else f"clause {output.clauses[term]}"
         raise AssertionError(
-            f"{what}: {int(bad.sum())} of {err.numel()} slots are off the oracle; the worst, at {where}, is off by "
-            f"{float(err.flatten()[i]):.4g} against an allowance of {float(allowance.flatten()[i]):.4g} (kernel "
-            f"{float(a.flatten()[i]):.6g}, oracle {float(r.flatten()[i]):.6g})")
+            f"{what}: {int(bad.sum())} of {err.numel()} slots are off the oracle ({output.name}); the worst, at {where}, "
+            f"is off by {float(err.flatten()[i]):.4g} against an allowance of {float(allowance.flatten()[i]):.4g} set by "
+            f"{named} (kernel {float(a.flatten()[i]):.6g}, oracle {float(r.flatten()[i]):.6g})")
 
 
 class OracleRun(NamedTuple):
@@ -160,41 +184,68 @@ def oracle_run(v, read_levels, write_levels, g_write, topology, decay=None, entr
     return OracleRun(y, out, y_magnitudes + y.abs(), out_envelope)
 
 
-def assert_planted_errors_fail(actual, reference, *, envelope, what, rtol=BF16_RTOL):
-    """THE RULE HAS TEETH ON THIS OUTPUT. The kernel's own output passes, and two mutants of it fail: the slot of
-    median size wiped to zero (a dropped contribution the allowance must not swallow), and the sixteen smallest
-    allowances exceeded by half (the smallest slots are held, not waved through)."""
-    assert_slots_close(actual, reference, envelope=envelope, what=what, rtol=rtol)
+def assert_planted_errors_fail(actual, reference, *, output, what, envelope=None, derived_atol=0.0):
+    """THE RULE HAS TEETH ON THIS OUTPUT. The kernel's own output passes, and mutants of it fail: the slot of median
+    size wiped to zero (a dropped contribution the allowance must not swallow), the sixteen smallest allowances exceeded
+    by half (the smallest slots are held, not waved through), and for each clause of the output, the slot of median
+    size among those that clause holds tightest moved half past that clause's own allowance -- judged by the clauses
+    alone, so a clause the envelope out-binds everywhere is still shown to hold what it declares."""
+    assert_slots_close(actual, reference, output=output, what=what, envelope=envelope, derived_atol=derived_atol)
     a, r = actual.double().contiguous(), reference.double().contiguous()
-    allowance = rtol * envelope.double().contiguous()
+    allowance, _ = allowances(r, output, envelope, derived_atol)
     nonzero = (r != 0).flatten().nonzero().squeeze(1)
     median = nonzero[torch.argsort(r.abs().flatten()[nonzero])[nonzero.numel() // 2]]
     wiped = a.clone()
     wiped.view(-1)[median] = 0.0
     small = a.clone()
-    smallest = torch.topk(allowance.flatten(), 16, largest=False).indices
+    smallest = torch.topk(allowance.flatten(), min(16, allowance.numel()), largest=False).indices
     small.view(-1)[smallest] = r.view(-1)[smallest] + 1.5 * allowance.view(-1)[smallest] + 1e-300
-    for mutant, name in ((wiped, "the median slot wiped"), (small, "the smallest allowances exceeded by half")):
+    mutants = [(wiped, "the median slot wiped", output, envelope), (small, "the smallest allowances exceeded by half",
+                                                                     output, envelope)]
+    clauses_only = dataclasses.replace(output, rtol=None)
+    clause_allowance, clause_binding = allowances(r, clauses_only, None, derived_atol)
+    for i, clause in enumerate(output.clauses):
+        held = (clause_binding.flatten() == i).nonzero().squeeze(1)
+        if held.numel() == 0:
+            continue
+        slot = held[torch.argsort(r.abs().flatten()[held])[held.numel() // 2]]
+        moved = a.clone()
+        moved.view(-1)[slot] = r.view(-1)[slot] + 1.5 * clause_allowance.view(-1)[slot] + 1e-300
+        mutants.append((moved, f"clause {clause} exceeded by half where it binds", clauses_only, None))
+    for mutant, name, judged_by, env in mutants:
         try:
-            assert_slots_close(mutant, r, envelope=envelope, what=f"{what}, {name}", rtol=rtol)
+            assert_slots_close(mutant, r, output=judged_by, what=f"{what}, {name}", envelope=env,
+                               derived_atol=derived_atol)
         except AssertionError:
             continue
         raise AssertionError(f"{what}: {name} passes the rule, which therefore cannot see it")
 
 
-def _record_margins(what, err_over_allowance, bad, reference, allowance):
-    """``pytest --oracle-margins=<file>`` appends one JSON line per comparison: the worst passing error over its
-    allowance (``worst``), the share of nonzero slots whose wiping the allowance sees (``wipe_seen``), and the smallest
-    relative error the rule sees on some slot (``finest``: a kernel off by that fraction everywhere fails).
-    `tolerances.py`'s measurements are these lines."""
+#: THE RELATIVE ERRORS A MARGINS LINE READS ITS FRONTIER AT: a decade grid, and the output's own declared rtols -- its
+#: envelope budget and each clause's -- because no clause of it may be tighter than the precision contract it states. At
+#: each, the largest absolute error among the slots whose relative error exceeds it: the smallest atol a clause at that
+#: rtol could declare and still pass the comparison.
+FRONTIER_DECADES = tuple(10.0 ** k for k in range(-8, 3))
+
+
+def frontier_rtols(output):
+    return tuple(sorted({*FRONTIER_DECADES, *(r for r, _a in output.clauses), *((output.rtol,) if output.rtol else ())}))
+
+
+def _record_margins(output, what, err, reference, ratio, bad, binding):
+    """``pytest --oracle-margins=<file>`` appends one JSON line per comparison: the output kind, the worst passing error
+    over its allowance (``worst``), how many slots each clause and the envelope bound (``binding``), and the FRONTIER --
+    for each relative error in `FRONTIER_RTOLS`, the largest absolute error among the slots past it. `tolerances.py`'s
+    clauses are read off these lines."""
     out = tolerances.MARGINS_FILE
     if not out:
         return
-    passing, nonzero = err_over_allowance[~bad], reference != 0
-    row = {"what": what, "slots": reference.numel(), "failed": int(bad.sum()),
-           "worst": float(passing.max()) if passing.numel() else None,
-           "wipe_seen": float((reference.abs() > allowance)[nonzero].double().mean()) if bool(nonzero.any()) else None,
-           "finest": float((allowance[nonzero] / reference.abs()[nonzero]).min()) if bool(nonzero.any()) else None}
+    rel = torch.where(err == 0, 0.0, err / reference.abs()).nan_to_num(nan=math.inf, posinf=math.inf)
+    passing = ratio[~bad]
+    counts = torch.bincount(binding.flatten(), minlength=len(output.clauses) + 1).tolist()
+    frontier = {f"{r:g}": float(err[rel > r].max()) if bool((rel > r).any()) else 0.0 for r in frontier_rtols(output)}
+    row = {"output": output.name, "what": what, "slots": reference.numel(), "failed": int(bad.sum()),
+           "worst": float(passing.max()) if passing.numel() else None, "binding": counts, "frontier": frontier}
     with open(out, "a") as f:
         f.write(json.dumps(row) + "\n")
 

@@ -62,26 +62,24 @@ from rola.routing.types import (
     Topology,
     UnionRouting,
 )
-from tests.oracle.fixtures import assert_planted_errors_fail
-from tests.oracle.tolerances import BF16_RTOL
-
-# Identical to `tests/ops/test_rola_entmax_production.py`'s -- the same solve against
-# the same oracle, so the same numbers. Never loosened.
-_PRODUCTION_RTOL = 2e-5
-_PRODUCTION_ATOL = 2e-6
-_PRODUCTION_GRAD_RTOL = 5e-5
-_PRODUCTION_GRAD_ATOL = 5e-6
+from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close
+from tests.oracle.tolerances import (
+    ENTMAX_GRAD_ATOL,
+    ENTMAX_GRAD_RTOL,
+    ENTMAX_GRADIENTS,
+    ENTMAX_VALUES,
+    PROJECTION_LOGITS,
+    STORED_LEVELS,
+)
 
 #: THE SEAM: a comparison that crosses the STORAGE boundary carries the bf16 operand
-#: term and nothing else. `u_bf16 = 2^-8 = 3.9e-3` per requantization; `BF16_RTOL`
-#: is that budget, derived once in `tests/oracle/tolerances.py`, and it is the same
-#: number every kernel-vs-oracle gate in the tree uses. The ABSOLUTE floor is that
-#: relative bound applied to a simplex entry's own scale (<= 1). Measured worst here:
-#: 3.58e-3 relative, 1.91e-3 absolute, both at alpha=1.5. SUPPORT carries no
-#: tolerance across this seam at all -- the solve writes exact zeros as zeros, so the
-#: set is identical or the storage broke the self-masking theorem's precondition.
-_STORED_RTOL = BF16_RTOL
-_STORED_ATOL = BF16_RTOL
+#: term and nothing else (`tests/oracle/tolerances.py`'s `STORED_LEVELS`: `BF16_RTOL`,
+#: the budget every kernel-vs-oracle gate in the tree uses, as the clause's rtol, and
+#: that relative bound applied to a simplex entry's own scale (<= 1) as its atol).
+#: Measured worst here: 3.58e-3 relative, 1.91e-3 absolute, both at alpha=1.5. SUPPORT
+#: carries no tolerance across this seam at all -- the solve writes exact zeros as
+#: zeros, so the set is identical or the storage broke the self-masking theorem's
+#: precondition.
 
 #: Union tie-gradient divergence bound: the measured worst case is 4.44% of
 #: elements (write side, alpha=1.5, `union`), and this carries ~1.35x headroom.
@@ -203,15 +201,10 @@ def _stress_logits(routing: ResolvedRouting, kind: str, *, device, seed: int) ->
 
 
 def _assert_levels_match(actual, expected, *, gradient=False, stored=False, extra_atol=0.0):
-    """``extra_atol`` is a DERIVED term the caller states, never a loosened constant."""
-    if stored:
-        rtol, atol = _STORED_RTOL, _STORED_ATOL
-    elif gradient:
-        rtol, atol = _PRODUCTION_GRAD_RTOL, _PRODUCTION_GRAD_ATOL
-    else:
-        rtol, atol = _PRODUCTION_RTOL, _PRODUCTION_ATOL
-    torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol + extra_atol,
-                               check_dtype=False)
+    """Per slot under the output kind's clauses (`tests.oracle.fixtures.assert_slots_close`). ``extra_atol`` is a
+    DERIVED term the caller states, never a loosened constant."""
+    output = STORED_LEVELS if stored else ENTMAX_GRADIENTS if gradient else ENTMAX_VALUES
+    assert_slots_close(actual, expected, output=output, what=f"the levels ({output.name})", derived_atol=extra_atol)
 
 
 def _assert_support_identical(actual: torch.Tensor, expected: torch.Tensor, label: str) -> None:
@@ -498,7 +491,7 @@ def test_the_two_lowerings_agree_on_exact_ties(alpha, shape):
         for cuda_grad, cpu_grad, side in ((cuda_vjp[0].cpu(), cpu_vjp[0], "read"),
                                           (cuda_vjp[1].cpu(), cpu_vjp[1], "write")):
             close = torch.isclose(cuda_grad, cpu_grad,
-                                  rtol=_PRODUCTION_GRAD_RTOL, atol=_PRODUCTION_GRAD_ATOL)
+                                  rtol=ENTMAX_GRAD_RTOL, atol=ENTMAX_GRAD_ATOL)
             diverging = int((~close).sum())
             fraction = diverging / close.numel()
             assert fraction <= _TIE_DIVERGENCE_BOUND, (
@@ -645,7 +638,7 @@ def test_the_projection_lands_inside_its_bf16_output_envelope():
     read_terms, write_terms = _production_logits(topology, magnitudes)
     for side, got, want, terms in (("read", read_logits, read64, read_terms),
                                    ("write", write_logits, write64, write_terms)):
-        assert_planted_errors_fail(_flat64(got), want, envelope=2.0 * terms + want.abs(), rtol=2.0 ** -8,
+        assert_planted_errors_fail(_flat64(got), want, output=PROJECTION_LOGITS, envelope=2.0 * terms + want.abs(),
                                    what=f"the {side} logits")
 
 
