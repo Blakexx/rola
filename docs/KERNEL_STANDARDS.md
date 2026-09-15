@@ -320,7 +320,7 @@ Three tooling agents each ran a full rebuild concurrently (MAX_JOBS=4 each -> 12
 pegged the host at 100% CPU for 10+ minutes. The compile budget is MACHINE-WIDE and TOOL-ENFORCED, not
 brief-enforced: setup.py (via the one build-lock discipline) takes a machine-wide slot before
 compiling and REFUSES/waits when the slots are full — a brief cannot forget it. Until that lands: at
-most TWO agents that build at once; every build goes through tools/build/build_lock.sh (since landed in setup.py and `tools/host_budget.py`, §23); an agent checks
+most TWO agents that build at once; every build goes through tools/build/build_lock.sh (since landed in setup.py and `rola_devtools.locks.host`, §23); an agent checks
 `pgrep -c cicc` before launching and never wraps a full build in hyperfine (bounded `--runs 3`, on the
 LINK step only). Coordinator error recorded: two briefs omitted the build lock.
 

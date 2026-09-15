@@ -187,6 +187,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 # the host's lock directories, store and worktrees onto), the pinned sccache and mold installed under /opt/rola/tools,
 # then `check --image`. A red check FAILS THE IMAGE BUILD: a tool the tree needs cannot go missing from the image
 # unnoticed again. No home path is baked in (§17): mount sources are host-side, never compiled into the image.
+# The dev config's reader is rola-devtools' (`tools/devtools.txt`): the bootstrap installs that commit beside itself
+# and runs init with it on the path; at run time the image's venv imports the mounted checkout init links.
 #
 # ROLA_ENV_KEY is the environment key the image is built from (`container build` passes it): sha256 over the
 # environment's inputs, recorded as `environment.image_digest`, which `tools/ratify.py` stamps as
@@ -199,8 +201,11 @@ ENV ROLA_DEV_CONFIG=/opt/rola/dev-config
 ENV LD_LIBRARY_PATH=/usr/lib/wsl/lib:${LD_LIBRARY_PATH}
 COPY requirements.lock /opt/rola/bootstrap/requirements.lock
 COPY tools/dev.py tools/dev_config.py tools/sccache_toolchain.py tools/mold_toolchain.py \
-     tools/sccache_pin.json tools/mold_pin.json /opt/rola/bootstrap/tools/
+     tools/sccache_pin.json tools/mold_pin.json tools/devtools.txt /opt/rola/bootstrap/tools/
 RUN mkdir -p /workspace/rola /workspace/store /workspace/suite /workspace/worktrees /run/rola/locks /run/rola/gpu \
-    && /opt/venv/bin/python /opt/rola/bootstrap/tools/dev.py init --image --env-key "${ROLA_ENV_KEY}"
+    && uv pip install --python /opt/venv/bin/python --target /opt/rola/bootstrap/devtools \
+        -r /opt/rola/bootstrap/tools/devtools.txt \
+    && PYTHONPATH=/opt/rola/bootstrap/devtools \
+        /opt/venv/bin/python /opt/rola/bootstrap/tools/dev.py init --image --env-key "${ROLA_ENV_KEY}"
 
 CMD ["/bin/bash"]

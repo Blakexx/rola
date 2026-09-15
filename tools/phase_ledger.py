@@ -47,7 +47,7 @@ def main() -> int:
     a = ap.parse_args()
 
     import torch
-    from gpu_lock import GPU_LOCK_DEFAULT, gpu_lock
+    from rola_devtools.locks.gpu import gpu_lock
 
     from benchmarks.cells import by_name, carry_call
     from rola.ops import carry as c
@@ -58,7 +58,7 @@ def main() -> int:
     owners = math.prod(spec.widths) // 256
     warps = spec.warps_per_cta
     windows = (spec.tokens + c.WINDOW - 1) // c.WINDOW
-    with gpu_lock(GPU_LOCK_DEFAULT, mode="exclusive"):
+    with gpu_lock(mode="exclusive"):
         ledger = torch.zeros((owners, warps, len(PHASES)), dtype=torch.int64, device="cuda")
         plane = c.state_plane(kw["descriptor"], 1) if a.state_arm == "fresh" else None
         ext = c.extension()

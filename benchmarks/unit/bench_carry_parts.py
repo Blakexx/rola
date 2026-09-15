@@ -3,7 +3,7 @@
 """THE PART HARNESS (KERNEL_STANDARDS §19): each component of the carry kernel alone, on a
 cell's real call, checked against a pure reference and timed against the model's budget in
 `tools/budgets/carry.json`. The drivers are `carry_parts/carry_parts.cu`, built here from the
-repo's headers (a bench instrument, never shipped). Lock the clock first (tools/clock_lock.py).
+repo's headers (a bench instrument, never shipped). Lock the clock first (rola_devtools.locks.clock).
 
     python benchmarks/unit/bench_carry_parts.py --part head --cell flagship-alt-k4
     python benchmarks/unit/bench_carry_parts.py --part head --all --ncu   # instructions too

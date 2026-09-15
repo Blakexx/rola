@@ -596,7 +596,7 @@ accumulates there.
 is advisory and keyed on a NAME, so a second spelling excludes nothing and silently
 buys nothing: two commands holding two different paths run on the device at the same
 time and neither can tell. Every GPU entry point in this repository takes this one
-path through `tools/gpu_lock.py`'s `gpu_lock()`. If you find another spelling
+path through `gpu_lock()` (`rola_devtools.locks.gpu`). If you find another spelling
 anywhere, it is a defect — fix it rather than adding a second lock beside it.
 
 **EVERY GPU ENTRY POINT LOCKS ITSELF.** The lock used to be half-and-half:

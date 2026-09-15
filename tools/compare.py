@@ -38,9 +38,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "benchmarks"))
 sys.path.insert(0, str(ROOT))
 
-import clock_lock  # noqa: E402
 import dev_config  # noqa: E402
-from gpu_lock import gpu_lock  # noqa: E402
+from rola_devtools.locks import clock as clock_lock  # noqa: E402
+from rola_devtools.locks.gpu import gpu_lock  # noqa: E402
 
 
 def _fields(spec: str, required: tuple[str, ...], flag: str) -> dict:

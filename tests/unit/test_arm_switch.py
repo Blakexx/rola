@@ -18,7 +18,7 @@ and checks every layer of the contract:
 * the EMPTY set refuses everything, exercised here as a synthetic case (the shipped
   binary's own set carries one arm, not zero).
 
-The compile runs under the host budget (`tools/host_budget.py`): a compile is a compile.
+The compile runs under the host budget (`rola_devtools.locks.host`): a compile is a compile.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO / "csrc" / "rola" / "src"
 PROBE = pathlib.Path(__file__).resolve().parent / "fixtures" / "arm_switch_probe.cpp"
-BUILD_LOCK = [sys.executable, str(REPO / "tools" / "host_budget.py"), "--"]
+BUILD_LOCK = [sys.executable, "-m", "rola_devtools.locks.host", "--"]
 
 #: THE SYNTHETIC TABLE, and the only mirror in this file: three rows on the real key,
 #: of which a build carries the first and the last. The middle row is what makes

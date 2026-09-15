@@ -9,6 +9,12 @@ never spells a machine path in a tool.
 test). It holds one JSON file per section. A missing file or key takes its declared default. An undeclared file
 or key is refused, so a typo fails instead of silently taking the default.
 
+**The reader is rola-devtools'** (`rola_devtools.config`), and so are the `host` and `clock` sections: the machine's
+locks (`rola_devtools.locks`) read them, for every repository and container on the host. This loader declares rola's
+own sections beside them and, owning the directory, refuses a file no section declares. rola-devtools is a development
+dependency: `pip install -r tools/devtools.txt` installs the commit this tree is tested with (CI, the dev image's
+bootstrap), and `python tools/dev.py init` links the `workspace.devtools` checkout into every venv on a host.
+
 | file | keys |
 |---|---|
 | `toolchain.json` | `cuda_home` (null takes torch's `CUDA_HOME`), `ncu` (Nsight Compute 2025.3+), `sccache`, `sccache_enabled`, `mold` |
@@ -28,7 +34,8 @@ resolved value and the file it came from ([dev.md](dev.md)).
 - `scratch(name)` returns a tool's scratch directory.
 - `windows_tool(rel)` returns a Windows tool under WSL.
 - `detect()` returns what `init` writes.
-- `load.cache_clear()` rereads the files, for a test that points `ROLA_DEV_CONFIG` at a temporary directory.
+- `reload()` rereads the files, here and in the locks' reader, for a test that points `ROLA_DEV_CONFIG` at a
+  temporary directory.
   The `dev_config_env` fixture in `tests/conftest.py` does this.
 
 **Environment variables that remain.** Two lists in the loader name them, and nothing else may read one.
@@ -36,7 +43,6 @@ resolved value and the file it came from ([dev.md](dev.md)).
 f-string prefixes resolved) and shell expansions.
 - `HANDOFFS`: values one of the tree's own processes passes to a child it starts.
   - `ROLA_DEV_CONFIG` itself.
-  - The lock-held markers (`ROLA_HOST_BUDGET_HELD`, `ROLA_GPU_LOCK_HELD`, `ROLA_FILE_LOCK_HELD_*`).
   - The gated `nvcc` and `sccache` that `setup.py` passes to the compiler wrapper.
   - The inputs `setup.py` sets for torch (`CUDA_HOME`, `MAX_JOBS`, `PYTORCH_NVCC`).
   - pytest-xdist's worker id.

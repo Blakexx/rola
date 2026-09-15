@@ -132,7 +132,7 @@ PYEOF
   # CPU-heavy as a `cicc` compile, and previously drew from no shared pool at
   # all.
   # shellcheck disable=SC2086
-  out=$(python3 "$ROOT/tools/host_budget.py" --slots 1 --label clang-tidy-tu -- \
+  out=$(python3 -m rola_devtools.locks.host --slots 1 --label clang-tidy-tu -- \
           clang-tidy "$target" --config-file="$CONFIG" --header-filter='csrc/rola/.*' \
           -- $flags -ferror-limit=0 2>&1)
   real=$(echo "$out" | grep -E '^/.*csrc/rola/.*: (warning|error): ' | grep -v 'clang-diagnostic-error' || true)

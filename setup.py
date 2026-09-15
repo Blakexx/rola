@@ -686,7 +686,7 @@ def _gate_shards() -> None:
 def _ninja_jobs(held_slots: int) -> int:
     """Ninja's job count, so the concurrent ``cicc`` count is the slots held.
 
-    A slot in ``tools/host_budget.py`` is one ``cicc``, and one ``nvcc`` runs one
+    A slot of the host budget (``rola_devtools.locks.host``) is one ``cicc``, and one ``nvcc`` runs one
     ``cicc`` PER ARCHITECTURE, up to ``--threads``: the two parallelism axes multiply,
     so the job count is the budget divided by that per-process factor. Setting ninja's
     ``-j`` to the slot count directly oversubscribes the budget by exactly the number

@@ -35,8 +35,8 @@ The ratio is the effective clock during the spin, in GHz.
 whose second read is off the lock; rola's runner records the read taken when each arm was built
 (`sm_ghz_at_build`).
 
-THE LOCK SEAM (`tools/clock_lock.py`): how a clock is locked is the HOST's fact and lives
-outside the tree, in the dev config's `clock.json` (`tools/dev_config.py`) -- the target GHz and the lock and unlock
+THE LOCK SEAM (`rola_devtools.locks.clock`): how a clock is locked is the HOST's fact and lives
+outside the tree, in the dev config's `clock.json` (`rola_devtools.config`) -- the target GHz and the lock and unlock
 commands (`nvidia-smi -lgc` as root on Linux; on this Windows host under WSL two elevated
 scheduled tasks a non-admin process may start, `gpu-lock` and `gpu-unlock`). The harness
 locks at start, proves the lock with the device read, unlocks on every exit path, and

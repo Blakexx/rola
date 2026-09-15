@@ -59,8 +59,8 @@ def main() -> int:
     a = ap.parse_args()
     only = {x for x in a.only.split(",") if x}
 
-    import clock_lock
-    from gpu_lock import GPU_LOCK_DEFAULT, gpu_lock
+    from rola_devtools.locks import clock as clock_lock
+    from rola_devtools.locks.gpu import gpu_lock
 
     from rola.ops import carry as carry_ops
     try:
@@ -73,7 +73,7 @@ def main() -> int:
     out = torch.zeros((a.owners, 16, 256), dtype=torch.float32, device=dev)
     src = torch.randint(0, 255, (a.owners, 256, 16), dtype=torch.uint8, device=dev)
     rows = []
-    with gpu_lock(GPU_LOCK_DEFAULT, mode="exclusive"):
+    with gpu_lock(mode="exclusive"):
         clock = clock_lock.engage(carry_ops.sm_clock_ghz)
         ghz = carry_ops.sm_clock_ghz()
 

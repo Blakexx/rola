@@ -45,11 +45,9 @@ import argparse
 import hashlib
 import json
 import re
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import host_budget  # noqa: E402 -- path insert must precede this import
+from rola_devtools.locks import host
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "csrc" / "rola" / "src" / "instantiations"
@@ -616,7 +614,7 @@ def main() -> int:
         #: OUTPUT (LOCKS brief item 3): `tools/ratify.py` writes the same
         #: `CARRY_SELECTION_INC` path unconditionally on every build, so this
         #: CLI's own `--write` must not interleave with that write either.
-        with host_budget.file_lock("carry_selection_header"):
+        with host.file_lock("carry_selection_header"):
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             for name in sorted({p.name for p in OUT_DIR.iterdir() if p.is_file()}):
                 if name not in want and name != ".gitkeep":

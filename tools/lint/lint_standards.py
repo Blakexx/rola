@@ -717,7 +717,7 @@ def check_docs_mirror() -> list[str]:
 
 
 #: "The word `flock` leaves the process": -- every GPU entry point now takes
-#: `tools/gpu_lock.py`'s `gpu_lock()` ITSELF, so no committed doc/skill/script should
+#: `rola_devtools.locks.gpu`'s `gpu_lock()` ITSELF, so no committed doc/skill/script should
 #: ever again tell a reader to wrap a command in an external `flock` on the GPU lock
 #: path (that is exactly the self-deadlock shape). A COMMAND LINE is what this
 #: catches -- a line that, once backticks/leading whitespace are stripped, STARTS
@@ -935,7 +935,7 @@ def check_no_bare_flock_on_gpu_lock() -> list[str]:
                 findings.append(
                     f"K46 'the word flock leaves the process': {path.relative_to(ROOT)}:{idx}: "
                     f"a command line wraps the GPU lock in an external `flock` -- every GPU "
-                    f"entry point takes `gpu_lock()` itself now (tools/gpu_lock.py); invoke "
+                    f"entry point takes `gpu_lock()` itself now (rola_devtools.locks.gpu); invoke "
                     f"BARE -- {line.strip()!r}"
                 )
     return findings

@@ -584,24 +584,6 @@
    "count": 1
   },
   {
-   "path": "tools/gpu_lock.py",
-   "message": "gpu_lock(..., path=) is only ever None -- across every call in this tree, nothing moves it",
-   "line_sha256": "9ce2d56507a9db39",
-   "count": 1
-  },
-  {
-   "path": "tools/host_budget.py",
-   "message": "acquire(..., n=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "abafe4be21d52333",
-   "count": 1
-  },
-  {
-   "path": "tools/host_budget.py",
-   "message": "file_lock(..., label=) is only ever None -- across every call in this tree, nothing moves it",
-   "line_sha256": "096ff84455ff7754",
-   "count": 1
-  },
-  {
    "path": "tools/lint/constant_parameters.py",
    "message": "findings(..., files=) is only ever None -- across every call in this tree, nothing moves it",
    "line_sha256": "0a81c4e7fb530607",

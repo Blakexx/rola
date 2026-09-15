@@ -13,7 +13,7 @@ consumes it), so nothing in the extension can prove it works. This file compiles
   a device fault, and this is why the toy is a SEPARATE PROCESS: a trap kills the CUDA
   context it runs in, so it cannot be provoked inside the pytest process.
 
-The compile runs under the host budget (`tools/host_budget.py`) -- a census compile is a compile
+The compile runs under the host budget (`rola_devtools.locks.host`) -- a census compile is a compile
 (`rola-build`), and this one is two.
 """
 
@@ -29,7 +29,7 @@ import torch
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO / "csrc" / "rola" / "src"
 PROBE = pathlib.Path(__file__).resolve().parent / "fixtures" / "structure_switch_probe.cu"
-BUILD_LOCK = [sys.executable, str(REPO / "tools" / "host_budget.py"), "--"]
+BUILD_LOCK = [sys.executable, "-m", "rola_devtools.locks.host", "--"]
 
 #: the toy's own set size and value law, mirrored from the fixture: a mirror of FIVE
 #: LINES is the price of asserting the bodies ran under the right member at all.

@@ -22,6 +22,11 @@ directory of JSON files, the dev config (`~/.config/rola/`,
 `docs/internals/tools/dev_config.md`, KERNEL_STANDARDS §23). One command sets a
 machine up and checks it (`docs/internals/tools/dev.md`):
 
+`tools/dev.py` reads the dev config through rola-devtools (`rola_devtools.config`, which also holds the machine's
+locks), so a new machine's first `init` runs with a rola-devtools checkout on the path: clone it beside this tree, where
+`workspace.devtools` points by default, and run `PYTHONPATH=../rola-devtools python tools/dev.py init`. Init links
+the checkout into every venv here, so nothing after it needs the path.
+
 ```bash
 python tools/dev.py init          # detect, install the pinned tools, wire the commit gate, check
 python tools/dev.py clock --mhz 1665   # once per host: lock the SM clock (one administrator prompt under WSL)

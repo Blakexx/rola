@@ -36,8 +36,8 @@ nothing else to `setup.py`. Everything about the MACHINE is the dev config (`too
   `toolchain.sccache_enabled: false` is the one deliberate opt-out, which builds uncached ([below](#sccache)).
 - `toolchain.mold` is the linker and `toolchain.cuda_home` the toolkit.
 - `host.nice` makes every host-budget-guarded compile and every GPU-locked run lower its own CPU niceness and
-  I/O class, so it cannot freeze the host (`docs/internals/tools/build_lock.md`,
-  `docs/internals/tools/gpu_lock.md`).
+  I/O class, so it cannot freeze the host (`docs/internals/tools/build_lock.md`; the locks are rola-devtools'
+  `rola_devtools.locks`).
 
 | Build parameter | Effect |
 |---|---|
@@ -55,11 +55,11 @@ An **iteration build** (single-arch, `ROLA_CARRY_ARMS` subset) and a **gate buil
 (both arches, the shipped set) compete for the same host RAM the job count is
 sized against; running one of each at once can OOM the host (the §14
 addendum finding, one level up). `setup.py` takes the machine-wide host budget
-itself before compiling (`tools/build_lock.py` over `tools/host_budget.py`): an
+itself before compiling (`tools/build_lock.py` over `rola_devtools.locks.host`): an
 iteration build holds the slots free now, a gate build waits for every slot, and
 no invocation path can skip it. Any other CPU-heavy command -- a census compile,
 a clang-tidy translation unit -- runs under the same pool with
-`python tools/host_budget.py [--exclusive] -- <cmd>`.
+`python -m rola_devtools.locks.host [--exclusive] -- <cmd>`.
 
 ```bash
 # iteration: single-arch, arm-subset

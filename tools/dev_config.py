@@ -8,6 +8,12 @@ anything undeclared is refused, so a typo fails loudly instead of silently takin
 takes the declared default. `python tools/dev.py init` writes the files for this machine, `python tools/dev.py show`
 prints every resolved value with the file it came from.
 
+The reader and the machine's own sections -- `host` (the locks, the compute budget, scratch) and `clock` -- are
+rola-devtools' (`rola_devtools.config`), shared with the locks (`rola_devtools.locks`) and every repository on the
+host; the sections below them are rola's. rola-devtools is a development dependency: `pip install -r
+tools/devtools.txt` installs the commit this tree is tested with, and `python tools/dev.py init` links the checkout at
+`workspace.devtools` into every venv here.
+
 A setting is never read from the process environment. The environment variables the tree still uses are listed in
 `HANDOFFS` (a value one of the tree's own processes passes to a child it starts) and `BUILD_PARAMETERS` (what one build
 is, set per invocation); `tools/lint/lint_standards.py` refuses a read of any other. Docs:
@@ -15,25 +21,26 @@ docs/internals/tools/dev_config.md.
 """
 from __future__ import annotations
 
-import json
-import os
 import re
 import shutil
-from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from typing import Any
 
+try:
+    from rola_devtools.config import (
+        MACHINE,
+        POINTER,
+        Key,
+        directory,  # noqa: F401 -- callers read dev_config.directory()
+        read,
+    )
+    from rola_devtools.config import reload as reload_machine
+except ImportError as missing:
+    raise SystemExit("tools/dev_config.py: rola_devtools is not importable -- `pip install -r tools/devtools.txt`, or "
+                     "`pip install -e` a rola-devtools checkout (docs/setup.md)") from missing
+
 ROOT = Path(__file__).resolve().parents[1]
-POINTER = "ROLA_DEV_CONFIG"
-
-
-@dataclass(frozen=True)
-class Key:
-    kind: str
-    default: Any
-    doc: str
-
 
 SCHEMA: dict[str, dict[str, Key]] = {
     "toolchain": {
@@ -45,28 +52,7 @@ SCHEMA: dict[str, dict[str, Key]] = {
         "sccache_enabled": Key("bool", True, "false builds uncached, the one deliberate opt-out of the sccache gate"),
         "mold": Key("path?", None, "the pinned mold (tools/mold_pin.json), the only linker; null means none installed"),
     },
-    "host": {
-        "nvcc_threads": Key("int", 2, "nvcc -t for each compile job"),
-        "build_jobs": Key("int?", None, "ninja jobs a build asks for; null derives it from nvcc_threads and memory"),
-        "budget_slots": Key("int?", None, "the machine-wide compute slots every build and census compile shares; "
-                            "null derives cores - 2 bounded by memory (tools/host_budget.py)"),
-        "lock_dir": Key("path", "/tmp", "where the host budget's slot locks live; host and containers must share it"),
-        "gpu_lock": Key("path", "/tmp/rola_gpu.lock", "the GPU lock file; host and containers must share it"),
-        "gpu_shared_slots": Key("int", 2, "correctness runs that may hold the GPU lock shared at once"),
-        "nice": Key("bool", True, "locked processes lower their own CPU and IO priority"),
-        "locks_trace": Key("bool", False, "print every lock acquire and release to stderr"),
-        "scratch": Key("path", "/tmp/rola", "the tools' scratch root; never read back as a record"),
-        "tools_dir": Key("path", "~/.local/share/rola/tools", "where `tools/dev.py init` installs the pinned tools"),
-        "windows_system32": Key("path?", None, "WSL only: the Windows System32 directory as mounted in Linux"),
-        "wsl_lib": Key("path?", None, "WSL only: the Windows driver's Linux libraries (libdxcore, libcuda); the dev "
-                       "container mounts their directory's parent read-only (the loader opens the driver store beside "
-                       "lib/), without which CUDA fails to initialize inside it"),
-    },
-    "clock": {
-        "ghz": Key("float?", None, "the SM clock the harness locks, in GHz; null means this host runs unlocked"),
-        "lock": Key("argv?", None, "the command that locks the clock"),
-        "unlock": Key("argv?", None, "the command that releases it"),
-    },
+    **MACHINE,
     "store": {
         "root": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-results"),
                     "the measurements store: its own git repository, shared by every worktree and the container "
@@ -106,9 +92,6 @@ NCU_SEARCH = ("/opt/nvidia/nsight-compute/*/ncu", "/usr/local/cuda-*/bin/ncu")
 #: the value (from this config or from its own state) and the child must use exactly that value.
 HANDOFFS = {
     POINTER: "which config directory a child reads (set by a test or the container, never by a setting)",
-    "ROLA_HOST_BUDGET_HELD": "a parent holds host budget slots; a nested acquire is a no-op (tools/host_budget.py)",
-    "ROLA_GPU_LOCK_HELD": "a parent holds the GPU lock; a nested acquire is a no-op (tools/gpu_lock.py)",
-    "ROLA_FILE_LOCK_HELD_": "prefix: a parent holds the named file lock (tools/host_budget.py file_lock)",
     "ROLA_REAL_NVCC": "the gated nvcc setup.py hands the sccache wrapper (tools/sccache_nvcc.py)",
     "ROLA_SCCACHE_BIN": "the gated sccache setup.py hands the sccache wrapper",
     "CUDA_HOME": "torch.utils.cpp_extension's toolkit, set by setup.py from toolchain.cuda_home before torch is imported",
@@ -132,44 +115,16 @@ BUILD_PARAMETERS = {
 }
 
 
-def directory() -> Path:
-    pointer = os.environ.get(POINTER)
-    return Path(pointer).expanduser() if pointer else Path.home() / ".config" / "rola"
-
-
-def _check(section: str, name: str, key: Key, value: Any) -> Any:
-    kind, optional = key.kind.rstrip("?"), key.kind.endswith("?")
-    where = f"{directory() / (section + '.json')}: {name}"
-    if value is None:
-        if optional:
-            return None
-        raise SystemExit(f"{where} may not be null ({key.doc})")
-    ok = {"path": isinstance(value, str), "str": isinstance(value, str), "int": isinstance(value, int)
-          and not isinstance(value, bool), "float": isinstance(value, (int, float)) and not isinstance(value, bool),
-          "bool": isinstance(value, bool), "argv": isinstance(value, list) and all(isinstance(x, str) for x in value)}
-    if not ok[kind]:
-        raise SystemExit(f"{where} must be {kind}, got {value!r} ({key.doc})")
-    return str(Path(value).expanduser()) if kind == "path" else value
-
-
 @cache
 def load() -> dict[str, dict[str, tuple[Any, str]]]:
     """Every section's every key as (value, source): the file it was read from, or "default"."""
-    root = directory()
-    if root.exists():
-        stray = sorted(p.name for p in root.glob("*.json") if p.stem not in SCHEMA)
-        if stray:
-            raise SystemExit(f"{root}: undeclared config file(s) {stray}; declared: {sorted(SCHEMA)}")
-    out: dict[str, dict[str, tuple[Any, str]]] = {}
-    for section, keys in SCHEMA.items():
-        path = root / f"{section}.json"
-        doc = json.loads(path.read_text()) if path.exists() else {}
-        unknown = sorted(set(doc) - set(keys))
-        if unknown:
-            raise SystemExit(f"{path}: undeclared key(s) {unknown}; declared: {sorted(keys)}")
-        out[section] = {name: (_check(section, name, key, doc[name]), str(path)) if name in doc
-                        else (_check(section, name, key, key.default), "default") for name, key in keys.items()}
-    return out
+    return read(SCHEMA, owns_directory=True)
+
+
+def reload() -> None:
+    """Forget what was read, here and in the locks' reader: the next read takes the directory `ROLA_DEV_CONFIG` names."""
+    load.cache_clear()
+    reload_machine()
 
 
 def get(dotted: str) -> Any:

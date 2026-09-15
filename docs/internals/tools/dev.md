@@ -40,7 +40,7 @@ clock is not set by `init`, because locking it asks for administrator consent on
   from it in the base venv.
 
 **`clock --mhz N`** locks the SM clock, reads the driver's clock under the lock, and releases it: the round trip
-the harness makes (`tools/clock_lock.py`, [sm_clock.md](../common/sm_clock.md)). Only after the lock is proven
+the harness makes (`rola_devtools.locks.clock`, [sm_clock.md](../common/sm_clock.md)). Only after the lock is proven
 does it write `clock.json`.
 - **Under WSL:** it registers two elevated scheduled tasks, `gpu-lock` and `gpu-unlock`. Each runs a hidden
   `wscript` launcher that calls `nvidia-smi.exe` and exits with its code, and registering them asks for administrator
@@ -87,5 +87,5 @@ rola_results commit`).
 **`get`** prints one value for a shell caller. `cuda-home` resolves the toolkit, which the clang-tidy device
 scripts pass as `--cuda-path`.
 
-**Running a CPU-heavy command under the host budget** is `python tools/host_budget.py [--slots N]
+**Running a CPU-heavy command under the host budget** is `python -m rola_devtools.locks.host [--slots N]
 [--exclusive] -- <cmd>`, niced per `host.nice`. `setup.py` takes the budget itself.

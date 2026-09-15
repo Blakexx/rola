@@ -24,8 +24,8 @@ _BENCHMARKS = pathlib.Path(__file__).resolve().parents[1] / "benchmarks"
 if _BENCHMARKS.is_dir() and str(_BENCHMARKS) not in sys.path:
     sys.path.insert(0, str(_BENCHMARKS))
 
-# `tools/gpu_lock.py` -- the one self-locking primitive every CUDA entry
-# point takes itself; conftest is a caller like any other, not a package.
+# `tools/` -- the repository's instruments (the dev config among them); conftest imports them like any other
+# caller, not as a package.
 _TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 if _TOOLS.is_dir() and str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
@@ -208,12 +208,12 @@ def _touches_gpu(request) -> bool:
 
 @pytest.fixture(scope="session")
 def _gpu_lock_held():
-    from gpu_lock import gpu_lock
+    from rola_devtools.locks.gpu import gpu_lock
 
     #: SHARED mode (LOCKS brief, 2026-08-29): a pytest battery is correctness
     #: work (oracle/integration/cuda-marked unit tests), not a measurement --
     #: it can share the device with another correctness run (up to
-    #: `gpu_lock.GPU_SHARED_SLOTS` of them) rather than excluding every other
+    #: `host.gpu_shared_slots` of them) rather than excluding every other
     #: GPU-touching tool, which only measured work (`compare`, `ncu`, the
     #: bench harness) needs.
     with gpu_lock(mode="shared"):
@@ -230,9 +230,9 @@ def _host_budget_worker_slot():
     if "PYTEST_XDIST_WORKER" not in os.environ:
         yield
         return
-    import host_budget
+    from rola_devtools.locks import host
 
-    with host_budget.acquire(1, label=f"pytest-worker:{os.environ['PYTEST_XDIST_WORKER']}"):
+    with host.acquire(1, label=f"pytest-worker:{os.environ['PYTEST_XDIST_WORKER']}"):
         yield
 
 
@@ -270,11 +270,11 @@ def dev_config_env(tmp_path):
             (root / f"{name}.json").write_text(json.dumps(values))
         env = dict(os.environ)
         env[dev_config.POINTER] = str(root)
-        dev_config.load.cache_clear()
+        dev_config.reload()
         return env
 
     yield make
-    dev_config.load.cache_clear()
+    dev_config.reload()
 
 
 def build_routes(*, hidden_size=64, num_heads=4, widths=(16,), routing=None,

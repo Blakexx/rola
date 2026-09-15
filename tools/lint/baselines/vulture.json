@@ -212,12 +212,6 @@
    "count": 1
   },
   {
-   "path": "tools/build_lock.py",
-   "message": "unused variable 'GLOBAL_CICC_SLOTS' (60% confidence)",
-   "line_sha256": "2e5b3fbdc55a3c08",
-   "count": 1
-  },
-  {
    "path": "tools/gen_shards.py",
    "message": "unused function 'declaration_matches_table' (60% confidence)",
    "line_sha256": "34bcf9d184f0ef93",

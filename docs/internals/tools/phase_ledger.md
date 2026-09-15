@@ -13,7 +13,7 @@ sweep and the ledger never saw the phase that was a third of a sparse kernel's t
 2-byte stores, `carry_kernel.md#state-io`). An instrument that measures a different launch than
 the A/B is not an instrument.
 
-Measured work: the GPU lock exclusive (`tools/gpu_lock.py`). Under `ncu` it is the one launch to
+Measured work: the GPU lock exclusive (`rola_devtools.locks.gpu`). Under `ncu` it is the one launch to
 profile with `--launches 1`.
 
 `--per-warp` names the phases whose per-warp rows are printed (default `readout,fold`). Beside a CTA

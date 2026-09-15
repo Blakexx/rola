@@ -280,8 +280,8 @@ def hold():
     """The device for a setup and an execute (the GPU lock, exclusive, inherited by every process started inside), and
     the host's clock lock, engaged once a process and proven by the device's clock read after each hold."""
     _tools()
-    import clock_lock
-    from gpu_lock import gpu_lock
+    from rola_devtools.locks import clock as clock_lock
+    from rola_devtools.locks.gpu import gpu_lock
 
     def read_ghz():
         from rola.ops import carry as carry_ops

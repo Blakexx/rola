@@ -1611,12 +1611,6 @@
   },
   {
    "path": "docs/measurement.md",
-   "message": "names the work code 'K38'",
-   "line_sha256": "9802beeada4bc4ae",
-   "count": 1
-  },
-  {
-   "path": "docs/measurement.md",
    "message": "names the work code 'P19'",
    "line_sha256": "67cff502a9c7055d",
    "count": 1

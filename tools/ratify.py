@@ -121,10 +121,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_flags  # noqa: E402
 import dev_config  # noqa: E402
 import gen_shards  # noqa: E402
-import host_budget  # noqa: E402
 import mold_toolchain  # noqa: E402
 import sccache_toolchain  # noqa: E402
 import toolchains  # noqa: E402
+from rola_devtools.locks import host  # noqa: E402
 
 #: torch.utils.cpp_extension resolves its toolkit when imported; a ratification compiles against the configured one.
 if dev_config.get("toolchain.cuda_home"):
@@ -741,7 +741,7 @@ def write_derivation() -> int:
     """Re-measure and file `tools/manifests/derivation.json`."""
     cases = load_derivation_cases()
     record = derivation_record(cases)
-    with host_budget.file_lock("ratify_derivation"):
+    with host.file_lock("ratify_derivation"):
         DERIVATION_JSON.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n")
     n_ok = sum(1 for v in record["golden"].values() if v.startswith("ok:"))
     n_ref = len(record["golden"]) - n_ok
@@ -863,7 +863,7 @@ def write_csrc_stamp(digest: str | None = None) -> Path:
     """Write `build/generated/csrc_stamp.inc` for this tree, unconditionally."""
     gen_shards.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     path = gen_shards.GENERATED_DIR / CSRC_STAMP_INC
-    with host_budget.file_lock("csrc_stamp_header"):
+    with host.file_lock("csrc_stamp_header"):
         path.write_text(csrc_stamp_header(digest))
     return path
 
@@ -1231,7 +1231,7 @@ def measure_units(arches, objdir: str, sources: list[Path], arms=None,
     #: ONE SHARED OUTPUT FILE (LOCKS brief item 3): two concurrent ratify/build
     #: invocations racing this write must not interleave -- one must finish
     #: writing the header before the other starts compiling against it.
-    with host_budget.file_lock("carry_selection_header"):
+    with host.file_lock("carry_selection_header"):
         (gen_shards.GENERATED_DIR / gen_shards.CARRY_SELECTION_INC).write_text(
             gen_shards.carry_selection_header(want_arms))
         (gen_shards.GENERATED_DIR / gen_shards.CARRY_PARTS_INC).write_text(
@@ -1761,7 +1761,7 @@ def main() -> int:
         #: THE MANIFEST IS ONE SHARED ARTIFACT PER ARCH (LOCKS brief item 3):
         #: two concurrent `--write` ratifications of the same arch would
         #: interleave their `path.write_text` calls otherwise.
-        with host_budget.file_lock("ratify_manifest"):
+        with host.file_lock("ratify_manifest"):
             #: WRITTEN PER ARCH, from the one compile. Splitting here rather than at
             #: read time is what keeps `sm_86.json` untouched by an `--arch 80` run:
             #: a bring-up must not restate measurements it did not take.
