@@ -35,7 +35,14 @@ from benchmarks.cells import by_name, carry_call, carry_cells, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference
-from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, canonical_from_plane, relative
+from tests.oracle.fixtures import (
+    assert_planted_errors_fail,
+    assert_slots_close,
+    canonical_from_plane,
+    plane_from_canonical,
+    relative,
+)
+from tests.oracle.tolerances import CARRY_FOLD_RTOL, CARRY_READOUT_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
@@ -45,8 +52,12 @@ IDS = [cell.name for cell in ORACLE_CELLS]
 
 def run(spec, state_in=None, state_out=None, page_table=None, bh=1, activity=None,
         schedule=None):
+    """One kernel call on ``spec``. A carried cell given no plane binds the entry state drawn with it, advanced in
+    place; a plane of the caller's is the caller's."""
     drawn, call = carry_call(spec, bh=bh)
     routes, v = call.pop("routes"), call.pop("v")
+    if state_in is None and state_out is None and spec.state == "carried":
+        state_in = state_out = plane_from_canonical(drawn.entry, bh)
     if activity is not None:
         call["activity"] = activity
     if state_out is None:
@@ -54,6 +65,11 @@ def run(spec, state_in=None, state_out=None, page_table=None, bh=1, activity=Non
     num, den = carry_ops.carry_forward(routes, v, state_in=state_in, state_out=state_out,
                                        page_table=page_table, schedule=schedule, **call)
     return drawn, num, den, state_out
+
+
+def entry(spec, drawn):
+    """The entry state `run` binds when the caller gives no plane: the drawn one for a carried cell, else none."""
+    return drawn.entry.reshape(1, 1, spec.N, spec.dv + 1) if spec.state == "carried" else None
 
 
 def ref(drawn, state_in=None, magnitudes=False):
@@ -75,12 +91,13 @@ def kernel_slots(spec, num, den, plane, bh=1):
 def check(spec, drawn, num, den, plane, bh=1):
     """PER SLOT, against each slot's envelope: the numerator, the denominator (a sum of non-negative terms, so its own
     envelope) and the state."""
-    want, env = ref(drawn), ref(drawn, magnitudes=True)
+    want, env = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
     names = ("num", "den", "state")
     for got, w, e, name in zip(kernel_slots(spec, num, den, plane, bh), want, env, names):
         w = w.reshape(got.shape) if name == "state" else w
         e = e.reshape(got.shape) if name == "state" else e
-        assert_slots_close(got, w, envelope=e, what=f"{spec.name} {name}")
+        assert_slots_close(got, w, envelope=e, what=f"{spec.name} {name}",
+                           rtol=CARRY_FOLD_RTOL if name == "state" else CARRY_READOUT_RTOL)
 
 
 def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
@@ -90,9 +107,9 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     drawn, num, den, plane = run(spec)
     (n_ref, _, s_ref), (n_env, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
     got_num, _, got_state = kernel_slots(spec, num, den, plane)
-    assert_planted_errors_fail(got_num, n_ref, envelope=n_env, what=f"{spec.name} num")
+    assert_planted_errors_fail(got_num, n_ref, envelope=n_env, what=f"{spec.name} num", rtol=CARRY_READOUT_RTOL)
     assert_planted_errors_fail(got_state, s_ref.reshape(got_state.shape), envelope=s_env.reshape(got_state.shape),
-                               what=f"{spec.name} state")
+                               what=f"{spec.name} state", rtol=CARRY_FOLD_RTOL)
 
 
 # ------------------------------------------------------------- the registry itself
@@ -141,9 +158,9 @@ def test_the_folded_state_is_the_fp64_reference(spec):
     is, and this row is the part the fold owns.
     """
     drawn, _, _, plane = run(spec)
-    (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
+    (_, _, s_ref), (_, _, s_env) = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
     assert_slots_close(canonical_from_plane(plane), s_ref.reshape(1, spec.N, spec.dv + 1),
-                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} state")
+                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} state", rtol=CARRY_FOLD_RTOL)
 
 
 def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
@@ -160,15 +177,18 @@ def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
                              page_table=slots.to(torch.int32).reshape(1, pages))
     (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
     assert_slots_close(canonical_from_plane(plane[0, slots].unsqueeze(0)), s_ref.reshape(1, spec.N, spec.dv + 1),
-                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} paged state")
+                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} paged state",
+                       rtol=CARRY_FOLD_RTOL)
 
 
 def test_a_carried_state_is_advanced_in_place():
-    """THE CONTINUATION: the same plane in and out, with the reference chained the same
-    way. A stateful chain allocates ONE plane for the sequence."""
+    """THE CONTINUATION: the same plane in and out, holding the cell's drawn entry state, with the reference chained
+    from the same entry. A stateful chain allocates ONE plane for the sequence."""
     spec = next(c for c in ORACLE_CELLS if c.name == "flat-small-carried")
-    plane = carry_ops.state_plane(spec.descriptor(), 1)
-    drawn, num, den, plane = run(spec, state_in=plane, state_out=plane)
+    drawn = realize(spec)
+    plane = plane_from_canonical(drawn.entry)
+    _, num, den, advanced = run(spec, state_in=plane, state_out=plane)
+    assert advanced is plane
     check(spec, drawn, num, den, plane)
 
 

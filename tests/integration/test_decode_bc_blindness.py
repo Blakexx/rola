@@ -36,7 +36,6 @@ import torch
 from rola.engine.plan import DecodeGeometry
 from rola.ops.decode import _decode_step, derive_decode_geometry
 from rola.ops.paging import bytes_equal, to_split_planes
-from tests.oracle.instantiation import CHUNK_ARMS
 from tests.oracle.oracle_fixtures import _simplex, _topology
 
 pytestmark = [
@@ -44,11 +43,9 @@ pytestmark = [
     pytest.mark.skipif(not torch.cuda.is_available(), reason="decode is a CUDA kernel"),
 ]
 
-#: Every `BC` the built chunk matrix carries, plus one it does NOT build. Decode
-#: must be blind to a number it will never see as thoroughly as to one it will,
-#: and taking the real values from the manifest rather than writing them out
-#: means a widened matrix arrives here without an edit.
-_BCS = sorted({bc for (_c, bc, _d, _b) in CHUNK_ARMS}) + [1024]
+#: Box capacities from a narrow box to a wide one, and one no prefill arm has ever built. Decode must be blind to a
+#: number it will never see as thoroughly as to one it will.
+_BCS = [32, 64, 128, 256, 1024]
 
 
 def test_no_field_of_the_frozen_carrier_names_bc():

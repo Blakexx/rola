@@ -8,12 +8,6 @@
    "count": 1
   },
   {
-   "path": "benchmarks/cells/registry.py",
-   "message": "unused variable 'GROUPS' (60% confidence)",
-   "line_sha256": "3ab9d34881d86e05",
-   "count": 1
-  },
-  {
    "path": "rola/engine/facts/call.py",
    "message": "unused function 'arm_of' (60% confidence)",
    "line_sha256": "53ece8ae80d350b0",
@@ -173,42 +167,6 @@
    "path": "tests/integration/test_production_levels.py",
    "message": "unused method 'forward' (60% confidence)",
    "line_sha256": "f09a439cf834840c",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused function 'assert_nonvacuous' (60% confidence)",
-   "line_sha256": "3bdf2ccaf8635104",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused function 'build_case' (60% confidence)",
-   "line_sha256": "af8868949004f46b",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused method '_all_read_only' (60% confidence)",
-   "line_sha256": "6417750d7835944c",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused method '_chunk_boundary' (60% confidence)",
-   "line_sha256": "6fb6f0184eefee58",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused method '_imbalanced_heads' (60% confidence)",
-   "line_sha256": "957f9d6df485be66",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/generators.py",
-   "message": "unused method '_stratified' (60% confidence)",
-   "line_sha256": "fe1a8dfea200fc7c",
    "count": 1
   },
   {

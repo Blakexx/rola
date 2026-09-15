@@ -16,7 +16,7 @@ import torch
 
 from rola.ops import carry as carry_ops
 from rola.ops.naive import naive_rola
-from rola.ops.paging import from_split_planes
+from rola.ops.paging import from_split_planes, to_split_planes
 from tests.oracle import tolerances
 from tests.oracle.tolerances import BF16_RTOL
 
@@ -77,6 +77,12 @@ def canonical_from_plane(plane):
     noise inside a comparison.
     """
     return from_split_planes(plane).reshape(plane.shape[0], -1, plane.shape[-1])
+
+
+def plane_from_canonical(canonical, bh: int = 1):
+    """A ``[BH, N, cols]`` CANONICAL state as the stored ``[BH, N/16, 16, cols]`` split planes: `canonical_from_plane`
+    inverted, so a drawn entry state is the plane a kernel entry reads."""
+    return to_split_planes(canonical.float().reshape(bh, -1, 16, canonical.shape[-1]))
 
 
 def built_arms() -> set:

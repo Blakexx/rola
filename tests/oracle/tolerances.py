@@ -23,30 +23,50 @@ element in `torch.testing.assert_close`'s form and states its own derived
 tolerances beside the claim.
 
 MEASURED 2026-09-14 (`pytest --oracle-margins=<file>` records every comparison):
-the worst error over its allowance, and the smallest uniform relative error the
-rule sees on some slot of the output.
+the worst error over its allowance under its budget, and the smallest uniform
+relative error the rule sees on some slot of the output.
 
-    carry numerator (every oracle cell)        0.47     7.7% at most
-    carry denominator                          0.45     1%
-    carry state plane                          0.62     1%
-    combined prefill readout                   0.27     2%
-    decode y (every step of every gate)        0.11     41% at most
-    decode state                               < 1e-3   1%
-    intra output / mass                        0.39 / < 1e-3   1%
-    projection logits (rtol 2^-8, derived)     0.42     1.2%
+    carry numerator      CARRY_READOUT_RTOL   0.69 (corner-tied-k4)   20% at most
+    carry denominator    CARRY_READOUT_RTOL   0.39                    2%
+    carry state plane    CARRY_FOLD_RTOL      0.91 (corner-tied-k4)   0.8%
+    prefill readout      CARRY_READOUT_RTOL   under 0.5               4% at most
+    decode y (a step)    BF16_RTOL            0.11                    41% at most
+    decode state         BF16_RTOL            < 1e-3                  1%
+    intra output / mass  BF16_RTOL            0.39 / < 1e-3           1%
+    projection logits    2^-8 (derived)       0.42                    1.2%
 
-One decode step's `y` reads a random-signed entry state over up to 65536
-leaves, so its terms cancel to about a fortieth of their sizes and that step
-alone sees only a uniform error above 41%; the same gate's state sees 1%.
+A slot whose sum is one term carries its output's whole rounding chain, which is
+why the carry's budgets are counted from the kernel below rather than taken from
+the family budget: the tied corner's numerator and state slots sum one or two
+terms each. One decode step's `y` reads a random-signed entry state over up to
+65536 leaves, so its terms cancel to about a fortieth of their sizes and that
+step alone sees only a uniform error above 41%; the same gate's state sees 1%.
 The TEETH are measured on the kernels' own outputs: the carry, prefill, decode,
 intra and projection gates each wipe the slot of median size and move the
 smallest slots past their allowance (`fixtures.assert_planted_errors_fail`),
-and the prefill gate plants a `sqrt(t)` drift that a global maximum passes.
+and the prefill gate zeroes every readout slot under one percent of the largest,
+which a global maximum passes by construction.
 """
 from __future__ import annotations
 
 #: The derived bf16 family budget. See the module docstring for the derivation.
 BF16_RTOL = 1e-2
+
+#: One bf16 rounding's largest relative error: a round to nearest moves an 8-significant-bit value by at most 2^-8
+#: of itself, and keeping a float's HIGH HALF (a truncation) by at most two of them.
+U_BF16 = 2.0 ** -8
+
+#: THE CARRY'S CHAINS, counted in `csrc/rola/src/carry/carry_kernel.cuh`, where a term's error is the sum of its
+#: roundings (every bf16 x bf16 product then lands exactly in an fp32 accumulator):
+#: the FOLD rounds a deposit twice before it reaches the fp32 state -- the outer pair times the gain, and the inner
+#: tile times that (`fold_fragment`'s two `mul_bf16x2`) -- so a state slot is off by at most two u of its terms;
+#: the READOUT reads the state's high half (`snapshot_publish`'s and the masses' `hi_bf16x2`, a truncation: two u)
+#: and rounds the inner tile times the outer pair once more (`readout_tile`'s `mul_bf16x2`), so `num`, `den` and a
+#: readout carry the fold's two, those two and one: five u. A slot whose sum is one term carries the whole chain,
+#: which the `corner-tied-k4` cell reaches (its numerator slots sum one or two terms): 1.34% measured, inside
+#: five u (1.95%) and outside the family budget above.
+CARRY_FOLD_RTOL = 2 * U_BF16
+CARRY_READOUT_RTOL = 5 * U_BF16
 
 #: Where the per-slot check records its margins: `--oracle-margins`, set by `tests/conftest.py`; None records nothing.
 MARGINS_FILE = None

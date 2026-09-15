@@ -2156,30 +2156,6 @@
    "count": 1
   },
   {
-   "path": "tests/oracle/families.py",
-   "message": "names the work code 'D2-b'",
-   "line_sha256": "0bf80f4eba68903d",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/families.py",
-   "message": "names the work code 'D2-b'",
-   "line_sha256": "fe7944e67b248157",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/families.py",
-   "message": "names the work code 'P67'",
-   "line_sha256": "0bf80f4eba68903d",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/families.py",
-   "message": "names the work code 'P67'",
-   "line_sha256": "fe7944e67b248157",
-   "count": 1
-  },
-  {
    "path": "tests/oracle/fixtures.py",
    "message": "names the work code 'C0'",
    "line_sha256": "8c675ecb3279ac2c",
@@ -2207,12 +2183,6 @@
    "path": "tests/oracle/fixtures.py",
    "message": "names the work code 'K31'",
    "line_sha256": "07f0d00500c0a5d2",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'C0'",
-   "line_sha256": "709ad65ad9633460",
    "count": 1
   },
   {
@@ -2441,30 +2411,6 @@
    "path": "tests/oracle/test_prefill_vs_oracle.py",
    "message": "names the work code 'K50'",
    "line_sha256": "450f52f8a33755c5",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/test_producer_families.py",
-   "message": "names the work code 'D2-b'",
-   "line_sha256": "6c4adaaafa86f9cc",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/test_producer_families.py",
-   "message": "names the work code 'K31'",
-   "line_sha256": "105e74bdc7c4ab37",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/test_producer_families.py",
-   "message": "names the work code 'P26'",
-   "line_sha256": "27a7637892f5d0cd",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/test_producer_families.py",
-   "message": "names the work code 'P67'",
-   "line_sha256": "6c4adaaafa86f9cc",
    "count": 1
   },
   {

@@ -27,6 +27,7 @@ level (a property of the DRAW, never told to the kernel).
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import zlib
 from dataclasses import dataclass
@@ -34,7 +35,10 @@ from pathlib import Path
 
 _REGISTRY = Path(__file__).resolve().parent / "carry_cells.json"
 
-DRAWS = ("dense", "alt", "both", "cohort", "dead", "deposit")
+DRAWS = ("dense", "alt", "both", "cohort", "dead", "deposit",
+         "tied", "anti", "cold", "readonly", "concentrated", "onehot", "flip")
+#: the draws with no support to sample, which state it themselves and declare no regime
+DEGENERATE = ("dead", "deposit")
 BACKINGS = ("dense", "paged")
 STATES = ("none", "fresh", "carried")
 TIERS = ("oracle", "probe", "both")
@@ -61,6 +65,8 @@ class CellSpec:
     backing: str
     state: str
     tier: str
+    #: ``((axis, value), ...)`` on every axis of `benchmarks.cells.regimes.REGIME_AXES`; None for a degenerate draw
+    regime: tuple[tuple[str, str], ...] | None
 
     @property
     def seed(self) -> int:
@@ -104,7 +110,7 @@ class CellSpec:
         sparse on both sides. The carve order is derived from this, so a cell that leaves
         it at zero runs the canonical carve whatever its draw."""
         from rola.ops.carry import SIDE_SPARSE
-        if self.draw in ("dense", "dead", "deposit") or self.k_tok is None:
+        if self.draw not in ("alt", "both", "cohort") or self.k_tok is None:
             return 0
         modes = 0
         for level in range(self.D):
@@ -119,11 +125,25 @@ class CellSpec:
 
 
 def _validate(record: dict) -> CellSpec:
+    from benchmarks.cells.regimes import REGIME_AXES
+
+    regime = record["regime"]
     spec = CellSpec(name=record["name"], widths=tuple(record["widths"]), dv=record["dv"],
                     tokens=record["tokens"], warps_per_cta=record["warps_per_cta"],
                     draw=record["draw"], k_tok=record["k_tok"], cohort=record["cohort"],
                     support=record["support"], backing=record["backing"],
-                    state=record["state"], tier=record["tier"])
+                    state=record["state"], tier=record["tier"],
+                    regime=None if regime is None else tuple((axis, regime[axis]) for axis in REGIME_AXES
+                                                             if axis in regime))
+    if (spec.draw in DEGENERATE) != (regime is None):
+        raise ValueError(f"{spec.name}: a {spec.draw} draw {'declares no' if spec.draw in DEGENERATE else 'states its'} "
+                         f"regime")
+    if regime is not None:
+        if set(regime) != set(REGIME_AXES):
+            raise ValueError(f"{spec.name}: the regime states {sorted(regime)}, not every axis of {list(REGIME_AXES)}")
+        for axis, value in regime.items():
+            if value not in REGIME_AXES[axis]:
+                raise ValueError(f"{spec.name}: {value!r} is not a value of the {axis} axis {REGIME_AXES[axis]}")
     if spec.draw not in DRAWS:
         raise ValueError(f"{spec.name}: draw {spec.draw!r} is not one of {DRAWS}")
     if spec.backing not in BACKINGS:
@@ -134,9 +154,9 @@ def _validate(record: dict) -> CellSpec:
         raise ValueError(f"{spec.name}: tier {spec.tier!r} is not one of {TIERS}")
     if (spec.draw == "cohort") != (spec.cohort is not None):
         raise ValueError(f"{spec.name}: a cohort draw carries a cohort and nothing else does")
-    if spec.draw in ("alt", "both", "cohort") and spec.k_tok is None:
+    if spec.draw in ("alt", "both", "cohort", "tied") and spec.k_tok is None:
         raise ValueError(f"{spec.name}: a sparse draw states its k_tok")
-    if spec.draw in ("dead", "deposit") and spec.k_tok is not None:
+    if spec.draw not in ("alt", "both", "cohort", "tied") and spec.k_tok is not None:
         raise ValueError(f"{spec.name}: a {spec.draw} draw has no k_tok -- its support is "
                          f"stated by the draw itself, not by a count")
     return spec
@@ -256,10 +276,85 @@ class RealizedCell:
     write: tuple
     gain: object
     v: object
+    #: ``[BH, N, DV + 1]`` fp32, CANONICAL leaf order: the entry state a ``carried`` cell binds (value columns
+    #: ``0.1 * N(0, 1)``, the mass column their magnitudes), or None. Drawn after every operand, so binding one moves
+    #: no other tensor of the cell.
+    entry: object = None
 
     def doubles(self):
         return (tuple(x.double() for x in self.read), tuple(x.double() for x in self.write),
                 self.gain.double(), self.v.double())
+
+
+def _masked(shape, mask, gen, device):
+    """A simplex draw confined to the digits ``mask`` marks (a ``[..., width]`` 0/1 tensor broadcast over ``shape``)."""
+    import torch
+
+    x = torch.rand(shape, device=device, dtype=torch.float64, generator=gen) * mask
+    return x / x.sum(-1, keepdim=True)
+
+
+def _one_hot(shape, gen, device):
+    import torch
+
+    digit = torch.randint(0, shape[-1], shape[:-1] + (1,), device=device, generator=gen)
+    return torch.zeros(shape, device=device, dtype=torch.float64).scatter_(-1, digit, 1.0)
+
+
+def _corner(spec, shape, gen, device):
+    """``(read, write)`` for a CORNER draw -- a named region of the distribution a random draw does not reach.
+
+    ``tied``: one ``k_tok`` draw per level is both sides. ``anti``: level zero reads its first half of digits and
+    writes its second half, so no token reads a leaf it writes and every read leaf is cold. ``cold``: level zero's
+    write side is confined to its leading ``support`` fraction under dense reads. ``readonly``: every token writes
+    leaf zero and nothing else. ``concentrated``: every row carries 0.9 of its mass on one digit. ``onehot``: one live
+    digit per row on both sides. ``flip``: level zero's write support is its first half of digits in even windows
+    and its second half in odd ones, so which window last wrote a leaf changes exactly at a window line.
+    """
+    import torch
+
+    from rola.ops.carry import WINDOW
+
+    def dense(width):
+        return simplex(shape + (width,), None, gen, device)
+
+    def half(width, second):
+        mask = torch.zeros(width, device=device, dtype=torch.float64)
+        mask[width // 2:] = float(second)
+        mask[:width // 2] = float(not second)
+        return mask
+
+    widths = spec.widths
+    if spec.draw == "tied":
+        read = tuple(simplex(shape + (w,), spec.k_tok, gen, device) for w in widths)
+        return read, read
+    if spec.draw == "onehot":
+        return (tuple(_one_hot(shape + (w,), gen, device) for w in widths),
+                tuple(_one_hot(shape + (w,), gen, device) for w in widths))
+    if spec.draw == "concentrated":
+        def peaked(width):
+            x = torch.rand(shape + (width,), device=device, dtype=torch.float64, generator=gen)
+            return 0.1 * x / x.sum(-1, keepdim=True) + 0.9 * _one_hot(shape + (width,), gen, device)
+        return tuple(peaked(w) for w in widths), tuple(peaked(w) for w in widths)
+    read = [dense(w) for w in widths]
+    write = [dense(w) for w in widths]
+    w0 = widths[0]
+    if spec.draw == "anti":
+        read[0] = _masked(shape + (w0,), half(w0, second=False), gen, device)
+        write[0] = _masked(shape + (w0,), half(w0, second=True), gen, device)
+    elif spec.draw == "cold":
+        mask = torch.zeros(w0, device=device, dtype=torch.float64)
+        mask[:max(1, int(w0 * spec.support))] = 1.0
+        write[0] = _masked(shape + (w0,), mask, gen, device)
+    elif spec.draw == "readonly":
+        write = [torch.zeros(shape + (w,), device=device, dtype=torch.float64) for w in widths]
+        for level in write:
+            level[..., 0] = 1.0
+    elif spec.draw == "flip":
+        odd = (torch.arange(shape[1], device=device) // WINDOW) % 2 == 1
+        mask = torch.where(odd.view(1, -1, 1, 1), half(w0, second=True), half(w0, second=False))
+        write[0] = _masked(shape + (w0,), mask, gen, device)
+    return tuple(read), tuple(write)
 
 
 def realize(spec: CellSpec, B: int = 1, H: int = 1, device: str = "cuda") -> RealizedCell:
@@ -285,26 +380,37 @@ def realize(spec: CellSpec, B: int = 1, H: int = 1, device: str = "cuda") -> Rea
             return clustered(shape + (width,), kt, spec.cohort, gen, device)
         return simplex(shape + (width,), kt, gen, device, live=lv)
 
-    if spec.draw in ("dead", "deposit"):
-        return _degenerate(spec, shape, gen, device)
-
-    kt = spec.k_tok
-    if spec.draw == "dense":
-        read_k = write_k = [None] * spec.D
-    elif spec.draw == "both":
-        read_k = write_k = [kt if l == 0 else None for l in range(spec.D)]
+    if spec.draw in DEGENERATE:
+        drawn = _degenerate(spec, shape, gen, device)
     else:
-        read_k = [kt if l % 2 else None for l in range(spec.D)]
-        write_k = [None if l % 2 else kt for l in range(spec.D)]
+        kt = spec.k_tok
+        if spec.draw in ("dense", "alt", "both", "cohort"):
+            if spec.draw == "dense":
+                read_k = write_k = [None] * spec.D
+            elif spec.draw == "both":
+                read_k = write_k = [kt if l == 0 else None for l in range(spec.D)]
+            else:
+                read_k = [kt if l % 2 else None for l in range(spec.D)]
+                write_k = [None if l % 2 else kt for l in range(spec.D)]
+            read = tuple(draw(w, read_k[l], live[l]) for l, w in enumerate(spec.widths))
+            write = tuple(draw(w, write_k[l], live[l]) for l, w in enumerate(spec.widths))
+        else:
+            read, write = _corner(spec, shape, gen, device)
+        gain = torch.rand(*shape, device=device, dtype=torch.float64, generator=gen) + 0.5
+        v = torch.randn(*shape, spec.dv, device=device, dtype=torch.float64, generator=gen)
+        drawn = RealizedCell(spec=spec,
+                             read=tuple(x.to(torch.bfloat16) for x in read),
+                             write=tuple(x.to(torch.bfloat16) for x in write),
+                             gain=gain.to(torch.bfloat16), v=v.to(torch.bfloat16))
+    if spec.state == "carried":
+        entry = 0.1 * torch.randn(B * H, spec.N, spec.dv + 1, device=device, dtype=torch.float64, generator=gen)
+        entry[..., spec.dv] = entry[..., spec.dv].abs()
+        drawn = dataclasses.replace(drawn, entry=entry.to(torch.float32))
+    if spec.regime is not None:
+        from benchmarks.cells.regimes import prove
 
-    read = tuple(draw(w, read_k[l], live[l]) for l, w in enumerate(spec.widths))
-    write = tuple(draw(w, write_k[l], live[l]) for l, w in enumerate(spec.widths))
-    gain = torch.rand(*shape, device=device, dtype=torch.float64, generator=gen) + 0.5
-    v = torch.randn(*shape, spec.dv, device=device, dtype=torch.float64, generator=gen)
-    return RealizedCell(spec=spec,
-                        read=tuple(x.to(torch.bfloat16) for x in read),
-                        write=tuple(x.to(torch.bfloat16) for x in write),
-                        gain=gain.to(torch.bfloat16), v=v.to(torch.bfloat16))
+        prove(drawn)
+    return drawn
 
 
 def liveness_words(realized: RealizedCell, descriptor):

@@ -86,12 +86,6 @@
    "count": 1
   },
   {
-   "path": "tests/oracle/instantiation.py",
-   "message": "'CHUNK_ARMS' is a literal arm table outside tools/gen_shards.py",
-   "line_sha256": "2fe472063cbe21b3",
-   "count": 1
-  },
-  {
    "path": "tests/oracle/test_atom_bitmap.py",
    "message": "'_ARMS' is a literal arm table outside tools/gen_shards.py",
    "line_sha256": "6625f832e1db4b36",

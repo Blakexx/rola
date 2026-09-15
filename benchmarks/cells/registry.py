@@ -29,6 +29,8 @@ GROUPS = {
     "carry": [n for n, (kind, _) in CELLS.items() if kind == "carry"],
     "layer": [n for n, (kind, _) in CELLS.items() if kind == "layer"],
     "decode": [n for n, (kind, c) in CELLS.items() if kind == "layer" and c.decode_steps > 0],
+    #: one entmax constructor at rising logit gains: the realized density must fall across it
+    "producer-sweep": ["producer-sweep-g0.25", "producer-sweep-g1", "producer-sweep-g4", "producer-sweep-g16"],
 }
 
 

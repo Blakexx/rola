@@ -29,6 +29,8 @@ realize it, asserted, rather than staging it.
 """
 from __future__ import annotations
 
+import math
+
 import pytest
 import torch
 
@@ -40,8 +42,8 @@ from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.factors import RouteFactors
 from rola.routing.types import LeafMassDecay
-from tests.oracle import generators as g
 from tests.oracle.fixtures import assert_slots_close, oracle_run
+from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
 
 pytestmark = [
     pytest.mark.cuda,
@@ -64,17 +66,38 @@ def _draw(gen, device, T, p_read, p_write, *, widths=_WIDTHS, H=_H, B=_B, dv=_DV
     STRUCTURAL rather than a property the draw happened to have: at a built
     uniform topology a Bernoulli write side reaches every leaf within a few
     tokens, and the corner would be asserted and never realized."""
-    read = tuple(g._simplex((B, T, H, w), p_read, gen, device) for w in widths)
+    read = tuple(_simplex((B, T, H, w), p_read, gen, device) for w in widths)
     if write_live is None:
-        write = tuple(g._simplex((B, T, H, w), p_write, gen, device) for w in widths)
+        write = tuple(_simplex((B, T, H, w), p_write, gen, device) for w in widths)
     else:
         mask = torch.zeros(1, 1, 1, widths[0])
         mask[..., :write_live] = 1.0
-        write = (g._masked_simplex((B, T, H, widths[0]), mask, gen, device),) + tuple(
-            g._simplex((B, T, H, w), p_write, gen, device) for w in widths[1:])
+        write = (_masked_simplex((B, T, H, widths[0]), mask, gen, device),) + tuple(
+            _simplex((B, T, H, w), p_write, gen, device) for w in widths[1:])
     g_write = torch.rand(B, T, H, device=device, dtype=torch.float64, generator=gen) + 0.5
     v = torch.randn(B, T, H, dv, device=device, dtype=torch.float64, generator=gen)
     return dict(read=read, write=write, g_write=g_write, v=v)
+
+
+def _masked_simplex(shape, mask, gen, device):
+    """A simplex draw confined to the digits ``mask`` marks; a row with no live digit is refused."""
+    mask = mask.to(device=device, dtype=torch.float64).expand(shape)
+    assert bool((mask.sum(-1) > 0).all()), "every row must have a nonempty support"
+    x = torch.rand(shape, device=device, dtype=torch.float64, generator=gen) * mask
+    x = torch.where(x.sum(-1, keepdim=True) == 0, mask, x)
+    return x / x.sum(-1, keepdim=True)
+
+
+def _leaf_product(levels, widths):
+    """``[B, T, H, N]``: the leaf amplitudes, computed the oracle's way (MSB-first mixed radix)."""
+    N = math.prod(widths)
+    strides = [math.prod(widths[l + 1:]) for l in range(len(widths))]
+    idx = torch.arange(N, device=levels[0].device)
+    out = None
+    for level, stride, width in zip(levels, strides, widths):
+        sel = level.index_select(-1, (idx // stride) % width)
+        out = sel if out is None else out * sel
+    return out
 
 
 def _f32(d):
@@ -104,9 +127,9 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
     device = "cuda"
     gen = torch.Generator(device=device).manual_seed(9000 + int(decay_on))
     T, steps = 2 * CHUNK_TOKENS, 4
-    topology = g._topology(_WIDTHS)
+    topology = _topology(_WIDTHS)
     decay = (None if not decay_on else
-             LeafMassDecay(dials=g._decay_dials(_WIDTHS, _H, gen, device)))
+             LeafMassDecay(dials=_decay_dials(_WIDTHS, _H, gen, device)))
     pre = _draw(gen, device, T, 0.5, 0.4,
                 write_live=_WIDTHS[0] // 2)
     f = _f32(pre)
@@ -143,8 +166,8 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
         canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
         assert_slots_close(canonical, ref.state, envelope=ref.state_envelope, what=f"the state at step {s}")
 
-        R = g._leaf_product(step["read"], _WIDTHS) != 0
-        written = (g._leaf_product(pre["write"], _WIDTHS) != 0).any(dim=1, keepdim=True)
+        R = _leaf_product(step["read"], _WIDTHS) != 0
+        written = (_leaf_product(pre["write"], _WIDTHS) != 0).any(dim=1, keepdim=True)
         cold_seen = cold_seen or bool((R & ~written).any())
     assert cold_seen, (
         "no decode step read a prefill-cold leaf; the fixture stopped realizing "
@@ -166,8 +189,8 @@ def test_the_horizon_is_conformant_at_every_checkpoint_not_just_the_end():
     bf16-state class) hides from."""
     device = "cuda"
     gen = torch.Generator(device=device).manual_seed(9100)
-    decay = LeafMassDecay(dials=g._decay_dials(_WIDTHS, _H, gen, device))
-    topology = g._topology(_WIDTHS)
+    decay = LeafMassDecay(dials=_decay_dials(_WIDTHS, _H, gen, device))
+    topology = _topology(_WIDTHS)
     N, cols = topology.N, _DV + 1
     m0 = 0.1 * torch.randn(_B, _H, N, cols, device=device, dtype=torch.float64,
                            generator=gen)
@@ -209,7 +232,7 @@ def test_the_decode_split_is_performance_only_under_drift():
     frozen once at the boundary is that it cannot."""
     device = "cuda"
     gen = torch.Generator(device=device).manual_seed(9200)
-    topology = g._topology(_WIDTHS)
+    topology = _topology(_WIDTHS)
     configs = {
         f"n_split={n}": derive_decode_geometry(topology, d_v=_DV, decay=False, BH=_B * _H, device=device,
             n_split=n)
@@ -254,4 +277,4 @@ def test_the_decode_split_is_performance_only_under_drift():
         _decode_step(step["v"], step["read"], step["write"],
                        step["g_write"], configs["n_split=1"],
                        base[1].clone(),
-                       decay=LeafMassDecay(dials=g._decay_dials(_WIDTHS, _H, gen, device)))
+                       decay=LeafMassDecay(dials=_decay_dials(_WIDTHS, _H, gen, device)))

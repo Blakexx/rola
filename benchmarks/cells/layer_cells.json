@@ -216,6 +216,78 @@
    "seed": 10,
    "decode_steps": 8,
    "note": "D=1 flat dense at N=256: the internal LA-control for the routed decode cell"
+  },
+  {
+   "name": "producer-sweep-g0.25",
+   "widths": [
+    64,
+    64
+   ],
+   "B": 1,
+   "tokens": 128,
+   "H": 4,
+   "hidden": 64,
+   "dv": 64,
+   "alpha": 1.5,
+   "logit_gain": 0.25,
+   "dtype": "fp32",
+   "seed": 201,
+   "decode_steps": 0,
+   "note": "the producer's density sweep: one entmax constructor at four logit gains, whose realized write density must fall monotonically across at least a factor of four (tests/integration/test_producer_sweep.py)"
+  },
+  {
+   "name": "producer-sweep-g1",
+   "widths": [
+    64,
+    64
+   ],
+   "B": 1,
+   "tokens": 128,
+   "H": 4,
+   "hidden": 64,
+   "dv": 64,
+   "alpha": 1.5,
+   "logit_gain": 1.0,
+   "dtype": "fp32",
+   "seed": 201,
+   "decode_steps": 0,
+   "note": "the producer's density sweep: one entmax constructor at four logit gains, whose realized write density must fall monotonically across at least a factor of four (tests/integration/test_producer_sweep.py)"
+  },
+  {
+   "name": "producer-sweep-g4",
+   "widths": [
+    64,
+    64
+   ],
+   "B": 1,
+   "tokens": 128,
+   "H": 4,
+   "hidden": 64,
+   "dv": 64,
+   "alpha": 1.5,
+   "logit_gain": 4.0,
+   "dtype": "fp32",
+   "seed": 201,
+   "decode_steps": 0,
+   "note": "the producer's density sweep: one entmax constructor at four logit gains, whose realized write density must fall monotonically across at least a factor of four (tests/integration/test_producer_sweep.py)"
+  },
+  {
+   "name": "producer-sweep-g16",
+   "widths": [
+    64,
+    64
+   ],
+   "B": 1,
+   "tokens": 128,
+   "H": 4,
+   "hidden": 64,
+   "dv": 64,
+   "alpha": 1.5,
+   "logit_gain": 16.0,
+   "dtype": "fp32",
+   "seed": 201,
+   "decode_steps": 0,
+   "note": "the producer's density sweep: one entmax constructor at four logit gains, whose realized write density must fall monotonically across at least a factor of four (tests/integration/test_producer_sweep.py)"
   }
  ]
 }
