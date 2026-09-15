@@ -299,8 +299,6 @@ def main() -> int:
     (SCRATCH / f"{name}.md").write_text("\n".join(md) + "\n")
     print("\n".join(md))
     print(f"report: compose_ledger sample {sample['n']}; markdown {SCRATCH / name}.md")
-    rc, text = run([sys.executable, "tools/dashboard.py"])
-    print(text.strip() if rc == 0 else f"dashboard: not rendered (rc {rc}): {text[-400:]}")
     ok = report["kernel"]["restored"] and all(r.get("hmma_ok") and r.get("mask_took") for lad in report["ladders"] for r in lad["rungs"])
     return 0 if ok else 1
 

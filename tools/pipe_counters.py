@@ -23,8 +23,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import phase_ledger  # noqa: E402
-import probe_cells  # noqa: E402
 from rola_devtools import process  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
+from bench.provider import arm_name, oneshot_argv  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 COUNTERS = (
@@ -47,7 +49,7 @@ COUNTERS = (
 
 def measure(cell: str, schedule: str) -> dict:
     cmd = [dev_config.get("toolchain.ncu"), "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1",
-           "--metrics", ",".join(COUNTERS), "--csv", *probe_cells.oneshot_argv(cell, schedule=schedule)]
+           "--metrics", ",".join(COUNTERS), "--csv", *oneshot_argv(cell, arm_name("carry_forward", schedule=schedule))]
     done = process.run(cmd, cwd=ROOT, timeout=3600)
     values = {}
     for line in done.stdout.splitlines():

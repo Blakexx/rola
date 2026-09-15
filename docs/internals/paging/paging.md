@@ -185,7 +185,7 @@ Two consequences, both binding on anything that quotes a number:
 
 * every savings claim carries its pool size and its dense counterfactual — which is why
   `PagingResult` reports `committed_bytes` and `dense_bytes` beside every fraction, and
-  why `benchmarks/bench_paging.py` prints all three;
+  why a paging measurement reports all three;
 * The small topologies the test suite uses (0.5–8 MiB pools) are inside the granule
   regime and CANNOT show a saving. They gate correctness, never the claim. The claim is
   measured at pools many chunks wide, which is the standing
@@ -193,7 +193,7 @@ Two consequences, both binding on anything that quotes a number:
 
 A second floor sits above the granule one and is a property of the ROUTING rather than
 the driver: with unstructured sparsity at long `L`, every atom is live (the measurement,
-reproduced by `bench_paging` at `logit_gain = 8`: 2048/2048 atoms resident). Sparse
+reproduced by the since-deleted paging bench at `logit_gain = 8`: 2048/2048 atoms resident). Sparse
 RESIDENCY needs STRUCTURED support and does not follow from entmax alone.
 
 ## Extents Are Allocator Policy And Nothing Else

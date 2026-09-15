@@ -115,7 +115,7 @@ scatter rather than a per-warp base.
 `geom_canon_leaf` walks the levels with `#pragma unroll 1` over the block's RUNTIME depth,
 so every span and run-shift is an array load — and the map is called per atom by the state
 page sweep. The parent computed the same map from `BoxPlan` as a folded bit permutation
-and spent 4,096 instructions on it; the runtime form spends 1,402,880 at `k16_w384`, a
+and spent 4,096 instructions on it; the runtime form spends 1,402,880 on the k16_w384 cell, a
 342x blow-up and the single largest term in that cell's instruction delta.
 
 `geom_canon_leaf_t<D, BC>` is the same law with the DEPTH and the OWNER SPANS compile-time
@@ -360,9 +360,7 @@ at BOTH, not only the `4` these arms happen to compile: `{1, 2, 4, 7}` members a
 assert — at `warps_per_cta == warps_per_sm` the CTA-box law IS the SM-grain law — is what
 `test_the_shape_set_is_the_arch_law_at_one_cta_per_sm` already checks at `warps_per_cta =
 8` (`warps_per_sm`, `## arch-constants`); the two tests together are the "enumerated,
-deduplicated, counted, with the arch-law assert at 8" claim. `tools/field_coverage.py`'s
-sweep does the same over BOTH values for every declared shape, in place of the single
-hard-coded box it swept before.
+deduplicated, counted, with the arch-law assert at 8" claim.
 
 <a id="carve-order"></a>
 ## The carve order

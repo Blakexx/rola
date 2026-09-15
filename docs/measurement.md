@@ -13,8 +13,7 @@ stored with its provenance. This document is what that sentence means.
 | record | `rola_results` (the measurements store) | where a number lives afterwards, and which stored samples are a baseline |
 
 The benchmark repository's suite (rola-bench, `rola_bench/measure`) times through `tools/compare.py`, so a suite number
-and a number taken here are the same measurement. `tools/probe_cells.py` runs the same subjects across two binaries with
-`ncu` beside the timing.
+and a number taken here are the same measurement.
 
 ## The method
 
@@ -160,7 +159,7 @@ number from it enters the record. Named here because an undelivered item named i
 Every measuring tool stores what it measured through one library, `rola_results`, in the rola-results repository:
 `store.root` in the dev config (default `rola-results` beside the checkouts; the container mounts it at
 `/workspace/store`), importable from every interpreter `tools/dev.py init` provisions. A result measured in any
-worktree, host or container lands in that one repository, visible to every other and to the dashboard at once.
+worktree, host or container lands in that one repository, visible to every other at once.
 
 A tool opens a store at its OWN LOCATION and hands it the SEMANTICS of what it measured -- the inputs its numbers
 depend on, reduced to identities (a commit and its tracked diff, a binary's manifest or file digest, the cells, the
@@ -172,13 +171,11 @@ and a timing only compares within the session that interleaved it.
 
 | location | writer | the semantics | a sample's output |
 |---|---|---|---|
-| `probe_cells` | `tools/probe_cells.py` | each binary's commit, tree digest, manifest, family stamp and lane (bench, calls, schedule); the cells, state arm, counts, device software, clock lock | every (binary, cell) row |
 | `compare` | `tools/compare.py --record` | the point with its cell records and claim, each arm's label and name with its commit and diff (a foreign arm's runner), the counts, the seed, the reference | the driver's whole result |
 | `suite/<module>` | rola-bench's measurement suite | the module, unit, identities and dependencies | the instrument's raw JSON |
 | `calibration` | `benchmarks/unit/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline`, `pipe_timeline.scale` | `tools/pipe_timeline.py` | the cell, binary and scale; a calibration's composition | the series and summary; the plateau |
-| `build_ledger`, `compose_ledger` | `tools/build_ledger.py`, `tools/compose_ledger.py` | the commit and diff, the tag or cells | the report |
-| `dram_by_activity` | `tools/experiments/dram_by_activity.py` | each binary's commit, diff and manifest; the variants, counts | the rows |
+| `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |
 | `environment` | `tools/dev.py container check` | the environment key | the proofs |
 
 A tool run by another tool stores nothing (`--no-record`): the caller keeps the output in its own record. `python -m

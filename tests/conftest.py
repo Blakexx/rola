@@ -201,7 +201,7 @@ def _gpu_lock_held():
     #: work (oracle/integration/cuda-marked unit tests), not a measurement --
     #: it can share the device with another correctness run (up to
     #: `gpu_lock.GPU_SHARED_SLOTS` of them) rather than excluding every other
-    #: GPU-touching tool, which only measured work (`probe_cells`, `ncu`, the
+    #: GPU-touching tool, which only measured work (`compare`, `ncu`, the
     #: bench harness) needs.
     with gpu_lock(mode="shared"):
         yield

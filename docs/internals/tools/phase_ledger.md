@@ -7,7 +7,7 @@ warp a window per phase — head, readout, fold, snapshot, edges, sweep, and the
 tile masks and the next window's words) — averaged over the CTAs and
 warps, then the readout's and the fold's cycles per warp so an owner imbalance shows.
 
-The launch carries a state plane out (the `fresh` arm, what `tools/probe_cells.py` measures)
+The launch carries a state plane out (the `fresh` arm, what `tools/compare.py` times by default)
 unless `--state-arm null`. The first ledger runs passed no plane, so the kernel skipped its exit
 sweep and the ledger never saw the phase that was a third of a sparse kernel's time (the scattered
 2-byte stores, `carry_kernel.md#state-io`). An instrument that measures a different launch than

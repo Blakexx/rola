@@ -596,14 +596,14 @@ path through `tools/gpu_lock.py`'s `gpu_lock()`. If you find another spelling
 anywhere, it is a defect — fix it rather than adding a second lock beside it.
 
 **EVERY GPU ENTRY POINT LOCKS ITSELF.** The lock used to be half-and-half:
-`tools/probe_cells.py` and `tools/sanitize_oracle.py` took it internally, but pytest
+`tools/sanitize_oracle.py` took it internally, but pytest
 and the chunk-arm bench harness relied on the CALLER wrapping the command in an
 external `flock` — and the harness REFUSED a bare invocation to enforce that. The other side showed its own failure mode: an external `flock`
 wrapping a tool that ALSO locks itself deadlocks (per-open-file-description
 semantics — the wrapper's own lock blocks the wrapped process's identical
 `fcntl.flock` call forever). Both harnesses now share ONE design: every GPU
 entry point — pytest (a session-scoped `gpu_lock()` fixture in `tests/conftest.py`),
-`tools/probe_cells.py`, `tools/sanitize_oracle.py`, `tools/compare.py` — takes
+`tools/sanitize_oracle.py`, `tools/compare.py` — takes
 `gpu_lock()` itself and is invoked
 BARE. The lock is REENTRANT (`ROLA_GPU_LOCK_HELD` in the environment), so a tool that
 itself locks and then launches another self-locking tool as a subprocess (`tools/

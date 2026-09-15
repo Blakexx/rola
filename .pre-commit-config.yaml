@@ -111,13 +111,6 @@ repos:
       # inventory for a human to rule on, never a blocked commit -- the same backstop
       # philosophy the gating hooks above are held to, applied to checks that are not
       # clean enough to gate on this tip.
-      - id: vulture-report
-        name: "[report-only] vulture (Python dead code)"
-        language: python
-        additional_dependencies: ["vulture==2.16"]
-        entry: tools/lint/run_vulture.sh
-        pass_filenames: false
-        always_run: true
       - id: r9-enforcement-report
         name: "[report-only] R9 enforcement (device switch/if-chain traps + case markers)"
         language: system
@@ -128,17 +121,5 @@ repos:
         name: "[report-only] drift guards (the laws each deletion ratified)"
         language: system
         entry: python3 tools/lint/drift_guards.py
-        pass_filenames: false
-        always_run: true
-      - id: constant-parameters-report
-        name: "[report-only] constant parameters (a knob with one value is a constant)"
-        language: system
-        entry: python3 tools/lint/constant_parameters.py
-        pass_filenames: false
-        always_run: true
-      - id: work-codes-report
-        name: "[report-only] campaign work codes (the sweep's remaining inventory)"
-        language: system
-        entry: python3 tools/lint/work_codes.py
         pass_filenames: false
         always_run: true

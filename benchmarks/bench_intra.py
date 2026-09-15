@@ -10,7 +10,7 @@ the arithmetic or everything around it.
 THE CELLS AND THE STEP ARE THE REGISTRY'S. This file defines neither: the cells are
 `benchmarks/cells` records and the timed callable is the registered `intra_forward`
 bench, so a number here is commensurable with the same cell's number from the unit
-driver or from `tools/probe_cells.py`. What is added is arithmetic ON TOP of that
+driver or from `tools/compare.py`. What is added is arithmetic ON TOP of that
 measurement -- the issued MAC count is EXACT (the window's lower-triangular tile grid is
 `n(n+1)/2` of its `n = W/64` squared tiles), so the fraction is a fraction and not an
 estimate.

@@ -42,7 +42,6 @@ With `--timeline`, every rung also records its pipe timeline (`docs/internals/to
 tensor pipe's true utilization on silicon over full-occupancy samples, and its tensor series in 5 µs bins. A part
 then shows in the report both as a wall-time step and as the change in how the pipe was kept fed.
 
-The report lands in `<store>/ledgers/<utc>-<sha7>-compose.{json,md}` (the measurements store), and the dashboard is rendered
-after it (`tools/dashboard.py`, [dashboard.md](dashboard.md)). Builds run
+The report is stored through `rola_results` at `compose_ledger`, its markdown in the scratch directory. Builds run
 serially (the host's memory watchdog kills parallel ones). Every build is an iteration build and
 never ships.

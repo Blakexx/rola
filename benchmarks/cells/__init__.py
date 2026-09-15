@@ -4,8 +4,8 @@
 
 `carry_cells.json` holds the records; this module reads them, derives each cell's
 STATE DESCRIPTOR and LAUNCH SHAPE from its fields, realizes its routing draw, and builds
-`carry_call` -- one cell's WHOLE call. ONE definition, three readers: the oracle tier,
-`tools/probe_cells.py` and the benches all reach the kernel through it, so a cell's
+`carry_call` -- one cell's WHOLE call. ONE definition, two readers: the oracle tier
+and the benches both reach the kernel through it, so a cell's
 operands are the same tensors in a correctness run and in a measured one.
 
 The registry's other half is `layer.py` (`layer_cells.json`): a LAYER cell declares a
@@ -332,8 +332,8 @@ def carry_call(spec: CellSpec, bh: int = 1, device: str = "cuda"):
     two positional ones under ``routes`` and ``v``; the state planes and the page table
     are the CALLER's, because which backing a cell binds is what a caller varies.
 
-    THIS IS THE ONE BINDING. The oracle tier, the benches and `tools/probe_cells.py`
-    all reach the kernel through it, so a cell's operands are the same tensors in a
+    THIS IS THE ONE BINDING. The oracle tier and the benches
+    both reach the kernel through it, so a cell's operands are the same tensors in a
     correctness run and in a measured one -- a bench that packed its own would be
     measuring a second definition of the cell.
     """

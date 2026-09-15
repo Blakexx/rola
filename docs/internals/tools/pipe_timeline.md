@@ -58,6 +58,6 @@ The MMA-only composition holds its plateau through every MMA phase.
   Folding the samples on the window period is the finer view, not yet built.
 - The capture replays the kernel, so it costs several launches' time.
 
-**Where it runs.** `tools/build_ledger.py` runs it as the `timeline` step for every gate cell.
+**Where it runs.** rola-bench's measurement suite runs it as `carry.timeline` on every gate cell.
 `tools/compose_ledger.py --timeline` records every rung's true utilization, and a tensor series in 5 µs
 bins. Outputs are `<stem>.json` (series and summary) and `<stem>.html` (the chart).

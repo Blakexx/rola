@@ -554,7 +554,7 @@ schedule) is a defect in the suite and is fixed before its numbers are used agai
 system, we keep expanding it to add more metrics and data, and any time we find we need more info we
 add more profilers, metrics, etc. to the gate -- so that it becomes a decision tree: any time the
 kernel isn't working, go look at this metric, it deterministically tells you what is going on."
-Consequence: `tools/build_ledger.py` is that tree's trunk. Every number computed by hand in a debug
+Consequence: the measurement suite (rola-bench's `measure`) is that tree's trunk. Every number computed by hand in a debug
 session becomes a permanent step of it the same day; a node that cannot decide the question it was
 read for (two mechanisms fit the same numbers) is the signal to add the node that splits them, and
 until that node exists the question is OPEN, not answered by the likelier story.

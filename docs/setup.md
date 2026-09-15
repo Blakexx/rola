@@ -264,22 +264,15 @@ way it does on the bare host — the container adds no scheduling of its own. Ex
 ~3.6 min total on hardware comparable to this repo's dev box (`docs/testing.md`,
 measured 2026-08-06).
 
-## 6. Run the probe
+## 6. Run a comparison
 
 ```bash
-python tools/probe_cells.py \
-  --binary "worktree:$(pwd)" --out /tmp/probe.jsonl
+python tools/compare.py --cells flagship-alt-k4 --arm label:here,arm:carry_forward
 ```
 
-`tools/probe_cells.py` is the canonical K35 carry-family measurement harness
-(`tools/probe_cells.py`'s own module docstring) — it measures the default cell
-set (`dense`, `k16_w384`, `k16_w512_record`, `k4_w512_record`) against the
-binary named by `--binary`, interleaved A/B rounds under the shared GPU lock,
-and prints one row per cell. A cell whose declared arm this binary did not
-build is a refusal, not a silent fallback (its pre-flight arm resolution,
-same docstring) — which is the check this step is actually standing in for:
-that the container's compile produced a binary carrying the arms the probe
-expects to measure.
+`tools/compare.py` builds the arm through this checkout's runner and times it interleaved under the GPU and clock
+locks. A cell this binary does not carry is refused by name, not skipped — which is the check this step stands in for:
+that the container's compile produced a binary carrying the arms a comparison measures.
 
 ## What's in the image, and why
 
@@ -294,7 +287,7 @@ expects to measure.
 | `clangd`, `clang-tools-14` (clang-query) | apt | the editor/AST tooling briefs assume is present |
 | `universal-ctags` | apt | cross-referencing the `csrc/` tree |
 | `jq`, `fd` (via `fd-find`) | apt | the shell one-liners this repo's own docs use |
-| `hyperfine` | pinned GitHub release, sha256-verified | ad-hoc wall-clock comparisons outside `probe_cells.py`/`perf/` |
+| `hyperfine` | pinned GitHub release, sha256-verified | ad-hoc wall-clock comparisons outside `tools/compare.py` |
 | `ast-grep-cli`, `py-spy` | pipx (real PyPI packages) | structural code search; live Python profiling |
 | `difftastic` (`difft`) | pinned GitHub release, sha256-verified | structural diffs — **not** pipx: it has no PyPI package, verified at authoring time; installed the same way as `mold`/`hyperfine` instead of being forced through a tool that cannot actually install it |
 | `pre-commit` | pipx | the repo's lint/format hooks |

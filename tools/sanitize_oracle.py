@@ -23,8 +23,8 @@ Usage:
         [--timeout SECONDS]
 
 Invoked BARE: this script takes `gpu_lock()` itself, once, for the whole
-run, exactly the way `tools/probe_cells.py` already did before K46 and every
-other GPU entry point does now -- never wrap it in an external `flock` on the
+run, exactly the way every
+other GPU entry point does -- never wrap it in an external `flock` on the
 same lock path, which self-deadlocks (see `tools/gpu_lock.py`'s module
 docstring for the K38 incident this rule exists to prevent).
 

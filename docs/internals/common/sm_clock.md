@@ -1,7 +1,7 @@
 # The SM's effective clock, read off the device
 
 Mirrors `csrc/rola/src/common/sm_clock.cu` (`sm_clock_ghz`) and its use in
-`tools/probe_cells.py`.
+`tools/compare.py` and `benchmarks/bench/provider.py`.
 
 ## Why it exists
 
@@ -31,10 +31,9 @@ a warm-up, a median over reps and rounds, binaries interleaved in one run.
 for `spin_cycles` of its own cycles; CTA 0 reports its cycles against the global timer.
 The ratio is the effective clock during the spin, in GHz.
 
-`tools/probe_cells.py` reads the clock after the warm-up, right before the timed reps,
-where the binary carries the probe. Each round's row records `sm_ghz`; the printed row
-shows the rounds' range; the ledger row keeps `round_sm_ghz`. A binary from before the
-probe reports none and prints `GHz n/a`.
+`tools/compare.py` reads the clock before the first timed call and after the last and refuses a run
+whose second read is off the lock; rola's runner records the read taken when each arm was built
+(`sm_ghz_at_build`).
 
 THE LOCK SEAM (`tools/clock_lock.py`): how a clock is locked is the HOST's fact and lives
 outside the tree, in the dev config's `clock.json` (`tools/dev_config.py`) -- the target GHz and the lock and unlock

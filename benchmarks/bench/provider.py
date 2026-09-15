@@ -156,3 +156,30 @@ def _layer_fixture(spec):
     from benchmarks.cells.layer import build
 
     return build(spec)
+
+
+def oneshot_argv(cell: str, arm: str = "carry_forward") -> list[str]:
+    """One untimed launch of `arm` on `cell` by this checkout's runner, under this interpreter: what a profiler wraps.
+    The arm is built exactly as a comparison builds it, so what a profile counts is the launch a comparison times."""
+    return [sys.executable, str(Path(__file__).resolve()), "--oneshot", cell, arm]
+
+
+def _oneshot(cell: str, arm: str) -> None:
+    import torch
+
+    from benchmarks.cells.registry import CELLS
+
+    if cell not in CELLS:
+        raise SystemExit(f"{cell!r} is not a registered cell")
+    offered = arms(CELLS[cell][1])
+    if arm not in offered:
+        raise SystemExit(f"{cell}: this checkout runs no arm {arm}; it runs {sorted(offered)}")
+    offered[arm]().call()
+    torch.cuda.synchronize()
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4 or sys.argv[1] != "--oneshot":
+        raise SystemExit("usage: provider.py --oneshot CELL ARM")
+    sys.path[:0] = [str(CHECKOUT), str(CHECKOUT / "benchmarks")]
+    _oneshot(sys.argv[2], sys.argv[3])

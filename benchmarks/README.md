@@ -46,16 +46,6 @@ python tools/compare.py --cells flagship-alt-k4 --arm label:first,arm:carry_forw
 **`benchmarks/unit/` — the carry's part harness and its calibration** (`bench_carry_parts.py`,
 `bench_carry_calib.py`), gated against `bench/carry_model.py`'s budgets.
 
-**`tools/probe_cells.py` — the A/B orchestrator, and the only cross-binary instrument.**
-It defines no step, no cell and no shape: it runs a REGISTERED BENCH over REGISTERED
-CELLS on two binaries, each in its own worktree's venv, interleaved round by round, with
-a device-side symbol assert before it times anything and an optional `ncu` pass whose
-filter names the body. A bench that cannot be A/B'd through it is the defect — it means a
-second definition of a launch exists somewhere.
-
 **`benchmarks/bench_intra.py`** adds the ROOFLINE to the registered intra bench: the same
 cells and the same timed callable, with the device's own mma.sync ceiling beside them.
 
-**`benchmarks/bench_layer.py`, `bench_scaling.py` and `bench_paging.py`** are curve and
-attribution studies rather than gated cells — a length sweep against attention, and the
-residency question — and they state their own usage lines.

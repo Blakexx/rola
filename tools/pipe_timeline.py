@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import toolchains  # noqa: E402
 from rola_devtools import process  # noqa: E402
@@ -58,11 +59,11 @@ _INSTANCE = re.compile(r"(\d{15,}) \(\+\d+\): ([-\d.eE+]+)")
 
 
 def capture(cell: str, out: Path) -> Path:
-    """One launch of the cell through the probe worker under PM sampling; returns the report."""
-    import probe_cells
+    """One launch of the cell through rola's runner under PM sampling; returns the report."""
+    from bench.provider import oneshot_argv
 
     r = process.run([NCU, "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1", "--section",
-                     "PmSampling", "-f", "-o", str(out), *probe_cells.oneshot_argv(cell)], cwd=ROOT, timeout=3600)
+                     "PmSampling", "-f", "-o", str(out), *oneshot_argv(cell)], cwd=ROOT, timeout=3600)
     rep = out.with_suffix(".ncu-rep") if out.suffix != ".ncu-rep" else out
     if r.returncode or not rep.exists():
         raise SystemExit(f"pipe_timeline: the capture failed:\n{(r.stdout + r.stderr)[-1500:]}")

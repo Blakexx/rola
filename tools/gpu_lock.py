@@ -4,7 +4,7 @@
 """ONE gpu_lock() every GPU-touching tool takes ITSELF (docs/KERNEL_STANDARDS.md
 §14/§18, "why even have agents manage locks").
 
-**BEFORE THIS FILE.** The GPU lock was half-and-half: `tools/probe_cells.py` and
+**BEFORE THIS FILE.** The GPU lock was half-and-half: the probe harness and
 `tools/sanitize_oracle.py`'s design took the GPU lock file internally, but pytest
 and the `benchmarks/bench` harness relied on the CALLER remembering to wrap the
 command with an EXTERNAL `flock` on that same lock path. Two incidents came out of
@@ -15,7 +15,7 @@ forever); and every brief had to restate the wrapping correctly by hand, which i
 rule a human has to remember rather than a rule a tool enforces.
 
 **THE FIX.** Every GPU entry point calls `gpu_lock()` itself -- pytest (a session
-fixture, `tests/conftest.py`), `tools/probe_cells.py`, `tools/sanitize_oracle.py`,
+fixture, `tests/conftest.py`), `tools/sanitize_oracle.py`,
 `tools/compare.py`. Nothing is invoked wrapped in an external `flock`
 again; the word leaves the command line (a lint rule in `tools/lint/lint_standards.py`
 finds it if it comes back).
@@ -40,7 +40,7 @@ so a container and the bare host serialize against the same lock without a new
 directory convention to keep in sync across both.
 
 **TWO MODES (LOCKS brief, 2026-08-29).** Blake: "allow some controlled level of
-parallelism" -- MEASURED work (`tools/probe_cells.py`, `ncu`,
+parallelism" -- MEASURED work (`ncu`,
 `tools/compare.py`) needs the device to itself, nothing else touching it while a number
 is read; CORRECTNESS work (the oracle/integration/unit-cuda pytest tiers,
 `tools/sanitize_oracle.py`) only needs the device not to be mid-measurement, and two
