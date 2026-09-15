@@ -8,8 +8,8 @@ two kernels run as one call and the whole answer is compared against the recurre
 itself, so a window-grid disagreement, a double-counted diagonal or a dropped tile pair
 has nowhere to hide.
 
-RED BY DESIGN (card `development/queue/C_CLEAN_SLATE.md`, "TEST-DRIVEN"): the carry leg
-has no implementation on this line. The window is no longer a cell's to name -- the axis law made ``W`` a kernel constant (`rola.ops.carry.WINDOW`) and the intra family's
+RED BY DESIGN (card `development/queue/C_CLEAN_SLATE.md`, "TEST-DRIVEN"): a cell whose
+carry arm this line does not build yet fails, by name. The window is no longer a cell's to name -- the axis law made ``W`` a kernel constant (`rola.ops.carry.WINDOW`) and the intra family's
 arm must be built at the same number, because the two kernels run ONE grid. Neither is
 ``(k, m)``: the box is derived at launch from the descriptor and the launch shape.
 
@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-from gen_shards import CARRY_ARMS  # tools/ is on the path (the root conftest)
 
 from benchmarks.cells import carry_cells, conservative_activity, liveness_words, realize
 from rola.ops import carry as carry_ops
@@ -31,7 +30,7 @@ from rola.ops import intra as intra_ops
 from rola.ops.constants import READOUT_EPS
 from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal
-from rola.ops.prefill import WINDOW, prefill
+from rola.ops.prefill import prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
 from tests.oracle.fixtures import canonical_from_plane, relative
 from tests.oracle.tolerances import BF16_RTOL
@@ -44,15 +43,12 @@ INTRA_TOPOLOGY = {2: intra_ops.LEVEL_WIDTH, 3: intra_ops.LEVEL_WIDTH_DEEP3,
                   4: intra_ops.LEVEL_WIDTH_DEEP4}
 
 #: The registry's cells the combined operator can run: the dense backing, a fresh state,
-#: the shipped value width, a topology both families carry, a carry arm this tree declares
-#: (`tools/manifests/shipped_set.json`; no build of it carries another) and whole windows
-#: (the intra kernel's tile grid).
+#: the shipped value width, and a topology both families carry. A cell whose carry arm no
+#: build carries yet, or whose window is partial, stays selected and red (TEST-DRIVEN).
 CELLS = tuple(c for c in carry_cells("oracle")
               if c.backing == "dense" and c.state == "fresh" and c.dv == 64
               and len(set(c.widths)) == 1
-              and INTRA_TOPOLOGY.get(c.D) == c.widths[0]
-              and c.arm in {tuple(row) for row in CARRY_ARMS}
-              and c.tokens % WINDOW == 0)
+              and INTRA_TOPOLOGY.get(c.D) == c.widths[0])
 IDS = [c.name for c in CELLS]
 
 

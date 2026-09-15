@@ -195,6 +195,10 @@ def prefill(read_levels, write_levels, g_write, v, widths, *, modes, sread, swri
     if len(modes) != D:
         raise ValueError(f"{D} levels want {D} support modes; got {len(modes)}")
     shipped = _intra_level_width(D)
+    if shipped is None:
+        raise ValueError(
+            f"this build carries no intra arm at depth {D} and the {WINDOW}-token window, so "
+            f"the combined prefill has no kernel for widths {tuple(widths)}.")
     if len(set(widths)) != 1 or widths[0] != shipped:
         raise ValueError(
             f"the combined prefill is built at the intra kernel's one uniform level width "

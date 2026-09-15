@@ -119,9 +119,9 @@ def test_prefill_padding_is_the_ruled_mechanism_not_an_approximation_of_it():
 def test_the_api_boundary_pads_and_the_kernel_boundary_refuses():
     """(i) API: `rola.ops.prefill`'s `_descriptor`/`_pack_operands` -- the operand-
     packing seam onto the carry launch surface -- take a genuinely unpadded
-    shape ((31, 45), d_v=8) without ever raising a SHAPE error: they pad, and the only
-    failure `carry_forward` can reach past them is the HONEST ABSENCE of the carry
-    kernel body (`C_CLEAN_SLATE`: carry is not built on this line). (ii) KERNEL: the
+    shape ((31, 45), d_v=8) without ever raising a SHAPE error: they pad, and the kernel
+    takes the padded call. Red while this line builds no arm at the padded ``DV``
+    (`C_CLEAN_SLATE`, TEST-DRIVEN): the refusal names the arm, never a shape. (ii) KERNEL: the
     descriptor the state addresses bytes with (`rola._state.StateFormat`) refuses that
     same unpadded shape directly, by name -- the boundary a real kernel launch sits
     behind.
@@ -140,8 +140,7 @@ def test_the_api_boundary_pads_and_the_kernel_boundary_refuses():
 
     #: (i) THE API PADS: no ValueError about shape reaches the caller. `_pack_operands`
     #: widens (31, 45) to (32, 64) and d_v=8 to the smallest shipped DV (32) before the
-    #: call ever names `carry_forward`, so the only failure past it is the HONEST
-    #: ABSENCE of the carry kernel body -- not a shape excuse.
+    #: call ever names `carry_forward`, which runs it.
     pread, pwrite, gwrite, v_bh, v_bthd = _pack_operands(read_levels, write_levels, g_write, v)
     bh, dv = v_bh.shape[0], v_bh.shape[2]
     descriptor = _descriptor(widths, dv, bh)
@@ -152,9 +151,8 @@ def test_the_api_boundary_pads_and_the_kernel_boundary_refuses():
     liveness = _liveness_words(pread, pwrite, descriptor)
     activity = _conservative_activity(descriptor, bh, v_bh.device)
     routes = carry_ops.RoutePlanes(read=pread, write=pwrite, gain=gwrite)
-    with pytest.raises(RuntimeError, match="no implementation on this line"):
-        carry_ops.carry_forward(routes, v_bh, descriptor=descriptor, geometry=geometry,
-                                liveness=liveness, activity=activity, launch=launch)
+    carry_ops.carry_forward(routes, v_bh, descriptor=descriptor, geometry=geometry,
+                            liveness=liveness, activity=activity, launch=launch)
 
     #: (ii) THE KERNEL REFUSES: the unpadded widths, presented directly to the
     #: descriptor a real launch would be checked against, are refused by name.

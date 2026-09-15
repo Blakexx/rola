@@ -1,4 +1,4 @@
-"""The stats pass emits the EXACT atom-grain write bitmap.
+"""The liveness pass's atom fold is the EXACT atom-grain write bitmap.
 
 This is the gate the paging work's first stage exists to pass, and it is the one
 that decides the shape of everything after it. Residency is planned from this
@@ -59,13 +59,12 @@ pytestmark = [
     pytest.mark.skipif(not torch.cuda.is_available(), reason="the stats pass is a CUDA kernel"),
 ]
 
-#: The built stats arms: `(D, B)`, the projection of the chunk arm list that
-#: `tools/gen_shards.py`'s `chunk_atom_arms()` keys the bitmap's reduction to --
-#: residency is BC-free, so the list is shorter than the consumer's. Depths 2-4 are the sweep
-#: the design asks for; the two `D = 1` arms are the flat-routing baselines,
-#: carried because they are built and because `D = 1` is the shape with no upper
-#: prefix at all -- the reduction's degenerate carve.
-_ARMS = ((1, 64), (1, 256), (2, 8), (2, 16), (2, 64), (3, 16), (4, 8))
+#: The topologies checked, `(D, B)` at one uniform width. The liveness pass takes `D` and
+#: `B_l` at runtime, so every LAWFUL topology is one (`B_l` a power of two at or above 16,
+#: KERNEL_STANDARDS §R13; the seam refuses a narrower level by name). Depths 2-4 are the
+#: sweep the design asks for; the two `D = 1` rows are the flat-routing baselines, the shape
+#: with no upper prefix at all -- the reduction's degenerate carve.
+_ARMS = ((1, 64), (1, 256), (2, 16), (2, 64), (3, 16), (4, 16))
 
 #: The support sweep. `1.0` is the dense limit, where every atom is live and the
 #: reduction's early exit is the path taken.
