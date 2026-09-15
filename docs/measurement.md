@@ -31,6 +31,11 @@ its round, rep and position; which entry is the reference is chosen when the sam
 taken. An entry that cannot set up (a kernel this binary lacks) is recorded in the session and the rest are timed; two
 stopwatches in one session fail it.
 
+A NULL GATE (`measure_null_gate`) times one registration's entries against copies of themselves in second workers of the
+same checkout: where the per-rep ratios of the two copies put one outside their interquartile range, a worker's bias is
+found, and a ratio between two checkouts' workers on that cell is read beside it. rola-bench's root declares one over
+the target's `carry_forward`.
+
 Call by call, because drift on this host is the size of the effects measured: its sustained clock has two states ~17 %
 apart with a minutes-long time constant, and the same binary in both arms once read 0.864 vs 0.739 ms under a fixed
 order. Blocks let a clock change land between arms, and a fixed order charges drift to one arm. A timing only compares
@@ -90,46 +95,49 @@ entries that name two.
 
 ## The flagging rule: three gates, all must fire
 
-`rola_devtools.verdict.classify` judges samples; which stored samples it is given is the store's query (below).
+`rola_devtools.verdict` judges a candidate against a reference timed in the same sessions; which stored sessions and
+which reference it is given is the store's query (below). Timing compares only within the session that interleaved it,
+so every gate reads within-session quantities: `session(candidate, reference)` takes the two members' samples by round
+and gives, per round, each member's median, their RATIO and their DIFFERENCE.
 
-1. **Effect size** — `threshold_ms`: `median + 3·IQR/1.349` over the baseline's session medians. `ALARM_SIGMA = 3.0` is
-   the only free choice, and it is stated as a false-alarm rate (~0.1 % one-sided per cell per run), never as a
-   percentage of anything.
-2. **Significance** — `paired_verdict`: an exact Wilcoxon signed-rank test over the judged session's per-round
-   differences, candidate minus reference, at `ALPHA = 0.01`. **The round floor is derived, not chosen**: the smallest
-   two-sided exact p reachable with `n` non-zero differences is `2/2ⁿ`, so below `ceil(log2(2/ALPHA)) = 8` rounds no
-   outcome can be significant and the test is undefined rather than underpowered. Sessions run 8; fewer report
-   `insufficient_data`.
-3. **Persistence** — `classify_flags`: a regression needs a trailing run of at least two violations. One thermally
-   unlucky run on a box with logged power capping is not a kernel change. A run of three that has since healed is
-   `suspicious`, which is not a merge blocker and is not silence either.
+1. **Effect size** — `ratio_limit`: the session's median ratio over `1 + 3·IQR/1.349` of its own per-round ratios.
+   `ALARM_SIGMA = 3.0` is the only free choice, and it is stated as a false-alarm rate (~0.1 % one-sided per cell per
+   session), never as a percentage of anything.
+2. **Significance** — `paired_verdict`: an exact Wilcoxon signed-rank test over the session's per-round differences,
+   candidate minus reference, at `ALPHA = 0.01`. **The round floor is derived, not chosen**: the smallest two-sided
+   exact p reachable with `n` non-zero differences is `2/2ⁿ`, so below `ceil(log2(2/ALPHA)) = 8` rounds no outcome can
+   be significant and the test is undefined rather than underpowered. Sessions run 8; fewer report `insufficient_data`.
+3. **Persistence** — `persistence`: a regression needs a trailing run of at least two sessions over their own limits, at
+   the same code on both sides. One thermally unlucky session on a box with logged power capping is not a kernel change.
+   A run of two that has since healed is `suspicious`, which is not a merge blocker and is not silence either.
 
 `insufficient_data` is a distinct answer from `no_regression` everywhere: the first says the design cannot decide, the
 second says it decided.
 
-**THE SPREAD IS THE SPREAD OF THE QUANTITY THE COMPARISON CROSSES — a measured correction, not a preference.** A
-baseline recorded from one session's reps, on the chunk arm (tag `baseline/pre-k31`), put 17 of 44 arms over their
-limit on the same binary a minute later: a within-session spread is reps taken back to back on one warm fixture, often
-exactly zero, while a comparison against a baseline crosses processes (the fixture rebuilt, the allocator cold, the
-launch order different). The threshold is therefore derived from session medians, and a baseline needs three sessions
-(`MIN_BASELINE`).
+**THE SPREAD IS THE SPREAD OF THE QUANTITY JUDGED — measured corrections, not preferences.** A baseline once recorded
+from one session's reps, on the chunk arm (tag `baseline/pre-k31`), put 17 of 44 arms over their limit on the same
+binary a minute later: reps taken back to back on one warm fixture spread less than a comparison that crosses processes.
+The verdict then derived its limit from a reference's medians across sessions, which carried the host's drift instead
+(two clock states ~17 % apart). What is judged now is the paired ratio inside one session, so the limit is that ratio's
+own round-to-round spread, drift both members share cancels in it, and the one thing the ratio crosses that its spread
+cannot see -- two worker processes -- is the null gate's.
 
-**AND NEVER A SPREAD SMALLER THAN THE STOPWATCH RESOLVES.** That correction left two arms over their limit on an
-unchanged binary, both with a recorded spread of exactly `0.0000 ms`: the device-event timer quantizes, sessions of a
-small kernel land on the same value, and the limit sits at the median the next tick exceeds. The spread used is
-`max(IQR, resolution)`, where the resolution is the smallest gap between the distinct values the judged samples hold —
-measured on every judgement, because it is a property of the stopwatch and the box — and the verdict says when it bound
-(`floored_at_resolution`).
+**AND NEVER A SPREAD SMALLER THAN THE STOPWATCH RESOLVES.** Two arms once sat over their limit on an unchanged binary,
+both with a recorded spread of exactly `0.0000 ms`: the device-event timer quantizes, a small kernel's calls land on the
+same value, and the limit sits at the median the next tick exceeds. The spread used is `max(IQR, resolution)`, where the
+resolution is the smallest gap between the distinct values one member's samples hold, relative to the reference's
+median -- measured on every judgement, because it is a property of the stopwatch and the box -- and the verdict says
+when it bound (`floored_at_resolution`).
 
-## Which samples are a baseline
+## Which samples are judged
 
-    python -m rola_results verdict [--cell C] [--subject S] [--baseline LABEL] [--json]
+    python -m rola_results verdict --reference LABEL [--candidate LABEL] [--cell C] [--arm A] [--json]
 
-reads the suite's timing sessions (the `session_arms` view) per unit: a cell, a subject, a call count, both arms' names,
-and the reference's device and torch. For the newest session of each candidate commit, the baseline is the reference
-arm's samples over that unit's newest ten sessions; the runs are the candidate's sessions at its commit, oldest first;
-the paired differences are the judged session's per-round medians. Nothing is stored: a verdict is a reading of the
-records, taken again whenever it is asked for. The suite prints them at the end of every run that times a session.
+reads the stored timing sessions (the `timing_members` and `timing_samples` views). In every session that timed the
+reference label's arm on a cell, each other label's member of that arm on that cell is paired with it and judged inside
+the session. A unit is the arm, the cell, the two labels and the code each ran (commit and tracked diff); its sessions,
+oldest first, are the runs, and the newest is judged. Nothing is stored: a verdict is a reading of the records, taken
+again whenever it is asked for. `python -m rola_results dashboard --out FILE --reference LABEL` is one run as a page.
 
 ## SASS
 
@@ -180,7 +188,7 @@ and a timing only compares within the session that interleaved it.
 |---|---|---|---|
 | `rola/<instrument>` | a store target of `declare.py` or rola-bench's root | the instrument target's semantics: its tool and arguments, code digest, the cells, the binary's and environment's outputs | the instrument's JSON per cell, with each cell's failure |
 | `timing/session`, `timing/memory` | a store target over `measure_timing` / `measure_memory` | the session's semantics: every registration's executor, cells, code and binary, the timing parameters | every sample in order with its round, rep and position, each entry's status, the clock reads; each entry's peak memory |
-| `suite/<module>` | rola-bench's measurement suite | the module, unit, identities and dependencies | the instrument's raw JSON |
+| `timing/null` | a store target over `measure_null_gate` (rola-bench's root) | the gate's semantics: the registration, its cells, the timing parameters | the session of the two copies and, per cell, whether they agree |
 | `calibration` | `benchmarks/unit/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline`, `pipe_timeline.scale` | `tools/pipe_timeline.py` | the cell, binary and scale; a calibration's composition | the series and summary; the plateau |
 | `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |

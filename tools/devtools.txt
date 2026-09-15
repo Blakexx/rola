@@ -2,4 +2,4 @@
 # public mirror's export, the central cells, the declared build system and its timing system), at the public commit this
 # tree is tested with. CI and the dev image's bootstrap install it from here; a dev machine links its checkout instead
 # (`python tools/dev.py init`).
-rola-devtools @ git+https://github.com/Blakexx/rola-devtools@882b350718aad246514d524a2f48ad2ba75afc98
+rola-devtools @ git+https://github.com/Blakexx/rola-devtools@eebcf9515fd69fc2b2cc8bb097172e018b9a550d

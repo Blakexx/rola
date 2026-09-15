@@ -60,9 +60,9 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
     "workspace": {
         "suite": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-bench"),
-                     "the rola-bench checkout whose measurement suite (rola_bench/measure) runs this tree's instruments"),
+                     "the rola-bench checkout whose measurement suite (its root declare.py) runs this tree's declarations"),
         "devtools": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-devtools"),
-                        "the rola-devtools checkout (the public mirror's export, the interleaving driver), linked into "
+                        "the rola-devtools checkout (the public mirror's export, the declared build system), linked into "
                         "every venv that runs here"),
         "worktrees": Key("path", str(ROOT.parent / "worktrees") if ROOT.parent.name != "worktrees" else str(ROOT.parent),
                          "the one folder every worktree and its venv live in"),

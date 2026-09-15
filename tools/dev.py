@@ -333,8 +333,9 @@ def cmd_check(a) -> int:
     ghz = dev_config.get("clock.ghz")
     row(True, f"clock: {'locks at ' + str(ghz) + ' GHz' if ghz else 'unlocked (rows carry their measured clock)'}")
     suite = Path(dev_config.get("workspace.suite"))
-    row((suite / "rola_bench" / "measure" / "__main__.py").exists(), f"workspace.suite holds the measurement suite: {suite}",
-        "point workspace.suite at a rola-bench checkout carrying rola_bench/measure")
+    row((suite / "declare.py").is_file() and (suite / "rola_bench").is_dir(),
+        f"workspace.suite holds the measurement suite's root: {suite}",
+        "point workspace.suite at a rola-bench checkout carrying its root declare.py")
     row(Path(dev_config.get("workspace.worktrees")).is_dir(), f"workspace.worktrees: {dev_config.get('workspace.worktrees')}")
     root = Path(dev_config.get("store.root"))
     row((root / "rola_results" / "store.py").is_file(), f"store.root is a rola-results checkout: {root}",

@@ -202,10 +202,9 @@ tolerance claims auditable rather than asserted.
 
 ## Performance
 
-The methodology —
-interleaved paired arms, median of per-pair ratios, IQR reported alongside — is
-documented in [`docs/measurement.md`](docs/measurement.md), which also states what
-the successor harness owes.
+The methodology — checkouts' arms interleaved call by call in one clock-locked session,
+raw samples stored, each candidate judged against a reference inside the session — is
+documented in [`docs/measurement.md`](docs/measurement.md).
 
 ## Evidence
 
@@ -256,7 +255,7 @@ CI auto-commit. See [`docs/bringup.md`](docs/bringup.md).
 | `rola-zoology` | Synthetic capability evaluations (MQAR and friends) |
 | `rola-bench` | The benchmarks and the local measurement suite |
 | `rola-results` | The measurement records every reported number is read from |
-| `rola-devtools` | The development tools every RoLA repository shares: the public mirror's export, the interleaving driver |
+| `rola-devtools` | The development tools every RoLA repository shares: the public mirror's export, the central cells, the declared build system and its timing system |
 | `rola-paper` | The paper source |
 
 Each is developed in a private `-dev` repository and published here by a mirror job: a push to the development

@@ -24,7 +24,7 @@ import torch
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from benchmarks.cells import CarryCell, descriptor, launch
+from benchmarks.cells import CarryCell, descriptor, launch, level_modes
 from benchmarks.cells import carry_cells as registry_cells
 from rola.ops import carry as carry_ops
 from tests.oracle.test_carry_vs_oracle import check, run
@@ -37,8 +37,13 @@ pytestmark = [
 #: THE SHAPES THE REGISTRY DECLARES, read off it rather than restated: a topology or a
 #: value width added there is picked up here without editing this file (the same "read
 #: from the declaration, don't mirror it" discipline the census gates apply).
-_TOPOLOGIES = sorted({(cell.widths, cell.tokens) for cell in registry_cells(tier="oracle")})
-_DV = sorted({cell.dv for cell in registry_cells(tier="oracle")})
+_SHAPES = sorted({(cell.widths, cell.tokens, cell.dv) for cell in registry_cells(tier="oracle")})
+#: THE SHAPES A SPARSE DECLARATION IS DRAWN ON, read off the registry the same way: those where one of its cells
+#: declares a sparse side. A shape's value width sets the owner box (`box_leaves`), and the addressing block refuses a box
+#: wider than the tree and a declaration on a level narrower than the box's span; which shapes those are belongs to the
+#: kernel and the registry, never to a copy of the rule here, so widths, tokens and value width are drawn together.
+_SPARSE_SHAPES = sorted({(cell.widths, cell.tokens, cell.dv) for cell in registry_cells(tier="oracle")
+                         if any(read or write for read, write in cell.declared_sparsity())})
 
 
 @st.composite
@@ -49,9 +54,8 @@ def drawn_cells(draw) -> CarryCell:
     same descriptor and launch derivation -- so a shrunk failure is reportable BY NAME
     and can be pasted into rola-devtools' `carry.json` as a fixed cell (with the regime its draw proves).
     """
-    widths, tokens = draw(st.sampled_from(_TOPOLOGIES))
-    dv = draw(st.sampled_from(_DV))
-    k_tok = draw(st.sampled_from([2, 4, 8, 16, None]))
+    widths, tokens, dv = draw(st.sampled_from(_SHAPES))
+    k_tok = draw(st.sampled_from([2, 4, 8, 16, None]) if (widths, tokens, dv) in _SPARSE_SHAPES else st.none())
     seed = draw(st.integers(min_value=0, max_value=2 ** 16))
     #: `cohort` must divide the length exactly (`clustered`'s reshape) and is only
     #: meaningful once `k_tok` narrows the support at all.
@@ -79,4 +83,4 @@ def test_a_drawn_cell_is_a_lawful_shape(spec):
     descriptor, launch shape or geometry block is refused would be exercising the
     surface's refusals, which is `tests/unit/test_carry_surface.py`'s claim, not this
     file's."""
-    carry_ops.geometry_block(descriptor(spec), launch())
+    carry_ops.geometry_block(descriptor(spec), launch(), level_modes(spec))
