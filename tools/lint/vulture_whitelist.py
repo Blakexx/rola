@@ -43,6 +43,18 @@ class _Whitelist:
     pytest_addoption = None
     pytest_configure = None
 
+    # rola_devtools.graph UNITS: the engine calls a unit's phases (`setup`, `execute`, `post`) and reads `timed` by
+    # name, builds a unit from its `module:Class` string (`benchmarks/graph.py`'s `Memory`, `Timeline`), and the graph
+    # command line loads `benchmarks.graph:hold` from its `--hold` string.
+    setup = None
+    execute = None
+    post = None
+    timed = None
+    hold = None
+    Memory = None
+    Timeline = None
+
 
 _ = _Whitelist()
-_referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure)  # ruff B018: a bare attribute is "useless"
+_referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure,  # ruff B018: a bare attribute is "useless"
+               _.setup, _.execute, _.post, _.timed, _.hold, _.Memory, _.Timeline)
