@@ -5,9 +5,9 @@
     python -m rola_devtools.build plan declare.py:all
     python -m rola_devtools.build run  declare.py:all --arg cells=flagship-dense,flagship-alt-k4
 
-`declare(g, env, cells=..., timing=...)` declares one checkout's targets under the graph's scope and returns them, so a
-root elsewhere (rola-bench's) loads this file from each checkout it measures, calls it per checkout with one shared
-timing server, and composes its own sessions. `root(g, **args)` is rola measuring itself: this checkout, its own server,
+`declare(g, env, cells=..., timing=...)` declares one checkout's targets under the graph's scope and returns them (the
+timing registrations by arm name), so a root elsewhere (rola-bench's) loads this file from each checkout it measures,
+calls it per checkout with one shared timing server, and composes its own sessions. `root(g, **args)` is rola measuring itself: this checkout, its own server,
 one session and one memory pass over the cells, every result stored.
 
 Per checkout: `binary` (the gated build, held on every host slot, cached while its binary stands), `environment` (the
@@ -81,7 +81,7 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
                     verify=EXECUTORS + "binary_present", code=_code("setup.py", BUILD_DATA))
     environment = g.node("environment", executor=EXECUTORS + "probe_environment", env=env, cache=False)
     facts = {"binary": binary, "environment": environment}
-    out = {"binary": binary, "environment": environment, "instruments": {}, "entries": [], "clock": None}
+    out = {"binary": binary, "environment": environment, "instruments": {}, "entries": {}, "clock": None}
     for name in instruments:
         tool, args, per_cell, holds, data = INSTRUMENTS[name]
         if per_cell and not carry:
@@ -94,8 +94,8 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
         return out
     timed = _code("benchmarks/executors.py", ["benchmarks/bench"])
     for arm in CARRY_ARMS if carry else ():
-        out["entries"].append(register_timing(g, arm, server=timing, env=env, executor=EXECUTORS + "timed", cells=carry,
-                                              params={"arm": arm}, deps=facts, code=timed))
+        out["entries"][arm] = register_timing(g, arm, server=timing, env=env, executor=EXECUTORS + "timed", cells=carry,
+                                              params={"arm": arm}, deps=facts, code=timed)
     constructions = load(Path(env.cwd) / "benchmarks" / "cells" / "layer.py")["CONSTRUCTIONS"]
     for construction in constructions.values():
         takes = [c for c in layer if c in construction.cells]
@@ -103,8 +103,8 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
             wanted = [c for c in takes if arm != "decode_step" or central().cell(c)["params"]["decode_steps"] > 0]
             if wanted:
                 name = f"{arm}@layer={construction.name}"
-                out["entries"].append(register_timing(g, name, server=timing, env=env, executor=EXECUTORS + "timed",
-                                                      cells=wanted, params={"arm": name}, deps=facts, code=timed))
+                out["entries"][name] = register_timing(g, name, server=timing, env=env, executor=EXECUTORS + "timed",
+                                                       cells=wanted, params={"arm": name}, deps=facts, code=timed)
     out["clock"] = register_clock_reader(g, "clock", server=timing, env=env, executor=EXECUTORS + "read_clock", deps=facts,
                                          code=_code("benchmarks/executors.py"))
     return out
@@ -119,9 +119,9 @@ def root(g, python: str = sys.executable, label: str = "rola", cells: str = "fla
     root_dir = store_root or None
     stores = [store(g, f"store/{name}", source=target, location=f"rola/{name}", cache=target.cache, root=root_dir)
               for name, target in mine["instruments"].items()]
-    session = measure_timing(g, "session", server=server, entries=mine["entries"], clock=mine["clock"], cells=names,
-                             rounds=int(rounds), reps=int(reps))
-    memory = measure_memory(g, "memory", server=server, entries=mine["entries"], cells=names)
+    session = measure_timing(g, "session", server=server, entries=list(mine["entries"].values()), clock=mine["clock"],
+                             cells=names, rounds=int(rounds), reps=int(reps))
+    memory = measure_memory(g, "memory", server=server, entries=list(mine["entries"].values()), cells=names)
     stores += [store(g, "store/session", source=session, location="timing/session", root=root_dir),
                store(g, "store/memory", source=memory, location="timing/memory", root=root_dir)]
     stop = stop_timing_server(g, server=server, after=[session, memory, *stores])
