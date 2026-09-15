@@ -24,7 +24,8 @@ incident-derived). Read §19–§21 before touching a kernel:
   comments are decl blocks, prose goes to `docs/internals/`; oracle = truth (`tests/oracle/`).
 
 ## The instruments
-- Perf: `tools/compare.py` (locked clock, interleaved arms on a point's cells); attribution:
+- Perf: `python -m rola_devtools.build run declare.py:all` (this checkout's declared measurement: its instruments and one
+  clock-locked interleaved timing session on the cells, `docs/measurement.md`); attribution:
   `tools/region_ledger.py --csv <ncu SourceCounters> --so <.so> --source <kernel.cuh> --budget tools/budgets/<k>.json`.
 - Correctness: `tests/oracle/test_carry_vs_oracle.py` (scoped runs only; never a bare `tests/`).
 - Build: `python -m pip install -e . --no-build-isolation` with `ROLA_CUDA_ARCHS`; the machine is `tools/dev.py check`

@@ -1,4 +1,5 @@
 # rola-devtools, the development tools every RoLA repository shares (the dev config reader, the machine's locks, the
-# public mirror's export, the measurement service), at the public commit this tree is tested with. CI and the dev image's
-# bootstrap install it from here; a dev machine links its checkout instead (`python tools/dev.py init`).
-rola-devtools @ git+https://github.com/Blakexx/rola-devtools@9dcb79c57452bf481dc6737088182fb25aa145cd
+# public mirror's export, the central cells, the declared build system and its timing system), at the public commit this
+# tree is tested with. CI and the dev image's bootstrap install it from here; a dev machine links its checkout instead
+# (`python tools/dev.py init`).
+rola-devtools @ git+https://github.com/Blakexx/rola-devtools@882b350718aad246514d524a2f48ad2ba75afc98

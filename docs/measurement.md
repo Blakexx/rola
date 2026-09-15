@@ -5,54 +5,58 @@ stored with its provenance. This document is what that sentence means.
 
 | layer | where | answers |
 |---|---|---|
-| cells and points | rola-devtools' central registry `rola_devtools.cells` (rola's reading: `benchmarks/cells/`), other registries' points | WHAT is measured: a cell is a data provider and its parameters, named once; a point groups cells by runner and states what they hold equal |
-| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, each arm's dials, and which cells this binary refuses |
-| method | rola-devtools' `rola_devtools.interleave`, run by `tools/compare.py` | HOW: interleaved call by call, paired within a rep |
-| preconditions | `tools/compare.py`, `bench/provider.py` | what the box and the binary must be first |
+| cells | rola-devtools' central registry `rola_devtools.cells` (rola's reading: `benchmarks/cells/`) | WHAT is measured: an input, named once for every package, with its draw, seed and proven regime |
+| subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, each arm's dials, its untimed reset, and which cells this binary cannot run |
+| declarations | `declare.py` (this checkout's targets), rola-bench's `declare.py` (checkouts composed) | WHAT RUNS: the build, the instruments, the timing registrations and sessions, the stores, as targets of `rola_devtools.build` |
+| method | rola-devtools' `rola_devtools.timing` (`measure_timing`) | HOW: interleaved call by call, one call at a time, in a fresh random order each rep |
+| preconditions | the targets' requirements (`rola_devtools.build.resources`), `bench/provider.py` | what the box and the binary must be first |
 | statistics | rola-devtools' `rola_devtools.verdict` | whether a difference is real |
 | record | `rola_results` (the measurements store) | where a number lives afterwards, and which stored samples are a baseline |
 
-The benchmark repository's suite (rola-bench, `rola_bench/measure`) runs this tree's measurement registry
-(`benchmarks/registry.py`) through rola-devtools' measurement service (`rola_devtools.measure`): the same arms
-(`bench/provider.py`), interleaved call by call in sessions with the same floor, odd reps and one stopwatch, under the
-same GPU and clock locks; `python -m rola_devtools.measure run benchmarks.registry:registry` runs it from this checkout.
+rola measures itself with `python -m rola_devtools.build run declare.py:all`; rola-bench's root loads this file from each
+checkout it compares, declares every checkout's targets beside its attention reference, and times them in shared
+sessions. Both are one method: a number taken either way is the same measurement.
 
 ## The method
 
-`tools/compare.py` (`docs/internals/tools/compare.md`) runs the interleaving driver over arms of rola checkouts and of
-other libraries on the cells of one point: every arm runs on every cell the point sends its runner, a row is one arm on
-one cell. Each arm environment gets one worker process; every row is warmed past the driver's floor of 10 calls; then
-every rep of every round calls every row once, in a fresh random order, and each sample is one call on the arm's own
-stopwatch. Reps are odd, so a round's median is one of its samples, and a paired ratio is taken within a rep and within a
-cell, so drift slower than a rep is common to both rows. The driver refuses a warmup under the floor, an
-even rep count, and two stopwatches in one comparison.
+A session is a `measure_timing` target (`rola_devtools.timing`): the timing entries it depends on -- a checkout's arm on
+a central cell, rola's `carry_forward` or rola-bench's `flash` -- are set up in their checkouts' worker processes behind a
+barrier (nothing is timed until every entry has set up), each warmed past the floor of 10 calls, and then every rep of
+every round calls every entry once, in a fresh random order, one call at a time: the next call is sent only when the
+last has replied. Each sample is one launch on the entry's own stopwatch, taken inside its worker, so the pipe between
+processes is never in a sample; an entry whose launch changes what its next call reads (a carried state, a decode step)
+is reset to exactly what its first call saw before every call, untimed, so every call does the same work on the same
+data. Reps are odd, so a round's median is one of its samples. The session keeps every sample in the order taken, with
+its round, rep and position; which entry is the reference is chosen when the samples are read, never when they are
+taken. An entry that cannot set up (a kernel this binary lacks) is recorded in the session and the rest are timed; two
+stopwatches in one session fail it.
 
 Call by call, because drift on this host is the size of the effects measured: its sustained clock has two states ~17 %
 apart with a minutes-long time constant, and the same binary in both arms once read 0.864 vs 0.739 ms under a fixed
-order. Blocks let a clock change land between arms, and a fixed order charges drift to one arm. The null gate (one arm in
-two workers, rola-devtools' `tests/test_interleave.py`) is the check that the method adds no ratio of its own.
+order. Blocks let a clock change land between arms, and a fixed order charges drift to one arm. A timing only compares
+within the session that interleaved it.
 
-## Preconditions, which the tool acquires
+## Preconditions, which the targets acquire
 
-Not a checklist: `tools/compare.py` and the provider do each of these, and no flag skips one.
+Not a checklist: the requirements a target holds and the runner's setup do each of these, and no flag skips one.
 
 | step | what happens |
 |---|---|
-| GPU lock | `/tmp/rola_gpu.lock`, exclusive, through `gpu_lock()` (`rola_devtools.locks.gpu`), held for the whole comparison. The tool is invoked BARE — never wrapped in an external `flock` on the same path, which self-deadlocks (per-open-file-description semantics: the wrapper's lock blocks the tool's own `flock` call forever). `gpu_lock()` is reentrant (`ROLA_GPU_LOCK_HELD`), so a self-locking tool may launch another. `host.gpu_lock` in the dev config names the path (host and containers share it). |
-| clock lock | the host's own lock (`rola_devtools.locks.clock`, the dev config's `clock.json`), proven by the device's clock read before the first call and after the last; a comparison whose second read is off the lock is refused. A host without one runs unlocked, and the result says so. |
+| GPU lock | a session holds `gpu: all` (`rola_devtools.build.resources`): `/tmp/rola_gpu.lock` exclusive through `gpu_lock()` (`rola_devtools.locks.gpu`), taken by the build system for the whole session and handed to the entry workers as the lock-held marker, so a self-locking tool a target starts does not wait on it. Nothing is wrapped in an external `flock` on the same path, which self-deadlocks (per-open-file-description semantics: the wrapper's lock blocks the tool's own `flock` call forever). `host.gpu_lock` in the dev config names the path (host and containers share it). |
+| clock lock | a session holds `clock: 1`: the host's own lock (`rola_devtools.locks.clock`, the dev config's `clock.json`), proven by this binary's clock read (`register_clock_reader`) before the first call and after the last; a session whose read is off the lock fails. A host without one runs unlocked, and the session records its reads. |
 | binary identity | building an arm asks the device for the subject's family stamp and refuses the arm without it: a path or a hash passes against a stale extension, a device-side fact does not. |
-| extension identity | `import rola` must resolve inside the arm's own checkout, or the arm is refused: an editable install in a shared venv otherwise answers with another tree's kernel while the record carries this tree's commit. |
-| tree identity | `--record` stores each rola arm's commit and the sha256 of its tracked diff; a dirty tree is stamped, not refused. |
+| extension identity | `import rola` must resolve inside the entry's own checkout, or the arm is refused: an editable install in a shared venv otherwise answers with another tree's kernel while the record carries this tree's commit. |
+| tree identity | every stored sample carries each checkout's commit and the sha256 of its tracked diff; a dirty tree is stamped, not refused. |
 
 ## The reference
 
-Every reported carry number sits beside FlashAttention at the same cell, measured in the
-same interleaved, clock-locked run (`tools/compare.py`): rola-bench's attention arm
-(`rola_bench/measure/attention.py`, a provider of the interleaving driver), causal, one head of
+Every reported carry number sits beside FlashAttention at the same point, measured in the
+same interleaved, clock-locked session: rola-bench's attention entry
+(`rola_bench/measure/attention.py`) on the group's QKV cell, causal, one head of
 width `dv`, `L` tokens, bf16, through torch's flash backend: Dao's FlashAttention-2 compiled
 into torch, or FA3 (Hopper) and FA4 (Blackwell) once `torch.nn.attention.activate_flash_attention_impl`
 registers them. The backend is forced, so torch refuses a call flash cannot take rather than
-timing its math or memory-efficient backend, and the row records torch's version and the
+timing its math or memory-efficient backend, and the entry records torch's version and the
 implementation. The capacity-fair point is `N = L`; a cell states its `L`. The layer
 comparison is the inter term plus the intra term against that one number.
 
@@ -81,8 +85,8 @@ measurement on a sub-millisecond cell and a rounding error at scale. The
 which is why an ncu duration is a third instrument and not a cross-check on the
 first two.
 
-Every arm names its stopwatch (`Arm.instrument`; rola's arms time with `cuda_events`), and the driver refuses a
-comparison whose arms name two.
+Every timed entry names its stopwatch (`Timed.instrument`; rola's arms time with `cuda_events`), and a session refuses
+entries that name two.
 
 ## The flagging rule: three gates, all must fire
 
@@ -94,8 +98,8 @@ comparison whose arms name two.
 2. **Significance** — `paired_verdict`: an exact Wilcoxon signed-rank test over the judged session's per-round
    differences, candidate minus reference, at `ALPHA = 0.01`. **The round floor is derived, not chosen**: the smallest
    two-sided exact p reachable with `n` non-zero differences is `2/2ⁿ`, so below `ceil(log2(2/ALPHA)) = 8` rounds no
-   outcome can be significant and the test is undefined rather than underpowered. `tools/compare.py` and the suite run 8;
-   fewer report `insufficient_data`.
+   outcome can be significant and the test is undefined rather than underpowered. Sessions run 8; fewer report
+   `insufficient_data`.
 3. **Persistence** — `classify_flags`: a regression needs a trailing run of at least two violations. One thermally
    unlucky run on a box with logged power capping is not a kernel change. A run of three that has since healed is
    `suspicious`, which is not a merge blocker and is not silence either.
@@ -149,8 +153,9 @@ number from it enters the record. Named here because an undelivered item named i
 
 ## What is deliberately not here
 
-* **A second method.** The in-process A/B driver and its statistics were deleted once `tools/compare.py` timed the same
-  subjects (`docs/internals/DELETIONS.md`): two methods are how a harness comes to disagree with itself.
+* **A second method.** The in-process A/B driver, and later `tools/compare.py` and the interleaving driver, were deleted
+  once the declared build system timed the same subjects (`docs/internals/DELETIONS.md`): two methods are how a harness
+  comes to disagree with itself.
 * **A committed SQLite database.** A binary blob has no diff and cannot be reviewed in a landing. Any query artifact is
   derived and ignored — see the record below, which is exactly this design.
 * **A flat percentage threshold.** The IQR-derived line is better than every rule in the surveyed field; replacing it
@@ -173,7 +178,8 @@ and a timing only compares within the session that interleaved it.
 
 | location | writer | the semantics | a sample's output |
 |---|---|---|---|
-| `compare` | `tools/compare.py --record` | the point with its cell records and claim, each arm's label and name with its commit and diff (a foreign arm's runner), the counts, the seed, the reference | the driver's whole result |
+| `rola/<instrument>` | a store target of `declare.py` or rola-bench's root | the instrument target's semantics: its tool and arguments, code digest, the cells, the binary's and environment's outputs | the instrument's JSON per cell, with each cell's failure |
+| `timing/session`, `timing/memory` | a store target over `measure_timing` / `measure_memory` | the session's semantics: every registration's executor, cells, code and binary, the timing parameters | every sample in order with its round, rep and position, each entry's status, the clock reads; each entry's peak memory |
 | `suite/<module>` | rola-bench's measurement suite | the module, unit, identities and dependencies | the instrument's raw JSON |
 | `calibration` | `benchmarks/unit/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline`, `pipe_timeline.scale` | `tools/pipe_timeline.py` | the cell, binary and scale; a calibration's composition | the series and summary; the plateau |
@@ -182,9 +188,8 @@ and a timing only compares within the session that interleaved it.
 
 A tool run by another tool stores nothing (`--no-record`): the caller keeps the output in its own record. `python -m
 rola_results sql "..."` queries every location through a derived SQLite index beside the records (`history` and
-`latest` for one location; the views `timing_rows`, `timing_pairs`, `session_arms`, `driver_rows`, `cells` flatten the
-tools' outputs, and the rola-results README gives the last, history, compare and baseline questions as SQL); `python -m
-rola_results verdict` is the regression judgement above; `bench_driver` holds the deleted in-process driver's records; `python
+`latest` for one location; views flatten the stored outputs, and the rola-results README lists them with the last,
+history, compare and baseline questions as SQL); `python -m rola_results verdict` is the regression judgement above; `python
 tools/dev.py store commit -m <message>` commits the records
 (`python -m rola_results commit`), after the repository's own check that every key recomputes from its semantics and
 every output exists. Pushing is the owner's act. The record kept before the library -- the per-run JSONL, the perf

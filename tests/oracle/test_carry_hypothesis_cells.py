@@ -56,7 +56,7 @@ def drawn_cells(draw) -> CarryCell:
     #: `cohort` must divide the length exactly (`clustered`'s reshape) and is only
     #: meaningful once `k_tok` narrows the support at all.
     cohort = draw(st.none() if k_tok is None else st.sampled_from([None, 32, 64]))
-    return CarryCell(name=f"hypothesis-{widths}-{dv}-{k_tok}-{cohort}-{seed}",
+    return CarryCell(name=f"hypothesis-{widths}-{dv}-{k_tok}-{cohort}-{seed}", seed=seed,
                      widths=widths, dv=dv, tokens=tokens,
                      draw="dense" if k_tok is None else ("cohort" if cohort else "alt"),
                      k_tok=k_tok, cohort=cohort, support=1.0, backing="dense",

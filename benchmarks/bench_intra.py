@@ -9,8 +9,8 @@ the arithmetic or everything around it.
 
 THE CELLS AND THE STEP ARE THE REGISTRY'S. This file defines neither: the cells are
 `benchmarks/cells` records and the timed callable is the registered `intra_forward`
-bench, so a number here is commensurable with the same cell's number from the unit
-driver or from `tools/compare.py`. What is added is arithmetic ON TOP of that
+bench, so a number here is commensurable with the same cell's number from a timing
+session of `declare.py`. What is added is arithmetic ON TOP of that
 measurement -- the issued MAC count is EXACT (the window's lower-triangular tile grid is
 `n(n+1)/2` of its `n = W/64` squared tiles), so the fraction is a fraction and not an
 estimate.
@@ -23,6 +23,7 @@ carry and the intra share, ``D`` = routing levels, ``DV`` = the padded value wid
 from __future__ import annotations
 
 import argparse
+import json
 import statistics
 import subprocess
 import sys
@@ -82,6 +83,7 @@ def main() -> int:
                         help="comma-separated registry cells; default is every probe-tier "
                              "cell the intra bench applies to")
     parser.add_argument("--repeats", type=int, default=6)
+    parser.add_argument("--json", type=Path, default=None, help="also write every cell's row here")
     args = parser.parse_args()
 
     if args.cells:
@@ -95,6 +97,7 @@ def main() -> int:
     print(f"device {torch.cuda.get_device_name()}  clock {clock / 1e9:.3f} GHz  "
           f"mma.sync ceiling {flops / 1e12:.1f} TFLOP/s  window {WINDOW}")
     print(f"{'cell':<28}{'ms':>9}{'tiles/ms':>12}{'TFLOP/s':>10}{'peak':>8}")
+    rows = []
     for spec in specs:
         if spec.tokens % WINDOW:
             raise SystemExit(f"{spec.name}: L = {spec.tokens} is not a whole number of "
@@ -108,8 +111,12 @@ def main() -> int:
         achieved = 2.0 * macs(1, spec.tokens, spec.D, WINDOW, spec.dv) / (ms * 1e-3)
         print(f"{spec.name:<28}{ms:>9.3f}{tiles / ms:>12.0f}{achieved / 1e12:>10.2f}"
               f"{achieved / flops * 100:>7.1f}%")
+        rows.append({"cell": spec.name, "ms": ms, "tiles_per_ms": tiles / ms, "tflop_per_s": achieved,
+                     "ceiling_tflop_per_s": flops, "fraction": achieved / flops, "clock_hz": clock})
         del arm
         torch.cuda.empty_cache()
+    if args.json:
+        args.json.write_text(json.dumps({"window": WINDOW, "rows": rows}, sort_keys=True) + "\n")
     return 0
 
 

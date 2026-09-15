@@ -1,7 +1,7 @@
 # The SM's effective clock, read off the device
 
 Mirrors `csrc/rola/src/common/sm_clock.cu` (`sm_clock_ghz`) and its use in
-`tools/compare.py` and `benchmarks/bench/provider.py`.
+`benchmarks/executors.py` (`read_clock`) and `benchmarks/bench/provider.py`.
 
 ## Why it exists
 
@@ -31,8 +31,9 @@ a warm-up, a median over reps and rounds, binaries interleaved in one run.
 for `spin_cycles` of its own cycles; CTA 0 reports its cycles against the global timer.
 The ratio is the effective clock during the spin, in GHz.
 
-`tools/compare.py` reads the clock before the first timed call and after the last and refuses a run
-whose second read is off the lock; rola's runner records the read taken when each arm was built
+A timing session of rola-devtools' timing system (`rola_devtools.timing`) reads the clock through this binary's clock
+reader (`benchmarks/executors.py`'s `read_clock`) before the first timed call and after the last, and fails a session
+whose read is off the lock; rola's runner records the read taken when each arm was built
 (`sm_ghz_at_build`).
 
 THE LOCK SEAM (`rola_devtools.locks.clock`): how a clock is locked is the HOST's fact and lives

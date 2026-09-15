@@ -269,15 +269,16 @@ way it does on the bare host — the container adds no scheduling of its own. Ex
 ~3.6 min total on hardware comparable to this repo's dev box (`docs/testing.md`,
 measured 2026-08-06).
 
-## 6. Run a comparison
+## 6. Measure this checkout
 
 ```bash
-python tools/compare.py --cells flagship-alt-k4 --arm label:here,arm:carry_forward
+python -m rola_devtools.build run declare.py:all --arg cells=flagship-alt-k4 --arg instruments=sass
 ```
 
-`tools/compare.py` builds the arm through this checkout's runner and times it interleaved under the GPU and clock
-locks. A cell this binary does not carry is refused by name, not skipped — which is the check this step stands in for:
-that the container's compile produced a binary carrying the arms a comparison measures.
+rola-devtools' build system runs this checkout's declarations (`declare.py`): the gated build, SASS, and a timing
+session of the carry arms on the cell under the GPU and clock locks, each result stored. A timing entry this binary
+cannot run is recorded as that entry's failure in the session's output, not skipped — which is the check this step
+stands in for: that the container's compile produced a binary carrying the arms a session measures.
 
 ## What's in the image, and why
 
@@ -292,7 +293,7 @@ that the container's compile produced a binary carrying the arms a comparison me
 | `clangd`, `clang-tools-14` (clang-query) | apt | the editor/AST tooling briefs assume is present |
 | `universal-ctags` | apt | cross-referencing the `csrc/` tree |
 | `jq`, `fd` (via `fd-find`) | apt | the shell one-liners this repo's own docs use |
-| `hyperfine` | pinned GitHub release, sha256-verified | ad-hoc wall-clock comparisons outside `tools/compare.py` |
+| `hyperfine` | pinned GitHub release, sha256-verified | ad-hoc wall-clock comparisons outside the declared timing sessions |
 | `ast-grep-cli`, `py-spy` | pipx (real PyPI packages) | structural code search; live Python profiling |
 | `difftastic` (`difft`) | pinned GitHub release, sha256-verified | structural diffs — **not** pipx: it has no PyPI package, verified at authoring time; installed the same way as `mold`/`hyperfine` instead of being forced through a tool that cannot actually install it |
 | `pre-commit` | pipx | the repo's lint/format hooks |

@@ -1,31 +1,30 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""ROLA'S RUNNER: this checkout's bench subjects as arms of the interleaving driver (`rola_devtools.interleave`).
+"""ROLA'S RUNNER: this checkout's bench subjects as timed arms, built on central cells for the timing system.
 
-    ArmSpec(label, "bench.provider:arms", "carry_forward@schedule=identity", runner="rola",
-            python=<the checkout's venv python>, cwd=<the checkout>,
-            env={"PYTHONPATH": "<the checkout>:<the checkout>/benchmarks"})
-
-The driver calls `arms` with the DATA of each cell a point sends the rola runner (`rola_devtools.cells.build`): a
-central carry cell (a shape, a draw and the state it binds) or a central layer cell (an input). It returns a builder
-for every arm this checkout runs on that cell, or refuses the cell by raising:
+`arms(cell)` takes a central carry cell (a shape, a draw and the state it binds) or a central layer cell (an input)
+and returns a builder for every arm this checkout runs on it, or refuses the cell by raising:
 - any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
   (`ROLA_CARRY_ARMS`) measures a subset of the tree;
 - a carry cell whose carry arm (D, DV, warps_per_cta at `benchmarks.cells.WARPS_PER_CTA`) the binary does not carry;
 - data that is neither kind.
+`benchmarks/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
+through `oneshot_argv`.
 An arm is a subject that applies to the cell (`bench.subjects.applicable`, the cell's own facts) and whose kernel this
 binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `prefill_op`,
 the decode arm for `decode_step`), with its dials: its name is the subject, then `@calls=N` for a call count other than
 one and `@schedule=S` for a carry order other than `first`, each only where the subject reads that dial
 (`Subject.calls`, `Subject.dials`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
-(`benchmarks.cells.layer.CONSTRUCTIONS`). Only the arms a comparison asks for are built.
+(`benchmarks.cells.layer.CONSTRUCTIONS`). Only the arm asked for is built.
 Building one proves two things before anything is timed, and refuses the arm by name when either fails: from a fact the
 device produces, that this binary carries the subject's family (its stamp entry; a path or a hash cannot catch a stale
 binary), and that `import rola` resolved inside this checkout.
 
-The call times one launch between two CUDA events (the canonical instrument, `cuda_events`) and returns milliseconds.
-What an arm reports is the cell's facts beside the arm's dials and the binary's: the manifest digest, the family stamp,
-the device, torch, the assembler, and the SM clock read when the arm was built (docs/measurement.md).
+A built arm is a `rola_devtools.timing.Timed`: its call times one launch between two CUDA events (the canonical
+instrument, `cuda_events`) and returns milliseconds; its reset is the launch's (a carried state restored, a decode state
+re-seeded), run untimed before every call. What an arm reports is the cell's facts beside the arm's dials and the
+binary's: the manifest digest, the family stamp, the device, torch, the assembler, and the SM clock read when the arm
+was built (docs/measurement.md).
 """
 from __future__ import annotations
 
@@ -113,7 +112,7 @@ def _kernel_carried(subject: str, spec, construction) -> bool:
 
 def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
     import torch
-    from rola_devtools.interleave import Arm
+    from rola_devtools.timing import Timed
 
     import rola
     from bench.subjects import SUBJECTS
@@ -155,7 +154,8 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
             "family_stamp": int(stamp()), "device": torch.cuda.get_device_name(0), "sm": f"sm_{props.major}{props.minor}",
             "torch": torch.__version__, "rola_file": rola_file.relative_to(CHECKOUT).as_posix(),
             "sm_ghz_at_build": carry_ops.sm_clock_ghz()}
-    return Arm(cell=cell, call=call, instrument="cuda_events", outside_allocator=launch.outside_allocator)
+    return Timed(call=call, built=cell, instrument="cuda_events", reset=launch.reset,
+                 outside_allocator=launch.outside_allocator)
 
 
 def _layer_fixture(spec, construction):

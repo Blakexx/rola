@@ -1,4 +1,4 @@
-# `benchmarks/` — rola's reading of the central cells, the benches over them, and the measurement registry
+# `benchmarks/` — rola's reading of the central cells, the benches over them, and the executors of its declarations
 
 The methodology, the instruments and the record are `docs/measurement.md`; the lock rule
 is `docs/testing.md`. This file is the map.
@@ -16,11 +16,12 @@ libraries rola is compared against. A cell names nothing rola runs it with. `ben
   inputs it was declared for, from which the amplitudes are PRODUCED. It is the only way to price the producer's own
   solve or a decode step through the layer.
 
-**`benchmarks/registry.py` — THE MEASUREMENT REGISTRY.** This checkout's units for rola-devtools' measurement service
-(`rola_devtools.measure`): its build, its clock reader, its instruments (SASS, register walk, phase clock, pipe counters,
-stall census, timeline) and every bench subject as a timed arm, each accepting the central cells this binary runs it on.
-`python -m rola_devtools.measure run benchmarks.registry:registry ...` runs it from here; rola-bench's composer runs it
-once per checkout it measures.
+**`benchmarks/executors.py` — WHAT ROLA'S DECLARATIONS RUN.** The repository root's `declare.py` declares this
+checkout's targets for rola-devtools' build system (`rola_devtools.build`): its build, the machine facts, its instruments
+(SASS, register walk, phase clock, pipe counters, stall census, timeline, the intra roofline), every bench subject as a
+timing entry on the central cells it takes, and its clock reader. `executors.py` is what those targets run, in this
+checkout's venv. `python -m rola_devtools.build run declare.py:all` measures this checkout by itself; rola-bench's root
+loads the same `declare.py` from every checkout it measures.
 
 **`benchmarks/bench/` — the library.** `subjects.py` is the roster: one lean callable per
 kernel this line carries, each taking a registry cell and returning the launch to time,
@@ -34,20 +35,17 @@ it offers the subjects this binary runs on it, with their dials
 (`decode_step@layer=chunk-decode-w16`), or refuses the cell by name; arms build in their own
 checkout's venv.
 
-**`tools/compare.py` — THE COMPARISON.** Arms of rola checkouts, and of other libraries, on
-the cells of one point, interleaved call by call under one stopwatch
-(`docs/internals/tools/compare.md`). It takes the GPU lock and the clock lock itself and is
-invoked BARE; never wrap it in an external `flock` on the same path (it self-deadlocks).
-Whether a stored difference is a regression is `python -m rola_results verdict`.
+**A timing session** interleaves timing entries of rola checkouts, and of other libraries, call by call under one
+stopwatch and the GPU and clock locks (`rola_devtools.timing`, `docs/measurement.md`), and stores the raw ordered
+samples; whether a stored difference is a regression is `python -m rola_results verdict`.
 
 ```bash
-python tools/compare.py --cells flagship-alt-k4 --arm label:first,arm:carry_forward \
-    --arm label:identity,arm:carry_forward@schedule=identity
+python -m rola_devtools.build run declare.py:all --arg cells=flagship-alt-k4 --arg instruments=
 ```
 
 **`benchmarks/unit/` — the carry's part harness and its calibration** (`bench_carry_parts.py`,
 `bench_carry_calib.py`), gated against `bench/carry_model.py`'s budgets.
 
-**`benchmarks/bench_intra.py`** adds the ROOFLINE to the registered intra bench: the same
+**`benchmarks/bench_intra.py`** adds the ROOFLINE to the intra bench (one of `declare.py`'s instruments): the same
 cells and the same timed callable, with the device's own mma.sync ceiling beside them.
 

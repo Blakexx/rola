@@ -211,6 +211,7 @@ def main() -> int:
     ap.add_argument("--calibrate", action="store_true",
                     help="this capture is the MMA-only composition (ROLA_CARRY_PARTS=none): store its plateau as the scale")
     ap.add_argument("--no-record", action="store_true", help="store nothing: the caller keeps the reports")
+    ap.add_argument("--json", type=Path, help="also write the timeline document here")
     a = ap.parse_args()
     from rola_results import Store, checkout
 
@@ -232,6 +233,8 @@ def main() -> int:
     summ = summary(tl, a.scale)
     doc = {"cell": a.cell, "report": rep.name, "scale": a.scale, "summary": summ, **tl}
     out.with_suffix(".json").write_text(json.dumps(doc) + "\n")
+    if a.json:
+        a.json.write_text(json.dumps(doc) + "\n")
     out.with_suffix(".html").write_text(f"<title>Pipe timeline {html.escape(a.cell)}</title>\n"
                                         + chart(tl, a.cell, a.scale) + "\n")
     if not a.no_record:

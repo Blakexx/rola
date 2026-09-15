@@ -31,12 +31,23 @@ import torch
 
 @dataclass(frozen=True)
 class Launch:
-    """One thing to time: a name and the zero-argument callable that issues it. `outside_allocator`, for a launch that
-    holds device memory torch's caching allocator does not see, returns those bytes now."""
+    """One thing to time: a name and the zero-argument callable that issues it. `reset`, for a launch that changes what
+    its next call reads (a carried state, a decode step), restores exactly what the first call saw, and is run untimed
+    before every call, so every call does the same work on the same data. `outside_allocator`, for a launch that holds
+    device memory torch's caching allocator does not see, returns those bytes now."""
 
     name: str
     call: Callable[[], object]
+    reset: Callable[[], None] | None = None
     outside_allocator: Callable[[], int] | None = None
+
+
+def _restore(state_in):
+    """The reset of a launch whose state plane is read and advanced in place: the plane's entry, copied back."""
+    if state_in is None:
+        return None
+    entry = state_in.clone()
+    return lambda: state_in.copy_(entry)
 
 
 @dataclass(frozen=True)
@@ -120,7 +131,7 @@ def carry_forward(fx) -> Launch:
         return carry_ops.carry_forward(routes, v, state_in=state_in, state_out=state_out,
                                        page_table=page_table, schedule=schedule, **call)
 
-    return Launch(name=f"carry_forward|{spec.name}", call=run)
+    return Launch(name=f"carry_forward|{spec.name}", call=run, reset=_restore(state_in))
 
 
 def intra_forward(fx) -> Launch:
@@ -226,7 +237,7 @@ def prefill_op(fx) -> Launch:
                                       page_table=page_table)
         return out
 
-    return Launch(name=name, call=run)
+    return Launch(name=name, call=run, reset=_restore(state_in) if chain is None else None)
 
 
 def liveness_pass(fx) -> Launch:
@@ -293,10 +304,9 @@ def entmax_solve(fx) -> Launch:
 def decode_step(fx) -> Launch:
     """ONE carried single-token step, on a state the seeding call populated.
 
-    The state is MUTATED by the call, which is what a decode step is; repeated timing
-    therefore walks the sequence forward. The arena's growth saturates within the first
-    few steps at these widths, so the timed reps price a steady-state step and not the
-    admission that precedes it -- which the warmup launches are what guarantee.
+    The state is MUTATED by the call, which is what a decode step is, so the launch's reset
+    seeds a fresh state from the prefill before every call: each timed call is the same
+    step, at the same context position, over the same residency.
     """
     import rola
     from rola.engine.dags.decode_dag import decode_forward
@@ -310,25 +320,31 @@ def decode_step(fx) -> Launch:
     #: routing writes -- a decode step's cost is a function of residency and routing,
     #: not of the numbers stored, so nothing has to have computed them.
     producer = fx["layer"].routes
-    state = rola.state()
-    with torch.no_grad():
-        routes = fx["routes"]
-        bits = planes.atom_bits(planes.pack_side(routes.write), widths)
-        _s, arena = state._kernel_entry(routes, bits, d_v=spec.dv, paging=True,
-                                        BC=box_leaves(spec.dv, 8))
-        arena.wait()
+    routes = fx["routes"]
+    bits = planes.atom_bits(planes.pack_side(routes.write), widths)
+    seeded: dict = {}
+
+    def reset():
+        seeded.clear()
+        state = rola.state()
+        with torch.no_grad():
+            _s, arena = state._kernel_entry(routes, bits, d_v=spec.dv, paging=True, BC=box_leaves(spec.dv, 8))
+            arena.wait()
+        seeded.update(state=state, arena=arena)
+
+    reset()
     token = fx["x"][:, spec.tokens:spec.tokens + 1]
     v_token = fx["v"][:, spec.tokens:spec.tokens + 1].contiguous()
 
     def run():
         with torch.no_grad():
-            y, _ = decode_forward(producer(token), v_token, state)
+            y, _ = decode_forward(producer(token), v_token, seeded["state"])
         return y
 
     #: THE ARENA'S PHYSICAL PAGES: under the VMM backing the driver maps them outside the caching allocator, so a memory
     #: measurement adds its own receipt; the dense bridge's one plane is a torch tensor the allocator already counts.
-    return Launch(name=f"decode_step|{spec.name}|{fx['construction'].name}", call=run,
-                  outside_allocator=lambda: arena.committed_bytes if arena.backing == "vmm" else 0)
+    return Launch(name=f"decode_step|{spec.name}|{fx['construction'].name}", call=run, reset=reset,
+                  outside_allocator=lambda: seeded["arena"].committed_bytes if seeded["arena"].backing == "vmm" else 0)
 
 
 #: THE ROSTER: one entry per kernel this line carries, plus the carry, whose arm refuses.

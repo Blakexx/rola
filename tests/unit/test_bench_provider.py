@@ -1,12 +1,9 @@
-"""rola's runner (benchmarks/bench/provider.py) and the comparison (tools/compare.py): the runner reads central cells,
-names an arm by its subject, the dials it reads and a layer arm's construction, offers the arms this binary carries at the
-cell's shape, and refuses a cell by name -- an uncarried carry arm, an iteration build, a cell of another kind; the
-comparison's point is a registered one narrowed by name, or one of rola cells. No GPU: nothing here builds an arm, and
-the binary's arm tables are planted."""
+"""rola's runner (benchmarks/bench/provider.py): it reads central cells, names an arm by its subject, the dials it reads
+and a layer arm's construction, offers the arms this binary carries at the cell's shape, and refuses a cell by name --
+an uncarried carry arm, an iteration build, a cell of another kind. No GPU: nothing here builds an arm, and the binary's
+arm tables are planted."""
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 for path in (ROOT, ROOT / "benchmarks", ROOT / "tools"):
     sys.path.insert(0, str(path))
 
-import compare  # noqa: E402
 import gen_shards  # noqa: E402
 
 from bench import provider  # noqa: E402
@@ -85,36 +81,3 @@ def test_a_cell_is_refused_by_name(binary):
     binary.carry = []
     with pytest.raises(RuntimeError, match="iteration build"):
         provider.arms(by_name("flagship-alt-k4"))
-
-
-def test_the_comparisons_arms_parse_as_their_flags_say():
-    arm = compare.rola_arm("label:tip,arm:carry_forward@schedule=identity,worktree:/w/tip,venv:/w/venv-tip")
-    assert arm == {"label": "tip", "arm": "carry_forward@schedule=identity", "worktree": "/w/tip", "venv": "/w/venv-tip"}
-    foreign = compare.foreign_arm("label:attention,provider:pkg.attention:arms,arm:flash,python:/p/python,cwd:/c,"
-                                  "runner:attn")
-    assert (foreign["provider"], foreign["runner"]) == ("pkg.attention:arms", "attn")
-    with pytest.raises(argparse.ArgumentTypeError, match="lacks"):
-        compare.foreign_arm("label:attention,arm:flash")
-
-
-def test_the_comparisons_point_is_registered_and_narrowed_by_name_or_is_rola_cells(tmp_path):
-    extra = tmp_path / "registry.json"
-    extra.write_text(json.dumps({"schema": 1, "data": "pkg.cells:qkv",
-                                 "cells": [{"name": "attention-L1024-dv64", "tokens": 1024, "dv": 64}],
-                                 "points": [{"name": "L1024", "equal": ["tokens", "dv"],
-                                             "runners": {"rola": ["flagship-alt-k4", "flagship-dense"],
-                                                         "attention": ["attention-L1024-dv64"]}}]}))
-
-    def args(**kw):
-        return SimpleNamespace(**{"point": None, "cells": None, "registry": [str(extra)], **kw})
-
-    point = compare.point_of(args(point="L1024", cells="flagship-dense,attention-L1024-dv64"))
-    assert {r: [c["name"] for c in cells] for r, cells in point["runners"].items()} == {
-        "rola": ["flagship-dense"], "attention": ["attention-L1024-dv64"]}
-    assert [c["name"] for c in compare.point_of(args(cells="flat-small-alt-k16"))["runners"]["rola"]] == [
-        "flat-small-alt-k16"]
-    with pytest.raises(SystemExit, match="not cells of point L1024"):
-        compare.point_of(args(point="L1024", cells="flat-small-alt-k16"))
-    with pytest.raises(SystemExit, match="name a --point"):
-        compare.point_of(args())
-

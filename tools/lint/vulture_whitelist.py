@@ -43,21 +43,17 @@ class _Whitelist:
     pytest_addoption = None
     pytest_configure = None
 
-    # rola_devtools.measure UNITS: the service's worker calls a unit's phases (`accepts`, `identity`, `setup`, `execute`,
-    # `post`, `present`, `read_ghz`) by name, builds a unit from its `module:Class` string (`benchmarks/registry.py`'s
-    # `RolaBuild`, `Clock`, `Tool`, `Timeline`, `Subject`) and loads `benchmarks.registry:registry` from its string.
-    accepts = None
-    setup = None
-    execute = None
-    post = None
-    present = None
-    read_ghz = None
-    RolaBuild = None
-    Clock = None
-    Timeline = None
-    Subject = None
+    # rola_devtools.build EXECUTORS: a declared target's worker calls its executor and verify functions from their
+    # `module:function` strings in `declare.py` (`benchmarks/executors.py`'s `compile_kernel`, `binary_present`,
+    # `probe_environment`, `run_tool`, `timed`, `read_clock`).
+    compile_kernel = None
+    binary_present = None
+    probe_environment = None
+    run_tool = None
+    timed = None
+    read_clock = None
 
 
 _ = _Whitelist()
 _referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure,  # ruff B018: a bare attribute is "useless"
-               _.accepts, _.setup, _.execute, _.post, _.present, _.read_ghz, _.RolaBuild, _.Clock, _.Timeline, _.Subject)
+               _.compile_kernel, _.binary_present, _.probe_environment, _.run_tool, _.timed, _.read_clock)
