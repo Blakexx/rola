@@ -2,10 +2,7 @@
 """UNUSED-INSTANTIATION CHECK (gating).
 
 Every `__global__` FUNCTION TEMPLATE declared anywhere under `csrc/rola/` must
-be present, mangled, in at least one binary's symbol table -- "at least one"
-because the SHIPPED set and the TEST-only arm set (`gen_shards.CARRY_SHIPPED_ARMS`
-vs `CARRY_TEST_ARMS`) are different binaries, and a kernel instantiated only by
-a conformance-only arm is still live. The CHECKED-IN manifests
+be present, mangled, in at least one ratified binary's symbol table. The CHECKED-IN manifests
 (`tools/manifests/<toolchain>/sm_80.json`, `sm_86.json` -- closed-world codegen policy:
 these ARE what a real build produced, ratified) are the source of truth here
 rather than a fresh `cuobjdump` on whatever happens to be built in this

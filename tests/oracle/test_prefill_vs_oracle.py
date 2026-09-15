@@ -32,7 +32,7 @@ from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal
 from rola.ops.prefill import prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
-from tests.oracle.fixtures import canonical_from_plane, relative, require_arm
+from tests.oracle.fixtures import canonical_from_plane, relative
 from tests.oracle.oracle_fixtures import _output_charge
 from tests.oracle.tolerances import BF16_RTOL
 
@@ -80,7 +80,6 @@ def fresh_plane(spec, bh: int = 1):
 
 def call(spec, state_in=None):
     """One combined call on the FINAL surface: no window, no ``(k, m)``, no carve."""
-    require_arm(*spec.arm)
     drawn = realize(spec)
     return drawn, prefill(drawn.read, drawn.write, drawn.gain, drawn.v, spec.widths,
                           modes=modes_of(spec),

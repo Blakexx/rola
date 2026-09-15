@@ -164,21 +164,14 @@ ROLA_STRICT_MANIFEST = os.getenv("ROLA_STRICT_MANIFEST") == "1"
 #: which is why an arm-set change forced ninja to rebuild every translation unit even
 #: though only the per-arm TUs and the carry dispatch TU read those macros.
 #:
-#: THE DEFAULT IS THE SHIPPED ROWS. A row tagged TEST in the arm list is a conformance
-#: cell -- the fp64 oracle materializes ``[B,T,H,N]``, so ``N = 4096`` is where a whole
-#: cell is checkable, and the ``W = 64`` arms exist so that it is -- and it is built
-#: for the battery (``ROLA_CARRY_ARMS=all ROLA_CUDA_ARCHS=86``) and never shipped. A
-#: binary is SELF-IDENTIFYING either way: ``rola.ops.carry.arms()`` lists exactly what
-#: was built and every entry point refuses an arm the binary does not carry.
-#:
-#: THE LIST IS EMPTY ON THIS LINE (C0, card C): the carry family's kernels are deleted,
-#: so every scope resolves to no arm and no per-arm TU joins the build. The mechanism
-#: stays because it is the BUILD's contract; G4 refills the list on the final key.
+#: THE DEFAULT IS EVERY DECLARED ROW (`tools/manifests/shipped_set.json`): each is built and shipped. A subset is an
+#: iteration build. A binary is SELF-IDENTIFYING either way: ``rola.ops.carry.arms()`` lists exactly what was built and
+#: every entry point refuses an arm the binary does not carry.
 #: docs/build.md.
 def _carry_arms() -> list[int]:
     spec = os.getenv("ROLA_CARRY_ARMS", "").replace(",", " ").split()
     if not spec:
-        return list(gen_shards.CARRY_SHIPPED_ARMS)
+        return list(range(len(gen_shards.CARRY_ARMS)))
     n = len(gen_shards.CARRY_ARMS)
     out: list[int] = []
     for tok in spec:
@@ -325,7 +318,7 @@ def _is_iteration_build() -> bool:
     the shipped set; a binary carrying arms it does not ratify is not the thing that
     ships, whichever direction it differs in.
     """
-    return (set(_carry_arms()) != set(gen_shards.CARRY_SHIPPED_ARMS) or _decode_arm_subset_active()
+    return (set(_carry_arms()) != set(range(len(gen_shards.CARRY_ARMS))) or _decode_arm_subset_active()
             or set(_carry_parts()) != set(gen_shards.CARRY_PARTS))
 
 
@@ -838,10 +831,10 @@ class RoLABuildExtension(BuildExtension):
         if not _is_iteration_build():
             return False
         print("=" * 78)
-        if set(_carry_arms()) != set(gen_shards.CARRY_SHIPPED_ARMS):
+        if set(_carry_arms()) != set(range(len(gen_shards.CARRY_ARMS))):
             print("ITERATION BUILD -- NOT SHIPPABLE.  This build carries carry arms "
-                  f"{_carry_arms()}, which is not the SHIPPED set "
-                  f"{list(gen_shards.CARRY_SHIPPED_ARMS)}, so the shippability gate "
+                  f"{_carry_arms()}, not every declared arm "
+                  f"{list(range(len(gen_shards.CARRY_ARMS)))}, so the shippability gate "
                   "(the manifest) is skipped. Build with "
                   "ROLA_CARRY_ARMS unset to get a gateable binary.")
         if set(_carry_parts()) != set(gen_shards.CARRY_PARTS):

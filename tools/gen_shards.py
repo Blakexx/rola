@@ -133,10 +133,10 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
     except json.JSONDecodeError as exc:
         raise ShippedSetError(f"{path.name} is not readable as JSON: {exc}")
 
-    if blob.get("schema") != 1:
+    if blob.get("schema") != 2:
         raise ShippedSetError(
             f"{path.name} declares schema {blob.get('schema')!r}; this generator "
-            f"reads schema 1. A schema bump is a deliberate re-read of every "
+            f"reads schema 2 (one `shipped` list: every declared arm is built and shipped). A schema bump is a deliberate re-read of every "
             f"consumer, never a silent widening.")
     if blob.get("family") != "carry":
         raise ShippedSetError(
@@ -164,7 +164,7 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
 
     rows: list[tuple] = []
     seen: dict[tuple, str] = {}
-    for which in ("shipped", "test"):
+    for which in ("shipped",):
         declared = blob.get(which)
         if not isinstance(declared, list):
             raise ShippedSetError(
@@ -184,10 +184,8 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
                         f"which is not in the declared domain {domains[field]}")
             if key in seen:
                 raise ShippedSetError(
-                    f"{path.name}: row {list(key)} is declared twice "
-                    f"(`{seen[key]}` and `{which}`). An arm is shipped or it is a "
-                    f"test arm; it is never both, and a duplicate would give one "
-                    f"kernel two indices.")
+                    f"{path.name}: row {list(key)} is declared twice; a duplicate would give one kernel two "
+                    f"indices.")
             seen[key] = which
             rows.append(key)
 
@@ -197,12 +195,10 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
             f"{path.name}: the rows are not in canonical order. An arm's INDEX is "
             f"named by the selection header, by the per-arm translation units and by "
             f"ROLA_CARRY_ARMS, so it must be a property of the declaration and not of "
-            f"where a row was typed. Write `shipped` then `test`, each sorted, so "
-            f"that the concatenation is sorted:\n"
+            f"where a row was typed. Write the rows sorted:\n"
             f"    {[list(r) for r in canonical]}")
 
     return {"rows": tuple(rows),
-            "test": tuple(i for i, r in enumerate(rows) if seen[r] == "test"),
             "domains": {k: tuple(v) for k, v in domains.items()},
             "path": path}
 
@@ -211,13 +207,6 @@ _DECLARED = _load_shipped_set()
 
 #: THE ARM TABLE, in declaration order.  `CARRY_ARMS[i]` is arm `i` everywhere.
 CARRY_ARMS: tuple = _DECLARED["rows"]
-
-#: THE SHIPPED / TEST SPLIT.  A default build compiles the SHIPPED rows only;
-#: a TEST row is built for the battery and never shipped.  Both are empty while the
-#: declaration is: a build carries no carry arm at all.
-CARRY_TEST_ARMS: tuple = _DECLARED["test"]
-CARRY_SHIPPED_ARMS: tuple = tuple(i for i in range(len(CARRY_ARMS))
-                                  if i not in CARRY_TEST_ARMS)
 
 
 def declaration_matches_table() -> list[str]:
@@ -234,9 +223,6 @@ def declaration_matches_table() -> list[str]:
     if fresh["rows"] != tuple(CARRY_ARMS):
         bad.append(f"    rows: the declaration says {[list(r) for r in fresh['rows']]}, "
                    f"the table says {[list(r) for r in CARRY_ARMS]}")
-    if fresh["test"] != tuple(CARRY_TEST_ARMS):
-        bad.append(f"    test rows: the declaration says {list(fresh['test'])}, "
-                   f"the table says {list(CARRY_TEST_ARMS)}")
     return bad
 
 
@@ -326,8 +312,7 @@ def carry_selection_header(arms) -> str:
     index order, with `ROLA_CARRY_ARM_COUNT` (how many this build carries) beside
     `ROLA_CARRY_ARM_DECLARED` (how many the declaration declares). Both counts, because
     the host refusal has to tell "your wheel does not carry that arm" from "nothing
-    builds that arm in any configuration" -- the same distinction the battery's
-    `require_arm` makes, and the reason an undeclared arm is never a skip.
+    builds that arm in any configuration" -- which is an iteration build's subset against an arm nobody declared.
     """
     n = len(CARRY_ARMS)
     bad = sorted({i for i in arms if not 0 <= i < n})
@@ -423,7 +408,7 @@ def _check_carry_selection_schema() -> list[str]:
     bad: list[str] = []
     cases = {
         "all": list(range(len(CARRY_ARMS))),
-        "shipped": list(CARRY_SHIPPED_ARMS),
+        "shipped": list(range(len(CARRY_ARMS))),
         "empty": [],
     }
     for name, arms in cases.items():
@@ -507,7 +492,7 @@ def _check_arm_set_schema(name: str, arms, text: str) -> list[str]:
 #: states.  A reader that cannot be made to fail is not a reader (the vacuity
 #: discipline `tools/ratify.py --self-test` runs on itself, applied here).
 _DECLARATION_MUTANTS: tuple[tuple[str, dict, str], ...] = (
-    ("schema bump", {"schema": 2}, "schema"),
+    ("schema bump", {"schema": 3}, "schema"),
     ("wrong family", {"family": "decode"}, "family"),
     ("re-keyed", {"key": ["D", "DV"]}, "keyed"),
     ("domain missing a field", {"domains": {"D": [1], "DV": [64]}}, "domains"),
@@ -516,8 +501,7 @@ _DECLARATION_MUTANTS: tuple[tuple[str, dict, str], ...] = (
     ("row of the wrong width", {"shipped": [[2, 64]]}, "as 3 integers"),
     ("value outside its domain", {"shipped": [[2, 48, 8]]},
      "not in the declared domain"),
-    ("a row declared twice", {"shipped": [[2, 64, 8]], "test": [[2, 64, 8]]},
-     "declared twice"),
+    ("a row declared twice", {"shipped": [[2, 64, 8], [2, 64, 8]]}, "declared twice"),
     ("rows out of canonical order", {"shipped": [[2, 64, 8], [1, 64, 8]]},
      "canonical order"),
     ("a missing list", {"shipped": None}, "no `shipped` list"),
@@ -565,11 +549,9 @@ def _self_test() -> int:
 
     #: A SYNTHETIC TABLE, installed on the module for the render checks only. The
     #: live declaration is empty, so nothing else in this file ever exercises a row.
-    global CARRY_ARMS, CARRY_TEST_ARMS, CARRY_SHIPPED_ARMS
-    saved = (CARRY_ARMS, CARRY_TEST_ARMS, CARRY_SHIPPED_ARMS)
+    global CARRY_ARMS
+    saved = CARRY_ARMS
     CARRY_ARMS = ((1, 64, 8), (2, 64, 8), (2, 128, 4))
-    CARRY_TEST_ARMS = (2,)
-    CARRY_SHIPPED_ARMS = (0, 1)
     try:
         bad += _check_carry_selection_schema()
         text = carry_selection_header([0, 2])
@@ -589,7 +571,7 @@ def _self_test() -> int:
             bad.append(f"    a shard block entry does not carry its membership "
                        f"count: {block}")
     finally:
-        CARRY_ARMS, CARRY_TEST_ARMS, CARRY_SHIPPED_ARMS = saved
+        CARRY_ARMS = saved
 
     #: THE PARTS HEADER: every part real is the full mask, a subset its bits, a stranger refused.
     if f"0x{(1 << len(CARRY_PARTS)) - 1:x}u" not in carry_parts_header(CARRY_PARTS):

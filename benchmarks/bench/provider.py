@@ -83,10 +83,10 @@ def _refuse_a_partial_binary() -> None:
         sys.path.insert(0, str(CHECKOUT / "tools"))
     import gen_shards
 
-    shipped = {tuple(gen_shards.CARRY_ARMS[i]) for i in gen_shards.CARRY_SHIPPED_ARMS}
+    declared = {tuple(row) for row in gen_shards.CARRY_ARMS}
     built = {tuple(arm) for arm in carry.arms()}
-    if shipped - built:
-        raise RuntimeError(f"this binary carries {sorted(built)} and lacks the shipped arms {sorted(shipped - built)}: an "
+    if declared - built:
+        raise RuntimeError(f"this binary carries {sorted(built)} and lacks the shipped arms {sorted(declared - built)}: an "
                            "iteration build (ROLA_CARRY_ARMS) measures a subset of the tree; build the shipped set")
 
 

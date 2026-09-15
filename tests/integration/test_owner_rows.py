@@ -39,16 +39,13 @@ def require_topology(widths, k, m):
 
     ``owner_rows`` is a diagnostic over the PLAN alone, so the seam dispatches it on the
     topology and the box over the rows declared DENSE_BOTH -- the window, the value width
-    and the declaration are not part of its key.  Since K36 a default build compiles the
-    SHIPPED rows only, and the conformance topologies are TEST rows.
+    and the declaration are not part of its key.
     """
     D, B = len(widths), widths[0]
     if not any(row[:4] == (D, B, k, m) and row[8] == 0 for row in built_arms()):
         pytest.skip(
             f"this binary carries no DENSE_BOTH carry arm at (D={D}, B={B}, k={k}, m={m}), "
-            f"which is what `owner_rows` dispatches on. It is a TEST row; build the "
-            f"battery's set: ROLA_CARRY_ARMS=all ROLA_CUDA_ARCHS=86 pip install -e . "
-            f"--no-build-isolation")
+            f"which is what `owner_rows` dispatches on.")
 
 
 def reference_rows(plane: torch.Tensor, widths, spans) -> torch.Tensor:

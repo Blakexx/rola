@@ -43,7 +43,7 @@ from benchmarks.cells import carry_call, carry_cells
 from rola.engine.facts import planes
 from rola.ops import carry as carry_ops
 from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal, from_split_planes
-from tests.oracle.fixtures import assert_fresh_binary, require_arm
+from tests.oracle.fixtures import assert_fresh_binary
 
 pytestmark = [
     pytest.mark.cuda,
@@ -98,7 +98,6 @@ def _activity(spec, drawn, bh=1):
 
 def _bind(spec, bh=1):
     """The registry's call, with the CELL's own activity in place of the conservative one."""
-    require_arm(*spec.arm)
     drawn, call = carry_call(spec, bh=bh)
     call["activity"] = _activity(spec, drawn, bh)
     return drawn, call

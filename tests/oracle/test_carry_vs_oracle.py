@@ -35,7 +35,7 @@ from benchmarks.cells import by_name, carry_call, carry_cells, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference
-from tests.oracle.fixtures import canonical_from_plane, relative, relative_per_token, require_arm
+from tests.oracle.fixtures import canonical_from_plane, relative, relative_per_token
 from tests.oracle.tolerances import BF16_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
@@ -46,7 +46,6 @@ IDS = [cell.name for cell in ORACLE_CELLS]
 
 def run(spec, state_in=None, state_out=None, page_table=None, bh=1, activity=None,
         schedule=None):
-    require_arm(*spec.arm)
     drawn, call = carry_call(spec, bh=bh)
     routes, v = call.pop("routes"), call.pop("v")
     if activity is not None:
@@ -66,11 +65,10 @@ def ref(drawn, state_in=None):
 
 def check(spec, num, den, plane, want, bh=1):
     n_ref, d_ref, s_ref = want
-    assert relative(num.reshape(bh, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3),
-                    n_ref) < BF16_RTOL
-    assert relative_per_token(num.reshape(bh, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3),
-                              n_ref) < BF16_RTOL
-    assert relative(den.reshape(bh, 1, spec.tokens).permute(0, 2, 1), d_ref) < BF16_RTOL
+    #: PER TOKEN, on each token's own scale: the numerator and the denominator are what the kernel computes, and a
+    #: global max would let a small token's error hide under the largest one's.
+    assert relative_per_token(num.reshape(bh, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3), n_ref) < BF16_RTOL
+    assert relative_per_token(den.reshape(bh, 1, spec.tokens, 1).permute(0, 2, 1, 3), d_ref[..., None]) < BF16_RTOL
     assert relative(canonical_from_plane(plane),
                     s_ref.reshape(bh, spec.N, spec.dv + 1)) < BF16_RTOL
 

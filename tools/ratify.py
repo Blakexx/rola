@@ -229,13 +229,10 @@ STANDALONE_TUS = ("decode/decode.cu", "entmax/entmax.cu",
 def carry_arm_paths(arms=None) -> list[Path]:
     """The carry family's per-arm translation units, for the arms this gate measures.
 
-    THE RATIFIED SET IS THE SHIPPED ROWS.  A row tagged TEST is a conformance
-    cell -- the fp64 oracle can hold `N = 4096`, and the `W = 64` arms exist so that
-    it can -- and it is built for the battery at one arch and never shipped, so
-    ratifying it would file measurements for codegen no binary carries.  `arms`
-    scopes further, and like `--shard` it is a MEASUREMENT scope only.
+    THE RATIFIED SET IS EVERY DECLARED ARM: each is built and shipped.  `arms` scopes
+    further, and like `--shard` it is a MEASUREMENT scope only.
     """
-    want = sorted(set(gen_shards.CARRY_SHIPPED_ARMS if arms is None else arms))
+    want = sorted(set(range(len(gen_shards.CARRY_ARMS)) if arms is None else arms))
     files = gen_shards.carry_sources()
     return [SRC / "instantiations" / name
             for name in sorted({files[i] for i in want})]
@@ -1230,7 +1227,7 @@ def measure_units(arches, objdir: str, sources: list[Path], arms=None,
     #: the shipped set (`carry_arm_paths`'s own default), never "whatever the last
     #: build left behind".
     gen_shards.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    want_arms = sorted(set(gen_shards.CARRY_SHIPPED_ARMS if arms is None else arms))
+    want_arms = sorted(set(range(len(gen_shards.CARRY_ARMS)) if arms is None else arms))
     #: ONE SHARED OUTPUT FILE (LOCKS brief item 3): two concurrent ratify/build
     #: invocations racing this write must not interleave -- one must finish
     #: writing the header before the other starts compiling against it.

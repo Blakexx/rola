@@ -27,7 +27,7 @@ from benchmarks.cells import by_name  # noqa: E402
 from benchmarks.cells.layer import by_name as layer_by_name  # noqa: E402
 from benchmarks.cells.registry import registry  # noqa: E402
 
-SHIPPED = [tuple(gen_shards.CARRY_ARMS[i]) for i in gen_shards.CARRY_SHIPPED_ARMS]
+SHIPPED = [tuple(row) for row in gen_shards.CARRY_ARMS]
 
 
 @pytest.fixture

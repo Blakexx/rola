@@ -2091,12 +2091,6 @@
   },
   {
    "path": "tests/integration/test_owner_rows.py",
-   "message": "names the work code 'K36'",
-   "line_sha256": "487d8f89c0841c80",
-   "count": 1
-  },
-  {
-   "path": "tests/integration/test_owner_rows.py",
    "message": "names the work code 'S1b'",
    "line_sha256": "73685ef45c8e77b6",
    "count": 1
@@ -3047,12 +3041,6 @@
    "path": "tools/lint/unused_instantiations.py",
    "message": "names the work code 'K46'",
    "line_sha256": "5916abf619a7412d",
-   "count": 1
-  },
-  {
-   "path": "tools/manifests/shipped_set.json",
-   "message": "names the work code 'K3'",
-   "line_sha256": "0099d22699ffe548",
    "count": 1
   },
   {
