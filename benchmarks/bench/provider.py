@@ -149,7 +149,7 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, state: str):
             "family_stamp": int(stamp()), "device": torch.cuda.get_device_name(0), "sm": f"sm_{props.major}{props.minor}",
             "torch": torch.__version__, "rola_file": rola_file.relative_to(CHECKOUT).as_posix(),
             "sm_ghz_at_build": carry_ops.sm_clock_ghz()}
-    return Arm(cell=cell, call=call, instrument="cuda_events")
+    return Arm(cell=cell, call=call, instrument="cuda_events", outside_allocator=launch.outside_allocator)
 
 
 def _layer_fixture(spec):

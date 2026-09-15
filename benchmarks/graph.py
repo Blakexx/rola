@@ -197,7 +197,9 @@ class Arm(Unit):
 
 class Memory(Unit):
     """The arm alone: the device's peak allocated and reserved bytes over `MEMORY_CALLS` calls after one warm call, and
-    what stays allocated after them. A timed session cannot say this: its members share one allocator per worker."""
+    what stays allocated after them, as torch's caching allocator counts them; beside them, the bytes the arm holds
+    outside that allocator (a paged state mapped through the driver), which only grow during a sequence, so their value
+    after the calls is their peak. A timed session cannot say any of this: its members share one allocator per worker."""
 
     location = "rola/memory"
     repeatable = True
@@ -230,6 +232,7 @@ class Memory(Unit):
         (ws / "memory.json").write_text(json.dumps({
             "peak_allocated_bytes": torch.cuda.max_memory_allocated(), "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
             "allocated_after_bytes": torch.cuda.memory_allocated(), "allocated_before_build_bytes": before,
+            "outside_allocator_bytes": int(built.outside_allocator()) if built.outside_allocator else 0,
             "built": built.cell}))
 
     def post(self, ws: Path) -> dict:

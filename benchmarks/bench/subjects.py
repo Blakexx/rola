@@ -31,10 +31,12 @@ import torch
 
 @dataclass(frozen=True)
 class Launch:
-    """One thing to time: a name and the zero-argument callable that issues it."""
+    """One thing to time: a name and the zero-argument callable that issues it. `outside_allocator`, for a launch that
+    holds device memory torch's caching allocator does not see, returns those bytes now."""
 
     name: str
     call: Callable[[], object]
+    outside_allocator: Callable[[], int] | None = None
 
 
 @dataclass(frozen=True)
@@ -347,7 +349,10 @@ def decode_step(fx) -> Launch:
             y, _ = decode_forward(producer(token), v_token, state)
         return y
 
-    return Launch(name=f"decode_step|{spec.name}", call=run)
+    #: THE ARENA'S PHYSICAL PAGES: under the VMM backing the driver maps them outside the caching allocator, so a memory
+    #: measurement adds its own receipt; the dense bridge's one plane is a torch tensor the allocator already counts.
+    return Launch(name=f"decode_step|{spec.name}", call=run,
+                  outside_allocator=lambda: arena.committed_bytes if arena.backing == "vmm" else 0)
 
 
 #: THE ROSTER: one entry per kernel this line carries, plus the carry, whose arm refuses.
