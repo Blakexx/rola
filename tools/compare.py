@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE COMPARISON: arms of rola checkouts and of other libraries on the cells of one point, interleaved call by call.
 
-    python tools/compare.py --point L4096-N4096-dv64 --registry ../rola-bench/rola_bench/measure/registry.json \\
+    python tools/compare.py --point L4096-N4096-dv64 --registry points.json \\
         --arm label:master,arm:prefill_op,worktree:/path/rola-a,venv:/path/venv-a \\
         --arm label:tip,arm:prefill_op,worktree:/path/rola-b,venv:/path/venv-b \\
         [--foreign label:attention,runner:attention,provider:rola_bench.measure.attention:arms,arm:flash,python:PY,cwd:DIR] \\

@@ -12,8 +12,10 @@ stored with its provenance. This document is what that sentence means.
 | statistics | rola-devtools' `rola_devtools.verdict` | whether a difference is real |
 | record | `rola_results` (the measurements store) | where a number lives afterwards, and which stored samples are a baseline |
 
-The benchmark repository's suite (rola-bench, `rola_bench/measure`) times through `tools/compare.py`, so a suite number
-and a number taken here are the same measurement.
+The benchmark repository's suite (rola-bench, `rola_bench/measure`) runs this tree's measurement registry
+(`benchmarks/registry.py`) through rola-devtools' measurement service (`rola_devtools.measure`): the same arms
+(`bench/provider.py`), interleaved call by call in sessions with the same floor, odd reps and one stopwatch, under the
+same GPU and clock locks; `python -m rola_devtools.measure run benchmarks.registry:registry` runs it from this checkout.
 
 ## The method
 

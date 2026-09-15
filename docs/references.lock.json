@@ -1001,6 +1001,7 @@
   {"doc": "docs/internals/tools/wheels.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "529815191fc46275", "target": "tools/wheels.py::split"},
   {"doc": "docs/measurement.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "benchmarks/bench/subjects.py"},
   {"doc": "docs/measurement.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "benchmarks/cells"},
+  {"doc": "docs/measurement.md", "pinned_at": "c388b5aa7e74", "reviewed": true, "sha256": "", "target": "benchmarks/registry.py"},
   {"doc": "docs/measurement.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "benchmarks/unit/bench_carry_calib.py"},
   {"doc": "docs/measurement.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "csrc"},
   {"doc": "docs/measurement.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "docs/build.md"},
