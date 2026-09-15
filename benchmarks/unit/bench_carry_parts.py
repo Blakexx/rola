@@ -183,7 +183,8 @@ def check_fill(spec, kw, slots, geom_list, owner_count: int):
     vv = kw["v"].view(torch.int16).cpu().numpy().astype(np.uint16)[0]
     got = slots.cpu().numpy()
     L = spec.tokens
-    groups = min(vchunks, 8)
+    #: the V row's swizzle, `chan_row_off`'s: the chunk XORed with the row's low bits and its bits four up.
+    groups, shift = min(vchunks, 8), 1 if vchunks == 4 else 0
     bad = 0
     for owner in range(owner_count):
         abase = []
@@ -205,7 +206,7 @@ def check_fill(spec, kw, slots, geom_list, owner_count: int):
                         continue
                     t = t0 + int(union[r])
                     for cc in range(vchunks):
-                        sw = cc ^ (row & (groups - 1))
+                        sw = cc ^ (((row >> shift) ^ (row >> (shift + 4))) & (groups - 1))
                         off = (v_off + row * vrow_bytes + sw * 16) // 2
                         want[off:off + 8] = vv[t, cc * 8:cc * 8 + 8]
                         valid[off:off + 8] = True

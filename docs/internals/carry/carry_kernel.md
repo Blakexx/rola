@@ -152,7 +152,8 @@ structured cells) most of the 32 KB is. The exit's publish (`WithLo`) is every b
 The write side's union-live tokens, by rank, in chunks of `kPoolTok` (64 at DV = 64) across
 `kPoolSlots` (2) slots, each slot a token's V row, inner run, outer run and GAIN PAIR (the
 aligned word of the gain row holding it; the walker takes the half its token's parity
-names), and a ZERO ROW (row `kPoolTok`) the tail of a list pads from. Slots are under
+names), and a ZERO ROW (row `kPoolTok`) the tail of a list pads from, zeroed in the prologue (the
+part harness's fill and fold drivers zero it too: a chunk with no idle lane never writes it). Slots are under
 `mbarrier` pairs: `full` completes at `kThreads` landed-copy arrivals
 (`cp.async.mbarrier.arrive.noinc`), `empty` at `kWarps` arrivals, a warp's after its LAST
 GATHER from the slot, not after its MMAs — a row is free once loaded into registers.

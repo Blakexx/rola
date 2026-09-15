@@ -44,6 +44,33 @@ __device__ __forceinline__ void run_head(bool rc, bool rs, bool wc, bool ws, F&&
     f(Fa{}, Fa{}, T{}, Fa{});
 }
 
+//: THE POOL'S PROLOGUE as `window_loop` runs it: each slot's barriers, and its zero row
+//: (row `kPoolTok`) zeroed. A fill with no idle lane never writes that row, so a driver that
+//: skips this reads leftover SMEM there.
+template <class BP>
+__device__ __forceinline__ void pool_prologue(const Smem<BP>& sm, int tid) {
+  if (tid < BP::kPoolSlots) {
+    ops::mbar_init(sm.full_bar(tid), BP::kThreads);
+    ops::mbar_init(sm.empty_bar(tid), BP::kWarps);
+  }
+  constexpr int kZeroParts = BP::kVChunks + 4;
+#pragma unroll 1
+  for (int i = tid; i < BP::kPoolSlots * kZeroParts; i += BP::kThreads) {
+    const int s = i / kZeroParts, part = i % kZeroParts;
+    if (part < BP::kVChunks)
+      ops::store_shared_vec16(sm.pool(s) + pool_v_off<BP>(BP::kPoolTok, part),
+                              make_uint4(0u, 0u, 0u, 0u));
+    else if (part < BP::kVChunks + 2)
+      ops::store_shared_vec16(sm.pool(s) + pool_inner_off<BP>(BP::kPoolTok, part - BP::kVChunks),
+                              make_uint4(0u, 0u, 0u, 0u));
+    else if (part < BP::kVChunks + 4)
+      ops::store_shared_vec16(
+          sm.pool(s) + pool_outer_off<BP>(BP::kPoolTok, part - BP::kVChunks - 2),
+          make_uint4(0u, 0u, 0u, 0u));
+    if (part == 0) ops::store_shared_u32(sm.pool(s) + pool_gain_off<BP>(BP::kPoolTok), 0u);
+  }
+}
+
 //: THE HEAD PART: every window's head, `reps` times over (the products are idempotent);
 //: the last pass's read order, tile masks, live counts, warp words, union words and prefix
 //: written to `[bh][owner][window][...]`.
@@ -132,10 +159,7 @@ __global__ __launch_bounds__(BoxPlan<D, DV, WARPS>::kThreads, 1) void fill_part_
   const SideLayout& lw = lay[rola::facts::kWrite];
   const bool RC = lr.single_inner < 0 || lr.single_outer < 0, RS = lr.straddle >= 0;
   const bool WC = lw.single_inner < 0 || lw.single_outer < 0, WS = lw.straddle >= 0;
-  if (tid < BP::kPoolSlots) {
-    ops::mbar_init(sm.full_bar(tid), BP::kThreads);
-    ops::mbar_init(sm.empty_bar(tid), BP::kWarps);
-  }
+  pool_prologue<BP>(sm, tid);
   ops::rendezvous();
   PhaseClock pc(sm.ledger(warp), lane);
   int ordinal = 0;
@@ -206,25 +230,7 @@ __global__ __launch_bounds__(BoxPlan<D, DV, WARPS>::kThreads, 1) void fold_part_
   const SideLayout& lw = lay[rola::facts::kWrite];
   const bool RC = lr.single_inner < 0 || lr.single_outer < 0, RS = lr.straddle >= 0;
   const bool WC = lw.single_inner < 0 || lw.single_outer < 0, WS = lw.straddle >= 0;
-  if (tid < BP::kPoolSlots) {
-    ops::mbar_init(sm.full_bar(tid), BP::kThreads);
-    ops::mbar_init(sm.empty_bar(tid), BP::kWarps);
-  }
-  constexpr int kZeroParts = BP::kVChunks + 4;
-  for (int i = tid; i < BP::kPoolSlots * kZeroParts; i += BP::kThreads) {
-    const int s = i / kZeroParts, part = i % kZeroParts;
-    if (part < BP::kVChunks)
-      ops::store_shared_vec16(sm.pool(s) + pool_v_off<BP>(BP::kPoolTok, part),
-                              make_uint4(0u, 0u, 0u, 0u));
-    else if (part < BP::kVChunks + 2)
-      ops::store_shared_vec16(sm.pool(s) + pool_inner_off<BP>(BP::kPoolTok, part - BP::kVChunks),
-                              make_uint4(0u, 0u, 0u, 0u));
-    else
-      ops::store_shared_vec16(
-          sm.pool(s) + pool_outer_off<BP>(BP::kPoolTok, part - BP::kVChunks - 2),
-          make_uint4(0u, 0u, 0u, 0u));
-    if (part == 0) ops::store_shared_u32(sm.pool(s) + pool_gain_off<BP>(BP::kPoolTok), 0u);
-  }
+  pool_prologue<BP>(sm, tid);
   ops::rendezvous();
   PhaseClock pc(sm.ledger(warp), lane);
   State<BP> st;
