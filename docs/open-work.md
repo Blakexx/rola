@@ -13,7 +13,7 @@ test-driven ruling: no skips, no xfails, no designed refusal).
 
 | # | Absent, and what builds it back |
 |---|---|
-| **C-a** | **The prefill (carry) forward.** `rola/ops/carry.py`, `rola.layer`'s prefill path and the engine's chunk DAG still CALL it and fail at `rola._C` with a missing attribute. C3 (K0–K6) builds it ground up in the pipelined structure, graded from its first probe against the OLD reference on the `k35-final` tip. |
+| **C-a** | **The prefill (carry) forward.** `rola/ops/carry.py`, `rola.layer`'s prefill path and the engine's chunk DAG still CALL it and fail at `torch.ops.rola` with a missing attribute. C3 (K0–K6) builds it ground up in the pipelined structure, graded from its first probe against the OLD reference on the `k35-final` tip. |
 | **C-b** | **The prefill backward.** C4, after C3. |
 | **C-c** | **The liveness pass** (was: the facts family's union table, atom bitmap, block bitmap). C2 builds it as a foundation feature with host folds; C1 adjusts the Python seam where its outputs replace the atom/block bitmaps. |
 | **C-d** | **Decode's PAGED path, in the meantime.** Decode's own kernel is untouched and its oracle tier is green, but its DAG sourced `atom_bits` from the deleted stats pass, so the paged decode integration tests are red until C-c. This is the one cost C0 pays outside the carry family, and it is stated rather than worked around. |

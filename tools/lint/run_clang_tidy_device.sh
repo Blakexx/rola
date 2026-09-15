@@ -81,7 +81,7 @@ if [[ -z "$arm_files" ]]; then
   exit 0
 fi
 
-ARCH="$(python3 -c "from rola._build_config import BUILD_CONFIG as c; print(c['archs'][0].replace('sm_',''))" 2>/dev/null || echo 80)"
+ARCH="$(python3 -c "from rola_cu13._build_config import BUILD_CONFIG as c; print(c['archs'][0].replace('sm_',''))" 2>/dev/null || echo 80)"
 
 total_real=0
 total_noise=0

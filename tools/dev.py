@@ -473,20 +473,25 @@ def cmd_worktree(a) -> int:
     (site / "zz_rola_base.pth").write_text(f"{site_packages(Path(base))}\n")
     for pth, key in LINKED.items():
         (site / pth).write_text(f"{dev_config.get(key)}\n")
-    main_so = sorted((main / "rola").glob("_C*.so"))
+    try:
+        main_so = toolchains.built_extension(main)
+    except FileNotFoundError:
+        main_so = None
     same = subprocess.run(["git", "-C", str(main), "rev-parse", "HEAD"], capture_output=True, text=True).stdout == \
         subprocess.run(["git", "-C", str(worktree), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
     install = [str(venv / "bin" / "python"), "-m", "pip", "install", "-e", ".", "--no-deps", "--no-build-isolation"]
     if main_so and same and not a.build:
         subprocess.run(install, cwd=worktree, env={**os.environ, "ROLA_NO_EXTENSION": "1"}, check=True)
-        shutil.copy(main_so[0], worktree / "rola")
+        for built in (main_so, main_so.parent / "_build_config.py"):
+            shutil.copy(built, worktree / main_so.parent.name)
     else:
         subprocess.run(install, cwd=worktree, check=True)
     finder = site / "__editable___rola_0_1_0_dev0_finder.py"
     if not finder.exists() or f"'rola': '{worktree}/rola'" not in finder.read_text():
         raise SystemExit(f"refusing: the editable finder {finder} does not map rola to {worktree}/rola")
-    subprocess.run([str(venv / "bin" / "python"), "-c", "import rola; from rola._build_config import BUILD_CONFIG; "
-                    "print('rola:', rola.__file__, 'archs:', BUILD_CONFIG['archs'])"], cwd=worktree, check=True)
+    subprocess.run([str(venv / "bin" / "python"), "-c", "import importlib, rola; from rola.ops._ext import PLUGIN, extension; "
+                    "extension(); print('rola:', rola.__file__, 'archs:', "
+                    "importlib.import_module(PLUGIN + '._build_config').BUILD_CONFIG['archs'])"], cwd=worktree, check=True)
     print(f"worktree {worktree}  venv {venv}")
     return 0
 
@@ -538,7 +543,7 @@ rm -rf /tmp/proof && mkdir /tmp/proof
 tar -C /workspace/rola --exclude=./build --exclude=./.git --exclude='*.so' -cf - . | tar -C /tmp/proof -xf -
 cd /tmp/proof
 ROLA_CUDA_ARCHS=86 ROLA_CARRY_ARMS=0 python -m pip install -e . --no-deps --no-build-isolation -q
-python -c 'import rola; from rola._build_config import BUILD_CONFIG as c; print("built", c["archs"])'""",
+python -c 'import rola; from rola_cu13._build_config import BUILD_CONFIG as c; print("built", c["archs"])'""",
 }
 
 

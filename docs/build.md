@@ -44,7 +44,7 @@ nothing else to `setup.py`. Everything about the MACHINE is the dev config (`too
 | `ROLA_CUDA_ARCHS` | `;`-separated compute capabilities, default `80;86`. Naming one without a ratified manifest **fails before anything compiles** (rule 3). |
 | `ROLA_CARRY_ARMS` | A `,`/space list of INDICES into the carry family's arm list (`tools/gen_shards.py`'s `CARRY_ARMS`), or the word `all`. **The subset is a FILE subset**: each selected row contributes its generated `csrc/rola/src/instantiations/carry_arm_<i>.cu` and a `-DROLA_CARRY_BUILD_<i>`, so an arm outside the set is not compiled at all. **The default is the SHIPPED rows** — see [the arm lists](#carry-arm-lists). `all` is the battery's set (shipped + test). A build whose arm set is not the shipped set is **NOT SHIPPABLE**: the build prints a banner and skips the two shippability gates, because the manifest ratifies the shipped set and a binary carrying a different set is not the thing that ships, in either direction. It is self-identifying at run time: `rola.ops.carry.arms()` lists what was built and every entry point refuses an arm the binary does not carry. Pair it with `ROLA_CUDA_ARCHS=86` for iteration. |
 | `ROLA_CARRY_PARTS` <a id="carry-parts"></a> | **Iteration only.** `all` (the default), `none`, or a comma list of the carry kernel's parts (`readout.stream`, `readout.loads`, `readout.drain`, `fold.pool`, `fold.ring`, `fold.loads`) to build REAL; the rest are STUBS that keep their HMMAs and drop their other work, written to the generated `build/generated/carry_parts.inc` on every build and ratify. Any subset makes the build an iteration build (banner, manifest gate skipped). Driven by `tools/compose_ledger.py` (`docs/internals/tools/compose_ledger.md`); with every part real the arm's instructions are identical to a build without the switches. Never shipped. |
-| `ROLA_BUILD_PARTS` <a id="parts"></a> | **Iteration only.** `1` also builds `rola._C_parts`, the part harness's driver (`benchmarks/unit/bench_carry_parts.py`: the head, fill and fold components alone on a cell, KERNEL_STANDARDS §19), in the same pass beside the arm with `-lineinfo`. A torch JIT `load()` of the same three sources ran for minutes and was killed by the host's memory watchdog; a gating instrument that cannot run is a defect (§22). Never shipped. |
+| `ROLA_BUILD_PARTS` <a id="parts"></a> | **Iteration only.** `1` also builds `rola_cu13._C_parts`, the part harness's driver (`benchmarks/unit/bench_carry_parts.py`: the head, fill and fold components alone on a cell, KERNEL_STANDARDS §19), in the same pass beside the arm with `-lineinfo`. A torch JIT `load()` of the same three sources ran for minutes and was killed by the host's memory watchdog; a gating instrument that cannot run is a defect (§22). Never shipped. |
 | `ROLA_DECODE_ARMS` | **Iteration only.** Comma- or space-separated indices into the decode family's declared arm list (`csrc/rola/src/decode/decode.cu`'s `DECODE_ARM_<i>`, the `d_v x D x decay` matrix in that order, 16 rows). Compiles only those arms. Unset = every arm, which is what a gate build must be. Same NOT-SHIPPABLE banner/skip mechanism as `ROLA_CARRY_ARMS` (one `_is_iteration_build` covers both families). See [below](#arm-subset). |
 | `ROLA_SKIP_POST_BUILD_RATIFY` | Skips the post-build gate. For iterating on non-kernel code only; a shippable binary is one that passed it. |
 | `ROLA_STRICT_MANIFEST` | `0`/unset (default): the two post-build gates (the fatbin's manifest-describes-binary sub-check, `tools/ratify.py`'s own re-run) REPORT a mismatch against the committed `tools/manifests/sm_XX.json` and the install still succeeds — KERNEL_STANDARDS.md §16 makes that manifest stale between milestones by design, so failing the install on it would fail every ordinary stage build. `1`: restores the pre-K43 hard failure. **The milestone/CI gate build sets it** — it is the build that immediately precedes `tools/ratify.py --write`, so it is the one build that must fail loudly if the tree it is about to ratify is not actually shippable yet. Structural checks (the shard partition actually matching the arm list, the dispatch's link closure) are never affected by this variable — those are properties of the build's own source/binary pair, not of the ratified snapshot, and stay fatal unconditionally. |
@@ -97,7 +97,7 @@ python -m pip install -e . --no-build-isolation
 6. **Post-build ratification.** `tools/ratify.py --arch …` for exactly the archs
    just built — the pre-build gates prove the *inputs* were ratified; this proves
    the codegen still matches what was measured.
-8. **`rola/_build_config.py`.** Generated, carrying the archs, the assembler, the
+8. **`rola_cu13/_build_config.py`.** Generated, carrying the archs, the assembler, the
    torch version and ABI flag, the manifest digest and per-arch entry counts, and
    `ptx_jit_fallback: False`.
 
@@ -303,7 +303,7 @@ architectures:**
 build. Verified: `tools/sass_bodies.py --compare` between an independently
 cold-built `.so` and a fully cache-hit (100%) rebuilt `.so` -- **716 entries
 compared, 0 differing, 0 absent either way**; the two `.so` files are
-byte-identical (`cmp`); `rola/_build_config.py` (including `manifest_sha256`)
+byte-identical (`cmp`); the build record `_build_config.py` (including `manifest_sha256`)
 is byte-identical between the two builds.
 
 `sccache` is recorded in the manifest's `toolchain` block
@@ -400,8 +400,8 @@ compilers import it. Pre-existing; recording the flag list in the manifest's
 ## Verifying a built binary
 
 ```bash
-python -c "from rola import _build_config; print(_build_config.show())"
-cuobjdump --list-ptx rola/_C.abi3.so     # must list NOTHING
+python -c "from rola_cu13 import _build_config; print(_build_config.show())"
+cuobjdump --list-ptx rola_cu13/_C.abi3.so     # must list NOTHING
 python tools/ratify.py --arch 80 --arch 86       # must PASS
 ```
 
@@ -421,6 +421,39 @@ minimum fails to compile) and builds the module object against Python's limited 
 piece is the native handle of the current CUDA stream. Raising the minimum is a one-line change in `tools/build_flags.py`; lowering
 it needs every call above the new minimum replaced first, and the compiler names each one. The gate for a change here is
 a build against the minimum torch and the battery on the minimum and on the newest.
+
+## <a id="wheels"></a>Two wheels: `rola` and its binary plugin `rola-cu13`
+
+```bash
+pip install "rola[cu13]"
+```
+
+installs two distributions at one version. **`rola`** is pure Python (`py3-none-any`): the layer, the routing, the
+decay, the refusals. **`rola-cu13`** (`cp310-abi3-linux_x86_64`) is the binary plugin of the cu13 toolchain: the package
+`rola_cu13` holding the fatbin `_C.abi3.so` for every ratified architecture, the build record `_build_config.py`, and
+`manifests/sm_XX.json`, the ratification that record's `manifest_sha256` hashes. A future toolchain is a second plugin
+beside it, never a rebuild of `rola`.
+
+`rola` loads the plugin when a kernel is first called (`rola/ops/_ext.py`). It reads the plugin's build record BEFORE
+its library, and a record of another version refuses without registering an operator: the two are one version. With no
+plugin, or a mismatched one, the first kernel call raises, naming `pip install "rola[cu13]==<version>"`; the pure-Python
+parts (the oracle, the configuration objects) still import. The extra is declared in `setup.py` and not
+`pyproject.toml` because it pins `rola`'s own version.
+
+A checkout builds the same package in place: `pip install -e . --no-build-isolation` puts the binary at
+`rola_cu13/_C.abi3.so` (and the part harness's driver at `rola_cu13/_C_parts.abi3.so`), so a checkout and an installed
+wheel load the binary by one path. `tools/toolchains.py`'s `built_extension` is how the tools find it.
+
+**The wheels are one gate build, split.** `python tools/wheels.py` refuses a tree with changes, builds the commit with
+every iteration knob cleared and `ROLA_STRICT_MANIFEST=1`, and refuses the build unless its record says: this version,
+not an iteration build, every ratified arch of the toolchain, and the manifest digest of the files it then packages.
+It writes `dist/rola-<v>-py3-none-any.whl` and `dist/rola_cu13-<v>-cp310-abi3-linux_x86_64.whl`, byte-reproducible for
+a commit (fixed member order and timestamps). `python tools/wheels.py --check dist` installs them into a scratch venv
+over the running interpreter's torch and requires `rola` alone to refuse naming the extra, and both together to load
+and name their carry arms ([`internals/tools/wheels.md`](internals/tools/wheels.md)).
+
+The platform tag is the build host's, `linux_x86_64`: the wheels install on a machine whose glibc is at least the build
+host's. A `manylinux` tag, which PyPI requires, is not claimed.
 
 ## Dependencies
 

@@ -64,7 +64,7 @@ def main() -> int:
 
     from rola.ops import carry as carry_ops
     try:
-        from rola import _C_parts  # noqa: F401 -- loading the library registers torch.ops.rola_parts
+        from rola_cu13 import _C_parts  # noqa: F401 -- loading the library registers torch.ops.rola_parts
     except ImportError as ex:
         raise SystemExit("the part harness's module is not built (ROLA_BUILD_PARTS=1)") from ex
     mod = torch.ops.rola_parts

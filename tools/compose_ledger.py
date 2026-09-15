@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import dev_config  # noqa: E402
 import gen_shards  # noqa: E402
+import toolchains  # noqa: E402
 
 PY = sys.executable
 CUOBJDUMP = dev_config.cuda_bin("cuobjdump")
@@ -50,7 +51,7 @@ def run(cmd: list[str], env: dict | None = None, timeout: int = 3600) -> tuple[i
 
 
 def extension_so() -> Path:
-    return next((ROOT / "rola").glob("_C.*.so"))
+    return toolchains.built_extension(ROOT)
 
 
 def device_hash(arch: str = "sm_86") -> str:

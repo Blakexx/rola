@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
 import phase_ledger  # noqa: E402
 import probe_cells  # noqa: E402
+import toolchains  # noqa: E402
 from rola_devtools import process  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +47,7 @@ def measure(cell: str, schedule: str, out: Path) -> None:
             raise SystemExit(f"stall_census: the capture or export failed:\n{(done.stdout + done.stderr + exported.stderr)[-1500:]}")
         csv = Path(tmp) / "source.csv"
         csv.write_text(exported.stdout)
-        so = next((ROOT / "rola").glob("_C*.so"))
+        so = toolchains.built_extension(ROOT)
         ledger = subprocess.run([PY, "tools/region_ledger.py", "--csv", str(csv), "--so", str(so), "--source",
                                  "csrc/rola/src/carry/carry_kernel.cuh", "--budget", "tools/budgets/carry.json", "--cell",
                                  cell, "--per", str(phase_ledger.cta_windows(cell)), "--json", str(out)],

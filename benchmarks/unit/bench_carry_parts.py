@@ -34,7 +34,7 @@ def build():
     """The driver, built AHEAD OF TIME beside the arm (`ROLA_BUILD_PARTS=1`, setup.py); a
     torch JIT of the same sources ran for minutes and was killed by the host's memory watchdog."""
     try:
-        from rola import _C_parts  # noqa: F401 -- loading the library registers torch.ops.rola_parts
+        from rola_cu13 import _C_parts  # noqa: F401 -- loading the library registers torch.ops.rola_parts
     except ImportError as ex:
         raise SystemExit("the part harness's driver is not built: "
                          "ROLA_BUILD_PARTS=1 ROLA_CUDA_ARCHS=86 ROLA_CARRY_ARMS=0 "

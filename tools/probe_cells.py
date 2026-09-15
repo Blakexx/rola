@@ -112,7 +112,7 @@ def worker_main(args) -> None:
     except Exception:  # noqa: BLE001
         props, device_uuid = torch.cuda.get_device_properties(0), None
     try:
-        from rola._build_config import BUILD_CONFIG
+        from rola_cu13._build_config import BUILD_CONFIG
         manifest_sha256, ptxas = BUILD_CONFIG["manifest_sha256"], BUILD_CONFIG["ptxas"]
     except Exception:  # noqa: BLE001
         manifest_sha256, ptxas = None, None

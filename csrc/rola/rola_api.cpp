@@ -1,7 +1,7 @@
 // THE EXTENSION'S OPERATOR REGISTRATION -- the only TU that registers with torch (host-only, so a `.cpp` rather than
 // recompiled per `-gencode` in a `.cu`). Through torch's STABLE ABI: every entry is an operator in the `rola` namespace
 // (`torch.ops.rola.<entry>`), declared by schema and implemented by a boxed function, so the binary depends on torch's
-// stable C shim and never on its C++ ABI. The module object `rola._C` is only the handle an import loads the library by.
+// stable C shim and never on its C++ ABI. The module object `rola_cu13._C` is only the handle an import loads the library by.
 // Full entry inventory, the schemas and the VMM owner's handle protocol: see docs/internals/rola_api.md
 
 #define PY_SSIZE_T_CLEAN
@@ -234,7 +234,7 @@ STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
   m.impl("vmm_facts", TORCH_BOX(&vmm_facts));
 }
 
-// THE MODULE OBJECT: importing `rola._C` loads this library, whose static registrations above run on load. The module
+// THE MODULE OBJECT: importing `rola_cu13._C` loads this library, whose static registrations above run on load. The module
 // itself carries nothing, so it is built against Python's limited API and one binary serves every CPython from the
 // limited API's floor (3.10, torch's build flag) on.
 extern "C" PyObject* PyInit__C(void) {

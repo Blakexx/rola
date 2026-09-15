@@ -27,7 +27,7 @@ to a vendored header moves the register allocation the manifest ratified exactly
 edit to ``chunk/chunk_kernel.cuh`` would. ``_gate_vendored`` therefore hashes the whole
 vendored subtree and compares it against ``PIN.json``'s recorded digest BEFORE the
 compile, in the same pass as rules 1 and 3, and the pin (upstream, tag, commit, digest)
-is stamped into ``rola/_build_config.py`` so an installed wheel can answer "which
+is stamped into ``rola_cu13/_build_config.py`` so an installed wheel can answer "which
 CUTLASS is inside this ``.so``?" with no checkout. The vendored subtree is
 byte-identical to the upstream tag, which is what makes the digest checkable against
 something other than itself.
@@ -67,6 +67,7 @@ import json
 import os
 import pprint
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -228,7 +229,7 @@ print(json.dumps([list(row) for row in torch.ops.rola.carry_arms()]))
 
 def _built_extension(build_lib: str) -> Path | None:
     """The `_C` extension this build produced, found under its own output tree."""
-    found = sorted(Path(build_lib).glob("rola/_C*.so"))
+    found = sorted(Path(build_lib).glob(f"{PLUGIN}/_C.*so"))
     return found[0] if found else None
 
 
@@ -244,10 +245,12 @@ def _arm_coverage_sweep(build_lib: str, want: list[int]) -> int:
     so = _built_extension(build_lib)
     if so is None:
         raise RuntimeError(
-            f"no rola/_C*.so under {build_lib} after the build; the arm coverage "
+            f"no {PLUGIN}/_C.*so under {build_lib} after the build; the arm coverage "
             f"sweep has no artifact to ask, and a sweep that silently asks nothing "
             f"is the vacuous gate this project keeps re-learning about")
-    proc = subprocess.run([sys.executable, "-c", _ARM_SWEEP_PROBE, str(so)],
+    #: ABSOLUTE: a wheel's `build_lib` is relative to this checkout, and the probe runs outside it (so `import rola`
+    #: cannot resolve the source tree instead of the build).
+    proc = subprocess.run([sys.executable, "-c", _ARM_SWEEP_PROBE, str(so.resolve())],
                           capture_output=True, text=True, cwd=str(ROOT.parent))
     if proc.returncode != 0:
         raise RuntimeError(
@@ -347,20 +350,21 @@ def _decode_arm_subset() -> list[str]:
     return [f"-DROLA_DECODE_ARMS(X_)={rows}"]
 
 
-#: THE EXTENSION IS NAMESPACED INSIDE THE PACKAGE, not top-level. A top-level
-#: ``rola_cuda`` is the flash-attention / mamba precedent, and it has one concrete
-#: cost: an in-place (``pip install -e`` / ``build_ext --inplace``) build drops the
-#: ``.so`` at the REPO ROOT, so a developer's import path is not the installed
-#: layout. A dotted name makes setuptools place the binary inside ``rola/`` in both
-#: cases, so there is ONE layout, the repo root stays clean, and the module cannot be
-#: imported by accident from a working directory that merely happens to contain it.
+#: THE EXTENSION LIVES IN THE TOOLCHAIN'S BINARY PLUGIN, ``rola_cu13`` (wheel naming D,
+#: docs/build.md#wheels): ``rola`` is pure Python, and the binary, its build record and its
+#: manifests ship as ``rola-cu13``. A dotted name makes setuptools place the binary inside
+#: the plugin's package in an in-place build and in a wheel alike, so a checkout imports it
+#: by the path an install does, and the repo root stays clean.
 #:
 #: This is a PACKAGING name: the registration TU's ``PyInit__C`` is the one place csrc
 #: spells its last component, and the operators it registers live in ``torch.ops.rola``;
 #: the C++ namespaces (``rola``, ``rola::paging``) and every kernel symbol are untouched.
 #: The manifests key on MANGLED KERNEL NAMES, and the module-init symbol they do not
 #: contain is the only thing this name can move.
-MODULE_NAME = "rola._C"
+PLUGIN, EXTRA = "rola_cu13", "cu13"
+if TOOLCHAIN is not None and TOOLCHAIN.name != EXTRA:
+    raise RuntimeError(f"toolchain {TOOLCHAIN.name} has no binary plugin; this tree ships {PLUGIN} alone")
+MODULE_NAME = f"{PLUGIN}._C"
 
 #: THE STABLE ABI TARGET (`tools/build_flags.py`'s `TORCH_MIN`, docs/build.md#stable-abi): every compile targets it, and
 #: `CUDAExtension(py_limited_api=True)` builds the module object against Python's limited API, defining the flag itself.
@@ -564,12 +568,14 @@ def _gate_sccache() -> dict | None:
 # _build_config.py -- the self-describing binary
 # ---------------------------------------------------------------------------
 def write_build_config(archs: list[str], ptxas: str, manifest: dict, pin: dict,
-                        sccache: dict | None) -> None:
+                        sccache: dict | None) -> Path:
     import torch
 
     config = {
         "version": read_version(),
         "archs": [f"sm_{a}" for a in archs],
+        #: A binary whose arm or part set is not the shipped one: never a wheel (`tools/wheels.py`).
+        "iteration": _is_iteration_build(),
         "toolchain": TOOLCHAIN.name,
         "ptxas": ptxas,
         "torch": torch.__version__,
@@ -620,9 +626,11 @@ def write_build_config(archs: list[str], ptxas: str, manifest: dict, pin: dict,
         '    """A copy, so a caller cannot mutate the record."""\n'
         "    return dict(BUILD_CONFIG)\n"
     )
-    (ROOT / "rola" / "_build_config.py").write_text(body)
-    print(f"wrote rola/_build_config.py (manifest sha256 "
+    record = ROOT / PLUGIN / "_build_config.py"
+    record.write_text(body)
+    print(f"wrote {PLUGIN}/_build_config.py (manifest sha256 "
           f"{config['manifest_sha256'][:16]}...)")
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -715,7 +723,7 @@ def _link_flags() -> list[str]:
 #: by the host's memory watchdog (KERNEL_STANDARDS §22: a gating instrument that cannot
 #: run is a defect). Never shipped: an iteration-build instrument, `-lineinfo` for the
 #: ledgers. docs/build.md#parts
-PARTS_MODULE_NAME = "rola._C_parts"
+PARTS_MODULE_NAME = f"{PLUGIN}._C_parts"
 PARTS_SOURCES = ["benchmarks/unit/carry_parts/carry_parts.cu",
                  "csrc/rola/src/common/arch_runtime.cu", "csrc/rola/src/common/geom.cu"]
 
@@ -821,7 +829,10 @@ class RoLABuildExtension(BuildExtension):
             super().run()
         self._post_build_arm_table_check()
         self._post_build_manifest_check()
-        write_build_config(ROLA_CUDA_ARCHS, ptxas, manifest, pin, sccache)
+        record = write_build_config(ROLA_CUDA_ARCHS, ptxas, manifest, pin, sccache)
+        #: A wheel's build tree took the package's files before this record was written; it ships this build's.
+        if not self.inplace:
+            shutil.copy(record, Path(self.build_lib) / PLUGIN / record.name)
 
     def _iteration_banner(self) -> bool:
         if not _is_iteration_build():
@@ -967,10 +978,39 @@ class RoLABuildExtension(BuildExtension):
             print("=" * 78 + "\n")
 
 
+#: THE EXTRAS, here and not in pyproject.toml because `cu13` names this version: `pip install "rola[cu13]"` installs the
+#: binary plugin built at exactly this `rola` (docs/build.md#wheels), and `rola.ops._ext` refuses any other.
+EXTRAS = {
+    EXTRA: [f"{PLUGIN.replace('_', '-')}=={read_version()}"],
+    #: `pytest-benchmark` was REMOVED, measured: it drove the latency gate's repetition, and its round schedule -- not
+    #: the kernel -- set the number the gate read once the committed spread narrowed to a device-event IQR.
+    #: `rola_results` holds the record now (docs/measurement.md). THE ATTENTION REFERENCE every reported carry number
+    #: sits beside is rola-bench's arm (torch's own flash backend, docs/measurement.md), so it needs no package here.
+    "bench": ["matplotlib", "pandas"],
+    #: `entmax` (DeepSPIN) is the fp64 REFERENCE the routing gates are anchored to -- the paper authors' own
+    #: implementation, pure python with torch as its only dependency. A TEST dependency and never a runtime one:
+    #: `rola/routing/entmax/production.py` is RoLA's own hand-CUDA producer and imports nothing from it, which
+    #: `tests/integration/test_production_levels.py` asserts rather than assumes.
+    #:
+    #: PINNED to `==1.3`: `rola/routing/entmax/PIN.json` records the version AND a digest of the installed package, and
+    #: `rola/routing/entmax/reference.py` refuses to import (`pin.gate()`) an install that drifted from either. This `==`
+    #: is the coarse half of that guard -- the resolver refuses the bump before pip finishes -- and the pin is the fine
+    #: half, because the resolver cannot see an editable or re-published install that keeps the version string. See
+    #: `PIN.json`'s `why_this_is_the_only_guard`: the dual-run protocol imports the same installed package on both its
+    #: sides and cannot see this drift itself.
+    "test": ["pytest", "pytest-xdist", "entmax==1.3"],
+    "dev": ["pytest", "ruff==0.14.10", "pre-commit==4.6.2", "vulture==2.16", "clang-format==19.1.7",
+            "ast-grep-cli==0.45.2"],
+}
+
+
 setup(
     name="rola",
     version=read_version(),
-    packages=find_packages(include=["rola", "rola.*"]),
+    packages=find_packages(include=["rola", "rola.*", PLUGIN]),
+    #: entmax's pin record, read beside `rola/routing/entmax/pin.py`: without it an installed reference cannot gate itself.
+    package_data={"rola.routing.entmax": ["PIN.json"]},
+    extras_require=EXTRAS,
     #: ROLA_NO_EXTENSION=1 installs the Python package with NO extension build -- for a
     #: worktree that receives a built _C from the integration checkout at the same
     #: SHA (`python tools/dev.py worktree`); the device stamp still gates freshness.

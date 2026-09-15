@@ -6,7 +6,7 @@ __pycache__/
 dist/
 .pytest_cache/
 .ruff_cache/
-rola/_build_config.py
+rola_cu13/_build_config.py
 
 # K38: the derived measurements index -- rebuilt from benchmarks/results/, never committed.
 .rola/

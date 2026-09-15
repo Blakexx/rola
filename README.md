@@ -74,8 +74,8 @@ ABI. Flash-attention and mamba-ssm require the same thing for the same reason.
 
 | Mode | Command | Notes |
 |---|---|---|
-| Wheel | `pip install rola` | Pre-built for the ratified matrix |
-| Source | `pip install rola --no-build-isolation` | Builds the fatbin ahead of time; no JIT |
+| Wheel | `pip install "rola[cu13]"` | `rola` (pure Python) and `rola-cu13` (the fatbin for the ratified matrix, and its manifests), at one version ([docs/build.md#wheels](docs/build.md#wheels)) |
+| Source | `pip install . --no-build-isolation` | From a checkout: builds the fatbin ahead of time, no JIT, both packages in one install |
 | Development | `pip install -e . --no-build-isolation` | Runs the R1/R3 gates and the post-build ratification |
 
 The build is **ahead-of-time and closed-world**. It emits `code=sm_XX` only, never

@@ -43,6 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
+import toolchains  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 #: where the human-readable report and the timelines' charts go; the report itself is stored (`rola_results`)
@@ -82,10 +83,7 @@ def git_sha() -> str:
 
 
 def extension_so() -> Path:
-    cands = sorted((ROOT / "rola").glob("_C*.so"))
-    if not cands:
-        raise FileNotFoundError("no built extension under rola/")
-    return cands[0]
+    return toolchains.built_extension(ROOT)
 
 
 def step_sass(report: dict) -> None:

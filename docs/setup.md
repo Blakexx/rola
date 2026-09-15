@@ -209,7 +209,7 @@ here; `--no-deps` is not optional either. `setup.py` takes the machine-wide
 host budget itself (`docs/build.md`, `rola-build` skill) — a pointer-venv build
 is still a build, and still shares the machine-wide compile budget.
 
-Verify with `python -c "import rola; from rola._build_config import
+Verify with `python -c "import rola; from rola_cu13._build_config import
 BUILD_CONFIG; print(BUILD_CONFIG['archs'])"` against the new venv's python —
 the device-side stamp, never a path check (`extension-trap-device-side-check`)
 -- but run it FROM the new worktree's own directory. **FOOTGUN 3, found

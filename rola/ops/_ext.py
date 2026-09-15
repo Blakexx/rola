@@ -25,19 +25,34 @@ The import failure is loud and names the remedy instead.
 
 from __future__ import annotations
 
+import importlib
 from functools import lru_cache
 
-#: PACKAGE-RELATIVE, and that is the whole of the ``rola._C`` namespacing: the binary
-#: lives INSIDE the package in both the installed and the in-place-built layout, so
-#: this import resolves the same way in both and can never pick up a stray top-level
-#: ``.so`` that happens to sit in the working directory. See ``setup.py``'s
-#: ``MODULE_NAME``.
-_IMPORT_ERROR: ImportError | None = None
-try:
-    from rola import _C  # noqa: F401 -- loading the library registers torch.ops.rola
-except ImportError as e:  # noqa: BLE001
-    _C = None
-    _IMPORT_ERROR = e
+from rola import __version__
+
+#: THE BINARY PLUGIN (wheel naming D, docs/build.md#wheels): `rola` is pure Python and the build of each toolchain is
+#: its own distribution, `rola-cu13`, whose package holds the extension, its build record and its manifests. A
+#: checkout's in-place build lays out the same package, so an installed wheel and a checkout take this one import.
+PLUGIN, EXTRA = "rola_cu13", "cu13"
+
+
+def _load():
+    """The extension module and None, or None and why not. The plugin's build record is read BEFORE its library
+    loads: a binary built for another `rola` never registers its operators in this process."""
+    try:
+        built = importlib.import_module(f"{PLUGIN}._build_config").BUILD_CONFIG
+    except ImportError as e:
+        return None, f"no `{PLUGIN}` binary plugin is installed ({e})"
+    if built["version"] != __version__:
+        return None, (f"`{PLUGIN}` {built['version']} is not this `rola` ({__version__}); the two are one version, "
+                      f"installed together")
+    try:
+        return importlib.import_module(f"{PLUGIN}._C"), None  # loading the library registers torch.ops.rola
+    except ImportError as e:
+        return None, f"`{PLUGIN}`'s extension did not load ({e})"
+
+
+_C, _WHY = _load()
 
 
 class RoLAVmmOwner:
@@ -113,21 +128,18 @@ if _C is not None:
 
 
 _MISSING = """\
-The `rola` CUDA extension (`rola._C`) is not available, so no RoLA kernel can run.
+No RoLA kernel can run: {why}.
 
-  original import error: {err}
+Install the binary for your CUDA toolchain at this version:
 
-Install a ratified wheel for your (python, torch, CUDA) combination from the
-project's releases, or build from source:
+    pip install "rola[{extra}]=={version}"
 
-    pip install rola --no-build-isolation
+It carries the kernels for every ratified architecture and the manifests they were measured against. A checkout builds
+the same package in place (`pip install -e . --no-build-isolation`, docs/build.md), and refuses an architecture that
+has no measured manifest (docs/bringup.md).
 
-A source build compiles ahead of time and re-runs the ratification gates; it will
-refuse outright to build an architecture that has no measured manifest under
-`tools/manifests/`. See docs/bringup.md to ratify a new architecture.
-
-There is no CPU or pure-torch fallback by design: `rola.ops.naive.naive_rola` is a
-float64 reference for checking the kernel, not a substitute for it.\
+There is no CPU or pure-torch fallback by design: `rola.ops.naive.naive_rola` is a float64 reference for checking the
+kernel, not a substitute for it.\
 """
 
 
@@ -135,7 +147,7 @@ float64 reference for checking the kernel, not a substitute for it.\
 def extension():
     """Return the compiled extension module, or raise with an actionable message."""
     if _rola_cuda is None:
-        raise ImportError(_MISSING.format(err=_IMPORT_ERROR))
+        raise ImportError(_MISSING.format(why=_WHY, extra=EXTRA, version=__version__))
     return _rola_cuda
 
 

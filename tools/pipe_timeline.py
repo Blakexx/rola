@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dev_config  # noqa: E402 -- path insert must precede this import
+import toolchains  # noqa: E402
 from rola_devtools import process  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -197,7 +198,7 @@ def stored_scale() -> float | None:
 def binary() -> str:
     from rola_results import digest
 
-    return digest(next((ROOT / "rola").glob("_C*.so")))
+    return digest(toolchains.built_extension(ROOT))
 
 
 def main() -> int:

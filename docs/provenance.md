@@ -44,7 +44,7 @@ that a network fetch supplies at build time is an input the ratification manifes
 cannot describe. `csrc/third_party/cutlass/PIN.json` records the tag, the commit, the
 licence and a digest of the whole subtree; `setup.py::_gate_vendored` (closed-world
 rule 5) re-computes that digest before every compile and refuses a build whose
-vendored headers drifted, and the pin is stamped into `rola/_build_config.py` so an
+vendored headers drifted, and the pin is stamped into `rola_cu13/_build_config.py` so an
 installed wheel answers "which CUTLASS is inside this `.so`?" with no checkout.
 
 BSD-3-Clause requires the copyright notice, the condition list and the disclaimer to

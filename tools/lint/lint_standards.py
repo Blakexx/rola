@@ -1023,9 +1023,9 @@ def check_supported_table() -> list[str]:
 
 
 def _repo_build_config() -> dict | None:
-    """THIS TREE's `rola/_build_config.py`, loaded BY PATH, or None if unbuilt.
+    """THIS TREE's `rola_<toolchain>/_build_config.py`, loaded BY PATH, or None if unbuilt.
 
-    Never `import rola._build_config`. This module runs as a script, so `sys.path[0]`
+    Never `import rola_cu13._build_config`. This module runs as a script, so `sys.path[0]`
     is `tools/lint/` and not the repository root: a plain import resolves `rola` out of
     whatever venv happens to be active -- on a box with a shared base venv, that is a
     DIFFERENT worktree's build, and the two checks below then verdict on a binary this
@@ -1034,9 +1034,10 @@ def _repo_build_config() -> dict | None:
     """
     import importlib.util
 
-    path = ROOT / "rola" / "_build_config.py"
-    if not path.is_file():
+    found = sorted(ROOT.glob("rola_*/_build_config.py"))
+    if not found:
         return None
+    path = found[0]
     spec = importlib.util.spec_from_file_location("_rola_repo_build_config", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

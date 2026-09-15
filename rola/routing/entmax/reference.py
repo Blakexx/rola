@@ -39,7 +39,7 @@
 # and separately greps that production imports nothing from this module at all.
 #
 # PINNED (`PIN.json`, `pin.py`). Every figure above is a property of (this adapter,
-# entmax 1.3), and `pyproject.toml`'s `entmax==1.3` is only the coarse half of naming
+# entmax 1.3), and `setup.py`'s `entmax==1.3` is only the coarse half of naming
 # that: it stops the resolver from installing a different release, but not an editable
 # or re-published install that keeps the version string over different bytes.
 # `pin.gate()` runs at import time, below, and refuses BOTH kinds of drift -- the ONLY

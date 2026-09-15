@@ -129,7 +129,7 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, state: str):
     fx.update(state_arm=state, schedule=schedule, calls=calls)
     launch = subject.build(fx)
     try:
-        from rola._build_config import BUILD_CONFIG
+        from rola_cu13._build_config import BUILD_CONFIG
     except ImportError:
         BUILD_CONFIG = {}
     props = torch.cuda.get_device_properties(0)

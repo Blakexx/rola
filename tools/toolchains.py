@@ -45,6 +45,16 @@ class Toolchain:
         return sorted(p.stem.removeprefix("sm_") for p in self.manifest_dir.glob("sm_*.json"))
 
 
+def built_extension(root: Path = ROOT) -> Path:
+    """The extension a checkout's in-place build produced: `rola_<toolchain>/_C.*so`, inside the binary plugin the build
+    ships as (docs/build.md#wheels). Refuses a checkout with none, or with more than one toolchain's."""
+    found = sorted(root.glob("rola_*/_C.*so"))
+    if len(found) != 1:
+        raise FileNotFoundError(f"{root} holds {len(found)} built extensions (rola_<toolchain>/_C.*so): "
+                                f"{[str(p.relative_to(root)) for p in found]}")
+    return found[0]
+
+
 def normalize(version: str) -> str:
     return " ".join(version.split())
 
