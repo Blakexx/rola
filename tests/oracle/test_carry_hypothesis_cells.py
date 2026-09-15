@@ -27,9 +27,7 @@ from hypothesis import strategies as st
 from benchmarks.cells import CellSpec
 from benchmarks.cells import carry_cells as registry_cells
 from rola.ops import carry as carry_ops
-from tests.oracle.fixtures import relative
-from tests.oracle.test_carry_vs_oracle import ref, run
-from tests.oracle.tolerances import BF16_RTOL
+from tests.oracle.test_carry_vs_oracle import check, run
 
 pytestmark = [
     pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required"),
@@ -69,13 +67,10 @@ def drawn_cells(draw) -> CellSpec:
 @given(spec=drawn_cells())
 def test_the_inter_term_is_the_fp64_reference_on_a_drawn_cell(spec):
     """The tier's own comparison, over a drawn cell instead of a fixed one: the same
-    `run` and `ref` and the same bf16 band -- only the cell is drawn, never the
+    `run` and `check`, per slot against the same envelopes -- only the cell is drawn, never the
     assertion."""
-    drawn, num, den, _ = run(spec)
-    n_ref, d_ref, _ = ref(drawn)
-    assert relative(num.reshape(1, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3),
-                    n_ref) < BF16_RTOL
-    assert relative(den.reshape(1, 1, spec.tokens).permute(0, 2, 1), d_ref) < BF16_RTOL
+    drawn, num, den, plane = run(spec)
+    check(spec, drawn, num, den, plane)
 
 
 @given(spec=drawn_cells())

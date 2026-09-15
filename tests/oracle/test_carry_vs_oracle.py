@@ -35,8 +35,7 @@ from benchmarks.cells import by_name, carry_call, carry_cells, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference
-from tests.oracle.fixtures import canonical_from_plane, relative, relative_per_token
-from tests.oracle.tolerances import BF16_RTOL
+from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, canonical_from_plane, relative
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
@@ -57,20 +56,43 @@ def run(spec, state_in=None, state_out=None, page_table=None, bh=1, activity=Non
     return drawn, num, den, state_out
 
 
-def ref(drawn, state_in=None):
+def ref(drawn, state_in=None, magnitudes=False):
+    """``(num, den, state)`` from the fp64 reference; with ``magnitudes``, the same run on ``|v|`` and ``|state_in|``:
+    each slot's envelope (`tests.oracle.fixtures.assert_slots_close`)."""
     read, write, gain, v = drawn.doubles()
+    if magnitudes:
+        v, state_in = v.abs(), None if state_in is None else state_in.double().abs()
     return reference.inter_reference(read, write, gain, v, drawn.spec.widths,
                                      carry_ops.WINDOW, state_in=state_in)
 
 
-def check(spec, num, den, plane, want, bh=1):
-    n_ref, d_ref, s_ref = want
-    #: PER TOKEN, on each token's own scale: the numerator and the denominator are what the kernel computes, and a
-    #: global max would let a small token's error hide under the largest one's.
-    assert relative_per_token(num.reshape(bh, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3), n_ref) < BF16_RTOL
-    assert relative_per_token(den.reshape(bh, 1, spec.tokens, 1).permute(0, 2, 1, 3), d_ref[..., None]) < BF16_RTOL
-    assert relative(canonical_from_plane(plane),
-                    s_ref.reshape(bh, spec.N, spec.dv + 1)) < BF16_RTOL
+def kernel_slots(spec, num, den, plane, bh=1):
+    """The kernel's ``num``, ``den`` and state in the reference's layout."""
+    return (num.reshape(bh, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3),
+            den.reshape(bh, 1, spec.tokens).permute(0, 2, 1), canonical_from_plane(plane))
+
+
+def check(spec, drawn, num, den, plane, bh=1):
+    """PER SLOT, against each slot's envelope: the numerator, the denominator (a sum of non-negative terms, so its own
+    envelope) and the state."""
+    want, env = ref(drawn), ref(drawn, magnitudes=True)
+    names = ("num", "den", "state")
+    for got, w, e, name in zip(kernel_slots(spec, num, den, plane, bh), want, env, names):
+        w = w.reshape(got.shape) if name == "state" else w
+        e = e.reshape(got.shape) if name == "state" else e
+        assert_slots_close(got, w, envelope=e, what=f"{spec.name} {name}")
+
+
+def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
+    """THE RULE HAS TEETH on the carry's numerator and state: on a real cell, the kernel's output passes, and a wiped
+    median slot and the smallest slots moved past their allowance fail."""
+    spec = next(c for c in ORACLE_CELLS if c.name == "flagship-alt-k4")
+    drawn, num, den, plane = run(spec)
+    (n_ref, _, s_ref), (n_env, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
+    got_num, _, got_state = kernel_slots(spec, num, den, plane)
+    assert_planted_errors_fail(got_num, n_ref, envelope=n_env, what=f"{spec.name} num")
+    assert_planted_errors_fail(got_state, s_ref.reshape(got_state.shape), envelope=s_env.reshape(got_state.shape),
+                               what=f"{spec.name} state")
 
 
 # ------------------------------------------------------------- the registry itself
@@ -98,7 +120,7 @@ def test_the_inter_term_is_the_fp64_reference(spec):
     column cannot pass, and it is the only output carrying a cross-window rejoin error
     that the readout of the SAME window would hide."""
     drawn, num, den, plane = run(spec)
-    check(spec, num, den, plane, ref(drawn))
+    check(spec, drawn, num, den, plane)
 
 
 #: the cells whose sequence outruns one window, so their fold carries deposits from a
@@ -119,9 +141,9 @@ def test_the_folded_state_is_the_fp64_reference(spec):
     is, and this row is the part the fold owns.
     """
     drawn, _, _, plane = run(spec)
-    _, _, s_ref = ref(drawn)
-    assert relative(canonical_from_plane(plane),
-                    s_ref.reshape(1, spec.N, spec.dv + 1)) < BF16_RTOL
+    (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
+    assert_slots_close(canonical_from_plane(plane), s_ref.reshape(1, spec.N, spec.dv + 1),
+                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} state")
 
 
 def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
@@ -136,9 +158,9 @@ def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
     plane = carry_ops.state_plane(desc, 1)
     drawn, _, _, plane = run(spec, state_out=plane,
                              page_table=slots.to(torch.int32).reshape(1, pages))
-    _, _, s_ref = ref(drawn)
-    assert relative(canonical_from_plane(plane[0, slots].unsqueeze(0)),
-                    s_ref.reshape(1, spec.N, spec.dv + 1)) < BF16_RTOL
+    (_, _, s_ref), (_, _, s_env) = ref(drawn), ref(drawn, magnitudes=True)
+    assert_slots_close(canonical_from_plane(plane[0, slots].unsqueeze(0)), s_ref.reshape(1, spec.N, spec.dv + 1),
+                       envelope=s_env.reshape(1, spec.N, spec.dv + 1), what=f"{spec.name} paged state")
 
 
 def test_a_carried_state_is_advanced_in_place():
@@ -147,7 +169,7 @@ def test_a_carried_state_is_advanced_in_place():
     spec = next(c for c in ORACLE_CELLS if c.name == "flat-small-carried")
     plane = carry_ops.state_plane(spec.descriptor(), 1)
     drawn, num, den, plane = run(spec, state_in=plane, state_out=plane)
-    check(spec, num, den, plane, ref(drawn))
+    check(spec, drawn, num, den, plane)
 
 
 def test_an_idle_resident_page_is_neither_loaded_nor_stored():
@@ -344,7 +366,7 @@ def test_one_token_writing_one_leaf_is_the_oracles_single_deposit():
     nothing."""
     spec = by_name("single-deposit")
     drawn, num, den, plane = run(spec)
-    check(spec, num, den, plane, ref(drawn))
+    check(spec, drawn, num, den, plane)
     assert not num.any() and not den.any()
     canon = canonical_from_plane(plane)[0]
     assert canon[0].any(), "the single deposit did not land"
@@ -371,7 +393,7 @@ def test_the_sparse_form_is_the_fp64_reference(spec, order):
     is right at one density and wrong at another would pass a single-cell row.
     """
     drawn, num, den, plane = run(spec, schedule=carry_ops.CarrySchedule(order=order))
-    check(spec, num, den, plane, ref(drawn))
+    check(spec, drawn, num, den, plane)
 
 
 #: the fully dense cell the two orders are compared ON: every (tile, box) pair is live, so

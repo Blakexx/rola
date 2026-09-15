@@ -28,12 +28,10 @@ from benchmarks.cells import carry_cells, conservative_activity, liveness_words,
 from rola.ops import carry as carry_ops
 from rola.ops import intra as intra_ops
 from rola.ops.constants import READOUT_EPS
-from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal
 from rola.ops.prefill import prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
-from tests.oracle.fixtures import canonical_from_plane, relative
-from tests.oracle.oracle_fixtures import _output_charge
+from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, canonical_from_plane, oracle_run, relative
 from tests.oracle.tolerances import BF16_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
@@ -90,12 +88,12 @@ def call(spec, state_in=None):
 
 
 def oracle(drawn, state_in=None):
+    """The fp64 recurrence on the cell's draw, with each slot's envelope (`tests.oracle.fixtures.oracle_run`)."""
     read, write, gain, v = drawn.doubles()
     routing = IndependentRouting(width=1, read=SoftmaxActivation(),
                                  write=SoftmaxActivation())
     topo = Topology(levels=tuple(routing.at(w) for w in drawn.spec.widths))
-    return naive_rola(v, read, write, gain, topo, None, initial_state=state_in,
-                      output_final_state=True)
+    return oracle_run(v, read, write, gain, topo, entry=state_in)
 
 
 def readout(num, den, spec):
@@ -146,39 +144,36 @@ def test_the_combined_operator_reaches_the_carry_launch_surface():
 @pytest.mark.parametrize("spec", CELLS, ids=IDS)
 def test_prefill_matches_the_fp64_oracle(spec):
     drawn, (num, den, plane) = call(spec)
-    y_ref, s_ref = oracle(drawn)
-    err = _output_charge(readout(num, den, spec), y_ref)
-    assert err < BF16_RTOL, f"{spec.name}: a segment of the readout leaves the bf16 band at {err:.3e}"
-    s_err = relative(canonical_from_plane(plane), s_ref.reshape(1, spec.N, spec.dv + 1))
-    assert s_err < BF16_RTOL, f"{spec.name}: the final state leaves the band at {s_err:.3e}"
-    del num, den, plane, y_ref, s_ref
+    ref = oracle(drawn)
+    assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what=f"{spec.name} readout")
+    shape = (1, spec.N, spec.dv + 1)
+    assert_slots_close(canonical_from_plane(plane), ref.state.reshape(shape), envelope=ref.state_envelope.reshape(shape),
+                       what=f"{spec.name} state")
+    del num, den, plane, ref
     torch.cuda.empty_cache()
 
 
-def test_the_readout_charge_sees_a_drift_the_global_max_cannot():
-    """The metric the cells above are graded in has to be the right one (docs/testing.md, rule 6).
+def test_the_per_slot_rule_fails_what_a_global_max_passes():
+    """The rule the cells above are graded in has to be able to fail (docs/testing.md).
 
     The readout is a ratio whose denominator is accumulated write mass, so at `t = 0` `|y|` is orders of magnitude
-    above the rest of the sequence, and one global normalizer is set by the token whose state has been updated zero
-    times: that metric cannot see an error that ACCUMULATES. A `sqrt(t)` drift ten times the band is planted on the
-    kernel's own readout, and the two forms must disagree about it -- the global form passing it is the premise, the
-    per-segment charge catching it is the claim.
+    above the rest of the sequence, and a global max is set by the token whose state has been updated zero times. On
+    the kernel's own readout: a `sqrt(t)` drift ten times the band, which the global form passes and the per-slot rule
+    must fail, and the shared planted errors (a wiped median slot, the smallest slots past their allowance).
     """
     spec = next(c for c in CELLS if c.name == "flagship-dense")
     drawn, (num, den, _plane) = call(spec)
-    y_ref, _s_ref = oracle(drawn)
-    y = readout(num, den, spec)
-    assert relative(y, y_ref) < BF16_RTOL and _output_charge(y, y_ref) < BF16_RTOL, (
-        f"the unperturbed control must pass under both forms (global {relative(y, y_ref):.3e}, per-segment "
-        f"{_output_charge(y, y_ref):.3e})")
+    ref = oracle(drawn)
+    y_ref, y_env = ref.y, ref.y_envelope
+    y = readout(num, den, spec).double()
+    assert_planted_errors_fail(y, y_ref, envelope=y_env, what=f"{spec.name} readout")
     ramp = (torch.arange(spec.tokens, device=y.device, dtype=torch.float64) / (spec.tokens - 1)).sqrt()
-    mutant = y.double() * (1.0 + 10.0 * BF16_RTOL * ramp[None, :, None, None])
-    assert relative(mutant, y_ref) < BF16_RTOL, (
-        f"the planted drift moved the global form to {relative(mutant, y_ref):.3e}: the premise is that it passes "
-        "this mutant -- re-derive the mutant's size rather than deleting the claim")
-    assert _output_charge(mutant, y_ref) > BF16_RTOL, (
-        f"the planted drift moved the per-segment charge only to {_output_charge(mutant, y_ref):.3e}: it is as "
-        "blind as the global form")
+    drift = y * (1.0 + 10.0 * BF16_RTOL * ramp[None, :, None, None])
+    assert relative(drift, y_ref) < BF16_RTOL, (
+        f"the planted drift moved the global form to {relative(drift, y_ref):.3e}: the premise is that it passes this "
+        "mutant -- re-derive the mutant's size rather than deleting the claim")
+    with pytest.raises(AssertionError, match="slots are off the oracle"):
+        assert_slots_close(drift, y_ref, envelope=y_env, what="the drifted readout")
 
 
 def test_a_chained_call_equals_one_long_call():
@@ -219,9 +214,8 @@ def test_a_chained_call_equals_one_long_call():
     den = torch.cat((head[1], tail[1]), dim=1)
     assert relative(num, whole[0]) < 1e-5
     assert relative(den, whole[1]) < 1e-5
-    y_ref, _ = oracle(drawn)
-    err = relative(readout(num, den, spec), y_ref)
-    assert err < BF16_RTOL, f"the chained readout leaves the bf16 band at {err:.3e}"
+    ref = oracle(drawn)
+    assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what="the chained readout")
 
 
 def test_the_intra_term_is_actually_present():
@@ -239,11 +233,9 @@ def test_the_intra_term_is_actually_present():
         descriptor=desc, geometry=carry_ops.geometry_block(desc, launch),
         liveness=liveness_words(drawn, desc), activity=conservative_activity(desc),
         launch=launch, state_out=carry_ops.state_plane(desc, 1))
-    y_ref, _ = oracle(drawn)
-    err = relative(readout(num, den, spec), y_ref)
-    assert err > 10 * BF16_RTOL, (
-        f"the INTER term alone is within {err:.3e} of the whole recurrence; the intra "
-        f"term this operator adds is not being tested by the cells above")
+    ref = oracle(drawn)
+    with pytest.raises(AssertionError, match="slots are off the oracle"):
+        assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what="the inter term alone")
 
 
 def test_the_combined_operator_refuses_what_it_has_no_kernel_for():

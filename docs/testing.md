@@ -187,22 +187,22 @@ forward, state and both gradients.
    DERIVED in code.** A number with neither is a defect.
 5. **Loosening a tolerance is a semantic change**: changelog entry, derivation,
    reviewer sign-off. Tightening needs none of that.
-6. **A tolerance is only half of a claim; the other half is the CHARGE — what the
-   error is divided by.** The output is charged PER TOKEN SEGMENT
-   (`_output_charge`: the max over eight segments of that segment's max absolute
-   error over that segment's max reference magnitude), never as one global max
-   over one global max. The readout is a ratio whose denominator is accumulated
-   write mass, so `|y|` at the cold start exceeds the rest of the sequence by up
-   to `2.4e4` at `T = 8192`: a single normalizer is set by the one token whose
-   state has been updated zero times, and the resulting metric was measured
-   BIT-IDENTICAL between two arms it was supposed to separate. A charge that
-   cannot fail is the same defect as a tolerance that cannot fail, and
+6. **A tolerance is only half of a claim; the other half is what the error is
+   divided by.** Every kernel-vs-oracle comparison is PER SLOT
+   (`tests.oracle.fixtures.assert_slots_close`): each output slot's error is held
+   to `BF16_RTOL` times that slot's envelope, the sum of the sizes of the terms it
+   adds up, which the same fp64 reference computes on `|v|`
+   (`fixtures.oracle_run`). Never a global max: the readout is a ratio whose
+   denominator is accumulated write mass, so `|y|` at the cold start exceeds the
+   rest of the sequence by up to `2.4e4` at `T = 8192`, and a single normalizer set
+   by that token was measured BIT-IDENTICAL between two arms it was supposed to
+   separate. A rule that cannot fail is the same defect as a tolerance that cannot
+   fail, so each gate plants errors on the kernel's own output that must fail
+   (`fixtures.assert_planted_errors_fail`), and
    `tests/oracle/test_prefill_vs_oracle.py`'s
-   `test_the_readout_charge_sees_a_drift_the_global_max_cannot` holds the mutant that
-   proves the current one can: a `sqrt(t)` drift ten times the band on the kernel's
-   own readout reads 7.1e-3 under the global form and 9.6e-2 per segment
-   (`flagship-dense`, 2026-09-14). The carry's `num` and `den` are accumulations with no
-   cold-start ratio, and are graded by `relative` and `relative_per_token`.
+   `test_the_per_slot_rule_fails_what_a_global_max_passes` plants a `sqrt(t)` drift
+   ten times the band that the global form passes. `tests/oracle/tolerances.py`
+   records the measured margins.
 
 ## The two-branches-agree class — geometry, as data
 

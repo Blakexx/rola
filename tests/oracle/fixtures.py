@@ -8,12 +8,17 @@ so the fixtures state it explicitly and the kernel is never told.
 """
 from __future__ import annotations
 
+import json
 import math
+from typing import NamedTuple
 
 import torch
 
 from rola.ops import carry as carry_ops
+from rola.ops.naive import naive_rola
 from rola.ops.paging import from_split_planes
+from tests.oracle import tolerances
+from tests.oracle.tolerances import BF16_RTOL
 
 
 def simplex(shape, k_tok, gen, device, live=None):
@@ -97,21 +102,97 @@ def assert_fresh_binary():
     return carry_ops.build_stamp()
 
 
+def assert_slots_close(actual, reference, *, envelope, what, rtol=BF16_RTOL):
+    """THE ORACLE RULE, PER SLOT: the kernel and the oracle produce the same shape, and each slot's error is at most
+    ``rtol`` times that slot's ENVELOPE, the sum of the sizes of the terms the slot adds up (`oracle_run` computes it by
+    running the same fp64 reference on ``|v|``). Rounding each term costs a share of that term's size whether or not the
+    terms cancel, so a slot that is small because its terms cancel keeps their rounding, and a slot that is small
+    because its terms are small keeps nothing. ``rtol`` is the declared per-term budget, `BF16_RTOL` unless the gate
+    derives its own (`tolerances.py`). A slot whose terms are all zero must be exactly zero; a slot that is not finite
+    on either side fails. The failure names how many slots failed and the worst one, by its error over its allowance.
+    """
+    a, r = actual.double(), reference.double()
+    assert a.shape == r.shape == envelope.shape, (
+        f"{what}: the kernel's shape {tuple(a.shape)}, the oracle's {tuple(r.shape)} and the envelope's "
+        f"{tuple(envelope.shape)} differ")
+    allowance = rtol * envelope.double()
+    err = (a - r).abs()
+    bad = ~(err <= allowance)
+    ratio = torch.where(err == 0, 0.0, err / allowance).nan_to_num(nan=math.inf)
+    _record_margins(what, ratio, bad, r, allowance)
+    if bool(bad.any()):
+        i = int(torch.argmax(ratio.flatten()))
+        where = tuple(int(x) for x in torch.unravel_index(torch.tensor(i), a.shape))
+        raise AssertionError(
+            f"{what}: {int(bad.sum())} of {err.numel()} slots are off the oracle; the worst, at {where}, is off by "
+            f"{float(err.flatten()[i]):.4g} against an allowance of {float(allowance.flatten()[i]):.4g} (kernel "
+            f"{float(a.flatten()[i]):.6g}, oracle {float(r.flatten()[i]):.6g})")
+
+
+class OracleRun(NamedTuple):
+    """One fp64 recurrence and the envelope of each of its slots (`assert_slots_close`)."""
+
+    y: torch.Tensor
+    state: torch.Tensor
+    y_envelope: torch.Tensor
+    state_envelope: torch.Tensor
+
+
+def oracle_run(v, read_levels, write_levels, g_write, topology, decay=None, entry=None) -> OracleRun:
+    """`rola.ops.naive.naive_rola`, with the same recurrence run on ``|v|`` beside it: every weight is non-negative, so
+    that run's slots are the sums of the term sizes. ``entry`` is None (a fresh state), a state of the caller's own
+    (its envelope is ``|entry|``) or a previous `OracleRun`, whose state and envelope a chain continues. A readout
+    ``num / (den + eps)`` rounds its denominator as well, so its envelope adds ``|y|``."""
+    if isinstance(entry, OracleRun):
+        state, envelope = entry.state, entry.state_envelope
+    else:
+        state, envelope = entry, None if entry is None else entry.double().abs()
+    y, out = naive_rola(v, read_levels, write_levels, g_write, topology, decay, initial_state=state,
+                        output_final_state=True)
+    y_magnitudes, out_envelope = naive_rola(v.abs(), read_levels, write_levels, g_write, topology, decay,
+                                            initial_state=envelope, output_final_state=True)
+    return OracleRun(y, out, y_magnitudes + y.abs(), out_envelope)
+
+
+def assert_planted_errors_fail(actual, reference, *, envelope, what, rtol=BF16_RTOL):
+    """THE RULE HAS TEETH ON THIS OUTPUT. The kernel's own output passes, and two mutants of it fail: the slot of
+    median size wiped to zero (a dropped contribution the allowance must not swallow), and the sixteen smallest
+    allowances exceeded by half (the smallest slots are held, not waved through)."""
+    assert_slots_close(actual, reference, envelope=envelope, what=what, rtol=rtol)
+    a, r = actual.double().contiguous(), reference.double().contiguous()
+    allowance = rtol * envelope.double().contiguous()
+    nonzero = (r != 0).flatten().nonzero().squeeze(1)
+    median = nonzero[torch.argsort(r.abs().flatten()[nonzero])[nonzero.numel() // 2]]
+    wiped = a.clone()
+    wiped.view(-1)[median] = 0.0
+    small = a.clone()
+    smallest = torch.topk(allowance.flatten(), 16, largest=False).indices
+    small.view(-1)[smallest] = r.view(-1)[smallest] + 1.5 * allowance.view(-1)[smallest] + 1e-300
+    for mutant, name in ((wiped, "the median slot wiped"), (small, "the smallest allowances exceeded by half")):
+        try:
+            assert_slots_close(mutant, r, envelope=envelope, what=f"{what}, {name}", rtol=rtol)
+        except AssertionError:
+            continue
+        raise AssertionError(f"{what}: {name} passes the rule, which therefore cannot see it")
+
+
+def _record_margins(what, err_over_allowance, bad, reference, allowance):
+    """``pytest --oracle-margins=<file>`` appends one JSON line per comparison: the worst passing error over its
+    allowance (``worst``), the share of nonzero slots whose wiping the allowance sees (``wipe_seen``), and the smallest
+    relative error the rule sees on some slot (``finest``: a kernel off by that fraction everywhere fails).
+    `tolerances.py`'s measurements are these lines."""
+    out = tolerances.MARGINS_FILE
+    if not out:
+        return
+    passing, nonzero = err_over_allowance[~bad], reference != 0
+    row = {"what": what, "slots": reference.numel(), "failed": int(bad.sum()),
+           "worst": float(passing.max()) if passing.numel() else None,
+           "wipe_seen": float((reference.abs() > allowance)[nonzero].double().mean()) if bool(nonzero.any()) else None,
+           "finest": float((allowance[nonzero] / reference.abs()[nonzero]).min()) if bool(nonzero.any()) else None}
+    with open(out, "a") as f:
+        f.write(json.dumps(row) + "\n")
+
+
 def relative(actual, reference):
     scale = max(1e-30, float(reference.abs().max()))
     return float((actual.double() - reference.double()).abs().max()) / scale
-
-
-def relative_per_token(actual, reference):
-    """THE PER-TOKEN RELATIVE ERROR: the worst token's error on ITS OWN scale, the largest entry of its reference row.
-    ``relative`` is one ratio on the tensor's largest entry, and a token wrong by half hides under it when its row is
-    small -- which is how the box-words hazard of 2026-09-08 passed at two grains. A row that is exactly zero in both is
-    a match; a row zero in the reference and not in the kernel is an infinite error. The last axis is the token's row;
-    every axis before it indexes tokens."""
-    a = actual.double().reshape(-1, actual.shape[-1])
-    r = reference.double().reshape(-1, reference.shape[-1])
-    err, scale = (a - r).abs().amax(1), r.abs().amax(1)
-    zero = scale == 0
-    if bool((err[zero] > 0).any()):
-        return float("inf")
-    return float((err[~zero] / scale[~zero]).max()) if bool((~zero).any()) else 0.0

@@ -41,7 +41,7 @@ from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.factors import RouteFactors
 from rola.routing.types import LeafMassDecay
 from tests.oracle import generators as g
-from tests.oracle.test_decode_vs_oracle import DECODE_RTOL
+from tests.oracle.fixtures import assert_slots_close, oracle_run
 
 pytestmark = [
     pytest.mark.cuda,
@@ -125,14 +125,12 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
                    output_final_state=True)
         return
     assert arm_refusal(bundle, decay, d_v=_DV) is None, "the prefill fixture left the envelope"
-    _y_ref, ref_state = naive_rola(
-        pre["v"], pre["read"], pre["write"], pre["g_write"],
-        topology, decay, output_final_state=True)
+    ref = oracle_run(pre["v"], pre["read"], pre["write"], pre["g_write"], topology, decay)
 
     config = derive_decode_geometry(topology, d_v=_DV, decay=decay_on, BH=_B * _H,
                                   device=device)
     #: THE SEAM: the oracle's plane is canonical, the kernel's is lattice-ordered.
-    state = to_split_planes(to_lattice(ref_state.float(), _WIDTHS, config.lattice_k, config.lattice_m))
+    state = to_split_planes(to_lattice(ref.state.float(), _WIDTHS, config.lattice_k, config.lattice_m))
     workspace, cold_seen = None, False
     for s in range(steps):
         step = _draw(gen, device, 1, 0.5, 0.4)
@@ -140,13 +138,10 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
         y, state, workspace = _decode_step(
             fs["v"], fs["read"], fs["write"], fs["g_write"],
             config, state, decay=decay, workspace=workspace)
-        y_ref, ref_state = naive_rola(
-            step["v"], step["read"], step["write"], step["g_write"],
-            topology, decay, initial_state=ref_state, output_final_state=True)
-        assert g.relative(y, y_ref) < DECODE_RTOL, f"step {s}: y off the oracle"
+        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
+        assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"y at step {s}")
         canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
-        assert g.relative(canonical, ref_state) < DECODE_RTOL, (
-            f"step {s}: state off the oracle")
+        assert_slots_close(canonical, ref.state, envelope=ref.state_envelope, what=f"the state at step {s}")
 
         R = g._leaf_product(step["read"], _WIDTHS) != 0
         written = (g._leaf_product(pre["write"], _WIDTHS) != 0).any(dim=1, keepdim=True)
@@ -181,29 +176,22 @@ def test_the_horizon_is_conformant_at_every_checkpoint_not_just_the_end():
     config = derive_decode_geometry(topology, d_v=_DV, decay=True, BH=_B * _H,
                                   device=device)
     state = to_split_planes(to_lattice(m0.float(), _WIDTHS, config.lattice_k, config.lattice_m))
-    ref_state = m0
-    workspace, errors = None, {}
+    ref = m0
+    workspace = None
     for s in range(1, max(_CHECKPOINTS) + 1):
         step = _draw(gen, device, 1, 0.5, 0.4)
         fs = _f32(step)
         y, state, workspace = _decode_step(
             fs["v"], fs["read"], fs["write"], fs["g_write"],
             config, state, decay=decay, workspace=workspace)
-        y_ref, ref_state = naive_rola(
-            step["v"], step["read"], step["write"], step["g_write"],
-            topology, decay, initial_state=ref_state, output_final_state=True)
+        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
         if s in _CHECKPOINTS:
             canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
-            err_y, err_s = g.relative(y, y_ref), g.relative(canonical, ref_state)
-            errors[s] = (err_y, err_s)
-            assert err_y < DECODE_RTOL and err_s < DECODE_RTOL, (
-                f"checkpoint {s}: (y, state) = ({err_y:.3e}, {err_s:.3e}) exceeds "
-                f"{DECODE_RTOL:.0e}; the profile so far is {errors} — a growing "
-                "profile inside the band is compounding to watch, one outside it "
-                "is the defect this horizon exists to catch")
+            assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"y at checkpoint {s}")
+            assert_slots_close(canonical, ref.state, envelope=ref.state_envelope, what=f"the state at checkpoint {s}")
     # NON-VACUITY: the horizon must actually accumulate fp32-vs-fp64 distance —
     # a zero at the far end would mean the comparison is comparing nothing.
-    assert errors[max(_CHECKPOINTS)][1] > 0.0
+    assert bool((canonical.double() != ref.state).any())
     assert not torch.equal(canonical.double(), m0), "32 steps left the state untouched"
 
 
@@ -247,21 +235,18 @@ def test_the_decode_split_is_performance_only_under_drift():
             ys.append(y)
         outcomes[name] = (ys, state)
 
-    ref_state, ys_ref = m0, []
+    ref, refs = m0, []
     for step in steps:
-        y_ref, ref_state = naive_rola(
-            step["v"], step["read"], step["write"], step["g_write"],
-            topology, None, initial_state=ref_state, output_final_state=True)
-        ys_ref.append(y_ref)
+        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, entry=ref)
+        refs.append(ref)
 
     base = outcomes["n_split=1"]
     for name, (ys, state) in outcomes.items():
         assert bytes_equal(state, base[1]), (
             f"the {name} carrier's STATE differs from the single-CTA one: the "
             "launch split moved stored numbers")
-        for s, (y, y_ref) in enumerate(zip(ys, ys_ref)):
-            assert g.relative(y, y_ref) < DECODE_RTOL, (
-                f"{name}, step {s}: y left the oracle band under drift")
+        for s, (y, ref) in enumerate(zip(ys, refs)):
+            assert_slots_close(y, ref.y, envelope=ref.y_envelope, what=f"{name}, y at step {s} under drift")
 
     # The certificates half: an arm mismatch REFUSES rather than degrades.
     step = _f32(steps[0])

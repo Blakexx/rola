@@ -2229,12 +2229,6 @@
   },
   {
    "path": "tests/oracle/oracle_fixtures.py",
-   "message": "names the work code 'J1'",
-   "line_sha256": "992f88045a14fe31",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/oracle_fixtures.py",
    "message": "names the work code 'P67'",
    "line_sha256": "1686c18fa19a04f4",
    "count": 1
@@ -2471,36 +2465,6 @@
    "path": "tests/oracle/test_producer_families.py",
    "message": "names the work code 'P67'",
    "line_sha256": "6c4adaaafa86f9cc",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/tolerances.py",
-   "message": "names the work code 'D2-b'",
-   "line_sha256": "c4ad539256100025",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/tolerances.py",
-   "message": "names the work code 'M1'",
-   "line_sha256": "7ffb7a2075de755d",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/tolerances.py",
-   "message": "names the work code 'M2'",
-   "line_sha256": "7ffb7a2075de755d",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/tolerances.py",
-   "message": "names the work code 'M3'",
-   "line_sha256": "7ffb7a2075de755d",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/tolerances.py",
-   "message": "names the work code 'P67'",
-   "line_sha256": "c4ad539256100025",
    "count": 1
   },
   {

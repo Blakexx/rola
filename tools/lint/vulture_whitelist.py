@@ -38,6 +38,11 @@ class _Whitelist:
     # function itself, and each test parameter named after it).
     ninja = None
 
+    # pytest HOOKS: a conftest's `pytest_addoption` and `pytest_configure` are called by the framework, found by
+    # their names. `tests/conftest.py` registers `--oracle-margins` with them.
+    pytest_addoption = None
+    pytest_configure = None
+
 
 _ = _Whitelist()
-_referenced = (_.pytestmark, _.ninja)  # ruff B018: a bare attribute expression is "useless"
+_referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure)  # ruff B018: a bare attribute is "useless"

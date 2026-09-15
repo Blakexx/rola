@@ -62,13 +62,13 @@ import pytest
 import torch
 
 from rola.ops.constants import READOUT_EPS
-from rola.ops.naive import naive_rola
 from rola.routing.types import (
     IndependentRouting,
     LeafMassDecay,
     SoftmaxActivation,
     Topology,
 )
+from tests.oracle.fixtures import assert_slots_close, oracle_run
 
 pytestmark = pytest.mark.skipif(
     not dev_config.get("environment.fla_crosscheck"),
@@ -80,11 +80,12 @@ _ROUTING = IndependentRouting(
     width=1, read=SoftmaxActivation(), write=SoftmaxActivation())
 
 #: The bound, and it is float32's rather than a fitted number: FLA accumulates in
-#: float32, whose unit roundoff is 6e-8, over a sum of `N <= 64` leaves. The
-#: measured worst is 2.98e-07 against readouts of magnitude ~2.8, so `1e-5`
-#: relative leaves two decades of headroom while still being far tighter than any
+#: float32, whose unit roundoff is 6e-8, over a sum of `N <= 64` leaves, so a slot's
+#: error is held to `1e-5` of its envelope (`tests.oracle.fixtures.assert_slots_close`).
+#: MEASURED 2026-09-14: the worst slot at 3.5e-7 of its envelope (0.035 of the bound),
+#: so it leaves more than a decade of headroom while still being far tighter than any
 #: transcription error could hide in -- an off-by-one index or a gate applied on
-#: the wrong side of the deposit moves the result by O(1), not by 1e-7.
+#: the wrong side of the deposit moves a slot by O(its terms), not by 1e-7.
 FLOAT32_FLOOR = 1e-5
 
 
@@ -113,8 +114,8 @@ def test_the_oracle_recurrence_is_flas_naive_gla_under_a_renaming(widths, decay_
         decay = LeafMassDecay(dials=tuple(
             torch.rand(H, w, generator=g, dtype=torch.float64) * 0.3 + 0.1 for w in widths))
 
-    y, state = naive_rola(v, read, write, g_write, topology, decay,
-                          output_final_state=True)
+    ref = oracle_run(v, read, write, g_write, topology, decay)
+    y, state = ref.y, ref.state
 
     #: The renaming, built from the same inputs by the same rules the oracle uses
     #: -- deliberately re-derived here rather than reached for inside the oracle,
@@ -154,12 +155,6 @@ def test_the_oracle_recurrence_is_flas_naive_gla_under_a_renaming(widths, decay_
     #: NON-VACUITY: a comparison against an all-zero reference passes for free.
     assert float(readout.abs().max()) > 1e-3, "FLA's output is ~0; the fixture is degenerate"
 
-    scale = max(float(y.abs().max()), 1.0)
-    delta_y = float((y.to(torch.float32) - readout).abs().max())
-    delta_h = float((state.to(torch.float32) - h).abs().max())
-    assert delta_y <= FLOAT32_FLOOR * scale, (
-        f"the oracle's recurrence and FLA's naive GLA disagree by {delta_y:.3e} on "
-        f"the output, past float32's floor -- that is a transcription error, not a "
-        f"rounding difference")
-    assert delta_h <= FLOAT32_FLOOR * max(float(state.abs().max()), 1.0), (
-        f"the final states disagree by {delta_h:.3e}")
+    #: past float32's floor, a disagreement is a transcription error, not a rounding difference.
+    assert_slots_close(readout, y, envelope=ref.y_envelope, rtol=FLOAT32_FLOOR, what="FLA's naive GLA output")
+    assert_slots_close(h, state, envelope=ref.state_envelope, rtol=FLOAT32_FLOOR, what="FLA's naive GLA final state")

@@ -62,6 +62,7 @@ from rola.routing.types import (
     Topology,
     UnionRouting,
 )
+from tests.oracle.fixtures import assert_planted_errors_fail
 from tests.oracle.tolerances import BF16_RTOL
 
 # Identical to `tests/ops/test_rola_entmax_production.py`'s -- the same solve against
@@ -615,19 +616,21 @@ def _run_producer(params, topology):
 
 @_CUDA
 def test_the_projection_lands_inside_its_bf16_output_envelope():
-    """THE PROJECTION half of the seam split, gated numerically against fp64.
+    """THE PROJECTION half of the seam split, gated numerically against fp64, PER LOGIT.
 
     cuBLAS's mainloop is opaque, so this does not mirror its arithmetic -- it bounds the
     DECLARED class, which is bf16 operands / fp32 accumulate / bf16 OUT. Two terms of the
-    same order, and the fp32 accumulation (`2^-24` per step) is not one of them:
+    same order, and the fp32 accumulation (`2^-24` per step) is not one of them. On each
+    logit slot:
 
-        dz <= 2 * 2^-8 * max sum_k |x_k| |W_k|      (the operands, before cancellation)
-            + 2^-8 * max|z|                          (the output)
+        dz <= 2^-8 * (2 * sum_k |x_k| |W_k|  +  |z|)    (the operands before cancellation, the output)
 
-    This is the `dz` every downstream envelope is built from, so it is asserted here
-    rather than measured once and quoted. TEETH: an operand or output class one binary
-    place coarser than declared doubles the left-hand side and fails it; fp32 output
-    would sit orders of magnitude under it.
+    The operand sum is the same projection run in fp64 on the parameters' magnitudes, so it
+    lands in the logits' own layout (`tests.oracle.fixtures.assert_slots_close`).
+    `_logit_floor` is this bound's max over the slots, the `dz` the downstream amplitude
+    envelope is built from. MEASURED 2026-09-14: the worst slot sits at 0.40 of its
+    allowance. The planted errors (a wiped logit, the smallest allowances exceeded) must
+    fail on the production logits themselves.
     """
     topology = _producer_topology(1.5)
     params = _producer_params(topology, dtype=torch.float32, device="cuda", sides=1)
@@ -638,10 +641,12 @@ def test_the_projection_lands_inside_its_bf16_output_envelope():
     read64, write64 = _production_logits(topology, oracle_params)
     assert read64.dtype is torch.float64
 
-    floor = _logit_floor(params, read64, write64)
-    for got, want in ((read_logits, read64), (write_logits, write64)):
-        error = float((_flat64(got) - want).abs().max())
-        assert error <= floor, f"logit error {error:.5f} outside the derived floor {floor:.5f}"
+    magnitudes = {name: tensor.to(torch.float64).abs() for name, tensor in params.items()}
+    read_terms, write_terms = _production_logits(topology, magnitudes)
+    for side, got, want, terms in (("read", read_logits, read64, read_terms),
+                                   ("write", write_logits, write64, write_terms)):
+        assert_planted_errors_fail(_flat64(got), want, envelope=2.0 * terms + want.abs(), rtol=2.0 ** -8,
+                                   what=f"the {side} logits")
 
 
 @_CUDA

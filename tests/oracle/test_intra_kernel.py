@@ -24,6 +24,7 @@ from rola.ops.intra import (
     intra_forward,
     support_words,
 )
+from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close
 from tests.oracle.intra_reference import (
     BOTH_SPARSE,
     DENSE_BOTH,
@@ -36,7 +37,6 @@ from tests.oracle.intra_reference import (
     make_cell,
     slab_skip_rate,
 )
-from tests.oracle.tolerances import BF16_RTOL
 
 HEADS = 2
 LEVELS = 2
@@ -62,9 +62,17 @@ CELLS = [
 ]
 
 
-def _relative(got, want):
-    got, want = got.double(), want.double()
-    return ((got - want).abs().max() / want.abs().max()).item()
+def _reference(pread, pwrite, gwrite, v_bh, levels, **kw):
+    """``((o, den), o's envelope)``: the fp64 reference, and the same on ``|v|`` (`fixtures.assert_slots_close`);
+    ``den`` is a sum of non-negative terms, its own envelope."""
+    return (intra_reference(pread, pwrite, gwrite, v_bh, levels, **kw),
+            intra_reference(pread, pwrite, gwrite, v_bh.abs(), levels, **kw)[0])
+
+
+def _check(name, o, den, reference):
+    (o_ref, den_ref), o_env = reference
+    assert_slots_close(o, o_ref, envelope=o_env, what=f"{name} output")
+    assert_slots_close(den, den_ref, envelope=den_ref, what=f"{name} mass")
 
 
 @pytest.mark.parametrize("name,modes,k_tok,length,clustered,window",
@@ -75,10 +83,19 @@ def test_intra_matches_the_fp64_reference(name, modes, k_tok, length, clustered,
     sread, swrite = cell_support(pread, pwrite)
     o, den = intra_forward(pread, pwrite, gwrite, as_token_major(v_bh, HEADS), sread, swrite,
                            modes, window=window)
-    o_ref, den_ref = intra_reference(pread, pwrite, gwrite, v_bh, LEVELS, window=window)
-    e_o, e_den = _relative(o, o_ref), _relative(den, den_ref)
-    assert e_o < BF16_RTOL, f"{name}: the output leaves the bf16 band at {e_o:.3e}"
-    assert e_den < BF16_RTOL, f"{name}: the mass leaves the bf16 band at {e_den:.3e}"
+    _check(name, o, den, _reference(pread, pwrite, gwrite, v_bh, LEVELS, window=window))
+
+
+def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
+    """THE RULE HAS TEETH on the intra output and mass: on a sparse cell, a wiped median slot and the smallest slots
+    moved past their allowance fail."""
+    name, modes, k_tok, length, clustered, window = CELLS[2]
+    pread, pwrite, gwrite, v_bh = make_cell(2 * HEADS, length, LEVELS, modes, k_tok=k_tok, seed=11, clustered=clustered)
+    sread, swrite = cell_support(pread, pwrite)
+    o, den = intra_forward(pread, pwrite, gwrite, as_token_major(v_bh, HEADS), sread, swrite, modes, window=window)
+    (o_ref, den_ref), o_env = _reference(pread, pwrite, gwrite, v_bh, LEVELS, window=window)
+    assert_planted_errors_fail(o, o_ref, envelope=o_env, what=f"{name} output")
+    assert_planted_errors_fail(den, den_ref, envelope=den_ref, what=f"{name} mass")
 
 
 #: THE DEEP CELLS.  A `(D, B, W)` arm whose level is narrower than the MMA's
@@ -109,11 +126,7 @@ def test_deep_intra_matches_the_fp64_reference(name, levels, width, modes, k_tok
     sread, swrite = cell_support(pread, pwrite)
     o, den = intra_forward(pread, pwrite, gwrite, as_token_major(v_bh, HEADS), sread, swrite,
                            modes, window=WINDOW_SMALL)
-    o_ref, den_ref = intra_reference(pread, pwrite, gwrite, v_bh, levels, window=WINDOW_SMALL,
-                                     level_width=width)
-    e_o, e_den = _relative(o, o_ref), _relative(den, den_ref)
-    assert e_o < BF16_RTOL, f"{name}: the output leaves the bf16 band at {e_o:.3e}"
-    assert e_den < BF16_RTOL, f"{name}: the mass leaves the bf16 band at {e_den:.3e}"
+    _check(name, o, den, _reference(pread, pwrite, gwrite, v_bh, levels, window=WINDOW_SMALL, level_width=width))
 
 
 @pytest.mark.parametrize("levels,width", [(3, LEVEL_WIDTH_DEEP3), (4, LEVEL_WIDTH_DEEP4)],

@@ -40,8 +40,8 @@ from rola.ops.naive import naive_rola
 from rola.ops.padding import pad_routes, pad_v
 from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
+from tests.oracle.fixtures import assert_slots_close, oracle_run
 from tests.oracle.oracle_fixtures import _simplex
-from tests.oracle.tolerances import BF16_RTOL
 
 # ---------------------------------------------------------------------------
 # PREFILL: the fp64 naive is the ONE ground truth on this line (no kernel body)
@@ -270,7 +270,7 @@ def test_intra_padded_nonpow2_levels_and_d_v_match_the_oracle():
     v = torch.randn(B, window, H, d_v, device=device, dtype=torch.float64, generator=generator)
 
     topology = _dense_topology(widths)
-    y_oracle, _ = naive_rola(v, read_levels, write_levels, g_write, topology, decay=None)
+    oracle = oracle_run(v, read_levels, write_levels, g_write, topology)
 
     def bf16(t):
         return t.to(torch.bfloat16)
@@ -282,5 +282,4 @@ def test_intra_padded_nonpow2_levels_and_d_v_match_the_oracle():
         gwrite_bh, v_token_major, (DENSE_BOTH,) * len(widths), window=window)
     y_kernel = (o / (den.unsqueeze(-1) + READOUT_EPS)).view(B, H, window, d_v).permute(0, 2, 1, 3)
 
-    err = float((y_kernel.double() - y_oracle).abs().max() / max(1e-30, float(y_oracle.abs().max())))
-    assert err < BF16_RTOL, f"padded intra leaves the bf16 band at {err:.3e}"
+    assert_slots_close(y_kernel, oracle.y, envelope=oracle.y_envelope, what="the padded intra readout")

@@ -64,7 +64,6 @@ import torch
 
 from rola.ops.decode import _decode_step, _write_atom_bitmap, derive_decode_geometry
 from rola.ops.lattice import permutation, to_canonical
-from rola.ops.naive import naive_rola
 from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal, from_split_planes, to_split_planes
 
 pytestmark = [
@@ -76,13 +75,11 @@ _DV = 64
 _COLS = _DV + 1
 _POISON = -4321.5
 
-#: DECODE'S TOLERANCE AND ITS TOPOLOGY BUILDER, ADOPTED RATHER THAN INVENTED -- the
-#: reasoning `test_decode_vs_oracle.py` states for the first and the routing tag it
-#: fixes for the second, imported so there is ONE of each.
+#: THE ORACLE RULE AND THE TOPOLOGY BUILDER, ADOPTED RATHER THAN INVENTED, imported so there is ONE of each.
+from tests.oracle.fixtures import assert_slots_close, oracle_run  # noqa: E402
 from tests.oracle.oracle_fixtures import (  # noqa: E402
     _topology as _build_topology,
 )
-from tests.oracle.test_decode_vs_oracle import DECODE_RTOL  # noqa: E402
 
 #: `(widths, BC)`. Every leaf count is a whole number of atoms, which is what a paged
 #: keying REQUIRES (`AtomKeying.__post_init__`); the depth axis is what varies, because
@@ -379,21 +376,13 @@ def test_a_step_grows_residency_by_exactly_its_new_atoms(arm):
     assert arena.state.data_ptr() == base_ptr, "growth moved the plane's base pointer"
 
     #: the fp64 oracle, chained one token at a time -- which is what decode does.
-    ref_state = None
-    y_ref = None
+    ref = None
     for step in (first, second):
-        y_ref, ref_state = naive_rola(
-            step["v"], step["read"], step["write"], step["g_write"],
-            _topology(widths), None,
-            initial_state=ref_state, output_final_state=True)
+        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
     state = to_canonical(arena.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
-    scale_y = max(1e-30, float(y_ref.abs().max()))
-    scale_s = max(1e-30, float(ref_state.abs().max()))
-    err_y = float((ys[-1].double() - y_ref).abs().max()) / scale_y
-    err_s = float((state.double() - ref_state).abs().max()) / scale_s
-    assert err_y < DECODE_RTOL, f"the grown step's y left the oracle band: {err_y:.3e}"
-    assert err_s < DECODE_RTOL, f"the grown state left the oracle band: {err_s:.3e}"
+    assert_slots_close(ys[-1], ref.y, envelope=ref.y_envelope, what="the grown step's y")
+    assert_slots_close(state, ref.state, envelope=ref.state_envelope, what="the grown state")
 
 
 @pytest.mark.parametrize("arm", _ARMS, ids=lambda a: "x".join(map(str, a[0])))
@@ -437,18 +426,10 @@ def test_a_pool_admitted_sequence_is_the_oracle_s_and_the_host_admitted_one_s(ar
     assert torch.equal(pooled.materialize(), admitted.materialize()), (
         "a pool-admitted state differs from a host-admitted one")
 
-    ref_state = None
-    y_ref = None
+    ref = None
     for step in (first, second):
-        y_ref, ref_state = naive_rola(
-            step["v"], step["read"], step["write"], step["g_write"],
-            _topology(widths), None,
-            initial_state=ref_state, output_final_state=True)
+        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
     state = to_canonical(pooled.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
-    err_y = float((ys["pool"][-1].double() - y_ref).abs().max()) / max(
-        1e-30, float(y_ref.abs().max()))
-    err_s = float((state.double() - ref_state).abs().max()) / max(
-        1e-30, float(ref_state.abs().max()))
-    assert err_y < DECODE_RTOL, f"the pool-admitted y left the oracle band: {err_y:.3e}"
-    assert err_s < DECODE_RTOL, f"the pool-admitted state left the oracle band: {err_s:.3e}"
+    assert_slots_close(ys["pool"][-1], ref.y, envelope=ref.y_envelope, what="the pool-admitted y")
+    assert_slots_close(state, ref.state, envelope=ref.state_envelope, what="the pool-admitted state")

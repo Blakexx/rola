@@ -53,19 +53,15 @@ import torch
 
 from rola.ops.decode import _decode_step, derive_decode_geometry
 from rola.ops.lattice import permutation, to_canonical, to_lattice
-from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
 from rola.routing.types import LeafMassDecay
+from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, oracle_run
 from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
-from tests.oracle.tolerances import BF16_RTOL
 
 pytestmark = [
     pytest.mark.cuda,
     pytest.mark.skipif(not torch.cuda.is_available(), reason="decode is a CUDA kernel"),
 ]
-
-#: DECODE'S TOLERANCE IS THE bf16 FAMILY BOUND, ADOPTED RATHER THAN INVENTED.
-DECODE_RTOL = BF16_RTOL
 
 
 def _chunk_tokens() -> int:
@@ -193,13 +189,11 @@ def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
     decay = None if decay_dials is None else LeafMassDecay(dials=decay_dials)
 
     # ---- the oracle, chained one token at a time (which is what decode does) ----
-    ref_state = initial_state
-    y_refs = []
+    #: each step's readout and its envelope; the states are carried, not kept (64 fp64 planes at N = 65536 would not fit).
+    y_refs, ref = [], initial_state
     for s in range(steps):
-        y_ref, ref_state = naive_rola(
-            vs[s], read_levels[s], write_levels[s], g_writes[s], topology,
-            decay, initial_state=ref_state, output_final_state=True)
-        y_refs.append(y_ref)
+        ref = oracle_run(vs[s], read_levels[s], write_levels[s], g_writes[s], topology, decay, entry=ref)
+        y_refs.append((ref.y, ref.y_envelope))
 
     # ---- decode ---------------------------------------------------------------
     config = derive_decode_geometry(topology, d_v=d_v, decay=decay is not None, BH=B * H,
@@ -224,20 +218,16 @@ def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
         y_outs.append(y)
     state = to_canonical(from_split_planes(state), widths, config.lattice_k, config.lattice_m)
 
-    return dict(y=y_outs, state=state, y_ref=y_refs, state_ref=ref_state, config=config,
+    return dict(y=y_outs, state=state, y_refs=y_refs, ref=ref, config=config,
                 workspace=workspace, read_levels=read_levels, write_levels=write_levels,
                 widths=widths, B=B, H=H, N=N, device=device)
 
 
-def _assert_oracle(out, tol=DECODE_RTOL):
-    y, y_ref = out["y"][-1], out["y_ref"][-1]
-    state, state_ref = out["state"], out["state_ref"]
-    scale_y = max(1e-30, float(y_ref.abs().max()))
-    scale_s = max(1e-30, float(state_ref.abs().max()))
-    err_y = float((y.double() - y_ref).abs().max()) / scale_y
-    err_s = float((state.double() - state_ref).abs().max()) / scale_s
-    assert err_y < tol, f"decode output disagrees with the canonical oracle: relative {err_y:.3e}"
-    assert err_s < tol, f"decode state disagrees with the canonical oracle: relative {err_s:.3e}"
+def _assert_oracle(out):
+    """Every step's ``y`` and the final state, per slot against the chained oracle's envelopes."""
+    for step, (y, (y_ref, y_envelope)) in enumerate(zip(out["y"], out["y_refs"])):
+        assert_slots_close(y, y_ref, envelope=y_envelope, what=f"decode y at step {step}")
+    assert_slots_close(out["state"], out["ref"].state, envelope=out["ref"].state_envelope, what="decode state")
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +271,15 @@ def test_g4_matches_the_canonical_oracle(widths, p_read, p_write):
 @pytest.mark.parametrize("d_v", [32, 64])
 def test_g4_both_value_widths(d_v):
     _assert_oracle(_case((64, 64), d_v, 2, 2, "global", 0.5, 0.5, seed=77))
+
+
+def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
+    """THE RULE HAS TEETH on decode's ``y`` and state: on a sixteen-step chain, a wiped median slot and the smallest
+    slots moved past their allowance fail."""
+    out = _case((64, 64), 64, 2, 3, "global", 0.5, 0.4, seed=64, steps=16)
+    y_ref, y_envelope = out["y_refs"][-1]
+    assert_planted_errors_fail(out["y"][-1], y_ref, envelope=y_envelope, what="decode y")
+    assert_planted_errors_fail(out["state"], out["ref"].state, envelope=out["ref"].state_envelope, what="decode state")
 
 
 def test_the_empty_support_corner_is_inert_rather_than_undefined():
@@ -330,8 +329,8 @@ def test_more_ctas_than_rows_is_inert(n_split):
     ref = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=1)
     got = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=n_split)
     assert torch.equal(ref["state"], got["state"])
-    scale = max(1e-30, float(ref["y"][-1].abs().max()))
-    assert float((got["y"][-1] - ref["y"][-1]).abs().max()) / scale < DECODE_RTOL
+    assert_slots_close(got["y"][-1], ref["y"][-1], envelope=ref["ref"].y_envelope,
+                       what=f"y at n_split={n_split} against n_split=1")
 
 
 def test_the_widest_staged_topology():
@@ -432,9 +431,8 @@ def test_g2_state_is_invariant_across_n_split(widths):
         got = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, n_split=n_split)
         assert torch.equal(ref["state"], got["state"]), (
             f"state moved with n_split={n_split}; the row partition is not a partition")
-        scale = max(1e-30, float(ref["y"][-1].abs().max()))
-        err = float((got["y"][-1] - ref["y"][-1]).abs().max()) / scale
-        assert err < DECODE_RTOL, f"y across n_split={n_split} exceeds the band: {err:.3e}"
+        assert_slots_close(got["y"][-1], ref["y"][-1], envelope=ref["ref"].y_envelope,
+                           what=f"y at n_split={n_split} against n_split=1")
 
 
 # ---------------------------------------------------------------------------
@@ -483,11 +481,10 @@ def _oracle_prefill(widths, d_v, B, T, H, generator, device):
     write_levels = tuple(_simplex((B, T, H, w), 0.4, generator, device) for w in widths)
     g_write = torch.rand(B, T, H, device=device, dtype=torch.float64, generator=generator) + 0.5
     v = torch.randn(B, T, H, d_v, device=device, dtype=torch.float64, generator=generator)
-    y, state = naive_rola(v, read_levels, write_levels, g_write,
-                          topology, None, output_final_state=True)
+    ref = oracle_run(v, read_levels, write_levels, g_write, topology)
     return dict(topology=topology, read_levels=read_levels, write_levels=write_levels,
-                g_write=g_write, v=v, y=y,
-                state=state.float())
+                g_write=g_write, v=v, y=ref.y,
+                state=ref.state.float())
 
 
 @pytest.mark.parametrize("widths", [(16, 16), (16, 16, 16)],
@@ -535,16 +532,11 @@ def test_g7_prefill_decode_seam(widths):
     #: THE WHOLE SEQUENCE, on the oracle: prefill and step concatenated, so the
     #: reference sees exactly what the two kernel legs together saw.
     cat = lambda a, b: tuple(torch.cat([x, s], dim=1) for x, s in zip(a, b))  # noqa: E731
-    y_ref, state_ref = naive_rola(
+    ref = oracle_run(
         torch.cat([pre["v"], step_v], dim=1),
         cat(pre["read_levels"], step_read), cat(pre["write_levels"], step_write),
-        torch.cat([pre["g_write"], step_gw], dim=1),
-        pre["topology"], None, output_final_state=True)
+        torch.cat([pre["g_write"], step_gw], dim=1), pre["topology"])
 
-    scale_y = max(1e-30, float(y_ref[:, L:L + 1].abs().max()))
-    scale_s = max(1e-30, float(state_ref.abs().max()))
-    err_y = float((y_dec.double() - y_ref[:, L:L + 1]).abs().max()) / scale_y
-    err_s = float((state_dec.double() - state_ref).abs().max()) / scale_s
-    assert err_y < DECODE_RTOL, f"the prefill/decode seam moved y: {err_y:.3e}"
-    assert err_s < DECODE_RTOL, f"the prefill/decode seam moved state: {err_s:.3e}"
+    assert_slots_close(y_dec, ref.y[:, L:L + 1], envelope=ref.y_envelope[:, L:L + 1], what="y across the seam")
+    assert_slots_close(state_dec, ref.state, envelope=ref.state_envelope, what="the state across the seam")
     assert pre["y"].shape[1] == L

@@ -50,6 +50,19 @@ device_torch_lib = torch.cuda
 # Configuration
 # -----------------------------------------------------------------------------
 
+
+def pytest_addoption(parser):
+    parser.addoption("--oracle-margins", metavar="FILE", default=None,
+                     help="append each per-slot oracle comparison's margins to FILE, one JSON line apiece "
+                          "(tests/oracle/tolerances.py)")
+
+
+def pytest_configure(config):
+    from tests.oracle import tolerances
+
+    tolerances.MARGINS_FILE = config.getoption("--oracle-margins")
+
+
 _ORIGINAL_EMPTY = torch.empty
 _ORIGINAL_EMPTY_LIKE = torch.empty_like
 _ORIGINAL_NEW_EMPTY = torch.Tensor.new_empty
