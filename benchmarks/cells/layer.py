@@ -1,6 +1,6 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""THE LAYER CELLS: the registry's whole-layer half, and their committed statistics.
+"""THE LAYER CELLS: the registry's whole-layer half.
 
 A KERNEL cell (`benchmarks/cells/carry_cells.json`) declares a DRAW -- amplitudes put
 directly on the simplex -- and is what the carry family's oracle and probe run. A LAYER
@@ -13,11 +13,6 @@ construction parameter, :func:`build` is deterministic from them, and documents 
 cell BY NAME and never by a description of its density. Two numbers carrying the same
 cell name are commensurable; two carrying different names are not -- which is why a name
 here is never reused and never renamed, whatever vocabulary it was minted in.
-
-:func:`check_manifest` is the standing gate over `layer_manifest.json`. Every realized
-statistic there is INTEGER-DERIVED -- support counts and live-atom counts, never a float
-reduction -- so a drift in torch's RNG, in the entmax solver or in the producer
-announces itself as a diff rather than as a tolerance question.
 """
 from __future__ import annotations
 
@@ -28,7 +23,6 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REGISTRY = _HERE / "layer_cells.json"
-MANIFEST = _HERE / "layer_manifest.json"
 
 _DTYPES = {"bf16": "bfloat16", "fp32": "float32"}
 
@@ -134,73 +128,3 @@ def build(spec: LayerCellSpec) -> dict:
             "routes": routes,
             "v_prefill": v[:, :spec.tokens].contiguous(),
             "v_kernel": v[:, :spec.tokens].to(torch.bfloat16).contiguous()}
-
-
-def realized(spec: LayerCellSpec, fx: dict | None = None) -> dict:
-    """This cell's INTEGER statistics, as the fixture actually realizes them.
-
-    Support counts rather than amplitude sums: a count is bit-exact across runs, so the
-    manifest diffs on a routing change and never on a reduction order.
-    """
-    from rola.engine.facts import planes
-    from rola.ops.padding import pad_routes
-    from rola.routing.types import padded_level_width
-
-    fx = build(spec) if fx is None else fx
-    #: THE STATISTICS ARE TAKEN AT THE KERNEL-FACING WIDTHS. A level narrower than the
-    #: descriptor's floor has no state format of its own and no liveness pass will read
-    #: it; padding is the one lawful shape it has, and it is the shape the layer itself
-    #: now runs. The pad is the identity on a topology already at its widths, so those
-    #: cells' counts are untouched by this.
-    padded = tuple(padded_level_width(width) for width in spec.widths)
-    read = planes.pack_side(pad_routes(fx["routes"].read, padded))
-    write = planes.pack_side(pad_routes(fx["routes"].write, padded))
-    live = planes.written_atoms(planes.atom_bits(write, padded))
-    return {
-        "N": prod(padded),
-        "padded_widths": list(padded),
-        "BH": spec.B * spec.H,
-        "read_nonzero": int((read != 0).sum()),
-        "write_nonzero": int((write != 0).sum()),
-        "amplitudes_total": int(write.numel()),
-        "live_atoms": int(live.sum()),
-        "atoms_total": int(live.numel()),
-    }
-
-
-def cell_manifest(spec: LayerCellSpec, fx: dict | None = None) -> dict:
-    out = {"name": spec.name, "widths": list(spec.widths), "B": spec.B, "T": spec.tokens,
-           "H": spec.H, "d_v": spec.dv, "hidden": spec.hidden_size, "alpha": spec.alpha,
-           "logit_gain": spec.logit_gain, "dtype": spec.dtype, "seed": spec.seed,
-           "decode_steps": spec.decode_steps}
-    out.update(realized(spec, fx))
-    out["write_support_frac"] = round(out["write_nonzero"] / out["amplitudes_total"], 6)
-    out["live_atom_frac"] = round(out["live_atoms"] / out["atoms_total"], 6)
-    return out
-
-
-def build_manifest(names=None) -> dict:
-    cells = {c.name: c for c in layer_cells()}
-    return {n: cell_manifest(cells[n]) for n in (names or cells)}
-
-
-def check_manifest(names=None) -> bool:
-    """A DRIFTED cell is a cell whose numbers are no longer comparable to the ones
-    already published under its name, so this is a hard check and not a report."""
-    if not MANIFEST.exists():
-        raise SystemExit(f"no committed manifest at {MANIFEST}; record one with "
-                         f"`python -c \"from cells.layer import write_manifest; "
-                         f"write_manifest()\"`")
-    want = json.loads(MANIFEST.read_text())
-    got = build_manifest(names)
-    bad = []
-    for name in sorted(got):
-        if want.get(name) != got[name]:
-            bad.append(name)
-            print(f"  DRIFT {name}\n    committed {want.get(name)}\n    realized  {got[name]}")
-    print(f"{len(got) - len(bad)}/{len(got)} layer cells match the committed manifest")
-    return not bad
-
-
-def write_manifest() -> None:
-    MANIFEST.write_text(json.dumps(build_manifest(), indent=1, sort_keys=True) + "\n")

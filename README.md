@@ -202,14 +202,7 @@ tolerance claims auditable rather than asserted.
 
 ## Performance
 
-Benchmark cells are committed data, not scripts that might reproduce it:
-[`benchmarks/cells/topology_manifest.json`](benchmarks/cells/topology_manifest.json)
-carries each cell's realized statistics, and
-[`benchmarks/cells/latency_baseline.json`](benchmarks/cells/latency_baseline.json)
-carries per-arm latencies with normalized provenance (GPU, driver, toolchain,
-manifest SHA — no host identifiers). **Those cells are the retired tiled consumer's
-and are parked as a record**; no chunk-arm number may be compared against them
-([`benchmarks/cells/README.md`](benchmarks/cells/README.md)). The methodology —
+The methodology —
 interleaved paired arms, median of per-pair ratios, IQR reported alongside — is
 documented in [`docs/measurement.md`](docs/measurement.md), which also states what
 the successor harness owes.

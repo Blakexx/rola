@@ -16,9 +16,7 @@ appears. Two kinds, both data:
 * `layer_cells.json` — the LAYER cells: a record declares a CONSTRUCTOR (a producer, a
   routing template, a gain), from which the amplitudes are PRODUCED. It is the only way to
   price the producer's own solve or a decode step through the layer. `cells/layer.py`
-  builds the fixture and checks `layer_manifest.json`, the committed INTEGER statistics
-  every constructor realizes — a statistic is not a fixture, and the manifest exists so a
-  drift in the RNG, the solver or the producer announces itself as a diff.
+  builds the fixture.
 * `registry.py` — every cell by name with its kind, and `registry()`: these files as cells in rola-devtools' sense (each
   names its data provider, `carry_cell` or `layer_cell`) with any other registry files, cells and the points that group
   them by runner.
