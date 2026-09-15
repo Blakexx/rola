@@ -76,36 +76,6 @@ class OrderingSpy:
         monkeypatch.setattr(owner, name, spy)
         return self
 
-    def watch_extension(self, monkeypatch, ext_module, symbol, *, label):
-        """Record every call to one entry point of the built extension.
-
-        `ext_module` must be the module that BINDS the name `extension`, which is
-        usually the CALLER (`rola.ops.decode` does `from rola.ops._ext import
-        extension`, so its `extension` is a module-level name of its own and
-        patching `rola.ops._ext` reaches it only if it has not been imported
-        yet). Getting that wrong makes the spy a silent no-op whose pass depends
-        on test ordering, so `symbol` is checked against the real extension here
-        and the label's absence is a failure at `assert_between`.
-        """
-        real = ext_module.extension()
-        assert hasattr(real, symbol), (
-            f"the extension has no entry {symbol!r}; the spy would record nothing")
-        events = self.events
-
-        class Spy:
-            def __getattr__(self, name):
-                attr = getattr(real, name)
-                if name != symbol:
-                    return attr
-
-                def launch(*a, **k):
-                    events.append(label)
-                    return attr(*a, **k)
-                return launch
-
-        monkeypatch.setattr(ext_module, "extension", lambda: Spy())
-        return self
-
     def assert_between(self, first: str, join: str, last: str) -> None:
         assert first in self.events and last in self.events, self.events
         i, j = self.events.index(first), self.events.index(last)

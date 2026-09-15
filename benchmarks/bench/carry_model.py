@@ -20,8 +20,6 @@ TILE = 16
 WARPS = 8
 SCHEDULERS = 4
 HMMA_CYCLES = 32          #: bf16 m16n8k16 with fp32 accumulate, one scheduler (measured 2026-09-04)
-L2_LATENCY = 500          #: cycles, a 16-byte asynchronous copy from L2 on this host
-SMEM_BW = 128             #: bytes / cycle / SM
 
 
 @dataclass

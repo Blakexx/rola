@@ -54,7 +54,6 @@ IF_RE = re.compile(r"^\s*(?:}\s*else\s+)?if\s*(constexpr)?\s*\(\s*(\w+)\s*(==|!=
 MARKER_RE = re.compile(r"//\s*R9-CASES:")
 TRAP_RE = re.compile(r"__trap\s*\(")
 DEFAULT_RE = re.compile(r"^\s*default\s*:")
-ELSE_RE = re.compile(r"^\s*}?\s*else\s*\{?\s*$")
 
 
 def device_files():

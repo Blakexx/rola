@@ -154,11 +154,6 @@ def _row_of(w_side, r_side, stream, slot):
     return _row(w_side, stream, slot)
 
 
-def _canonical(w_side, r_side):
-    """the two sides selected the SAME member -- a reported fact, no longer a law."""
-    return w_side.assign() == r_side.assign()
-
-
 def _tied(w_side, r_side):
     """THE IDENTITY-MAP FACT, and it is a fact and no longer a body: K50 deleted the
     elided tied path ("one transit, always"), so what a tie buys is a row map that

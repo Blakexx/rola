@@ -148,7 +148,6 @@ ORDER_POLICIES: dict[str, int] = {ORDER_FIRST_BOX: 0, ORDER_IDENTITY: 1}
 #: there, bit 1 the WRITE side. Named here rather than imported because `rola.ops.intra`
 #: imports this module.
 SIDE_SPARSE: tuple[int, int] = (1, 2)
-MAX_LEVELS: int = 4
 
 
 def select_schedule(descriptor: StateFormat, level_modes: int = 0) -> CarrySchedule:

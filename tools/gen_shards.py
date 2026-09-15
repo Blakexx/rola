@@ -212,9 +212,6 @@ _DECLARED = _load_shipped_set()
 #: THE ARM TABLE, in declaration order.  `CARRY_ARMS[i]` is arm `i` everywhere.
 CARRY_ARMS: tuple = _DECLARED["rows"]
 
-#: THE AXIS DOMAINS the declaration admits, for the refusals that name a field.
-CARRY_ARM_DOMAINS: dict = _DECLARED["domains"]
-
 #: THE SHIPPED / TEST SPLIT.  A default build compiles the SHIPPED rows only;
 #: a TEST row is built for the battery and never shipped.  Both are empty while the
 #: declaration is: a build carries no carry arm at all.
@@ -268,12 +265,6 @@ def carry_groups() -> dict[int, list[int]]:
 def carry_tu_of() -> dict[int, int]:
     """`{arm index -> the owning arm index whose file holds it}`."""
     return {i: owner for owner, members in carry_groups().items() for i in members}
-
-
-def carry_members_sha256() -> str:
-    blob = "\n".join(" ".join(str(x) for x in (i,) + row)
-                     for i, row in enumerate(CARRY_ARMS)).encode()
-    return hashlib.sha256(blob).hexdigest()
 
 
 def shard_manifest_block() -> dict:

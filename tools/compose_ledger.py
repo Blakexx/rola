@@ -75,9 +75,6 @@ def build(real: tuple[str, ...]) -> tuple[int, str]:
     return run([PY, "-m", "pip", "install", "-e", ".", "--no-build-isolation", "--no-deps", "-q"], env=env, timeout=3600)
 
 
-PHASE_NAMES = ("head", "readout", "fold", "snapshot", "edges", "sweep", "head_words", "head_scans")
-
-
 def _instrument(args: list[str], timeout: int = 3600) -> dict:
     """Run one of the tree's instruments with `--json` and return what it wrote (a failure is a row, never a stop)."""
     with tempfile.TemporaryDirectory(prefix="compose_") as tmp:
