@@ -2216,45 +2216,9 @@
    "count": 1
   },
   {
-   "path": "tests/oracle/fixtures.py",
-   "message": "names the work code 'K50'",
-   "line_sha256": "b800436cf528f042",
-   "count": 1
-  },
-  {
    "path": "tests/oracle/instantiation.py",
    "message": "names the work code 'C0'",
    "line_sha256": "709ad65ad9633460",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'C0'",
-   "line_sha256": "838a816de10e84a2",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'D2'",
-   "line_sha256": "c61fd3b1da79f49f",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'K31'",
-   "line_sha256": "17e6dda263ca504f",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'P28'",
-   "line_sha256": "8809e9284c14bec7",
-   "count": 1
-  },
-  {
-   "path": "tests/oracle/instantiation.py",
-   "message": "names the work code 'P67'",
-   "line_sha256": "c61fd3b1da79f49f",
    "count": 1
   },
   {

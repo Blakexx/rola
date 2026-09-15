@@ -13,7 +13,7 @@ import math
 import torch
 
 from rola.ops import carry as carry_ops
-from rola.ops.paging import from_split_planes, to_split_planes
+from rola.ops.paging import from_split_planes
 
 
 def simplex(shape, k_tok, gen, device, live=None):
@@ -54,37 +54,13 @@ class Cell:
         self.g_write = torch.rand(*shape, device=device, dtype=torch.float64,
                                   generator=gen) + 0.5
         self.v = torch.randn(*shape, d_v, device=device, dtype=torch.float64, generator=gen)
-        #: THE OPERAND PLANES ARE bf16 AND THE REFERENCE READS THE SAME BYTES.  The
-        #: gate is a conformance band, not a rounding coincidence: comparing an fp64
-        #: reference of the fp64 draws against a kernel fed their bf16 images would
-        #: measure the CAST, which is not what is under test.
+        #: THE OPERAND PLANES ARE bf16: the bytes a kernel entry reads (`owner_rows` takes them).
         self.read_bf = tuple(t.to(torch.bfloat16) for t in self.read)
         self.write_bf = tuple(t.to(torch.bfloat16) for t in self.write)
-        self.g_bf = self.g_write.to(torch.bfloat16)
-        self.v_bf = self.v.to(torch.bfloat16)
         self.state_in = None
         if state_in:
             self.state_in = 0.1 * torch.randn(B * H, self.N, d_v + 1, device=device,
                                               dtype=torch.float64, generator=gen)
-
-    # -- the reference reads the ROUNDED operands ---------------------------
-    def ref_levels(self):
-        return (tuple(t.double() for t in self.read_bf),
-                tuple(t.double() for t in self.write_bf),
-                self.g_bf.double(), self.v_bf.double())
-
-    def state_in_plane(self):
-        """``state_in`` as the kernel's state plane, ``[BH, N/16, 16, cols]``.
-
-        A RE-BLOCKING AND THE SPLIT-PLANE PACK since K50: the consumer addresses its state by
-        CANONICAL atom id in both backings, so the plane is the atom-major view of
-        ``[BH, N, cols]`` that `docs/internals/state.md` section 3 defines, and the leaf
-        permutation this method used to apply is gone with the lattice keying.
-        """
-        if self.state_in is None:
-            return None
-        return to_split_planes(self.state_in.to(torch.float32).reshape(
-            self.B * self.H, self.N // 16, 16, self.d_v + 1).contiguous())
 
 
 def canonical_from_plane(plane):
@@ -133,9 +109,10 @@ def require_arm(D: int, DV: int, warps_per_cta: int) -> None:
     binary is not missing it -- nothing builds it, in any configuration -- and turning
     that into a skip would report an absent arm as satisfied coverage. Only a DECLARED
     row this build did not compile is skippable; anything else falls through to the
-    launch surface, which refuses it and names the reason. On the clean line the list is
-    EMPTY, so nothing is skippable and every carry cell reaches the surface's honest
-    no-implementation failure -- which is the state card C's TEST-DRIVEN ruling asks for.
+    launch surface, which refuses it and names the reason: a cell at an arm the declaration
+    does not name stays red, by that name, which is what the test-driven ruling asks for.
+    Every carry cell's call asks for its arm here (the carry and prefill oracles, the
+    paging equivalence file).
     """
     import pytest
 

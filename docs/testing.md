@@ -197,8 +197,12 @@ forward, state and both gradients.
    state has been updated zero times, and the resulting metric was measured
    BIT-IDENTICAL between two arms it was supposed to separate. A charge that
    cannot fail is the same defect as a tolerance that cannot fail, and
-   `test_output_charge_sees_a_drift_the_global_max_cannot` holds the mutant that
-   proves the current one can.
+   `tests/oracle/test_prefill_vs_oracle.py`'s
+   `test_the_readout_charge_sees_a_drift_the_global_max_cannot` holds the mutant that
+   proves the current one can: a `sqrt(t)` drift ten times the band on the kernel's
+   own readout reads 7.1e-3 under the global form and 9.6e-2 per segment
+   (`flagship-dense`, 2026-09-14). The carry's `num` and `den` are accumulations with no
+   cold-start ratio, and are graded by `relative` and `relative_per_token`.
 
 ## The two-branches-agree class — geometry, as data
 
@@ -676,14 +680,13 @@ a missing `record_stream` or a missing join — not a device memory hazard.
 
 `tests/integration/stream_discipline.py` is the fixture; it was four bespoke cells
 guarding one module, and copying them into each new path is how three of the four end
-up missing. **A path that crosses a stream instantiates all five checks.**
+up missing. **A path that crosses a stream instantiates all four checks.**
 
 | check | makes deterministic |
 |---|---|
 | `OrderingSpy` | the publication is joined before the consumer reads it — and a join performed *inside* the publication is recorded distinctly, so it cannot satisfy the outer claim |
 | `record_stream_spy` | a tensor crossing to another stream declares its lifetime there |
 | `allocator_pressure` | the window a lifetime bug needs is actually opened |
-| `assert_agrees_under_launch_blocking` | async and serialized runs agree bit-for-bit |
 | `assert_capture_rejoins` | a fork that never rejoins **refuses to close a CUDA graph capture** |
 
 The last is the only *mechanical* detector of the missing-join class that exists

@@ -32,7 +32,8 @@ from rola.ops.naive import naive_rola
 from rola.ops.paging import bytes_equal
 from rola.ops.prefill import prefill
 from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
-from tests.oracle.fixtures import canonical_from_plane, relative
+from tests.oracle.fixtures import canonical_from_plane, relative, require_arm
+from tests.oracle.oracle_fixtures import _output_charge
 from tests.oracle.tolerances import BF16_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
@@ -79,6 +80,7 @@ def fresh_plane(spec, bh: int = 1):
 
 def call(spec, state_in=None):
     """One combined call on the FINAL surface: no window, no ``(k, m)``, no carve."""
+    require_arm(*spec.arm)
     drawn = realize(spec)
     return drawn, prefill(drawn.read, drawn.write, drawn.gain, drawn.v, spec.widths,
                           modes=modes_of(spec),
@@ -146,12 +148,38 @@ def test_the_combined_operator_reaches_the_carry_launch_surface():
 def test_prefill_matches_the_fp64_oracle(spec):
     drawn, (num, den, plane) = call(spec)
     y_ref, s_ref = oracle(drawn)
-    err = relative(readout(num, den, spec), y_ref)
-    assert err < BF16_RTOL, f"{spec.name}: the readout leaves the bf16 band at {err:.3e}"
+    err = _output_charge(readout(num, den, spec), y_ref)
+    assert err < BF16_RTOL, f"{spec.name}: a segment of the readout leaves the bf16 band at {err:.3e}"
     s_err = relative(canonical_from_plane(plane), s_ref.reshape(1, spec.N, spec.dv + 1))
     assert s_err < BF16_RTOL, f"{spec.name}: the final state leaves the band at {s_err:.3e}"
     del num, den, plane, y_ref, s_ref
     torch.cuda.empty_cache()
+
+
+def test_the_readout_charge_sees_a_drift_the_global_max_cannot():
+    """The metric the cells above are graded in has to be the right one (docs/testing.md, rule 6).
+
+    The readout is a ratio whose denominator is accumulated write mass, so at `t = 0` `|y|` is orders of magnitude
+    above the rest of the sequence, and one global normalizer is set by the token whose state has been updated zero
+    times: that metric cannot see an error that ACCUMULATES. A `sqrt(t)` drift ten times the band is planted on the
+    kernel's own readout, and the two forms must disagree about it -- the global form passing it is the premise, the
+    per-segment charge catching it is the claim.
+    """
+    spec = next(c for c in CELLS if c.name == "flagship-dense")
+    drawn, (num, den, _plane) = call(spec)
+    y_ref, _s_ref = oracle(drawn)
+    y = readout(num, den, spec)
+    assert relative(y, y_ref) < BF16_RTOL and _output_charge(y, y_ref) < BF16_RTOL, (
+        f"the unperturbed control must pass under both forms (global {relative(y, y_ref):.3e}, per-segment "
+        f"{_output_charge(y, y_ref):.3e})")
+    ramp = (torch.arange(spec.tokens, device=y.device, dtype=torch.float64) / (spec.tokens - 1)).sqrt()
+    mutant = y.double() * (1.0 + 10.0 * BF16_RTOL * ramp[None, :, None, None])
+    assert relative(mutant, y_ref) < BF16_RTOL, (
+        f"the planted drift moved the global form to {relative(mutant, y_ref):.3e}: the premise is that it passes "
+        "this mutant -- re-derive the mutant's size rather than deleting the claim")
+    assert _output_charge(mutant, y_ref) > BF16_RTOL, (
+        f"the planted drift moved the per-segment charge only to {_output_charge(mutant, y_ref):.3e}: it is as "
+        "blind as the global form")
 
 
 def test_a_chained_call_equals_one_long_call():

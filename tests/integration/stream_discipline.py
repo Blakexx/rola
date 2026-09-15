@@ -8,7 +8,7 @@ only, and there is no runtime detector anywhere for a forgotten cross-stream
 dependency on already-allocated memory. That gap is real and confirmed.
 
 What caught them is in this file. It was four bespoke cells guarding one module; it is
-now a fixture, because the next path that crosses a stream needs the same four checks
+now a fixture, because the next path that crosses a stream needs the same checks
 and copying them is how three of the four end up missing.
 
 | check | what it makes deterministic |
@@ -16,7 +16,6 @@ and copying them is how three of the four end up missing.
 | :class:`OrderingSpy` | the publication is JOINED before the consumer reads it |
 | :func:`record_stream_spy` | a tensor crossing to another stream declares its lifetime |
 | :func:`allocator_pressure` | the window a lifetime bug needs is actually opened |
-| :func:`assert_agrees_under_launch_blocking` | async and serialized runs agree bit-for-bit |
 | :func:`assert_capture_rejoins` | a fork that never rejoins REFUSES to close a CUDA graph capture |
 
 The last is the only MECHANICAL detector of the missing-join class that exists, and it
@@ -127,24 +126,6 @@ def allocator_pressure(rounds: int = 64, device: str = "cuda") -> None:
         block = torch.empty(1 << 20, device=device)
         del block
         torch.randn(1 << 12, device=device).sum()
-
-
-def assert_agrees_under_launch_blocking(body: str, *, timeout: int = 600) -> None:
-    """Run `body` in a `CUDA_LAUNCH_BLOCKING=1` child and require it to succeed.
-
-    Blocking serializes launches, which collapses the window a missing join needs. It
-    REPORTS nothing by itself; it makes the async and serialized runs disagree, and
-    the comparison is what turns that into a signal. `body` therefore asserts its own
-    bit-identity and prints OK.
-    """
-    child = f"import sys; sys.path.insert(0, {ROOT!r})\n" + textwrap.dedent(body)
-    env = dict(os.environ, CUDA_LAUNCH_BLOCKING="1")
-    proc = subprocess.run([sys.executable, "-c", child], capture_output=True,
-                          text=True, env=env, timeout=timeout)
-    assert proc.returncode == 0 and proc.stdout.strip().endswith("OK"), (
-        f"the CUDA_LAUNCH_BLOCKING=1 child disagreed with the async run -- that "
-        f"disagreement IS the stream-race signature:\n"
-        f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}")
 
 
 #: The capture error text this driver produces for an unjoined fork. Matched rather

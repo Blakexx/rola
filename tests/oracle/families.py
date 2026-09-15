@@ -39,8 +39,6 @@ from typing import Any
 
 from tests.oracle.instantiation import (
     BUILT_TOPOLOGIES,
-    instantiation_of,
-    kernel_refusal,
 )
 
 # ---------------------------------------------------------------------------
@@ -116,30 +114,6 @@ class Family:
     @property
     def id(self) -> str:
         return self.name
-
-    def instantiation_values(self) -> dict[str, Any]:
-        """This family's coordinates on the CENSUS's instantiation axes.
-
-        The names and value domains are ``tests.oracle.instantiation``'s --
-        `(D, B, paging)`, the axes a caller can move on the chunk arm. That
-        module states why the tiled `(BC, DV, DECAY)` axes are not here.
-        """
-        return instantiation_of(self.config)
-
-    @property
-    def refusal(self) -> str | None:
-        """The CLAUSE the kernel arm refuses this family on, or None if it runs it.
-
-        One of `instantiation.REFUSAL_CLAUSES`. A family outside the built
-        chunk matrix still carries a live claim -- the refusal is named, and the
-        family's semantics are held against the oracle the test CALLS -- but it is
-        not a kernel-coverage cell, so the census join excludes it.
-        """
-        return kernel_refusal(self.config)
-
-    @property
-    def runs_on_kernel(self) -> bool:
-        return self.refusal is None
 
 
 def _cfg(widths=(8, 8), d_v=64, B=1, T=128, H=2, norm="global",

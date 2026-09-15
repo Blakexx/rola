@@ -35,7 +35,7 @@ from benchmarks.cells import by_name, carry_call, carry_cells, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference
-from tests.oracle.fixtures import canonical_from_plane, relative, relative_per_token
+from tests.oracle.fixtures import canonical_from_plane, relative, relative_per_token, require_arm
 from tests.oracle.tolerances import BF16_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
@@ -46,6 +46,7 @@ IDS = [cell.name for cell in ORACLE_CELLS]
 
 def run(spec, state_in=None, state_out=None, page_table=None, bh=1, activity=None,
         schedule=None):
+    require_arm(*spec.arm)
     drawn, call = carry_call(spec, bh=bh)
     routes, v = call.pop("routes"), call.pop("v")
     if activity is not None:

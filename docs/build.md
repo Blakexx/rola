@@ -216,23 +216,16 @@ The two clean rebuilds are byte-identical in every entry point's SASS
 
 ## <a id="carry-arm-lists"></a>The carry arm lists: shipped and test
 
-`tools/gen_shards.py` owns the carry arm list and tags each row. A row tagged
-`TEST` in the generated arm include is a **conformance cell**: the fp64
-oracle materializes `[B,T,H,N]`, so `N = 4096` is where a whole cell is
-checkable, and the `W = 64` arms exist so that it is. The two uncarved
-`DENSE_BOTH` controls at the flagship cell are test rows for the same reason —
-they exist to be compared against, not to be shipped.
+`tools/manifests/shipped_set.json` declares the carry family's arms, each a `(D, DV, warps_per_cta)` row, in two lists,
+and `tools/gen_shards.py` reads it. A **shipped** row is built by a default build and the gate build and ratified in the
+manifests. A **test** row is a conformance arm: built for the oracle battery only (`ROLA_CARRY_ARMS=all
+ROLA_CUDA_ARCHS=86`), never shipped and never ratified. Today the declaration ships one row, `(2, 64, 8)`, and declares no
+test row; the file's note records why `(4, 64, 8)` is not declared.
 
-| | rows | built by |
-|---|---|---|
-| **SHIPPED** | the flagship topology: the three containers at both value widths, their park twins, the tied arm, the dense declarations on the carved body, flat ALT at both admitted windows | a default build; the gate build; the ratification manifest |
-| **TEST** | every row at `W = 64` or `N = 4096`, plus the two `DENSE_BOTH` controls | `ROLA_CARRY_ARMS=all ROLA_CUDA_ARCHS=86` — the battery's build |
-
-The split has exactly three effects and no others: a test row is out of the
-default and gate builds, out of the ratification manifest, and built at one
-architecture for the oracle battery. A test that needs one asks for it
-(`tests/oracle/fixtures.py`'s `require_arm`) and **skips with the arm named** when
-the binary does not carry it, rather than failing inside the dispatch.
+Every carry cell's call in the battery asks `tests/oracle/fixtures.py`'s `require_arm` for its arm first. A declared test
+row the binary did not build **skips with the arm named**. An arm the declaration does not name is not a skip: nothing
+builds it in any configuration, so the cell runs, the launch surface refuses it by name, and the cell stays red until
+the arm is declared and built.
 
 ## <a id="sccache"></a>The nvcc invocations are cached (sccache)
 
