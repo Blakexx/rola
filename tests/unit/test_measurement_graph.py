@@ -32,10 +32,10 @@ def test_every_instrument_names_a_tool_and_data_this_checkout_carries():
                     assert (rola_graph.CHECKOUT / data).exists(), data
 
 
-def test_the_graph_measures_every_probe_cell_and_every_layer_cell():
+def test_the_graph_measures_every_registered_cell():
     carry = json.loads((rola_graph.CHECKOUT / rola_graph.CELLS[0]).read_text())["cells"]
     names = {node.name for node in rola_graph.graph()}
-    for cell in (c["name"] for c in carry if c["tier"] in rola_graph.TIERS):
+    for cell in (c["name"] for c in carry):
         assert {f"carry.phases@{cell}", f"time.carry_forward@{cell}", f"memory.carry_forward@{cell}"} <= names
     for cell in layer_cells():
         assert f"time.decode_step@{cell.name}" in names

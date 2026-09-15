@@ -8,7 +8,7 @@
 rola-bench includes this graph by reference, one instance per checkout it measures, so a node run here and the same node
 run there reach one record. Every unit reads only this checkout: its binary (`rola_cu13/_C*.so`), its tools, its cells.
 
-    carry.sass@<arm set>      the SASS signatures of the built carry arms              (`tools/sass_gate.py`)
+    carry.sass                the SASS signatures of the built carry arms              (`tools/sass_gate.py`)
     carry.registers@arm0      peak live registers by region, arm 0 with line info      (`tools/life_ranges.py`)
     carry.phases@<cell>       the phase clock: cycles a warp a window, per warp        (`tools/phase_ledger.py`)
     carry.counters@<cell>     the profiler's pipe and resource counters, one launch    (`tools/pipe_counters.py`)
@@ -40,8 +40,6 @@ CHECKOUT = Path(__file__).resolve().parents[1]
 #: where this checkout's repository-local imports resolve
 IMPORT_ROOTS = ("tools", "benchmarks", ".")
 CELLS = ("benchmarks/cells/carry_cells.json", "benchmarks/cells/layer_cells.json")
-#: the cells the graph measures: every carry cell the probe reads, and every layer cell
-TIERS = ("probe", "both")
 #: the subjects a cell's timed and memory nodes are declared for, at their default dials; an arm the binary or the cell
 #: does not take is refused in setup
 SUBJECTS = {"carry": ("carry_forward", "prefill_op"), "layer": ("entmax_solve", "decode_step")}
@@ -225,10 +223,10 @@ class Memory(Unit):
 
 
 def cells() -> dict[str, str]:
-    """The measured cells, by name, with their kind."""
+    """Every registered cell, by name, with its kind: what a run measures is its selection's."""
     carry = json.loads((CHECKOUT / CELLS[0]).read_text())["cells"]
     layer = json.loads((CHECKOUT / CELLS[1]).read_text())["cells"]
-    return {**{c["name"]: "carry" for c in carry if c["tier"] in TIERS}, **{c["name"]: "layer" for c in layer}}
+    return {**{c["name"]: "carry" for c in carry}, **{c["name"]: "layer" for c in layer}}
 
 
 def graph() -> list[Node]:
