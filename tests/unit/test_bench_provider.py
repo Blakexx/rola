@@ -1,6 +1,6 @@
-"""rola's runner (benchmarks/bench/provider.py) and the comparison (tools/compare.py): a cell is its data provider and
-parameters; the runner names an arm by its subject and the dials it reads, offers the arms this binary carries at the
-cell's shape, and refuses a cell by name -- an uncarried carry arm, an iteration build, data of another library; the
+"""rola's runner (benchmarks/bench/provider.py) and the comparison (tools/compare.py): the runner reads central cells,
+names an arm by its subject, the dials it reads and a layer arm's construction, offers the arms this binary carries at the
+cell's shape, and refuses a cell by name -- an uncarried carry arm, an iteration build, a cell of another kind; the
 comparison's point is a registered one narrowed by name, or one of rola cells. No GPU: nothing here builds an arm, and
 the binary's arm tables are planted."""
 from __future__ import annotations
@@ -19,15 +19,14 @@ for path in (ROOT, ROOT / "benchmarks", ROOT / "tools"):
 
 import compare  # noqa: E402
 import gen_shards  # noqa: E402
-from rola_devtools.cells import build  # noqa: E402
 
 from bench import provider  # noqa: E402
 from bench.subjects import SUBJECTS  # noqa: E402
 from benchmarks.cells import by_name  # noqa: E402
-from benchmarks.cells.layer import by_name as layer_by_name  # noqa: E402
-from benchmarks.cells.registry import registry  # noqa: E402
+from benchmarks.cells.layer import CONSTRUCTIONS  # noqa: E402
 
 SHIPPED = [tuple(row) for row in gen_shards.CARRY_ARMS]
+DECODE_CELL = "layer-B2-T128-H2-h128-dv64-fp32-s4-dec8"
 
 
 @pytest.fixture
@@ -45,51 +44,47 @@ def binary(monkeypatch):
     return tables
 
 
-def data(name):
-    return build(registry().cell(name))
-
-
-def test_a_cell_is_its_data_provider_and_its_parameters():
-    assert data("flat-small-alt-k16") == by_name("flat-small-alt-k16")
-    layer = next(name for name, c in registry().cells.items() if c["data"].endswith(":layer_cell"))
-    assert data(layer) == layer_by_name(layer)
-
-
-def test_an_arm_is_named_by_its_subject_and_its_non_default_dials():
+def test_an_arm_is_named_by_its_subject_its_non_default_dials_and_its_construction():
     assert provider.arm_name("carry_forward") == "carry_forward"
-    assert provider.arm_name("prefill_op", calls=4, state="continuation") == "prefill_op@calls=4@state=continuation"
+    assert provider.arm_name("prefill_op", calls=4) == "prefill_op@calls=4"
     assert provider.arm_name("carry_forward", schedule="identity") == "carry_forward@schedule=identity"
+    assert provider.arm_name("decode_step", construction="chunk-decode-w16") == "decode_step@layer=chunk-decode-w16"
 
 
 def test_a_cells_arms_are_the_subjects_it_takes_under_the_dials_each_reads(binary):
-    names = set(provider.arms(data("flagship-alt-k4")))
-    assert {"carry_forward", "carry_forward@schedule=identity", "liveness_pass", "intra_forward",
-            "prefill_op@state=paged"} <= names
+    names = set(provider.arms(by_name("flagship-alt-k4")))
+    assert {"carry_forward", "carry_forward@schedule=identity", "liveness_pass", "intra_forward", "prefill_op"} <= names
     assert not any("@schedule=" in name for name in names if not name.startswith("carry_forward"))
-    assert all("state" in SUBJECTS[name.split("@")[0]].dials for name in names if "@state=" in name)
+    assert all("schedule" in SUBJECTS[name.split("@")[0]].dials for name in names if "@schedule=" in name)
     #: a partial window has no intra grid: the combined op is not offered
-    assert not any(name.startswith(("prefill_op", "intra_forward")) for name in provider.arms(data("flat-small-alt-k16")))
+    assert not any(name.startswith(("prefill_op", "intra_forward")) for name in provider.arms(by_name("flat-small-alt-k16")))
+
+
+def test_a_layer_cells_arms_are_its_declared_constructions(binary):
+    names = set(provider.arms(by_name(DECODE_CELL)))
+    declared = sorted(c.name for c in CONSTRUCTIONS.values() if DECODE_CELL in c.cells)
+    assert declared == ["chunk-decode-w16"]
+    assert {"entmax_solve@layer=chunk-decode-w16", "decode_step@layer=chunk-decode-w16"} <= names
+    assert all(name.endswith("@layer=chunk-decode-w16") for name in names)
 
 
 def test_an_arm_is_offered_only_where_the_binary_carries_its_kernel(binary):
     binary.intra = []
-    names = set(provider.arms(data("flagship-alt-k4")))
+    names = set(provider.arms(by_name("flagship-alt-k4")))
     assert "carry_forward" in names and not any(name.startswith(("prefill_op", "intra_forward")) for name in names)
-    decode_cell = next(name for name, c in registry().cells.items()
-                       if c["data"].endswith(":layer_cell") and c["params"]["decode_steps"] > 0)
-    assert "decode_step" in provider.arms(data(decode_cell))
+    assert "decode_step@layer=chunk-decode-w16" in provider.arms(by_name(DECODE_CELL))
     binary.decode = []
-    assert "decode_step" not in provider.arms(data(decode_cell))
+    assert not any(name.startswith("decode_step") for name in provider.arms(by_name(DECODE_CELL)))
 
 
 def test_a_cell_is_refused_by_name(binary):
     with pytest.raises(LookupError, match=r"deep3-dense: this binary carries no carry arm \(3, 64, 8\)"):
-        provider.arms(data("deep3-dense"))
-    with pytest.raises(TypeError, match="rola's runner takes a carry cell"):
-        provider.arms({"tokens": 256})
+        provider.arms(by_name("deep3-dense"))
+    with pytest.raises(TypeError, match="rola's runner takes a central carry cell or layer cell"):
+        provider.arms(by_name("qkv-L1024-dv64"))
     binary.carry = []
     with pytest.raises(RuntimeError, match="iteration build"):
-        provider.arms(data("flagship-alt-k4"))
+        provider.arms(by_name("flagship-alt-k4"))
 
 
 def test_the_comparisons_arms_parse_as_their_flags_say():
@@ -105,17 +100,17 @@ def test_the_comparisons_arms_parse_as_their_flags_say():
 def test_the_comparisons_point_is_registered_and_narrowed_by_name_or_is_rola_cells(tmp_path):
     extra = tmp_path / "registry.json"
     extra.write_text(json.dumps({"schema": 1, "data": "pkg.cells:qkv",
-                                 "cells": [{"name": "attn-L1024-dv64", "tokens": 1024, "dv": 64}],
+                                 "cells": [{"name": "attention-L1024-dv64", "tokens": 1024, "dv": 64}],
                                  "points": [{"name": "L1024", "equal": ["tokens", "dv"],
                                              "runners": {"rola": ["flagship-alt-k4", "flagship-dense"],
-                                                         "attention": ["attn-L1024-dv64"]}}]}))
+                                                         "attention": ["attention-L1024-dv64"]}}]}))
 
     def args(**kw):
         return SimpleNamespace(**{"point": None, "cells": None, "registry": [str(extra)], **kw})
 
-    point = compare.point_of(args(point="L1024", cells="flagship-dense,attn-L1024-dv64"))
+    point = compare.point_of(args(point="L1024", cells="flagship-dense,attention-L1024-dv64"))
     assert {r: [c["name"] for c in cells] for r, cells in point["runners"].items()} == {
-        "rola": ["flagship-dense"], "attention": ["attn-L1024-dv64"]}
+        "rola": ["flagship-dense"], "attention": ["attention-L1024-dv64"]}
     assert [c["name"] for c in compare.point_of(args(cells="flat-small-alt-k16"))["runners"]["rola"]] == [
         "flat-small-alt-k16"]
     with pytest.raises(SystemExit, match="not cells of point L1024"):

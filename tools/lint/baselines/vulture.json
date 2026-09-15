@@ -2,12 +2,6 @@
  "lint": "vulture",
  "findings": [
   {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "unused function 'carry_cell' (60% confidence)",
-   "line_sha256": "1fe1f6bdfcba1bc2",
-   "count": 1
-  },
-  {
    "path": "rola/engine/facts/call.py",
    "message": "unused function 'arm_of' (60% confidence)",
    "line_sha256": "53ece8ae80d350b0",

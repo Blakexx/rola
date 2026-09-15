@@ -5,7 +5,7 @@ stored with its provenance. This document is what that sentence means.
 
 | layer | where | answers |
 |---|---|---|
-| cells and points | `benchmarks/cells/` (`registry.py`), rola-devtools' `rola_devtools.cells`, other repositories' registries | WHAT is measured: a cell is a data provider and its parameters, named once; a point groups cells by runner and states what they hold equal |
+| cells and points | rola-devtools' central registry `rola_devtools.cells` (rola's reading: `benchmarks/cells/`), other registries' points | WHAT is measured: a cell is a data provider and its parameters, named once; a point groups cells by runner and states what they hold equal |
 | subjects | `benchmarks/bench/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, each arm's dials, and which cells this binary refuses |
 | method | rola-devtools' `rola_devtools.interleave`, run by `tools/compare.py` | HOW: interleaved call by call, paired within a rep |
 | preconditions | `tools/compare.py`, `bench/provider.py` | what the box and the binary must be first |

@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT))
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
+from benchmarks import cells  # noqa: E402
+
 TILE = 16
 WINDOW = 512
 BOXES = 16
@@ -47,7 +49,7 @@ def call_args(spec, schedule_name: str = "first"):
     from benchmarks.cells import carry_call
     from rola.ops import carry as c
 
-    drawn, kw = carry_call(spec)
+    drawn, kw = carry_call(spec, 1)
     routes, desc, geom, launch = kw["routes"], kw["descriptor"], kw["geometry"], kw["launch"]
     sched = c.CarrySchedule(order=schedule_name)
     num = torch.zeros((1, spec.tokens, desc.DV), dtype=torch.float32, device="cuda")
@@ -119,7 +121,7 @@ def check_head(spec, kw, out, owner_count: int, warps: int = 8):
     from rola.ops import carry as c
 
     order, tilemask, livec, warpwords, unionw, prefix = (t.cpu().numpy() for t in out)
-    g = c.geometry(list(spec.widths), level_modes=spec.level_modes, bc=256, nsr=8, nsw=8)
+    g = c.geometry(list(spec.widths), level_modes=cells.level_modes(spec), bc=256, nsr=8, nsw=8)
     words = kw["liveness"].words.cpu().numpy()
     L = spec.tokens
     bad = 0
@@ -173,7 +175,7 @@ def check_fill(spec, kw, slots, geom_list, owner_count: int):
     from rola.ops import carry as c
 
     P, rows, slot_bytes, vrow_bytes, v_off, in_off, out_off, vchunks, gain_off = geom_list
-    g = c.geometry(list(spec.widths), level_modes=spec.level_modes, bc=256, nsr=8, nsw=8)
+    g = c.geometry(list(spec.widths), level_modes=cells.level_modes(spec), bc=256, nsr=8, nsw=8)
     D = g["D"]
     wrank = list(g["w"]["rank"])[:D]
     inner_l, outer_l = wrank.index(0), wrank.index(1)
@@ -266,7 +268,7 @@ def check_fold(spec, kw, out, owner_count: int, warps: int = 8, reps: int = 1):
     from rola.ops import carry as c
 
     state, mass = (t.cpu().numpy() for t in out)
-    g = c.geometry(list(spec.widths), level_modes=spec.level_modes, bc=256, nsr=8, nsw=8)
+    g = c.geometry(list(spec.widths), level_modes=cells.level_modes(spec), bc=256, nsr=8, nsw=8)
     D = g["D"]
     wrank = list(g["w"]["rank"])[:D]
     inner_l, outer_l = wrank.index(0), wrank.index(1)

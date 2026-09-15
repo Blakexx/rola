@@ -6,10 +6,9 @@ libraries, on the cells of one point, interleaved call by call. The method is ro
 
 ## Cells, points and runners
 
-A **cell** is a data provider and its constructor parameters. rola's two registry files are cells: `carry_cells.json`
-names `benchmarks.cells:carry_cell` (a shape and a draw, validated into a `CellSpec`), `layer_cells.json` names
-`benchmarks.cells.layer:layer_cell` (a constructor, a `LayerCellSpec`). Another repository's registry (`--registry`)
-adds its own cells, such as rola-bench's attention cells.
+A **cell** is a data provider and its parameters, from rola-devtools' central registry (`rola_devtools.cells`): a carry
+cell (a shape, a draw and the state it binds, a `CarryCell`), a layer cell (an input, a `LayerCell`) or a QKV cell
+(attention's input). Another registry file (`--registry`) adds points, and cells of its own.
 
 A **point** is a named group of cells by **runner**, with what it holds equal (`holds`, recorded; `equal`, the parameters
 every cell must share, checked on load). rola's runner is `rola`; a foreign arm names the runner the point addresses.
@@ -24,6 +23,7 @@ refuses the cell by name:
 | an iteration build | the binary lacks an arm `tools/manifests/shipped_set.json` ships (`ROLA_CARRY_ARMS`) |
 | no carry arm | a carry cell whose (D, DV, warps_per_cta) the binary does not carry |
 | not rola's data | a cell whose data is neither a carry nor a layer cell |
+| no construction | a layer cell no RoLA construction (`benchmarks.cells.layer.CONSTRUCTIONS`) is declared for |
 
 An arm is offered where the subject applies to the cell's own facts (`bench.subjects.applicable`: its kind, call counts,
 whole windows, decode steps) and the binary carries the subject's kernel at the cell's shape: the intra arm at the cell's
@@ -35,9 +35,10 @@ A **rola arm** is a bench subject (`bench.subjects.SUBJECTS`) with its dials, an
 
 | name | what it times |
 |---|---|
-| `carry_forward` | the subject at its defaults: one call, the `first` carry order, the `fresh` state arm |
+| `carry_forward` | the subject at its defaults: one call, the `first` carry order, the state the cell binds |
 | `carry_forward@schedule=identity` | the carry in token order |
-| `prefill_op@calls=4@state=continuation` | the op as four carried calls over one plane |
+| `prefill_op@calls=4` | the op as four carried calls over one plane |
+| `decode_step@layer=chunk-decode-w16` | one decode step through the layer built by that construction |
 
 A dial belongs to the arm, never to the run, and exists only where the subject reads it (`Subject.calls`,
 `Subject.dials`); a dial the subject does not read has no name to set it by. A run-level schedule once reached no

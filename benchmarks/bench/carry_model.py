@@ -147,14 +147,14 @@ def cell_liveness(spec, side: str, window: int = 1) -> np.ndarray:
     read order: the outer read-order digit; a token is live in box `b` iff its outer digit
     `b` is nonzero and any inner digit is. Two-level cells only: the general box words are
     the kernel's head, and this model is gated before that head exists."""
-    from benchmarks.cells import realize
+    from benchmarks.cells import level_modes, realize
     from rola.ops import carry as c
 
     if len(spec.widths) != 2:
         raise ValueError("cell_liveness models two-level cells")
     drawn = realize(spec)
     levels = drawn.read if side == "read" else drawn.write
-    g = c.geometry(list(spec.widths), level_modes=spec.level_modes, bc=256, nsr=WARPS, nsw=WARPS)
+    g = c.geometry(list(spec.widths), level_modes=level_modes(spec), bc=256, nsr=WARPS, nsw=WARPS)
     rank = g["r"]["rank"] if side == "read" else g["w"]["rank"]
     outer = rank.index(1)
     inner = 1 - outer

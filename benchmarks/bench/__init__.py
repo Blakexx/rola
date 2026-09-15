@@ -5,5 +5,5 @@
 * :mod:`bench.carry_model` -- what the design says each component of the carry must cost on a cell.
 * :mod:`bench.hw_profile` -- a hardware profile, never a hostname.
 
-The cells are `benchmarks/cells`.
+The cells are rola-devtools' central registry, read through `benchmarks/cells`.
 """

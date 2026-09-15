@@ -43,18 +43,21 @@ class _Whitelist:
     pytest_addoption = None
     pytest_configure = None
 
-    # rola_devtools.graph UNITS: the engine calls a unit's phases (`setup`, `execute`, `post`) and reads `timed` by
-    # name, builds a unit from its `module:Class` string (`benchmarks/graph.py`'s `Memory`, `Timeline`), and the graph
-    # command line loads `benchmarks.graph:hold` from its `--hold` string.
+    # rola_devtools.measure UNITS: the service's worker calls a unit's phases (`accepts`, `identity`, `setup`, `execute`,
+    # `post`, `present`, `read_ghz`) by name, builds a unit from its `module:Class` string (`benchmarks/registry.py`'s
+    # `RolaBuild`, `Clock`, `Tool`, `Timeline`, `Subject`) and loads `benchmarks.registry:registry` from its string.
+    accepts = None
     setup = None
     execute = None
     post = None
-    timed = None
-    hold = None
-    Memory = None
+    present = None
+    read_ghz = None
+    RolaBuild = None
+    Clock = None
     Timeline = None
+    Subject = None
 
 
 _ = _Whitelist()
 _referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure,  # ruff B018: a bare attribute is "useless"
-               _.setup, _.execute, _.post, _.timed, _.hold, _.Memory, _.Timeline)
+               _.accepts, _.setup, _.execute, _.post, _.present, _.read_ghz, _.RolaBuild, _.Clock, _.Timeline, _.Subject)

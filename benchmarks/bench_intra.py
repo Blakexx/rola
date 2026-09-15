@@ -87,7 +87,7 @@ def main() -> int:
     if args.cells:
         specs = [by_name(name) for name in args.cells.split(",")]
     else:
-        specs = [c for c in carry_cells("probe") if "intra_forward" in applicable(c, "carry")]
+        specs = [c for c in carry_cells(tier="probe") if "intra_forward" in applicable(c, "carry")]
     if not specs:
         raise SystemExit("no registry cell applies to the intra bench")
 

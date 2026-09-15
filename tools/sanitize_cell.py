@@ -52,7 +52,7 @@ def main() -> int:
     from rola.ops import carry as carry_ops
 
     spec = by_name(args.cell)
-    drawn, call = carry_call(spec, bh=1)
+    drawn, call = carry_call(spec, 1)
     routes, v = call.pop("routes"), call.pop("v")
     if args.phase != "both":
         dead = torch.zeros_like(routes.read if args.phase == "fold" else routes.write)

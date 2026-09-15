@@ -14,9 +14,9 @@ therefore RED and stays red until the readout lands (card
 readout is zero BY THE ARITHMETIC -- a single window over an entry state nothing reads --
 are green now and are the executable spec of everything the frame does own.
 
-THE CELLS ARE DATA (`benchmarks/cells/carry_cells.json`), read through
-`benchmarks.cells`, so the oracle tier, the probe and the benches name one set of cells
-and one draw. What a record declares is a SHAPE and a DRAW -- never an arm, never a
+THE CELLS ARE DATA (rola-devtools' central registry, `rola_devtools.cells.carry`), read
+through `benchmarks.cells`, so the oracle tier, the probe and the benches name one set of
+cells and one draw. What a record declares is a SHAPE and a DRAW -- never an arm, never a
 window, never a ``(k, m)`` box, because the axis law left the kernel nothing else to
 be told.
 
@@ -31,7 +31,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import by_name, carry_call, carry_cells, realize
+from benchmarks.cells import by_name, carry_call, carry_cells, descriptor, launch, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference
@@ -46,7 +46,7 @@ from tests.oracle.tolerances import CARRY_FOLD_RTOL, CARRY_READOUT_RTOL
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
-ORACLE_CELLS = carry_cells("oracle")
+ORACLE_CELLS = carry_cells(tier="oracle")
 IDS = [cell.name for cell in ORACLE_CELLS]
 
 
@@ -78,7 +78,7 @@ def ref(drawn, state_in=None, magnitudes=False):
     read, write, gain, v = drawn.doubles()
     if magnitudes:
         v, state_in = v.abs(), None if state_in is None else state_in.double().abs()
-    return reference.inter_reference(read, write, gain, v, drawn.spec.widths,
+    return reference.inter_reference(read, write, gain, v, drawn.cell.widths,
                                      carry_ops.WINDOW, state_in=state_in)
 
 
@@ -119,11 +119,11 @@ def test_the_registry_declares_only_lawful_shapes():
     geometry block are built here, so a cell the kernel boundary would refuse fails HERE,
     where the reason is the registry, instead of as a mystery inside a call."""
     for spec in carry_cells():
-        desc = spec.descriptor()
-        launch = spec.launch()
-        carry_ops.geometry_block(desc, launch)
+        desc = descriptor(spec)
+        shape = launch()
+        carry_ops.geometry_block(desc, shape)
         assert desc.DV in carry_ops.SHIPPED_DV
-        assert launch.warps_per_cta in carry_ops.WARPS_PER_CTA
+        assert shape.warps_per_cta in carry_ops.WARPS_PER_CTA
 
 
 # ------------------------------------------------- the arithmetic, cell by cell
@@ -168,7 +168,7 @@ def test_the_folded_state_is_the_fp64_reference_on_the_paged_backing():
     deposits reach the same leaves whether the page is where its atom says or somewhere
     else the table names."""
     spec = next(c for c in MULTI_WINDOW if c.backing == "paged")
-    desc = spec.descriptor()
+    desc = descriptor(spec)
     pages = desc.N // carry_ops.PAGE_LEAVES
     gen = torch.Generator(device="cuda").manual_seed(spec.seed)
     slots = torch.argsort(torch.rand(pages, device="cuda", generator=gen))
@@ -202,7 +202,7 @@ def test_an_idle_resident_page_is_neither_loaded_nor_stored():
     unstructured ``k_tok`` still reaches every page at this length."""
     first = next(c for c in ORACLE_CELLS if c.name == "flat-small-dense")
     second = next(c for c in ORACLE_CELLS if c.name == "flat-small-idle-resident")
-    plane = carry_ops.state_plane(first.descriptor(), 1)
+    plane = carry_ops.state_plane(descriptor(first), 1)
     run(first, state_out=plane)
 
     before = plane.clone()
@@ -246,7 +246,7 @@ def test_the_two_backings_write_the_same_pages():
     pass for a kernel that ignored the table entirely, which is the shape this gate
     exists to exclude."""
     spec = next(c for c in ORACLE_CELLS if c.backing == "paged")
-    desc = spec.descriptor()
+    desc = descriptor(spec)
     pages = desc.N // carry_ops.PAGE_LEAVES
 
     dense = carry_ops.state_plane(desc, 1)
@@ -334,7 +334,7 @@ def _occupied_plane(spec, bh=1):
     have written rather than bit patterns no fp32 accumulator ever produces."""
     from rola.ops.paging import to_split_planes
 
-    desc = spec.descriptor()
+    desc = descriptor(spec)
     gen = torch.Generator(device="cuda").manual_seed(spec.seed)
     logical = torch.randn((bh, desc.N // carry_ops.PAGE_LEAVES, carry_ops.PAGE_LEAVES, desc.cols),
                           device="cuda", generator=gen)
@@ -352,7 +352,7 @@ def test_a_window_with_nothing_live_passes_the_state_through_bit_for_bit(name):
     round trip has to be exact for the bytes to survive. A kernel that rounded anywhere in
     its state path fails the second case while passing the first."""
     spec = by_name(name)
-    desc = spec.descriptor()
+    desc = descriptor(spec)
     drawn = realize(spec)
     pages = desc.N // carry_ops.PAGE_LEAVES
     table = None
@@ -450,6 +450,6 @@ def test_the_selection_rule_picks_the_first_box_order_at_every_mode():
     (the order study, 2026-09-08: within 1.3x of the optimum at alt-k4, 3-4x below token
     order; at dense the two policies tile the same work)."""
     spec = by_name(BYTE_GATE_CELL)
-    desc = spec.descriptor()
+    desc = descriptor(spec)
     for modes in (0, carry_ops.SIDE_SPARSE[0], carry_ops.SIDE_SPARSE[1]):
         assert carry_ops.select_schedule(desc, modes).order == carry_ops.ORDER_FIRST_BOX

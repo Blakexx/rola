@@ -12,7 +12,7 @@
         --arm label:identity,arm:carry_forward@schedule=identity
 
 The method is rola-devtools' interleaving driver on a POINT (`rola_devtools.cells`): a named group of cells by runner
-and what it holds equal, from this checkout's cell registry (`benchmarks/cells`) and the `--registry` files. `--cells`
+and what it holds equal, from the central cell registry (`rola_devtools.cells`) and the `--registry` files. `--cells`
 narrows the point to the named cells; without `--point` it is a point of its own, those rola cells for the rola runner.
 One worker process per arm environment; every row (an arm on a cell) warmed past the floor and then called once per rep
 in a fresh random order, each sample the arm's own CUDA-event stopwatch. A rola ARM (`--arm`, runner `rola`) is a
@@ -86,9 +86,9 @@ def arm_specs(rola_arms: list[dict], foreign: list[dict]):
 
 def point_of(args) -> dict:
     """The point the run is on: `--point` from the registries, narrowed by `--cells`; or `--cells` alone, for rola."""
-    from benchmarks.cells.registry import registry
+    from rola_devtools.cells import FILES, Registry
 
-    reg = registry(*args.registry)
+    reg = Registry.load([*FILES, *args.registry])
     wanted = args.cells.split(",") if args.cells else None
     if not args.point:
         if not wanted:

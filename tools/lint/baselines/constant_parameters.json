@@ -27,26 +27,8 @@
   },
   {
    "path": "benchmarks/bench/provider.py",
-   "message": "arm_name(..., calls=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "313711b9d9f1a6da",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/bench/provider.py",
-   "message": "arm_name(..., state=) is only ever 'fresh' -- across every call in this tree, nothing moves it",
-   "line_sha256": "313711b9d9f1a6da",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/bench/provider.py",
    "message": "oneshot_argv(..., arm=) is only ever 'carry_forward' -- across every call in this tree, nothing moves it",
    "line_sha256": "b8fb11a07ad28722",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/bench/subjects.py",
-   "message": "_state_arm(..., bh=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "30b4522d8db7c6b9",
    "count": 1
   },
   {
@@ -59,48 +41,6 @@
    "path": "benchmarks/bench_intra.py",
    "message": "peak_flops(..., device=) is only ever 0 -- across every call in this tree, nothing moves it",
    "line_sha256": "78c6eaaf00bbf290",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "carry_call(..., bh=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "952d43c0b6fb26c1",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "carry_call(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
-   "line_sha256": "952d43c0b6fb26c1",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "carry_cells(..., tier=) is only ever None -- across every call in this tree, nothing moves it",
-   "line_sha256": "050ba9b188b7bf1a",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "conservative_activity(..., BH=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "49046d84746bb7eb",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "conservative_activity(..., device=) is only ever 'cuda' -- across every call in this tree, nothing moves it",
-   "line_sha256": "49046d84746bb7eb",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "realize(..., B=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "7874b21adcea5270",
-   "count": 1
-  },
-  {
-   "path": "benchmarks/cells/__init__.py",
-   "message": "realize(..., H=) is only ever 1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "7874b21adcea5270",
    "count": 1
   },
   {

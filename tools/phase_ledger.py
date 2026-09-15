@@ -49,14 +49,14 @@ def main() -> int:
     import torch
     from rola_devtools.locks.gpu import gpu_lock
 
-    from benchmarks.cells import by_name, carry_call
+    from benchmarks.cells import WARPS_PER_CTA, by_name, carry_call
     from rola.ops import carry as c
 
     spec = by_name(a.cell)
-    _drawn, kw = carry_call(spec)
+    _drawn, kw = carry_call(spec, 1)
     routes, v = kw.pop("routes"), kw.pop("v")
     owners = math.prod(spec.widths) // 256
-    warps = spec.warps_per_cta
+    warps = WARPS_PER_CTA
     windows = (spec.tokens + c.WINDOW - 1) // c.WINDOW
     with gpu_lock(mode="exclusive"):
         ledger = torch.zeros((owners, warps, len(PHASES)), dtype=torch.int64, device="cuda")

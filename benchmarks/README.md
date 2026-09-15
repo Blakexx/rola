@@ -1,25 +1,26 @@
-# `benchmarks/` — the cell registry, the benches over it, and the record
+# `benchmarks/` — rola's reading of the central cells, the benches over them, and the measurement registry
 
 The methodology, the instruments and the record are `docs/measurement.md`; the lock rule
 is `docs/testing.md`. This file is the map.
 
-**`benchmarks/cells/` — THE REGISTRY, and there is only one.** Every cell any test,
-bench or tool runs is a record here, so a name means one shape and one draw everywhere it
-appears. Two kinds, both data:
+**THE CELLS ARE ROLA-DEVTOOLS' (`rola_devtools.cells`), and there is one registry for every package.** A cell is an
+input -- a carry cell's routing amplitudes, gain, values and the state it enters with; a layer cell's hidden states and
+values -- with its draw and the regime it proves, so a name means one input everywhere it appears, in rola and in the
+libraries rola is compared against. A cell names nothing rola runs it with. `benchmarks/cells/` is rola's reading:
 
-* `carry_cells.json` — the KERNEL cells: a record declares a SHAPE and a DRAW
-  (amplitudes put directly on the simplex) and never an arm, since the arm key
-  `(D, DV, warps_per_cta)` is derived from the record. `cells/__init__.py` validates the
-  records, realizes a draw from the cell's own name (the seed is `crc32(name)`, so a
-  failure reproduces from the name alone) and builds `carry_call` — one cell's WHOLE call,
-  the same operands in a correctness run and a measured one.
-* `layer_cells.json` — the LAYER cells: a record declares a CONSTRUCTOR (a producer, a
-  routing template, a gain), from which the amplitudes are PRODUCED. It is the only way to
-  price the producer's own solve or a decode step through the layer. `cells/layer.py`
-  builds the fixture.
-* `registry.py` — every cell by name with its kind, and `registry()`: these files as cells in rola-devtools' sense (each
-  names its data provider, `carry_cell` or `layer_cell`) with any other registry files, cells and the points that group
-  them by runner.
+* `cells/__init__.py` — what the carry kernel is given for a carry cell: its state descriptor, the launch shape
+  (`WARPS_PER_CTA`), the arm key `(D, DV, warps_per_cta)`, the mode word of its declared sparsity, its liveness words and
+  activity bytes, the state its `state` and `backing` bind, and `carry_call` — one cell's WHOLE call, the same operands in
+  a correctness run and a measured one.
+* `cells/layer.py` — RoLA's layer CONSTRUCTIONS (a routing template, widths, a gain), each named with the central layer
+  inputs it was declared for, from which the amplitudes are PRODUCED. It is the only way to price the producer's own
+  solve or a decode step through the layer.
+
+**`benchmarks/registry.py` — THE MEASUREMENT REGISTRY.** This checkout's units for rola-devtools' measurement service
+(`rola_devtools.measure`): its build, its clock reader, its instruments (SASS, register walk, phase clock, pipe counters,
+stall census, timeline) and every bench subject as a timed arm, each accepting the central cells this binary runs it on.
+`python -m rola_devtools.measure run benchmarks.registry:registry ...` runs it from here; rola-bench's composer runs it
+once per checkout it measures.
 
 **`benchmarks/bench/` — the library.** `subjects.py` is the roster: one lean callable per
 kernel this line carries, each taking a registry cell and returning the launch to time,
@@ -27,9 +28,10 @@ with everything the launch does not pay for built outside the timed callable. Th
 mirrors the oracle roster one for one — a bench roster that does not match the correctness
 roster is a roster with kernels nobody measures — and it includes the carry, whose body
 does not exist on this line and whose arm therefore refuses by name rather than reporting
-a number for something that did not run. `provider.py` is rola's runner: given a cell's
-data it offers the subjects this binary runs on it, with their dials
-(`carry_forward@schedule=identity`), or refuses the cell by name; arms build in their own
+a number for something that did not run. `provider.py` is rola's runner: given a central cell
+it offers the subjects this binary runs on it, with their dials
+(`carry_forward@schedule=identity`) and on a layer cell their constructions
+(`decode_step@layer=chunk-decode-w16`), or refuses the cell by name; arms build in their own
 checkout's venv.
 
 **`tools/compare.py` — THE COMPARISON.** Arms of rola checkouts, and of other libraries, on

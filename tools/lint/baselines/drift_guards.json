@@ -2,12 +2,6 @@
  "lint": "drift_guards",
  "findings": [
   {
-   "path": "benchmarks/bench/subjects.py",
-   "message": "'STATE_ARMS' is a literal arm table outside tools/gen_shards.py",
-   "line_sha256": "9e3be9cee4f6cb45",
-   "count": 1
-  },
-  {
    "path": "csrc/rola/src/carry/carry.cu",
    "message": "'carry_stamp_kernel' is a second body beside 'carry_kernel' in the same family",
    "line_sha256": "f0a376ec6c2edcbd",

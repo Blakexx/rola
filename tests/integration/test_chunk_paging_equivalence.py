@@ -10,8 +10,8 @@ ABI -- so the claim here is BYTE identity and not a tolerance. A tolerance would
 wrong instrument entirely: any difference at all is an ADDRESSING difference, and
 addressing is exact or wrong.
 
-THE CELLS ARE THE REGISTRY'S (``benchmarks/cells``) and the call is the registry's
-``carry_call``, so what runs here is the same declaration, the same draw and the same
+THE CELLS ARE THE CENTRAL REGISTRY'S (``rola_devtools.cells``) and the call is
+``benchmarks.cells.carry_call``, so what runs here is the same declaration, the same draw and the same
 operands the oracle tier and the benches run. A record names a SHAPE and a DRAW: the
 structured-support records are what make an absent atom possible at all, since
 unstructured sparsity at long ``L`` still reaches every atom.
@@ -39,7 +39,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import carry_call, carry_cells
+from benchmarks.cells import WARPS_PER_CTA, carry_call, carry_cells
 from rola.engine.facts import planes
 from rola.ops import carry as carry_ops
 from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal, from_split_planes
@@ -78,7 +78,7 @@ def _cols(spec) -> int:
 
 
 def _box_leaves(spec) -> int:
-    return carry_ops.box_leaves(spec.dv, spec.warps_per_cta)
+    return carry_ops.box_leaves(spec.dv, WARPS_PER_CTA)
 
 
 def _activity(spec, drawn, bh=1):

@@ -24,7 +24,7 @@ import torch
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from benchmarks.cells import CellSpec
+from benchmarks.cells import CarryCell, descriptor, launch
 from benchmarks.cells import carry_cells as registry_cells
 from rola.ops import carry as carry_ops
 from tests.oracle.test_carry_vs_oracle import check, run
@@ -37,17 +37,17 @@ pytestmark = [
 #: THE SHAPES THE REGISTRY DECLARES, read off it rather than restated: a topology or a
 #: value width added there is picked up here without editing this file (the same "read
 #: from the declaration, don't mirror it" discipline the census gates apply).
-_TOPOLOGIES = sorted({(cell.widths, cell.tokens) for cell in registry_cells("oracle")})
-_DV = sorted({cell.dv for cell in registry_cells("oracle")})
+_TOPOLOGIES = sorted({(cell.widths, cell.tokens) for cell in registry_cells(tier="oracle")})
+_DV = sorted({cell.dv for cell in registry_cells(tier="oracle")})
 
 
 @st.composite
-def drawn_cells(draw) -> CellSpec:
-    """One drawn `CellSpec`, on the registry's own record shape.
+def drawn_cells(draw) -> CarryCell:
+    """One drawn `CarryCell`, on the central registry's own record shape.
 
     It is a registry record like any other -- the same fields, the same validation, the
     same descriptor and launch derivation -- so a shrunk failure is reportable BY NAME
-    and can be pasted into `carry_cells.json` as a fixed cell.
+    and can be pasted into rola-devtools' `carry.json` as a fixed cell (with the regime its draw proves).
     """
     widths, tokens = draw(st.sampled_from(_TOPOLOGIES))
     dv = draw(st.sampled_from(_DV))
@@ -56,11 +56,11 @@ def drawn_cells(draw) -> CellSpec:
     #: `cohort` must divide the length exactly (`clustered`'s reshape) and is only
     #: meaningful once `k_tok` narrows the support at all.
     cohort = draw(st.none() if k_tok is None else st.sampled_from([None, 32, 64]))
-    return CellSpec(name=f"hypothesis-{widths}-{dv}-{k_tok}-{cohort}-{seed}",
-                    widths=widths, dv=dv, tokens=tokens, warps_per_cta=8,
-                    draw="dense" if k_tok is None else ("cohort" if cohort else "alt"),
-                    k_tok=k_tok, cohort=cohort, support=1.0, backing="dense",
-                    state="fresh", tier="oracle")
+    return CarryCell(name=f"hypothesis-{widths}-{dv}-{k_tok}-{cohort}-{seed}",
+                     widths=widths, dv=dv, tokens=tokens,
+                     draw="dense" if k_tok is None else ("cohort" if cohort else "alt"),
+                     k_tok=k_tok, cohort=cohort, support=1.0, backing="dense",
+                     state="fresh", tier="oracle", regime=None)
 
 
 @settings(deadline=None, max_examples=25, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -79,4 +79,4 @@ def test_a_drawn_cell_is_a_lawful_shape(spec):
     descriptor, launch shape or geometry block is refused would be exercising the
     surface's refusals, which is `tests/unit/test_carry_surface.py`'s claim, not this
     file's."""
-    carry_ops.geometry_block(spec.descriptor(), spec.launch())
+    carry_ops.geometry_block(descriptor(spec), launch())

@@ -10,12 +10,12 @@ carry. A subject that is absent from the roster while its kernel exists is the d
 mirroring exists to catch; a subject whose kernel is unbuilt refuses by name, which is an
 honest report rather than a number for something that did not run.
 
-**TWO CELL KINDS, ONE REGISTRY.** A subject declares which kind it takes.
-``kind="carry"`` is a drawn cell (`benchmarks/cells/carry_cells.json`): amplitudes put
-directly on the simplex, which is what the carry family's oracle and probe run.
-``kind="layer"`` is a constructed one (`layer_cells.json`): a producer, a routing
-template and a gain, from which the amplitudes are PRODUCED -- the only way to price the
-producer's own solve or a decode step through the layer.
+**TWO CELL KINDS, ONE REGISTRY** (rola-devtools' central cells). A subject declares which kind it takes.
+``kind="carry"`` is a drawn cell (`rola_devtools.cells.carry`): amplitudes put directly on the simplex, with the state
+the sequence enters with, which is what the carry family's oracle and probe run -- read through `benchmarks.cells`.
+``kind="layer"`` is a layer input (`rola_devtools.cells.layer`) under one of RoLA's constructions
+(`benchmarks.cells.layer`): a producer, a routing template and a gain, from which the amplitudes are PRODUCED -- the
+only way to price the producer's own solve or a decode step through the layer.
 
 **EVERYTHING OUTSIDE THE LAUNCH IS BUILT ONCE, HERE.** The packed sides, the support
 words, the state plane, the liveness words, the routing: all of it happens before the
@@ -62,8 +62,9 @@ class Subject:
     #: cost adds, and the difference between the two rows IS the per-call price.
     calls: tuple[int, ...] = (1,)
     #: THE ARM DIALS it reads, each a property of one arm and never of a run (`bench.provider` names an arm by them):
-    #: `schedule`, the carry order policy (`rola.ops.carry.ORDER_POLICIES`), and `state`, the state arm (`STATE_ARMS`).
-    #: A dial a subject does not read has one value, its default, so it cannot be set where it would reach nothing.
+    #: `schedule`, the carry order policy (`rola.ops.carry.ORDER_POLICIES`). A dial a subject does not read has one
+    #: value, its default, so it cannot be set where it would reach nothing. The state a call binds is the CELL's
+    #: (`benchmarks.cells.state_binding`), never a dial.
     dials: tuple[str, ...] = ()
 
 
@@ -72,7 +73,13 @@ class Subject:
 def _carry_operands(fx):
     from benchmarks.cells import carry_call
 
-    return carry_call(fx["cell"])
+    return carry_call(fx["cell"], 1)
+
+
+def _binding(fx, drawn, descriptor):
+    from benchmarks.cells import state_binding
+
+    return state_binding(fx["cell"], drawn, descriptor, 1)
 
 
 def _carry_schedule(name: str, spec):
@@ -91,37 +98,6 @@ def _carry_schedule(name: str, spec):
     return carry_ops.CarrySchedule(order=name)
 
 
-#: THE STATE ARMS, the kernel's own shapes (`docs/internals/state.md#four-shapes`): `null`
-#: neither plane; `readonly` a plane in and none out; `fresh` none in, a plane out;
-#: `continuation` one plane in and out; `paged` the continuation under a permuted slot
-#: table, the paged backing's own addressing. No arm allocates inside the timed call.
-STATE_ARMS = ("null", "readonly", "fresh", "continuation", "paged")
-
-
-def _state_arm(fx, descriptor, bh: int = 1):
-    """`(state_in, state_out, page_table)` for the arm the fixture names."""
-    import torch
-
-    from rola.ops import carry as carry_ops
-
-    arm = fx.get("state_arm", "fresh")
-    if arm not in STATE_ARMS:
-        raise ValueError(f"state arm {arm!r} is not one of {STATE_ARMS}")
-    if arm == "null":
-        return None, None, None
-    plane = carry_ops.state_plane(descriptor, bh)
-    if arm == "readonly":
-        return plane, None, None
-    if arm == "fresh":
-        return None, plane, None
-    if arm == "continuation":
-        return plane, plane, None
-    pages = descriptor.N // carry_ops.PAGE_LEAVES
-    gen = torch.Generator(device="cuda").manual_seed(fx["cell"].seed)
-    slots = torch.argsort(torch.rand(pages, device="cuda", generator=gen))
-    return plane, plane, slots.to(torch.int32).reshape(1, pages).repeat(bh, 1)
-
-
 def carry_forward(fx) -> Launch:
     """The inter term: one carry launch over a whole cell, state advanced in place.
 
@@ -131,9 +107,9 @@ def carry_forward(fx) -> Launch:
     from rola.ops import carry as carry_ops
 
     spec = fx["cell"]
-    _drawn, call = _carry_operands(fx)
+    drawn, call = _carry_operands(fx)
     routes, v = call.pop("routes"), call.pop("v")
-    state_in, state_out, page_table = _state_arm(fx, call["descriptor"])
+    state_in, state_out, page_table = _binding(fx, drawn, call["descriptor"])
     #: THE SCHEDULE ARM. The runtime dial the launch carries (`CarrySchedule`, the order
     #: policy), so a probe's two arms can be the SAME binary differing in exactly the order
     #: -- which is what the reap is measured as. `first` is what a caller who names nothing
@@ -144,7 +120,7 @@ def carry_forward(fx) -> Launch:
         return carry_ops.carry_forward(routes, v, state_in=state_in, state_out=state_out,
                                        page_table=page_table, schedule=schedule, **call)
 
-    return Launch(name=f"carry_forward|{spec.name}|{fx.get('state_arm', 'fresh')}", call=run)
+    return Launch(name=f"carry_forward|{spec.name}", call=run)
 
 
 def intra_forward(fx) -> Launch:
@@ -201,7 +177,7 @@ def prefill_op(fx) -> Launch:
     state carried through one plane zeroed per launch set: what a caller that prefills in
     chunks pays -- every call's fixed cost (packing, liveness, the sweeps in and out of the
     state) that many times over the windows one call runs. A carried chain binds its own
-    plane, so the state arm is the single call's.
+    plane, so the cell's state binding is the single call's.
     """
     from benchmarks.cells import realize
     from rola.ops import carry as carry_ops
@@ -232,8 +208,8 @@ def prefill_op(fx) -> Launch:
     descriptor = prefill_ops._descriptor(list(spec.widths), spec.dv, 1)
     if calls == 1:
         chain = None
-        state_in, state_out, page_table = _state_arm(fx, descriptor)
-        name = f"prefill_op|{spec.name}|{fx.get('state_arm', 'fresh')}"
+        state_in, state_out, page_table = _binding(fx, drawn, descriptor)
+        name = f"prefill_op|{spec.name}"
     else:
         chain = carry_ops.state_plane(descriptor, 1)
         state_in, state_out, page_table = chain, chain, None
@@ -311,7 +287,7 @@ def entmax_solve(fx) -> Launch:
     def run():
         return production_routing_factor_levels(read_logits, write_logits, routing)
 
-    return Launch(name=f"entmax_solve|{spec.name}", call=run)
+    return Launch(name=f"entmax_solve|{spec.name}|{fx['construction'].name}", call=run)
 
 
 def decode_step(fx) -> Launch:
@@ -327,7 +303,7 @@ def decode_step(fx) -> Launch:
     from rola.engine.facts import planes
     from rola.ops.carry import box_leaves
 
-    spec = fx["cell"]
+    spec, widths = fx["cell"], fx["construction"].widths
     if spec.decode_steps == 0:
         raise ValueError(f"{spec.name} is a prefill-only cell; it has no decode subject")
     #: The seed binds through the facade's own entry and commits exactly the pages the
@@ -337,7 +313,7 @@ def decode_step(fx) -> Launch:
     state = rola.state()
     with torch.no_grad():
         routes = fx["routes"]
-        bits = planes.atom_bits(planes.pack_side(routes.write), spec.widths)
+        bits = planes.atom_bits(planes.pack_side(routes.write), widths)
         _s, arena = state._kernel_entry(routes, bits, d_v=spec.dv, paging=True,
                                         BC=box_leaves(spec.dv, 8))
         arena.wait()
@@ -351,7 +327,7 @@ def decode_step(fx) -> Launch:
 
     #: THE ARENA'S PHYSICAL PAGES: under the VMM backing the driver maps them outside the caching allocator, so a memory
     #: measurement adds its own receipt; the dense bridge's one plane is a torch tensor the allocator already counts.
-    return Launch(name=f"decode_step|{spec.name}", call=run,
+    return Launch(name=f"decode_step|{spec.name}|{fx['construction'].name}", call=run,
                   outside_allocator=lambda: arena.committed_bytes if arena.backing == "vmm" else 0)
 
 
@@ -359,14 +335,14 @@ def decode_step(fx) -> Launch:
 SUBJECTS = {
     "carry_forward": Subject("carry_forward", "carry", carry_forward,
                              "the inter term: one carry launch over a whole cell",
-                             symbol="carry_kernel", stamp="carry_build_stamp", dials=("schedule", "state")),
+                             symbol="carry_kernel", stamp="carry_build_stamp", dials=("schedule",)),
     "intra_forward": Subject("intra_forward", "carry", intra_forward,
                              "the within-window term at the shared window",
                              symbol="intra_kernel", stamp="intra_build_stamp"),
     "prefill_op": Subject("prefill_op", "carry", prefill_op,
                           "the whole RoLA prefill op as the layer calls it: liveness, carry, "
                           "intra and the op's packing",
-                          symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4), dials=("state",)),
+                          symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4)),
     "liveness_pass": Subject("liveness_pass", "carry", liveness_pass,
                              "both sides' class-1 liveness words",
                              symbol="liveness_pass", stamp="csrc_build_stamp"),

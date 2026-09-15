@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import carry_cells, conservative_activity, liveness_words, realize
+from benchmarks.cells import carry_cells, conservative_activity, descriptor, launch, liveness_words, realize
 from rola.ops import carry as carry_ops
 from rola.ops import intra as intra_ops
 from rola.ops.constants import READOUT_EPS
@@ -44,7 +44,7 @@ INTRA_TOPOLOGY = {2: intra_ops.LEVEL_WIDTH, 3: intra_ops.LEVEL_WIDTH_DEEP3,
 #: The registry's cells the combined operator can run: the dense backing, a fresh state,
 #: the shipped value width, and a topology both families carry. A cell whose carry arm no
 #: build carries yet, or whose window is partial, stays selected and red (TEST-DRIVEN).
-CELLS = tuple(c for c in carry_cells("oracle")
+CELLS = tuple(c for c in carry_cells(tier="oracle")
               if c.backing == "dense" and c.state == "fresh" and c.dv == 64
               and len(set(c.widths)) == 1
               and INTRA_TOPOLOGY.get(c.D) == c.widths[0])
@@ -92,7 +92,7 @@ def oracle(drawn, state_in=None):
     read, write, gain, v = drawn.doubles()
     routing = IndependentRouting(width=1, read=SoftmaxActivation(),
                                  write=SoftmaxActivation())
-    topo = Topology(levels=tuple(routing.at(w) for w in drawn.spec.widths))
+    topo = Topology(levels=tuple(routing.at(w) for w in drawn.cell.widths))
     return oracle_run(v, read, write, gain, topo, entry=state_in)
 
 
@@ -228,14 +228,14 @@ def test_the_intra_term_is_actually_present():
     combined operator's carry leg and the kernel boundary are the same call."""
     spec = next(c for c in CELLS if c.draw == "dense")
     drawn = realize(spec)
-    desc = spec.descriptor()
-    launch = spec.launch()
+    desc = descriptor(spec)
+    shape = launch()
     num, den = carry_ops.carry_forward(
         carry_ops.route_planes(drawn.read, drawn.write, drawn.gain),
         drawn.v.permute(0, 2, 1, 3).reshape(1, spec.tokens, spec.dv).contiguous(),
-        descriptor=desc, geometry=carry_ops.geometry_block(desc, launch),
-        liveness=liveness_words(drawn, desc), activity=conservative_activity(desc),
-        launch=launch, state_out=carry_ops.state_plane(desc, 1))
+        descriptor=desc, geometry=carry_ops.geometry_block(desc, shape),
+        liveness=liveness_words(drawn, desc), activity=conservative_activity(desc, 1, "cuda"),
+        launch=shape, state_out=carry_ops.state_plane(desc, 1))
     ref = oracle(drawn)
     with pytest.raises(AssertionError, match="slots are off the oracle"):
         assert_slots_close(readout(num, den, spec), ref.y, envelope=ref.y_envelope, what="the inter term alone",
