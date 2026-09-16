@@ -128,27 +128,22 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
     return out
 
 
-#: THE DIFF SURFACES (`tests/oracle/sides.py`): for each, the side executor, the cells it runs on (a cell kind and, where
-#: it has one, a tier), what the side holds while it runs, and the rule two sides are held to under a cross-checkout
-#: diff (rola-bench's, over the sides this file exposes).
-#:
-#: The oracle is BIT-IDENTICAL across checkouts because both run fp64 on identical inputs: a rewrite that only nearly
-#: reproduces the old one has changed the definition. The producer is SUPPORT-EQUAL because its declared purpose was to
-#: replace a bisection with a third party's closed form, so agreement to 1e-13 is the RESULT and the support set is the
-#: claim with teeth -- a threshold that moves by one entry is a routing change, not rounding. The carry kernel's side is
-#: exposed for a kernel-vs-kernel diff between checkouts, under bit-identity too: the kernel is deterministic on a cell.
+#: THE DIFF SURFACES (`tests/oracle/sides.py`): what each IS -- the side executor, the cells it runs on (a cell kind
+#: and, where it has one, a tier), and what the side holds while it runs. Exposed for rola-bench, which pairs a surface
+#: across checkouts and OWNS the rule it compares them under (its `RULES`), as it owns the timing methodology; the
+#: only diff this file declares itself is the kernel against its own oracle, below. What rola states about a
+#: surface's numerics is a FACT, in `NUMERICS`: the carry kernel's readout fan-in is an fp32 atomic reduction whose
+#: association order varies run to run, so `num` and `den` reassociate -- MEASURED 2026-09-16, one binary against
+#: itself, three runs over every oracle-tier cell: den within 7e-7 relative, num within 1.9e-9 absolute where a
+#: cancelled slot made the relative error meaningless; `state`, written once per leaf, is exact.
 SURFACES = {
-    "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}, "bit-identical", {}),
-    "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}, "support-equal",
-                 {"rtol": 0.0, "atol": 1e-13}),
-    #: THE KERNEL IS NOT BIT-REPRODUCIBLE ON `num` AND `den`: the readout fan-in is an fp32 atomic reduction, so its
-    #: association order varies run to run on multi-owner cells (MEASURED 2026-09-16, one binary against itself,
-    #: three runs over every oracle-tier cell: den within 7e-7 relative, num within 1.9e-9 absolute where a cancelled
-    #: slot made the relative error meaningless). The rule is therefore per slot with those bounds at twice their
-    #: measured size, and `state` -- written once per leaf, no fan-in -- stays exact.
-    "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}, "per-slot",
-                     {"per_quantity": {"num": {"clauses": [[2e-6, 4e-9]]}, "den": {"clauses": [[2e-6, 5e-7]]},
-                                       "state": {"clauses": [[0.0, 0.0]]}}}),
+    "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}),
+    "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}),
+    "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}),
+}
+NUMERICS = {
+    "carry-kernel": {"reassociation": {"num": {"rtol": 7e-7, "atol": 1.9e-9}, "den": {"rtol": 7e-7, "atol": 2.4e-7}},
+                     "exact": ["state"]},
 }
 #: the kernel-vs-oracle diff INSIDE one checkout: the carry kernel's slots against the fp64 reference's, PER SLOT under
 #: each output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
@@ -177,7 +172,7 @@ def retained_state_bytes(record: dict, batch: int = 1, heads: int = 2) -> int:
 def surface_cells(surface: str) -> list:
     """The cells one surface runs on: its kind, at its tier where it has one, and under the backward's budget where the
     surface runs a backward."""
-    _executor, kind_, tier, _holds, _strategy, _params = SURFACES[surface]
+    _executor, kind_, tier, _holds = SURFACES[surface]
     return sorted(name for name, record in central().cells.items()
                   if kind(name) == kind_ and (tier is None or record["params"].get("tier") == tier)
                   and (surface not in BACKWARD_SURFACES or retained_state_bytes(record) < RETAINED_STATE_BUDGET))
@@ -193,7 +188,7 @@ def _sides(g, env: Env, facts: dict) -> dict:
 
     return {name: side(g, f"side/{name}", env=env, executor=executor, cells=cell_nodes(g, surface_cells(name)),
                        code=_code(*SIDE_CODE), binds="rola", holds=holds, deps=facts if "gpu" in holds else {})
-            for name, (executor, _kind, _tier, holds, _strategy, _params) in SURFACES.items()}
+            for name, (executor, _kind, _tier, holds) in SURFACES.items()}
 
 
 def _kernel_vs_oracle(g, env: Env, sides: dict):

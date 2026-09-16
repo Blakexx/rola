@@ -78,15 +78,17 @@ def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_lis
         f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
-def test_the_carry_kernel_surface_is_per_slot_with_the_state_exact():
-    """The readout's fan-in is an atomic reduction, so `num` and `den` are held to measured reassociation bounds;
-    the state has no fan-in and is held exact -- a clause of (0, 0) is bit-identity under the per-slot rule."""
+def test_a_surface_states_what_it_is_and_its_numeric_facts_but_chooses_no_comparison():
+    """rola-bench owns the rule a surface is compared under across checkouts, as it owns the timing methodology; rola
+    states what a surface IS and, where it matters, a FACT about its numerics -- the readout fan-in reassociates."""
     from rola_devtools.build.declare import load
 
-    _executor, _kind, _tier, holds, strategy, params = load(ROOT / "declare.py")["SURFACES"]["carry-kernel"]
-    assert (holds, strategy) == ({"gpu": "all"}, "per-slot")
-    assert params["per_quantity"]["state"]["clauses"] == [[0.0, 0.0]]
-    assert all(0 < r < 1e-4 for r, _a in params["per_quantity"]["num"]["clauses"] + params["per_quantity"]["den"]["clauses"])
+    d = load(ROOT / "declare.py")
+    for name, (executor, kind_, tier, holds) in d["SURFACES"].items():
+        assert executor.startswith("tests.oracle.sides:") and kind_ in ("carry", "producer") and holds
+    facts = d["NUMERICS"]["carry-kernel"]
+    assert set(facts["reassociation"]) == {"num", "den"} and facts["exact"] == ["state"]
+    assert all(0 < f["rtol"] < 1e-5 for f in facts["reassociation"].values())
 
 
 def test_the_oracle_tier_is_one_target_keyed_on_its_code_and_the_binary_and_stored():
