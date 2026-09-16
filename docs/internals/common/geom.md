@@ -313,10 +313,13 @@ Both halves are GF(2)-composable: the lane's stream offsets are a runtime base w
 once, every per-fragment slot term is a compile-time constant, and the swizzle distributes
 over the two because it is linear.
 
-`tests/unit/test_exchange_layout.py` proves the law rather than the code: each side's map
-is a bijection of `[0, BC)`, the two agree leaf-for-leaf on every level's digit, all 55
-reachable `(read member, write member)` pairs are conflict-free on all four accesses, and
-the whole hybrid is simulated at byte addresses.
+`tests/unit/test_exchange_law.py` proves the law rather than the code: each side's map
+is its own members' scatter and the two agree on the region, the exchange relays the state
+leaf for leaf, the swizzle is a bijection of the region and is linear, and every
+`(read order, write member)` pair a mode word can select -- over every topology in the case
+list -- is conflict-free on all four accesses. That sweep carries a FLOOR on how many pairs
+it reaches (`>= 14`), because the pair set collapses under the innermost-digit invariant
+and a sweep that stopped reaching pairs would otherwise pass silently.
 
 The identity case is the former `kTied`. K50 DELETED the elided body — "one transit,
 always; the tied case is a transit whose row map is the identity, same code, same register

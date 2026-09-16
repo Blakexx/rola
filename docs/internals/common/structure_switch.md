@@ -56,7 +56,8 @@ rather than left to habit.
 - the carry body, four times: the two per-side warp sub-box members in its prologue
   (nested, outside every loop, because they fix the addressing every stage on that side
   uses) and the two per-phase forms at their phases (additive — two plus two bodies, not
-  four combinations — inside the window loop and outside the batch loop). The placement's
-  measured cost is in `docs/internals/carry/kernel.md#forms`.
+  four combinations — inside the window loop and outside the batch loop). What each form is selected on is `docs/internals/carry/carry.md`'s schedule section; the
+  placement's measured cost is NOT WRITTEN DOWN anywhere -- it went with the page that held
+  it, and it is owed back the next time the forms are measured.
 - `tests/unit/test_structure_switch.py` compiles a toy `__global__` against it and runs
   every layer, the `__trap()` included, in its own process.

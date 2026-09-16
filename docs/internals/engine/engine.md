@@ -210,8 +210,10 @@ accident of what the forward happened to keep.
 That rule is load-bearing in a way it was not before the backward's ctx became a
 plan REFERENCE: a grad-bearing call now keeps the whole plan alive until the reverse
 pass runs, so a field added for the forward's convenience is retained for free.
-`tests/integration/test_backward_ctx.py` walks the retained plans field by field and
-holds each to a closed form of its own — a field with no term there fails by name.
+The gate that walked the retained plans field by field, holding each to a closed form and
+refusing a field it had no term for BY NAME, went with the tiled consumer's backward. The
+rebuild's backward owes its own (card C, C-b): a retained set nothing walks is a retained
+set that grows.
 
 Two facts are also OPERANDS and the engine does not pretend otherwise: the union
 table is read by the consumer kernel as its schedule and by the block bitmap as data,
@@ -223,10 +225,14 @@ the forward's, held by reference — because the reverse pass finds no facts of 
 
 ## <a id="neutrality"></a>10. The neutrality gate
 
-`tools/chunk_identity_capture.py` captures `y`, the returned state plane and the
-facts themselves — the union table, the block bitmap, the atom bitmap — off a fixed
-cell set and compares them with `torch.equal` across two trees. It records what the
-extension RETURNED during a `rola_op` call rather than re-deriving anything, so it
-is independent of whatever host structure produced the launch arguments. `y` is the
-one exception, and only where the topology spans more than one owner block: its
-fan-in is an fp32 atomic reduction, so it is held to the reassociation bound instead.
+A host refactor that claims neutrality is answerable to a capture of what the extension
+RETURNED — `y`, the state plane and the facts themselves — off a fixed cell set, compared
+with `torch.equal` across two trees. Recording the returned objects rather than re-deriving
+them is what makes the comparison independent of whatever host structure produced the launch
+arguments. `y` is the one exception, and only where the topology spans more than one owner
+block: its fan-in is an fp32 atomic reduction, so it is held to the reassociation bound
+instead.
+
+The tool that did this went with the tiled consumer. ITS SUCCESSOR IS THE DIFF NODE: two
+executors, the cells, a comparison strategy and an expectation, so "against `HEAD~1`" is a
+second checkout the suite's root already composes rather than a second tool.

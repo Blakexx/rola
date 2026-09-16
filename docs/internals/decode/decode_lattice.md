@@ -21,7 +21,7 @@ THE INTERLEAVE IS DEAD. The R0 spec's LATTICE-1 §2.2 named a second intra-box
 order — the `[u_0..u_{D-1} | c_0..c_{D-1}]` interleave, in which a sub-box `k^D`
 was a contiguous run — and an earlier draft of this walk enumerated
 `(owner, sub-box)` units because of it. Mixed radix is the shipped order (the
-one-order ruling; `box.cuh`'s `run_of`), a sub-box is a scattered rectangle
+one-order ruling; `csrc/rola/src/common/geom.cuh`'s `weight`, the canonical mixed radix), a sub-box is a scattered rectangle
 under it, and the walk's unit moved accordingly (§3). The measured reason is
 recorded in `docs/internals/DELETIONS.md`'s wave-2c rows and in the batch's
 findings: under the interleave a token's run over a level that is DENSE for its

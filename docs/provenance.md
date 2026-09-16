@@ -59,4 +59,4 @@ text verbatim and `NOTICE` points at it.
 | `Blakexx/rola-zoology` | Synthetic-task (MQAR and relatives) evaluation harness. |
 | `Blakexx/rola-bench` | The benchmarks and the local measurement suite. |
 | `Blakexx/rola-results` | The measurement records every reported number is read from. |
-| `Blakexx/rola-paper` | The paper. The canonical **claims** document; `docs/spec.md` here is the canonical engineering **contract** document. They cite each other; neither subsumes the other. |
+| `Blakexx/rola-paper` | The paper. The canonical **claims** document; the engineering **contract** document here (a `docs/` spec page, still owed) is the canonical one. They cite each other; neither subsumes the other. |

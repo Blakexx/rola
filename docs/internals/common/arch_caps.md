@@ -1,4 +1,4 @@
-# `csrc/rola/src/chunk/arch_caps.cuh` — the capability rows
+# `csrc/rola/src/common/arch_caps.cuh` — the capability rows
 
 The ladder's per-architecture capability table, imported with
 the chunk family: one `Caps` row per SM generation (async copy, tile loads,

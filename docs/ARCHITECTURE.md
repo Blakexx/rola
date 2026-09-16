@@ -450,7 +450,7 @@ activity bits of §3.4, and decode's paged admission.
 
 *Where the mechanism was proven:* the union table, the atom-grain vote and the
 block-grain liveness epilogue on the `k35-final` tip's
-`csrc/rola/src/facts/facts_kernel.cuh` and `facts_launch.cuh`; the two-bit activity law
+csrc/rola/src/facts/facts_kernel.cuh and `facts_launch.cuh`; the two-bit activity law
 and the byte gate that certifies it at tag `record/p80b-activity-bits`. *The floor:*
 each amplitude plane read exactly once (unique bytes — the pass is DRAM-bound); the
 emitted bytes as above; the host folds linear in boxes × levels; and, on the consuming

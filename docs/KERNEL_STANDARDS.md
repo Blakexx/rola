@@ -39,7 +39,7 @@ fixed thread→value layout. Anything held in registers across a loop is a stack
 addresses it by fragment modes — never by element, never by leaf.
 - FA2 allocates the accumulator as a fragment shaped by the tiled MMA and keeps it across the whole K
   loop: `flash-attention/csrc/flash_attn/src/flash_fwd_kernel.h:194` (`partition_fragment_C(tiled_mma, …)  // MMA, MMA_M, MMA_K`).
-- Its only inner loop is over a fragment mode: `csrc/flash_attn/src/utils.h:152-158` (`for (i < size<2>(tCrA)) … cute::gemm(…)`); softmax touches the accumulator through fragment modes only: `softmax.h:28-31, 100-113`.
+- Its only inner loop is over a fragment mode: `flash-attention/csrc/flash_attn/src/utils.h:152-158` (`for (i < size<2>(tCrA)) … cute::gemm(…)`); softmax touches the accumulator through fragment modes only: `softmax.h:28-31, 100-113`.
 - CuTe states the principle: an MMA atom IS three thread-value layouts — `cutlass/media/docs/cpp/cute/0t_mma_atom.md:168-172`; per-thread views fall out of the layout (`include/cute/atom/mma_atom.hpp:467-503`).
 - ThunderKittens makes it a type: a register tile is a 2-D array of MMA-shaped base tiles
   (`ThunderKittens/include/types/register/rt.cuh:104`, `rt_base.cuh:3`); user code never writes element loops (`README.md:211, 217`).
@@ -60,7 +60,7 @@ moves state must be the exchange the design names (§R3), never an ad-hoc copy.
 
 ## 3. Shared memory: copy atoms, swizzles by composition, transposition as a layout operation
 - `ldmatrix` in both variants is a declared copy atom with an arch fallback chosen at the atom, not inline
-  PTX at call sites: `csrc/flash_attn/src/kernel_traits.h:40-44` (`SM75_U32x4_LDSM_N`, `SM75_U16x8_LDSM_T`).
+  PTX at call sites: `flash-attention/csrc/flash_attn/src/kernel_traits.h:40-44` (`SM75_U32x4_LDSM_N`, `SM75_U16x8_LDSM_T`).
 - The transposed atom feeds V as the B operand with no transpose pass: `flash_fwd_kernel.h:210`; copy and
   MMA thread mappings are derived from the SAME tiled MMA (`make_tiled_copy_B(…, tiled_mma)`) so they cannot drift.
 - Bank-conflict-free layouts are a swizzle composed with a small atom and tiled to shape:
@@ -97,7 +97,7 @@ batches, tokens) carry `#pragma unroll 1` explicitly. `static_for` is a fragment
 whose bound is a leaf count, a channel count, or a product of them is wrong.
 
 ## 7. Instantiation hygiene: one instantiation per translation unit, generated, prunable, budgeted
-- FA2: each `.cu` holds ONE explicit specialization and says why: `csrc/flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu:2-3`
+- FA2: each `.cu` holds ONE explicit specialization and says why: `flash-attention/csrc/flash_attn/src/flash_fwd_hdim64_fp16_sm80.cu:2-3`
   ("Splitting the different head dimensions to different files to speed up compilation. This file is
   auto-generated. See generate_kernels.py"); the generator `generate_kernels.py:12-50`; shared sub-trees are
   `extern template` so they are not re-instantiated (`:44-48`).
@@ -211,7 +211,7 @@ re-wakes stopped agents.
   before its next build.
 §15 addendum (build parallelism, 2026-08-27): cicc peaks ~1 GB post-S1, on a 16-CPU / 24 GB machine.
 Gate builds: exclusive lock, MAX_JOBS=8, NVCC_THREADS=2. Iteration builds: one of two parallel slots
-(then `tools/build/build_lock.sh`; now the host budget `setup.py` takes, §23), MAX_JOBS=4, single-arch, arm-subset. Re-derive these numbers if
+(then tools/build/build_lock.sh; now the host budget `setup.py` takes, §23), MAX_JOBS=4, single-arch, arm-subset. Re-derive these numbers if
 cicc's peak changes (a per-leaf nest can push it back to 6 GB — §1).
 
 ## §16 — Ratify at milestones, not stages (Blake, 2026-08-28)

@@ -16,7 +16,7 @@ every public tensor a VIEW of the solve's packed layout with zero copy. Padding 
 would break both pins for no reason: nothing downstream of the producer needs a padded
 `RouteFactors` to exist as an object.
 
-**KERNEL CONTRACT.** Every op's call surface -- `rola.ops.carry.carry_inter`,
+**KERNEL CONTRACT.** Every op's call surface -- `rola.ops.carry.carry_forward`,
 `rola.ops.decode.derive_decode_geometry`/`_decode_step`, `rola.ops.intra`'s
 `intra_forward_padded` -- receives the caller's logical tensors and widths directly and
 pads INTERNALLY, once, before touching `box_shape`, the extension, or any launch-facing
@@ -75,14 +75,17 @@ in a backward pass, and no parameter reads a pad column, so its gradient is exac
 
 ## Where the shipped sets come from
 
-`rola.ops.carry.D_V` is a single constant (this bring-up surface builds one value
-width; K50: "the `d_v` dial returns as its own stage"). Decode's and intra's shipped
+`rola.ops.carry.SHIPPED_DV` is the carry's declaration, `(32, 64, 128)`: `DV` is a FREE
+AXIS because it is the register shape, and a logical `d_v` outside the set is served by
+padding at the value projection, above this boundary, never by a kernel that masks.
+Decode's and intra's shipped
 sets are read off `arms()` at call time -- the device's own declared matrix -- never a
 literal tuple, because a literal would drift the moment either binary's arm table
 changed and a call would silently pad to a width the loaded `.so` does not carry.
-There is no manifest yet for carry's OWN eventual `(D, DV, warps_per_cta)` table
-(`tools/gen_shards.py::CARRY_ARMS` is `()` pending G4, per `C_CLEAN_SLATE.md`'s
-ordering) -- `D_V = 64` is what exists to read today.
+The carry's own `(D, DV, warps_per_cta)` table now exists and is a ONE-ROW table:
+`tools/gen_shards.py`'s `CARRY_ARMS` is `((2, 64, 8),)`, so of the three declared widths
+`DV = 64` is the only one a call can actually reach today, and the other two are a
+declaration the arm list has not caught up with.
 
 ## What this does not do
 

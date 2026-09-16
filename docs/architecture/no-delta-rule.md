@@ -126,5 +126,5 @@ standing directive that all kernel and benchmark design targets `N ≳ 65K`.
   2026-08-05, "affine-schedulability observation (paper material)".
 - The reordering win it licenses: campaign journal, 2026-08-04, head-major owner
   order; `test_the_owner_order_is_head_major`, which retired with
-  `tests/unit/test_planner.py` in P67 D2 (`git show
+  tests/unit/test_planner.py with the planner itself (`git show
   c7eaeb9:tests/unit/test_planner.py`); commit `309bfbe`.

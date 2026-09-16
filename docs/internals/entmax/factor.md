@@ -13,7 +13,7 @@ Gates: `tests/integration/test_production_levels.py` (the fp64 oracle, forward A
 VJP, across `tied` / `mixed_per_level` / `dense_only`),
 `tests/unit/test_entmax_production.py` (the masked `production_factor` surface, the
 support word's bit-31 and tail-word contracts, the tile-major arena),
-`tests/integration/test_execution_identity_gates.py` (which routing family reaches
+tests/integration/test_execution_identity_gates.py, deleted with the tiled consumer (which routing family reached
 which kernel).
 
 Symbols are `entmax.md`'s: a *stream* is one (batch, head)-like routing stream, a

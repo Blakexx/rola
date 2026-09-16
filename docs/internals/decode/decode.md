@@ -585,7 +585,7 @@ five between them; they are now an ARRIVAL COUNT ([§29](#the-warp-arrival)).
 ## <a id="decode-max-exponent"></a>18. `kDecodeMaxExponent` — the same convention, structurally inert here
 
 `expf(88) = 1.65e38 < FLT_MAX`. THE SAME VALUE AND THE SAME CONVENTION as the
-tiled consumer's `intra_panel.cuh` carried in `kPanelMaxExponent` — restated here
+tiled consumer's intra_panel.cuh carried in kPanelMaxExponent — restated here
 rather than included, because that header was that kernel's panel algebra and
 decode shares none of it. The header went with the arm (`DELETIONS.md`); the
 convention is the spec's rule 3, and this file states it for itself.
@@ -1048,8 +1048,8 @@ Verbatim `//:` prose blocks from `csrc/rola/src/decode/decode.cu`, in source ord
 ### `kDecodeMaxExponent`
 
 `expf(88) = 1.65e38 < FLT_MAX`. THE SAME VALUE AND THE SAME CONVENTION as
-`intra_panel.cuh`'s `kPanelMaxExponent`, restated because decode shares none of that
-header's panel algebra. On this path the clamp is STRUCTURALLY INERT -- the exponent
+the tiled consumer's intra_panel.cuh kPanelMaxExponent, restated because decode shared none of
+that header's panel algebra and now outlives it. On this path the clamp is STRUCTURALLY INERT -- the exponent
 cannot go positive -- and is written anyway so ONE convention governs every survival
 exponential in the repository: docs/internals/decode/decode.md#decode-max-exponent
 

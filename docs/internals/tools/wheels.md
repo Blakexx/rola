@@ -21,8 +21,7 @@ shippable build of this version: `version`, `iteration` false, `archs` equal to 
 ## The split
 
 `split` gives `rola` the `rola/` package and the build's own metadata (which declares the `cu13` extra pinned to this
-version), with a `py3-none-any` WHEEL. It gives `rola-cu13` the `rola_cu13/` package, the manifests under
-`rola_cu13/manifests/`, and metadata of its own: its name and version, the build's author, licence and Python floor,
+version), with a `py3-none-any` WHEEL. It gives `rola-cu13` the `rola_cu13/` package, the manifests under a `manifests/` directory inside it, and metadata of its own: its name and version, the build's author, licence and Python floor,
 `Requires-Dist: rola==<version>` and the build's torch requirement, under `PLUGIN_TAG`. `_wheel_file` writes RECORD and
 stores members in name order with the fixed `EPOCH` timestamp, so a commit's wheels are the same bytes each time.
 

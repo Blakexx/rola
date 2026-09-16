@@ -1,7 +1,7 @@
 # `tools/dev.py` — the dev environment, set up and checked by one command
 
 KERNEL_STANDARDS §23. One command sets up a host or a container for this tree, checks it and describes it. It
-replaced `tools/build/new_worktree.sh`, `tools/setup_clock_lock.py` and `tools/build/build_lock.sh`. The
+replaced tools/build/new_worktree.sh, tools/setup_clock_lock.py and tools/build/build_lock.sh. The
 settings it writes and reads are the dev config ([dev_config.md](dev_config.md)).
 
     python tools/dev.py init [--force]
@@ -24,7 +24,7 @@ A key already in a file is kept unless `--force`. A pinned tool that is missing,
 version, is downloaded from the pin's release URL (`tools/sccache_pin.json`, `tools/mold_pin.json`). Its
 tarball sha256 is verified, and so is its binary sha256 where the pin has one. The whole release is unpacked
 under `host.tools_dir`, because the layout is part of the tool: `-fuse-ld=mold` selects the `ld.mold` next to
-`mold`. `init` then wires this checkout's commit gate (`core.hooksPath` per worktree, and `rola.venv` naming the base venv the tracked hook runs from, where the lock pins every gate tool) in every worktree of the repository that carries the tracked hook, turns the repository's shared hook into a refusal (a checkout reaches it only unwired), names the same venv in the suite's and the store's checkouts, whose hooks read it too, and runs `check`. The
+`mold`. `init` then wires this checkout's commit gate (the git-config keys `core.hooksPath` per worktree, and rola.venv naming the base venv the tracked hook runs from, where the lock pins every gate tool) in every worktree of the repository that carries the tracked hook, turns the repository's shared hook into a refusal (a checkout reaches it only unwired), names the same venv in the suite's and the store's checkouts, whose hooks read it too, and runs `check`. The
 clock is not set by `init`, because locking it asks for administrator consent once.
 
 **`check`** prints one row per dependency and exits 1 on any red:

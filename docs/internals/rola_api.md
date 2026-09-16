@@ -31,7 +31,7 @@ and `m.impl` is in this file, so there is one place to read to know what the ext
 
 ## <a id="module-name"></a>3. The module object is only a handle
 
-`rola_cu13._C` is what an import names, in the binary plugin the build ships as ([build.md#wheels](../build.md#wheels)):
+`rola_cu13/_C.abi3.so` is what an import names, in the binary plugin the build ships as ([build.md#wheels](../build.md#wheels)):
 `PyInit__C` builds an empty module against Python's limited API (3.10 and on), and loading the library is what runs the
 static registrations. `rola/ops/_ext.py` imports it after checking the plugin's build record is this `rola`'s version, and returns
 `torch.ops.rola` under the names the package calls, so one binary serves every CPython from 3.10 and nothing in Python

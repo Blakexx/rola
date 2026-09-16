@@ -307,7 +307,10 @@ def _cpp(text: str, name: str) -> str | None:
 
 
 def _slug(heading: str) -> str:
-    heading = re.sub(r"[`*_]", "", heading).strip().lower()
+    """The anchor a heading gets, by GitHub's rule: lowercase, punctuation dropped, spaces to dashes, and `-` and `_`
+    KEPT. The underscore is an emphasis marker between words and a letter inside one (`sm_86`), and GitHub keeps it
+    either way; stripping it here made every heading naming a snake_case symbol unreachable by its real anchor."""
+    heading = re.sub(r"[`*]", "", heading).strip().lower()
     return re.sub(r"\s", "-", re.sub(r"[^\w\s-]", "", heading))
 
 
@@ -315,8 +318,10 @@ def _section(text: str, anchor: str) -> str | None:
     lines = text.splitlines()
     for i, line in enumerate(lines):
         heading = HEADING.match(line)
-        named = EXPLICIT_ANCHOR.search(line)
-        if (heading and _slug(heading.group(2)) == anchor) or (named and named.group(1) == anchor):
+        #: EVERY explicit anchor on the line: a heading renamed in place keeps its old id beside its new one, so the
+        #: second `<a id=...>` is exactly the link a doc written before the rename still uses
+        named = anchor in {m.group(1) for m in EXPLICIT_ANCHOR.finditer(line)}
+        if (heading and _slug(heading.group(2)) == anchor) or named:
             level = len(heading.group(1)) if heading else 7
             j = i + 1
             while j < len(lines) and not ((h := HEADING.match(lines[j])) and (len(h.group(1)) <= level or not heading)):

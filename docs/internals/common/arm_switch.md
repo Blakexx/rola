@@ -44,7 +44,7 @@ exists, and two enumerations of one set drift.
 three fields match, so every field the body reads off its `Arm` is a compile-time
 constant. Selecting an arm anywhere else — a hand-written `if` chain on `dv`, a table
 of function pointers, a `switch` on a depth — is the second enumeration this exists to
-prevent, and `tools/lint/drift_guards.py`'s `host_dispatch_is_arm_switch` reports one.
+prevent, and `tools/lint/drift_guards.py`'s `rule_host_dispatch_is_arm_switch` reports one.
 
 The set is allowed to be EMPTY, and that is not a degenerate case to be asserted away:
 a binary that carries no arm of a family refuses every call to it, by name, with both

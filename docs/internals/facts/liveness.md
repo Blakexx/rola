@@ -127,7 +127,7 @@ nothing.
 
 <!-- ABSENT: facts_launch -->
 the ballot grain, the token-minor layout and the past-the-end lane's dead vote:
-`k35-final`'s `csrc/rola/src/facts/facts_kernel.cuh` (`chunk_facts_tables`) and
+`k35-final`'s csrc/rola/src/facts/facts_kernel.cuh (`chunk_facts_tables`) and
 `facts_launch.cuh`, which are never edited again. What is NEW here is that the vote is
 per DIGIT rather than at a compile-time carve, which is what removes `B`, the spans and
 `BC` from the family's template axes and leaves one pass where there were four kernels.

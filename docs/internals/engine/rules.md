@@ -121,7 +121,7 @@ two layers are separated at all.
 
 ## <a id="run-table"></a>The run table: the skip predicate is a host decision
 
-*(Moved from the deleted `docs/internals/chunk/chunk.md` in the K31 batch — the
+*(Moved from the deleted docs/internals/chunk/chunk.md with the tiled consumer — the
 rule outlives the consumer: the liveness facts and the fold survive, and K31 R2
 re-consumes the `uint32` as a launch argument.)*
 

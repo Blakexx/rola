@@ -117,7 +117,7 @@ between the two backings, and it is what the entry validates differently:
   only the atoms a plan committed.
 
 Slot VALUES are not bounds-checked. That would be a device-side read of the table, and
-the plan owns the bound — the same division of labour `chunk.cu`'s `page_table()`
+the plan owns the bound — the same division of labour the tiled consumer's chunk.cu page_table()
 states. The address the kernel builds from a slot, and what a `-1` means, are
 [`decode.md` §4](decode.md#paged-address).
 

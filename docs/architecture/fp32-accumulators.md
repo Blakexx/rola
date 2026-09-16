@@ -21,10 +21,10 @@ the lifetime of the state.
 section governs was the TILED consumer's, retired whole in P67 D2
 ([`DELETIONS.md`](../internals/DELETIONS.md); revival `git show c7eaeb9:<path>`).
 The prefill arm in the tree today is the chunk consumer, whose state plane is
-plain fp32 (`chunk_kernel.cuh`'s `s_in`/`s_out`) — there is no compensated pair in
+plain fp32 (the tiled consumer's chunk_kernel.cuh carried them as s_in/s_out) — there is no compensated pair in
 this tree now, and the paragraphs below are the record of how the split was
 applied when there was one. What is NOT historical is the distinction, the ruling,
-and the gate: `tests/oracle/test_bf16_family_gate.py` re-anchored onto
+and the gate: tests/oracle/test_bf16_family_gate.py (retired with the chunk arm) re-anchored onto
 the chunk arm in the same phase and still runs the `sqrt(T)` walk over
 `T in {512, 2048, 8192}`.
 
@@ -43,7 +43,7 @@ back to `Shi`/`Slo` at its one writeback — the accumulator stayed fp32, exactl
 this ruling requires. The state's STORAGE precision between accumulation events was
 a compensated pair (~16 mantissa bits) where it had been single fp32 (~24) — a live
 axis under this document's own table, and this page's own `sqrt(T)`-walk gate
-(`tests/oracle/test_bf16_family_gate.py::test_family_deviation_is_flat_in_T`,
+(its test_family_deviation_is_flat_in_T,
 run against the real kernel's state output) was run against it and held: every swept
 `T in {512, 2048, 8192}` cleared `BF16_RTOL`, and the fitted log-log slope cleared
 the `< 0.25` bar against the resident-state walk's measured `+0.49`. That is exactly

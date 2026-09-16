@@ -4,7 +4,7 @@
 > candidates, never read a routing statistic to decide a launch-static axis.**
 
 The rule above is permanent and still governs this tree. The MECHANISM this
-document used to describe is not: `rola/planner/` — `derive_bc` and its three
+document used to describe is not: rola/planner/ — `derive_bc` and its three
 ceilings, `build_plan` / `plan_and_schedule`, `Plan` / `Schedule`,
 `select_window` and the calibration instruments — was deleted whole by P67 D2
 ([`../internals/DELETIONS.md`](../internals/DELETIONS.md)). The full text of the

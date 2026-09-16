@@ -19,7 +19,7 @@ is what keeps the suites from re-proving everything everywhere.
 **There is no fourth tier.** Every test answers one of the three questions above, so
 every test lives in one of these three directories — never a fourth bucket alongside
 them, however narrow or however temporary that bucket's own scope feels at the time.
-`tests/k31/` was exactly that: a fourth directory, named after the campaign that
+A `k31` directory was exactly that: a fourth one, named after the campaign that
 built it, gating a kernel as if it were a separate product (`git mv`'d into the
 tier each of its tests actually answered — the reference/fixture modules it carried
 became `tests/oracle`'s shared fixtures). **A campaign name never appears in a test
@@ -27,7 +27,7 @@ path** — `tools/lint/lint_standards.py` enforces both of these mechanically: n
 directory under `tests/` other than `unit/`, `integration/` or `oracle/`.
 
 **A check that does not execute the code under test is a lint, not a test — it
-lives in `tools/lint`.** (RULED 2026-08-29.) `tests/unit/test_docs_mirror.py`
+lives in `tools/lint`.** (RULED 2026-08-29.) The deleted test_docs_mirror.py
 was grep-level from the start — it read files, never imported or ran the code
 they document — so it moved into `tools/lint/lint_standards.py`'s
 `check_docs_mirror` rather than staying in the unit tier under a borrowed
@@ -152,9 +152,11 @@ single bf16 family bound below instead.
 The length axis is not decoration. An error that ACCUMULATES along the sequence
 grows as `sqrt(T)`, so a short fixture under-charges it by `sqrt(8192/37) = 15x` —
 the blind spot a resident-state re-quantization walk was measured to exploit.
-`tests/oracle/test_bf16_family_gate.py::test_family_deviation_is_flat_in_T`
-closes it, at the same tolerance and over the same three lengths (measured slope
-`+0.053` on the chunk arm against the walk's `+0.49`).
+The gate that closed it, a family-deviation row flat in `T`, retired with the chunk
+arm it was measured on (slope `+0.053` against the walk's `+0.49`). The axis itself
+did not retire: the carry tier's MULTI-WINDOW cells carry it, folding a state over
+more windows than one against the same fp64 reference, and a rebuild that claims the
+length axis is covered states which cells carry it.
 
 **The window, `GT`, was a fifth axis and is not one now.** It was the tiled
 consumer's token quantum, chosen per launch by reading the realized routing, and
@@ -163,8 +165,10 @@ kernel retired with the tiled consumer ([`internals/DELETIONS.md`](internals/DEL
 chunk arm's chunk `rola.engine.rules.arm.CHUNK_TOKENS = 32` is a build fact and not a
 second formulation to gate. It is a CEILING on one super-chunk's gathered entries,
 not a quantum the caller lands on, so `T` is an ordinary length axis here:
-`tests/oracle/test_chunk_ragged_tail.py` holds the ragged lengths against the oracle,
-forward, state and both gradients.
+the ragged-length rows that held this against the oracle retired with the chunk
+kernel; on this line the combined prefill REFUSES a length that is not whole windows
+(`rola/ops/prefill.py`), and the carry alone takes any length, which the carry tier's
+cells cover.
 
 ### Tolerance discipline
 
@@ -174,9 +178,10 @@ forward, state and both gradients.
    exactness gate. There is no separate `tf32x3` tolerance to widen it against or
    to protect — the fp64 oracle is the exactness reference this bound is measured
    against directly.
-2. The **kernel-vs-oracle arm** is `tests/oracle/test_chunk_op.py`,
-   `tests/oracle/test_chunk_ragged_tail.py` (the length axis off the chunk) plus
-   the conformance tier's kernel families. The CPU-only fp64 transcription that
+2. The **kernel-vs-oracle arm** is `tests/oracle/test_carry_vs_oracle.py`,
+   `tests/oracle/test_prefill_vs_oracle.py`, `tests/oracle/test_decode_vs_oracle.py`
+   and `tests/oracle/test_intra_kernel.py`, each per slot under its output kind
+   (`tests/oracle/tolerances.py`). The CPU-only fp64 transcription that
    used to sit beside it (`test_algorithm_vs_oracle.py`) transcribed the TILED
    kernel's control structure and retired with that kernel; the
    separation it bought — "the algorithm is wrong" against "fp32 accumulated
@@ -235,10 +240,10 @@ the prohibitions in them are what the deleted table's meta-tests enforced
 mechanically. What is LOST with the table is the mechanical enforcement — a new
 built axis no longer fails collection until someone declares its class — and that
 is stated rather than papered over: the census that catches an undeclared
-instantiation axis now lives on the conformance side
-(`test_conformance_census.py`, whose left-hand side is projected from the built
-arm list), and the shard partition's own structural checks in
-`tests/unit/test_shard_partition.py` carry M1's manifest pin.
+instantiation axis now lives on the binary's own side -- each family's `arms()`
+answered out of the running extension -- and the shard partition's structural
+checks are `tools/lint/lint_standards.py`'s (`check_shard_partition`), which carry
+M1's manifest pin.
 
 ### Class (a) — ENGINEERED IDENTITY
 
@@ -325,11 +330,12 @@ FAILS before any kernel comparison (the token-0 vacuity lesson generalized).
 The checkers themselves are under test: each is fed a violating fixture and
 must refuse it, and each accepts an in-regime witness.
 
-**The census join** (`test_conformance_census.py`, pure CPU) is the completeness
-claim the suite still enforces mechanically: (instantiation x data-regime),
-pairwise, with the left-hand side projected from the BUILT ARM LIST via
-`tests/oracle/instantiation.py`, so a new built arm fails here demanding
-families or expected-empty rows. Post-D2 it joins 7 off-mid instantiation values
+**The census join** was the completeness claim in its mechanical form:
+(instantiation x data-regime), pairwise, with the left-hand side projected from the
+BUILT ARM LIST, so a new built arm failed it demanding families or expected-empty
+rows. It retired with the tiled consumer, and what carries the claim now is the
+central registry: a cell states the regime it proves and `realize` proves the draw is
+there, while the instantiation side is the binary's own `arms()`. Post-D2 it joins 7 off-mid instantiation values
 against 10 non-mid regime values — 70 cells, `EXPECTED_EMPTY` 69 — where the
 tiled axes gave 6 x 10 and 56. Empty cells are LISTED against a committed
 `EXPECTED_EMPTY` rule with named exceptions, asserted with exact equality in
@@ -361,9 +367,9 @@ because the successor of each is a specific file rather than a hope.
 
 | meta-test | what it required | where the claim lives now |
 |---|---|---|
-| M1 census | every built axis DECLARED, and the manifest pinned to the build's own | `tests/oracle/test_conformance_census.py` (the instantiation side, projected from `chunk_arms()`) and `tests/unit/test_shard_partition.py` (the manifest pin, through `tools/ratify.py`'s own loader) |
-| M2 non-vacuity | a class-(a) row's declared probe must move its output | the conformance families' own in-test non-vacuity checkers, and the bf16 gate's M3-mutant rows |
-| M3 class drift | a class-(b) pair must NOT be byte-equal | `test_split_k_determinism_is_not_assumed`, and the paging pairs, which are class (a) by construction |
+| M1 census | every built axis DECLARED, and the manifest pinned to the build's own | `tests/unit/test_carry_surface.py` (the ratified census against the binary's own `rola.ops.carry.arms()`) and `check_shard_partition` in `tools/lint/lint_standards.py` (the manifest pin, through `tools/gen_shards.py --check`) |
+| M2 non-vacuity | a class-(a) row's declared probe must move its output | `assert_planted_errors_fail` in `tests/oracle/fixtures.py`: every gate that compares slots plants one mutant PER CLAUSE and requires each to fail |
+| M3 class drift | a class-(b) pair must NOT be byte-equal | NOWHERE, and it is the one of the three with no successor: the paged/dense pair is class (a) by construction -- `torch.equal`, because addressing is exact or wrong (`tests/integration/test_chunk_paging_equivalence.py`, `tests/integration/test_decode_paging.py`), and no current pair is declared class (b) |
 
 The definitions below are kept because the two contract classes are still the
 vocabulary the geometry class reasons in.
@@ -409,36 +415,49 @@ they are here because each one guards a property whose failure leaves every othe
 gate green.
 
 **`python tools/gen_shards.py --check`** regenerates the generated instantiation
-sources into memory and diffs them against the committed files — post-D2, **5
-generated files, 74 instantiations over 3 shards** (it was 10 files over 4 shards
-plus the tiled consumer's `dispatch_table.inc`). Generated sources are
-checked in so that what is reviewed is what compiles; this is what keeps that a
-fact. `setup.py` runs it before compiling and CI runs it in the CPU lane.
+sources into memory and diffs them against what is on disk — today **2 generated
+files over a 1-row arm list**, `(D, DV, warps) = (2, 64, 8)`, the one carry arm the
+rebuild ships. They are NOT checked in (they live under `build/generated/`, which the
+closed-world policy treats as build output), so the selection header, which has no
+file to diff against, is held to its GENERATOR's schema instead, for the two scopes a
+real build or ratify run uses and for the empty selection. `setup.py` runs it before
+compiling and CI runs it in the CPU lane.
 
-**`tests/unit/test_shard_partition.py`** checks the partition as a STRUCTURE:
-membership is a function of the declared ARM LIST and nothing else (a shard is a
-contiguous block of `CHUNK_ARMS` crossed with the state axis, and both state
-variants of an arm ride the same shard), the committed files are the generated
-files, `chunk.cu` does not include the header that would let it instantiate the
-kernels locally, and the ratification on disk is the one `_build_config.py`
-recorded at build time. The tiled partition derived its sharded AXES from a
-priority list; the chunk matrix is an explicit arm list with no axes to
-prioritize, so the block rule makes the same statement over the structure that
-exists. CPU only.
+**`check_shard_partition`** in `tools/lint/lint_standards.py` carries what the
+deleted `test_shard_partition.py` claimed, and carries the half of it that still has
+something to read. The per-shard membership hash went with the families that had
+generated units; what remains is `gen_shards --check` above, plus the claim that
+matters most to a reader of `tools/manifests/`: the ratification on disk is the one
+`_build_config.py` recorded at build time. That digest is recomputed over the arch
+SUBSET the build declares (`BUILD_CONFIG["archs"]`) and not over a directory glob —
+the glob is what made a single-arch iteration build fail for doing nothing wrong.
+CPU only; a tree that has not been built has nothing to compare and is not failed.
 
-**`tests/unit/test_arch_coverage.py`** checks the partition's COMPLETENESS across
-architectures. `ArmRule` degrades a topology onto another `BC` when its pinned one
-was not built, but it cannot degrade onto another `(D, B)`: a topology class with no
-arm on an architecture does not run there at all. So the topology classes are
-collected as the UNION over the ratified manifests, and every ratified manifest must
-carry at least one chunk arm for each — and, stated separately because the trainable
-set is narrower, at least one scan arm for each class any manifest scans. An arm-list
-edit or a partial re-ratification that leaves one arch short of one class is what
-this refuses, and it is the failure no single-card battery can see. Tabulated
-architectures with no manifest are REPORTED, not failed: that is the *not ratified —
-will refuse to load* row `tools/supported.py` prints, and the test asserts the
-generated table says so. Manifests only, no device — it passes under
-`CUDA_VISIBLE_DEVICES=""`.
+**`check_arch_coverage`**, beside it, is the same claim across ARCHITECTURES, and
+it is the failure no single-card battery can see: every other gate runs on whichever
+arch the developer's card happens to be, so a hole on another one is invisible.
+Tabulated architectures with no ratified manifest are REPORTED, not failed — that is
+the *not ratified — will refuse to load* row `tools/supported.py` prints, and the
+check asserts the generated table says so. Manifests only, no device.
+
+ITS PER-TOPOLOGY HALF IS OWED BACK. It required every ratified arch's manifest to
+carry an arm for every `(D, B)` class any other arch carried one for, because a
+topology class with no arm on an architecture does not run there at all — the
+degradation rule moves a topology onto another `BC`, never onto another `(D, B)`. It
+went with the deleted families, and it returns keyed on the rebuilt family's own arm
+list; restoring it against a one-row list would assert nothing.
+
+`tests/unit/test_closed_world_arch_gate.py` is the third of this family and the one
+about the RUNTIME refusal: closed-world rule R4 forbids a launch on a device whose arch
+was never measured, and because the device is absent at build time the rule is a pair of
+clauses — `static_assert(tabulated(kArch))` in `csrc/rola/src/common/arch_caps.cuh` and
+a per-device `check_arch_table()` on the first launch. Neither half substitutes for the
+other: a derivation is only as good as the facts it closed over, and only a fact read
+off the DEVICE says this is the device they were read for. The test states the clause
+over EVERY declared entry surface, not one family's, so the next entry inherits it. **It
+is RED, for one reason:** the runtime half's single definition went with the cleared
+dispatch translation unit and the surviving entries kept their launches and lost the
+clause. The day it passes is the day the refusal is back.
 
 (The fatbin gate that read device entry points per originating object and caught a
 FAILED translation-unit split lived here. It decoded a stats-pass mangled name to ask
@@ -460,9 +479,11 @@ rather than to the CPU lane.
 Two of the units-layer tests are about documents rather than arithmetic, and they
 are here because a document nothing checks is a document that drifts.
 
-**`tests/unit/test_generated_docs.py`** pins the README's generated support
-tables to `tools/supported.py --check`. A hand-maintained support table is a
-claim; a generated one is a report, and this is what keeps the difference real.
+The README's generated support tables are pinned to `tools/supported.py --check` by
+the commit gate (the document checks moved out of the unit tier and into
+`tools/lint/`, where a check that reads files rather than running code belongs). A
+hand-maintained support table is a claim; a generated one is a report, and that is
+what keeps the difference real.
 
 `test_derive.py` (the `BC` derivation, term by term) and `test_dispatch_table.py`
 (the tiled dispatch table joined against the fatbin's entry points) were the third
@@ -473,7 +494,7 @@ than either: the DEVICE-SIDE entry list the build reports (each family's `arms()
 build stamp), which answers out of the running binary rather than out of a host table
 describing it.
 
-**`tests/unit/test_docs_mirror.py`** pins the `docs/internals/` mirror. The
+`tools/lint/lint_standards.py` pins the `docs/internals/` mirror. The
 engine's design reasons live in a markdown tree that mirrors `csrc/rola/`, with
 one-line `//: HAZARD <slug>` stubs left at the sites they explain. Five rules,
 all grep-level so a contributor can read the check itself:
@@ -538,16 +559,16 @@ document, so a doc edit and a rule edit cannot drift apart. It must pass under
 `CUDA_VISIBLE_DEVICES=""`, and it asserts that the battery never resolved the compiled
 extension.
 
-**`tests/integration/test_backward_ctx.py`** became a host-structure gate as well as a
-memory one when the backward's ctx became the forward's plan HELD BY REFERENCE: the
-retained set is now a field list maintained for the forward's sake, so the sum
-matching its closed form no longer implies each field does. It walks every tensor the
-ctx pins off the two plan dataclasses, refuses BY NAME a field it has no term for, and
-holds each to a closed form in `T`, `sumW`, `entries` or `N` — none of which contains
-`N * T`. A field arriving on `ChunkPlan` and being retained for free fails here.
+The backward's ctx had a host-structure gate as well as a memory one, once the ctx
+became the forward's plan HELD BY REFERENCE: it walked every tensor the ctx pinned,
+refused BY NAME a field it had no term for, and held each to a closed form in `T`,
+`sumW`, `entries` or `N` — none of which contains `N * T`. It retired with the chunk
+consumer's backward, and the rebuild's backward (card C, C-b) owes its own: a
+retained set nothing walks is a retained set that grows.
 
-**`tools/chunk_identity_capture.py`** is not a battery but the gate a host refactor
-claiming neutrality answers to. `capture` on the parent tree, `verify` on the
+A host refactor claiming neutrality answered to a capture-and-verify tool, which
+retired with the chunk consumer and whose replacement is the DIFF NODE (two
+executors, the cells, a strategy): `capture` on the parent tree, `verify` on the
 refactored one: `y`, the returned state plane, the union table, the block bitmap and
 the atom bitmap over a fixed cell set, compared with `torch.equal`. It records what
 the extension RETURNED during a `rola_op` call rather than re-deriving anything, so
@@ -656,8 +677,8 @@ none launches a kernel.
 |---|---|
 | rola-devtools tests/test_timing.py | a timing entry that cannot run (recorded as that entry's failure while the session goes on), a call that drifts without a reset, two stopwatches in one session, a clock read off the lock, a failed entry in the memory pass; every entry of a session in every rep's random order; a stored session appending a run-stamped sample |
 | rola-devtools tests/test_declared_build.py | a label or path entering a key, a build failure (later targets skipped, `always_run` still runs), a domain failure in a target's output, a cached output that no longer holds on this machine, a held resource missing from the worker, a target declared twice, a cached `always_run` target, a zero claim, a dependency from another graph |
-| rola-devtools `tests/test_cells.py` | a name registered twice, a point naming an absent cell or a runner with none, a cell with no data provider, a point whose cells break its `equal` claim |
-| rola-devtools `tests/test_verdict.py` | a shift smaller than its own scatter, a round count below the one the test can decide at, a single unlucky run, an effect with no significance behind it, a spread of zero at the stopwatch's resolution |
+| rola-devtools tests/test_cells.py | a name registered twice, a point naming an absent cell or a runner with none, a cell with no data provider, a point whose cells break its `equal` claim |
+| rola-devtools tests/test_verdict.py | a shift smaller than its own scatter, a round count below the one the test can decide at, a single unlucky run, an effect with no significance behind it, a spread of zero at the stopwatch's resolution |
 | rola-results `rola_results/test_verdict.py` | stored sessions: an unchanged candidate, a slow session flagged and then confirmed, a baseline filtered by its label |
 | `tests/unit/test_bench_provider.py` | an uncarried carry arm, an iteration build, another library's data, a binary without the intra or decode kernel a subject launches; no arm carries a dial its subject does not read |
 
