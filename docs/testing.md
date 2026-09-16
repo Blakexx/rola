@@ -86,7 +86,7 @@ Three promises a caller can rely on:
 
 ### Changing the oracle: the dual-run protocol
 
-`rola/ops/naive.py` and the routing references are the crown jewels, so a change
+`rola/ops/naive.py` and the routing references are the oracle pair, so a change
 to them is not reviewed by reading the diff -- the question is never "is this
 code reasonable" but "does it compute the same function". Both versions are RUN:
 

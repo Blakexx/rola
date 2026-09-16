@@ -272,7 +272,7 @@ measured 2026-08-06).
 ## 6. Measure this checkout
 
 ```bash
-python -m rola_devtools.build run declare.py:all --arg cells=flagship-alt-k4 --arg instruments=sass
+python -m rola_devtools.build run declare.py:all --only 'rola/phases' --only 'rola/sass'
 ```
 
 rola-devtools' build system runs this checkout's declarations (`declare.py`): the gated build, SASS, and a timing

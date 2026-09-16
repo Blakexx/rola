@@ -185,6 +185,32 @@ number from it enters the record. Named here because an undelivered item named i
 * **A flat percentage threshold.** The IQR-derived line is better than every rule in the surveyed field; replacing it
   would reintroduce the invented number the derivation exists to avoid.
 
+## The build: everything declared, a run pruned by label
+
+A checkout's `declare.py` declares EVERY target it has -- its build, its machine facts, each instrument over the cells
+sized for measurement (`tier` probe or both), its timing arms, its diff sides and its own kernel-vs-oracle diff, the
+oracle tier as one node -- and takes no selector. Which of it a build runs is pruned at the CLI by LABEL, which knows
+nothing of cells, groups or instruments: `--only 'rola/phases'` runs that instrument and what it needs, `--skip
+'*/timeline'` drops that instrument and everything that reads it. A node whose code, binary and inputs have not changed
+is a cache hit and does not run. A full run of rola-bench's suite over one checkout is seven minutes (measured
+2026-09-16, 212 targets); the dev loop is a pruned run, seconds.
+
+THE ORACLE TIER IS A TARGET (`rola/oracle-tier`): the oracle battery run whole, keyed on its code and the binary, its
+output the counts, WHICH cases failed and the per-comparison margins (`--oracle-margins`, the worst per output kind),
+stored beside the instruments. A red cell is a stored fact.
+
+THE DIFFS. A SIDE is an executor run over cell nodes in the environment it names, its tensors kept in the build cache;
+a DIFF is two sides under one named rule -- `bit-identical`, the per-slot clause rule mirroring the oracle's, or
+`support-equal` -- with a claim (`expect` same or different) and a consequence (a build failure or a recorded verdict).
+A side proves which checkout's library it imported; a comparison that compared fewer quantities than it declared, or a
+cell only one side could produce, refuses rather than passes; a cell both sides refuse is listed and not counted. Inside
+one checkout the carry kernel is diffed against the fp64 reference per slot under each output kind's clauses
+(`rola/diff/carry-vs-oracle`); across checkouts rola-bench pairs each surface a checkout exposes (`SURFACES`: the fp64
+oracle, the producer reference, the carry kernel) under ITS rule for the surface (`RULES`) -- the oracle
+bit-identical, the producer support-equal, the kernel per slot at twice the reassociation the checkout states
+(`NUMERICS`: the readout fan-in is an fp32 atomic reduction and is not bit-reproducible run to run), stored at
+`diff/<surface>`. Verdicts are stored, tensors never.
+
 ## The measurements record: `rola_results`
 
 Every measuring tool stores what it measured through one library, `rola_results`, in the rola-results repository:
@@ -209,6 +235,13 @@ and a timing only compares within the session that interleaved it.
 | `pipe_timeline.scale` | `tools/pipe_timeline.py --calibrate` | the cell, the binary and the calibration's composition | the plateau the tool reads back as later runs' scale |
 | `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |
 | `environment` | `tools/dev.py container check` | the environment key | the proofs |
+| `rola/oracle-tier` | a store target over the tier node | the tier's code, the binary, the environment | the counts, the failed cases, the margins |
+| `rola/carry-vs-oracle`, `diff/<surface>` | a store target over a diff node | both sides' semantics and the rule | the verdict per cell and quantity, never a tensor |
+
+Reading across runs is a join, never a parser: `instrument_metrics` is every number every instrument recorded in
+long form (run, cell, dotted metric, value), `diff_cells` every stored diff's verdict per cell and quantity, and
+`python -m rola_results instruments --baseline RUN` is one run's numbers beside another's as deltas; the dashboard
+(`--baseline RUN`) renders the same. Which run is the baseline, like which label is the reference, is the reader's.
 
 A tool run by another tool stores nothing (`--no-record`): the caller keeps the output in its own record. `python -m
 rola_results sql "..."` queries every location through a derived SQLite index beside the records (`history` and

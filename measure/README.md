@@ -40,7 +40,7 @@ stopwatch and the GPU and clock locks (`rola_devtools.timing`, `docs/measurement
 samples; whether a stored difference is a regression is `python -m rola_results verdict`.
 
 ```bash
-python -m rola_devtools.build run declare.py:all --arg cells=flagship-alt-k4 --arg instruments=
+python -m rola_devtools.build run declare.py:all --only 'rola/phases' --only 'rola/sass'
 ```
 
 **`measure/harness/` — the carry's part harness and its calibration** (`bench_carry_parts.py`,
