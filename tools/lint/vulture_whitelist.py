@@ -9,8 +9,8 @@ static analysis can see -- with a one-line reason, per the brief. Anything
 NOT listed here that vulture still flags is a real candidate to delete, never
 silenced by omission.
 
-Run: `vulture rola/ tools/ tests/ benchmarks/ tools/lint/vulture_whitelist.py`
-(`tools/lint/run_vulture.sh` does exactly this).
+Run `tools/lint/run_vulture.sh`, which owns the scan: the Python packages, the tools, the batteries, the benches
+and `setup.py` (a CALLER -- it runs the build's own gates), with this file as the last argument.
 """
 
 
@@ -53,7 +53,59 @@ class _Whitelist:
     timed = None
     read_clock = None
 
+    # torch calls `forward` through `Module.__call__`, never by name: every `nn.Module` in the tree defines one and
+    # none of them is called explicitly. 13 sites, measured 2026-09-15 (`rola/layer.py`, `rola/routing/`'s decay,
+    # producer, side_gain and entmax bodies, and the module stubs three tests define).
+    forward = None
+
+    # pytest FIXTURE FUNCTIONS in the root conftest: an `autouse` fixture is called by the framework for every test
+    # and never named anywhere, and a non-autouse one is reached through `request.getfixturevalue(NAME)` -- a string.
+    poison_torch_memory = None
+    _gpu_lock_held = None
+    _host_budget_worker_slot = None
+    _take_gpu_lock = None
+
+    # THE FACT SYSTEM ADDRESSES BY STRING: a node declares `gives=("union_table", ...)` / `needs=(...)` and reads
+    # `f["union_table"]` (`rola/engine/facts/nodes.py`), so the plan field of the same name has no attribute read.
+    union_table = None
+
+    # `ChunkPlan` IS A CONTRACT, and its consumer is the absent carry launch (card C): the field list is the claim
+    # that no field is `O(N * L)`, so a field with no reader TODAY is the contract the rebuild fills, not dead weight.
+    v_row_bytes = None
+    y_dtype = None
+
+    # THE MIRROR IS COMPLETE BY CONSTRUCTION: `LivenessLayout` mirrors `csrc/rola/src/facts/liveness_contract.cuh`
+    # member for member, and the C++ member is the one a `static_assert` gates (the liveness contract gate).
+    token_bit = None
+
+    # DOCUMENTED PUBLIC SURFACE, read by a user rather than by this tree: the paging facade's `backing_kind` and
+    # `closed` (`docs/internals/rola_api.md`), the arena's `owners_total` and `free`, the registry's
+    # `support_differentiable` column, and `Activation`, the spec-facing type alias (`docs/api.md`).
+    backing_kind = None
+    closed = None
+    owners_total = None
+    free = None
+    support_differentiable = None
+    Activation = None
+
+    # zoology's `Hybrid` reads a layer's `state_size(sequence_length=...)` by name when it sizes a model.
+    state_size = None
+    sequence_length = None
+
+    # setuptools READS `build_temp` off the command object it owns: `setup.py`'s `finalize_options` pins it to a
+    # fixed repo-relative directory so the artifact's identity is a function of the tree, not of pip's temp dir.
+    build_temp = None
+
+    # `zipfile.ZipInfo` FIELDS ARE READ BY THE WRITER, not by us: `tools/wheels.py` sets `external_attr` (the POSIX
+    # mode) and `compress_type` on each member and `zipfile` reads them when it writes the entry.
+    external_attr = None
+    compress_type = None
+
 
 _ = _Whitelist()
 _referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure,  # ruff B018: a bare attribute is "useless"
-               _.compile_kernel, _.binary_present, _.probe_environment, _.run_tool, _.timed, _.read_clock)
+               _.compile_kernel, _.binary_present, _.probe_environment, _.run_tool, _.timed, _.read_clock,
+               _.forward, _.poison_torch_memory, _._gpu_lock_held, _._host_budget_worker_slot, _._take_gpu_lock,
+               _.union_table, _.v_row_bytes, _.y_dtype, _.token_bit, _.backing_kind, _.closed, _.owners_total,
+               _.free, _.support_differentiable, _.Activation, _.state_size, _.sequence_length,
+               _.build_temp, _.external_attr, _.compress_type)

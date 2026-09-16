@@ -125,7 +125,7 @@ def leaves_per_warp(dv: int) -> int:
 
 
 def _arm(i):
-    (D, B, K, M, DV, W, C, CV, MO, WPS, NSW, NSR, PK) = ARM_PARAMS[i]
+    (D, B, K, M, DV, W, C, CV, MO, _WPS, NSW, NSR, _PK) = ARM_PARAMS[i]
     return dict(D=D, widths=[B] * D, k=K, m=M, dv=DV, window=W, chunk=C, carve=CV, mo=MO,
                 nsw=NSW, nsr=NSR)
 

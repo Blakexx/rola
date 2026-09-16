@@ -145,7 +145,7 @@ def summary(tl: dict, scale: float | None) -> dict:
     return out
 
 
-def chart(tl: dict, title: str, scale: float | None, width_us: float = 1.0) -> str:
+def chart(tl: dict, title: str, scale: float | None) -> str:
     """An inline-SVG chart: the tensor pipe (scaled when a scale is given), the ALU pipe and warps active."""
     d = tl["duration_us"]
     W, H, pad = 1100, 300, 40

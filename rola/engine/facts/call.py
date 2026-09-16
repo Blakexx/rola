@@ -19,22 +19,12 @@ from rola.engine.facts.operands import operands_of, requires_backward
 if TYPE_CHECKING:
     import torch
 
-    from rola.engine import Arm
     from rola.routing.factors import RouteFactors
 
 
 def widths_of(routes) -> tuple[int, ...]:
     """The per-level widths of this bundle's topology, in level order."""
     return tuple(level.width for level in routes.topology.levels)
-
-
-def arm_of(routes) -> Arm | None:
-    """`(C, BC)` -- the built arm this routing runs on, or None if it has none.
-
-    The facade needs `BC` before the launch, because the page arena's extent policy
-    is stated in owners; it is the one launch parameter that leaves the plan.
-    """
-    return rules.arm(widths_of(routes), manifest.chunk_arms())
 
 
 def envelope_clauses(routes, decay: Any = None, *, d_v: int) -> tuple:

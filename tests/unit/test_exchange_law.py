@@ -227,10 +227,8 @@ def test_the_exchange_row_map_is_affine_in_the_slots_bits(idx, row):
         #: stream, and the composition is exact -- all asserted below.
         for b, st in enumerate(ref_step):
             assert st != 0, f"arm {idx}: {who} slot bit {b} moves no row bit"
-        base_mask = 0
         for stream in range(side.ns):
             base = _row(side, stream, 0)
-            base_mask |= base
             for b in range(nb):
                 assert _row(side, stream, 1 << b) ^ base == ref_step[b], (
                     f"arm {idx}: {who} {stream}'s step for bit {b} differs from stream 0's")

@@ -632,12 +632,6 @@
    "count": 1
   },
   {
-   "path": "tools/pipe_timeline.py",
-   "message": "chart(..., width_us=) is only ever 1.0 -- across every call in this tree, nothing moves it",
-   "line_sha256": "f72883d5f80ddb96",
-   "count": 1
-  },
-  {
    "path": "tools/ratify.py",
    "message": "carry_arm_paths(..., arms=) is only ever None -- across every call in this tree, nothing moves it",
    "line_sha256": "ec13b9ea90111eca",

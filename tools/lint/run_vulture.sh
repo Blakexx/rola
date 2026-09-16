@@ -46,8 +46,11 @@ set +e
 # `--exclude` keeps tools/lint/fixtures/**'s deliberate "must fire" violations
 # out of the real report (K46's ast-grep bug: a fixture re-triggering the
 # gate it exists to test).
+# `setup.py` is IN THE SCAN because it is a CALLER: it runs the pre-build and post-build
+# gates, and a scan that could not see it reported `tools/build_flags.py`'s DEPFILE_FLAGS
+# and `tools/gen_shards.py`'s declaration_matches_table as dead when setup.py calls both.
 out=$(vulture --exclude '*/tools/lint/fixtures/*' \
-       rola/ tools/ tests/ benchmarks/ tools/lint/vulture_whitelist.py 2>&1)
+       rola/ tools/ tests/ benchmarks/ setup.py tools/lint/vulture_whitelist.py 2>&1)
 set -e
 
 n=$(printf '%s\n' "$out" | grep -c . || true)

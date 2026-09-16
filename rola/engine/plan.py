@@ -94,10 +94,6 @@ class DecodeGeometry:
     def cols(self) -> int:
         return self.d_v + 1  # the mass column is unconditional (raw is dead)
 
-    @property
-    def total_rows(self) -> int:
-        return sum(self.widths)
-
 
 @dataclass(frozen=True, slots=True)
 class DecodePlan:

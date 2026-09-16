@@ -174,12 +174,6 @@ def test_box_shape_is_a_second_kernel_boundary_that_refuses_unpadded_widths():
 # DECODE: a real kernel on this line -- graded bit for bit, not by the oracle band
 # ---------------------------------------------------------------------------
 
-pytestmark_decode = [
-    pytest.mark.cuda,
-    pytest.mark.skipif(not torch.cuda.is_available(), reason="decode is a CUDA kernel"),
-]
-
-
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="decode is a CUDA kernel")
 def test_decode_padded_d_v_matches_the_shipped_dv_with_a_zero_tail_bit_for_bit():

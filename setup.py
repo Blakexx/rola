@@ -938,7 +938,10 @@ class RoLABuildExtension(BuildExtension):
         install proceeds. This never touches `ratify.py` itself -- `--write`/
         `--check` invoked directly still behave exactly as before.
         """
-        if _is_iteration_build():
+        #: THE SKIP ANNOUNCES ITSELF. An iteration build is the one that skips this gate, so it is the one build
+        #: whose operator has to be told the binary is not shippable -- the banner was written for exactly this
+        #: return and nothing called it, so the skip was silent (found by the dead-code lint, 2026-09-15).
+        if self._iteration_banner():
             return
         if os.getenv("ROLA_SKIP_POST_BUILD_RATIFY") == "1":
             print("post-build ratification SKIPPED (ROLA_SKIP_POST_BUILD_RATIFY=1)")

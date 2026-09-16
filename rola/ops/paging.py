@@ -280,10 +280,6 @@ class PagingResult:
     committed_bytes: int
 
     @property
-    def allocated_fraction(self) -> float:
-        return self.allocated_bytes / self.dense_bytes if self.dense_bytes else 0.0
-
-    @property
     def committed_fraction(self) -> float:
         """The savings claim, as the driver measures it."""
         return self.committed_bytes / self.dense_bytes if self.dense_bytes else 0.0
