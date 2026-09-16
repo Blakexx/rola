@@ -53,16 +53,9 @@ run of `pipe_timeline` writes the plateau it reads back as every later run's sca
 
 | tool | what it is | called by | writes |
 |---|---|---|---|
-| `oracle_dual_run.py` | both versions of the oracle run and compared, when the crown jewels change | a person, on an oracle change | `--json` |
 | `sanitize_oracle.py` | the compute-sanitizer gate on the carry, intra and decode oracle cells | a person, in the sanitizer lane | — |
 | `sanitize_cell.py` | one cell, one launch, no test framework — the racecheck lane's driver | `sanitize_oracle.py` | — |
 | [`docrefs.py`](docrefs.md) | every citation a doc makes, pinned to the content it was read against | the commit gate | `docs/references.lock.json` |
 
 `tools/lint/` is its own family with its own page ([`lint.md`](lint.md)): the ratchets, the standards lint and their
 baselines.
-
-## What is planned to leave
-
-`oracle_dual_run.py` is replaced by the DIFF NODE (ruled 2026-09-15): two executors, the cells, a comparison
-strategy and an expectation, so "against `HEAD~1`" is a second checkout the suite's root already composes. It goes with
-its own `DELETIONS.md` row when that node lands.

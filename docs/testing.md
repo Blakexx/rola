@@ -91,13 +91,15 @@ to them is not reviewed by reading the diff -- the question is never "is this
 code reasonable" but "does it compute the same function". Both versions are RUN:
 
 ```bash
-TORCHINDUCTOR_COMPILE_THREADS=4 flock /tmp/rola_ram.lock \
-  python tools/oracle_dual_run.py --surface oracle --against HEAD~1
+# in rola-bench: this checkout against another, every surface, as targets
+python -m rola_devtools.build run declare.py:jewels --arg target=worktree:PATH --arg references=worktree:OLD
 ```
 
-The old side is the parent commit's real code in a throwaway worktree, run in a
-subprocess; the matrix is generated at the NEW commit for both sides; the
-comparison is BIT-IDENTITY, forward and backward, with `None` recorded as `None`.
+Both sides are DIFF SIDES (`tests/oracle/sides.py`) run by the build system in each checkout's own environment over
+the same central cell nodes, and compared by a diff target (`rola_devtools.diff`) under the rule `declare.py`'s
+`SURFACES` states: the oracle under BIT-IDENTITY, forward and backward, with "no gradient" an empty tensor and never a
+zero one; the producer under support equality. A side proves which tree it imported, a comparison that compared fewer
+quantities than declared refuses, and the raw tensors never leave the build cache.
 Three declaration forms exist and none of them is an exemption: `--except`
 names a quantity whose answer legitimately changed and which must then be
 asserted in its own test, `--reassociated` holds a reordered sum to

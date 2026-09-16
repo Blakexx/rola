@@ -614,18 +614,6 @@
    "count": 1
   },
   {
-   "path": "tools/oracle_dual_run.py",
-   "message": "clipped(..., dim=) is only ever -1 -- across every call in this tree, nothing moves it",
-   "line_sha256": "5735b6fb5f742747",
-   "count": 1
-  },
-  {
-   "path": "tools/oracle_dual_run.py",
-   "message": "clipped(..., mask=) is only ever None -- across every call in this tree, nothing moves it",
-   "line_sha256": "5735b6fb5f742747",
-   "count": 1
-  },
-  {
    "path": "tools/ratify.py",
    "message": "carry_arm_paths(..., arms=) is only ever None -- across every call in this tree, nothing moves it",
    "line_sha256": "ec13b9ea90111eca",

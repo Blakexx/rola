@@ -1105,6 +1105,7 @@
   {"doc": "docs/testing.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tests/oracle"},
   {"doc": "docs/testing.md", "pinned_at": "27f5dbac007a", "reviewed": true, "sha256": "", "target": "tests/oracle/fixtures.py"},
   {"doc": "docs/testing.md", "pinned_at": "27f5dbac007a", "reviewed": true, "sha256": "643c744d9e2c9003", "target": "tests/oracle/fixtures.py::assert_slots_close"},
+  {"doc": "docs/testing.md", "pinned_at": "df0f6c138caf", "reviewed": true, "sha256": "", "target": "tests/oracle/sides.py"},
   {"doc": "docs/testing.md", "pinned_at": "27f5dbac007a", "reviewed": true, "sha256": "", "target": "tests/oracle/test_carry_vs_oracle.py"},
   {"doc": "docs/testing.md", "pinned_at": "27f5dbac007a", "reviewed": true, "sha256": "", "target": "tests/oracle/test_decode_vs_oracle.py"},
   {"doc": "docs/testing.md", "pinned_at": "27f5dbac007a", "reviewed": true, "sha256": "", "target": "tests/oracle/test_intra_kernel.py"},

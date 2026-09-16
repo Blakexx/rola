@@ -2846,12 +2846,6 @@
    "count": 1
   },
   {
-   "path": "tools/oracle_dual_run.py",
-   "message": "names the work code 'F1'",
-   "line_sha256": "d8c44bcd0848d968",
-   "count": 1
-  },
-  {
    "path": "tools/ratify.py",
    "message": "names the work code 'K5'",
    "line_sha256": "6a1cbb8eb038fbde",

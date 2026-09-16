@@ -7,8 +7,8 @@ whose vendored subtree does not match (`setup.py::_gate_vendored`,
 different route -- not vendored, because a pure-python test dependency has nothing to
 vendor, but pip-installed and unpinned in `pyproject.toml` before this module existed.
 
-WHY THE PIN IS THE ONLY GUARD. `tools/oracle_dual_run.py` runs the OLD side as a real
-prior commit of THIS repository in a worktree, and the NEW side as the tip -- but both
+WHY THE PIN IS THE ONLY GUARD. The cross-checkout diff (`declare.py`'s `SURFACES`, run by
+rola-bench) runs the OLD side as a real prior checkout of THIS repository and the NEW side as the tip -- but both
 sides import the SAME installed `entmax`. A dependency bump that changes `entmax15`'s
 tie-breaking or `entmax_bisect`'s semantics re-anchors every Tier 1 routing gate and
 the dual run stays green throughout, because there is no OLD `entmax` for the NEW one
