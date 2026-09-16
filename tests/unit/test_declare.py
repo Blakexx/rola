@@ -78,6 +78,17 @@ def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_lis
         f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
+def test_the_carry_kernel_surface_is_per_slot_with_the_state_exact():
+    """The readout's fan-in is an atomic reduction, so `num` and `den` are held to measured reassociation bounds;
+    the state has no fan-in and is held exact -- a clause of (0, 0) is bit-identity under the per-slot rule."""
+    from rola_devtools.build.declare import load
+
+    _executor, _kind, _tier, holds, strategy, params = load(ROOT / "declare.py")["SURFACES"]["carry-kernel"]
+    assert (holds, strategy) == ({"gpu": "all"}, "per-slot")
+    assert params["per_quantity"]["state"]["clauses"] == [[0.0, 0.0]]
+    assert all(0 < r < 1e-4 for r, _a in params["per_quantity"]["num"]["clauses"] + params["per_quantity"]["den"]["clauses"])
+
+
 def test_the_oracle_tier_is_one_target_keyed_on_its_code_and_the_binary_and_stored():
     """The whole pytest tier as a node: a red cell becomes a stored fact, and an unchanged tree is a cache hit."""
     from rola_devtools.build.declare import load

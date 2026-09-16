@@ -141,7 +141,14 @@ SURFACES = {
     "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}, "bit-identical", {}),
     "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}, "support-equal",
                  {"rtol": 0.0, "atol": 1e-13}),
-    "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}, "bit-identical", {}),
+    #: THE KERNEL IS NOT BIT-REPRODUCIBLE ON `num` AND `den`: the readout fan-in is an fp32 atomic reduction, so its
+    #: association order varies run to run on multi-owner cells (MEASURED 2026-09-16, one binary against itself,
+    #: three runs over every oracle-tier cell: den within 7e-7 relative, num within 1.9e-9 absolute where a cancelled
+    #: slot made the relative error meaningless). The rule is therefore per slot with those bounds at twice their
+    #: measured size, and `state` -- written once per leaf, no fan-in -- stays exact.
+    "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}, "per-slot",
+                     {"per_quantity": {"num": {"clauses": [[2e-6, 4e-9]]}, "den": {"clauses": [[2e-6, 5e-7]]},
+                                       "state": {"clauses": [[0.0, 0.0]]}}}),
 }
 #: the kernel-vs-oracle diff INSIDE one checkout: the carry kernel's slots against the fp64 reference's, PER SLOT under
 #: each output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
