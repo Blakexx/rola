@@ -35,7 +35,10 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     #: on is pruned by label at the CLI, never chosen here
     from rola_devtools.cells import central
 
-    carry = {f"cells/{n}" for n, r in central().cells.items() if r["data"].endswith("carry_cell")}
+    #: ... and those are the cells SIZED FOR MEASUREMENT (`tier` probe or both); the oracle tier's are the diff
+    #: surfaces' and the tier node's, never an instrument's
+    carry = {f"cells/{n}" for n, r in central().cells.items()
+             if r["data"].endswith("carry_cell") and r["params"].get("tier") in ("probe", "both")}
     assert {t.label for t in out["targets"]["rola/phases"].inputs} == carry
     assert out["targets"]["cells/flagship-dense"].params == {"cell": "flagship-dense"}
     assert {t.label for t in out["targets"]["rola/carry_forward"].inputs} == carry

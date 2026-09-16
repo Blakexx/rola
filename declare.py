@@ -83,7 +83,12 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
     """EVERY target this checkout has. A node declares the cells it runs on; nothing here takes a cell list, and a build
     that wants fewer prunes by label."""
     cells = sorted(central().cells)
-    carry = [c for c in cells if kind(c) == "carry"]
+    #: A MEASUREMENT RUNS ON CELLS SIZED FOR MEASUREMENT: the registry states who each carry cell is sized for
+    #: (`tier`: `oracle` for the fp64 reference, `probe` for a measurement, `both`), and an instrument or a timing
+    #: arm over a 16-token reference cell measures nothing -- the oracle-tier cells are the diff surfaces' and the
+    #: tier node's (`SURFACES`, `oracle-tier`), not the instruments'. Every carry cell declared here took a run from 12
+    #: cells to 49 and an ncu replay apiece (2026-09-16).
+    carry = [c for c in cells if kind(c) == "carry" and central().cell(c)["params"].get("tier") in ("probe", "both")]
     layer = [c for c in cells if kind(c) == "layer"]
     binary = g.node("binary", executor=EXECUTORS + "compile_kernel", env=env, holds={"host_cpu": "all"},
                     verify=EXECUTORS + "binary_present", code=_code("setup.py", BUILD_DATA))
