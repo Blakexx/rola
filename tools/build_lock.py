@@ -49,6 +49,6 @@ def acquire(*, gate: bool, desired: int):
     """
     desired = max(1, desired)
     label = "gate" if gate else "iteration"
+    #: the budget's acquire already lowers the holder's priority; lowering it here too took a compile to nice 19
     with host.acquire(desired, exclusive=gate, label=f"build_lock:{label}") as held:
-        host.lower_priority("build_lock")
         yield held
