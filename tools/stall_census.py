@@ -55,7 +55,8 @@ def measure(cell: str, schedule: str, out: Path) -> None:
                                  cell, "--per", str(phase_ledger.cta_windows(cell)), "--json", str(out)],
                                 cwd=ROOT, capture_output=True, text=True, timeout=1800)
     if not out.exists():
-        raise SystemExit(f"stall_census: region_ledger wrote nothing (rc {ledger.returncode}):\n{ledger.stdout[-1500:]}")
+        raise SystemExit(f"stall_census: region_ledger wrote nothing (rc {ledger.returncode}):\n"
+                         f"{(ledger.stdout + ledger.stderr)[-1500:]}")
     doc = json.loads(out.read_text())
     doc.update({"cell": cell, "schedule": schedule, "budget_red": ledger.returncode == 1})
     out.write_text(json.dumps(doc, sort_keys=True) + "\n")

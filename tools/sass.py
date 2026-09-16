@@ -54,11 +54,22 @@ def cubins(path: Path) -> list[Path]:
     return [out / name for name in picked]
 
 
-def cubin(path: Path, member: str) -> Path:
-    """The one cubin of `path` whose name holds `member`; refuses where that is not exactly one image."""
-    found = [image for image in cubins(path) if member in image.name]
+def device_arch() -> str:
+    """The running device's architecture as a cubin names it (`sm_86`): what a launch profiled on this card ran."""
+    import torch
+
+    major, minor = torch.cuda.get_device_capability()
+    return f"sm_{major}{minor}"
+
+
+def cubin(path: Path, member: str, arch: str) -> Path:
+    """The one cubin of `path` whose name holds `member` and `arch`; refuses where that is not exactly one image. A
+    fatbin holds one image an architecture, and an instrument attributes a launch to the image the DEVICE ran -- the
+    first match by name was the sm_80 image on an sm_86 card, and every census read it before this seam refused."""
+    found = [image for image in cubins(path) if member in image.name and arch in image.name]
     if len(found) != 1:
-        raise SystemExit(f"{member} names {len(found)} ELF images in {Path(path).name}; the instruments read one")
+        raise SystemExit(f"{member} for {arch} names {len(found)} ELF images in {Path(path).name}; "
+                         "the instruments read one")
     return found[0]
 
 
@@ -103,5 +114,5 @@ def frames(text: str) -> dict[int, list[tuple[str, int]]]:
     return out
 
 
-__all__ = ["ARCH", "ENCODING", "FUNCTION", "INSTRUCTION", "LINE_INFO", "cubin", "cubins", "disassemble", "frames",
-           "sass_lines"]
+__all__ = ["ARCH", "ENCODING", "FUNCTION", "INSTRUCTION", "LINE_INFO", "cubin", "cubins", "device_arch", "disassemble",
+           "frames", "sass_lines"]

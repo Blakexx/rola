@@ -70,10 +70,10 @@ def fn_of(fmap: list[tuple[int, str]], ln: int) -> str:
     return name
 
 
-def frames_map(so: Path, member: str) -> dict[int, list[tuple[str, int]]]:
+def frames_map(so: Path, member: str, arch: str) -> dict[int, list[tuple[str, int]]]:
     """SASS offset -> the inline frame chain at that instruction, innermost first, as (file name, line) pairs
     (`tools/sass.py`, the one reader of the disassemblers)."""
-    return sass.frames(sass.disassemble(sass.cubin(so, member), "--print-line-info-inline", "-gi"))
+    return sass.frames(sass.disassemble(sass.cubin(so, member, arch), "--print-line-info-inline", "-gi"))
 
 
 class Attribution:
@@ -82,12 +82,13 @@ class Attribution:
     (an innermost frame inside `mbar_wait`). A spin is the wait for another agent's work and
     is reported apart from the component's own instructions."""
 
-    def __init__(self, so: Path, member: str, source: Path, ops: Path):
+    def __init__(self, so: Path, member: str, arch: str, source: Path, ops: Path):
         self.fmap = function_map(source.read_text().splitlines())
         self.omap = function_map(ops.read_text().splitlines())
         self.source, self.ops = source.name, ops.name
         self.so, self.member = so, member
-        self.frames = frames_map(so, member)
+        self.arch = arch
+        self.frames = frames_map(so, member, arch)
 
     def of(self, offset: int, components: set[str] | None = None) -> tuple[str, bool]:
         """The component: the OUTERMOST frame in the kernel's source whose function is one of
@@ -108,10 +109,10 @@ class Attribution:
         return comp, spin
 
 
-def line_map(so: Path, member: str, source_name: str) -> dict[int, int | None]:
+def line_map(so: Path, member: str, arch: str, source_name: str) -> dict[int, int | None]:
     """SASS offset -> innermost line in `source_name` (None when the chain has none)."""
     out = {}
-    for off, chain in frames_map(so, member).items():
+    for off, chain in frames_map(so, member, arch).items():
         ck = [ln for f, ln in chain if f == source_name]
         out[off] = ck[0] if ck else None
     return out
@@ -165,6 +166,7 @@ def main() -> int:
     ap.add_argument("--so", type=Path, required=True)
     ap.add_argument("--source", type=Path, required=True)
     ap.add_argument("--member", default="carry_arm")
+    ap.add_argument("--arch", default=None, help="the cubin's architecture (default: this machine's GPU)")
     ap.add_argument("--ops", type=Path, default=Path("csrc/rola/src/common/ops.cuh"))
     ap.add_argument("--budget", type=Path, default=None)
     ap.add_argument("--cell", default=None, help="the budget cell to compare against")
@@ -173,7 +175,7 @@ def main() -> int:
     ap.add_argument("--json", type=Path, default=None,
                     help="also write the components, the phase census and the wavefront census here")
     a = ap.parse_args()
-    attr = Attribution(a.so, a.member, a.source, a.ops)
+    attr = Attribution(a.so, a.member, a.arch or sass.device_arch(), a.source, a.ops)
     rows = read_source_counters(a.csv)
     base = rows[0][0]
 
@@ -225,7 +227,7 @@ def census(rows, attr: Attribution, components: set[str] | None, per: float,
     base = rows[0][0]
     cen: dict[str, list] = collections.defaultdict(lambda: [0, 0, 0, 0])
     waves: dict[int | None, list] = collections.defaultdict(lambda: [0, 0, 0])
-    lm = line_map(attr.so, attr.member, source.name)
+    lm = line_map(attr.so, attr.member, attr.arch, source.name)
     for addr, n, sm, _st in rows:
         fn, spin = attr.of(addr - base, components)
         if spin:

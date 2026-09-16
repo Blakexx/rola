@@ -33,7 +33,7 @@ from functools import partial
 from pathlib import Path
 
 #: this checkout: `import rola` must resolve inside it
-CHECKOUT = Path(__file__).resolve().parents[2]
+CHECKOUT = Path(__file__).resolve().parents[1]
 
 
 def arm_name(subject: str, *, calls: int = 1, schedule: str = "first", construction: str | None = None) -> str:
@@ -168,7 +168,9 @@ def _layer_fixture(spec, construction):
 def oneshot_argv(cell: str, arm: str = "carry_forward") -> list[str]:
     """One untimed launch of `arm` on `cell` by this checkout's runner, under this interpreter: what a profiler wraps.
     The arm is built exactly as a comparison builds it, so what a profile counts is the launch a comparison times."""
-    return [sys.executable, str(Path(__file__).resolve()), "--oneshot", cell, arm]
+    #: AS A MODULE, from the checkout: a package file run by path has its own directory for a root and cannot import
+    #: its package (the `measure/` rename turned every profiled launch into `No module named 'measure'`)
+    return [sys.executable, "-m", "measure.provider", "--oneshot", cell, arm]
 
 
 def _oneshot(cell: str, arm: str) -> None:
@@ -189,5 +191,5 @@ def _oneshot(cell: str, arm: str) -> None:
 if __name__ == "__main__":
     if len(sys.argv) != 4 or sys.argv[1] != "--oneshot":
         raise SystemExit("usage: provider.py --oneshot CELL ARM")
-    sys.path[:0] = [str(CHECKOUT), str(CHECKOUT / "measure")]
+    sys.path[:0] = [str(CHECKOUT)]
     _oneshot(sys.argv[2], sys.argv[3])

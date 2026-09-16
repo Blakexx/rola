@@ -53,7 +53,7 @@ def cubin_of(args) -> Path:
         return compile_arm(args.arm, args.arch)
     if args.cubin:
         return Path(args.cubin)
-    return sass.cubin(Path(args.so), args.member)
+    return sass.cubin(Path(args.so), args.member, args.arch or sass.device_arch())
 
 
 def line_map(cubin: Path, source_name: str) -> dict[int, int | None]:
