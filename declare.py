@@ -3,7 +3,7 @@
 """ROLA'S DECLARATIONS: this checkout's targets for rola-devtools' declared build system (`rola_devtools.build`).
 
     python -m rola_devtools.build plan declare.py:all
-    python -m rola_devtools.build run  declare.py:all --arg cells=flagship-dense,flagship-alt-k4
+    python -m rola_devtools.build run  declare.py:all --arg cells=both|oracle|probe|all|NAME,NAME
 
 `declare(g, env, cells=..., timing=...)` declares one checkout's targets under the graph's scope and returns them (the
 timing registrations by arm name), so a root elsewhere (rola-bench's) loads this file from each checkout it measures,
@@ -115,9 +115,35 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
     return out
 
 
-def root(g, python: str = sys.executable, label: str = "rola", cells: str = "flagship-dense,flagship-alt-k4",
+#: the cell tiers a selection may name: who a cell is sized for (`rola_devtools.cells.carry.TIERS`)
+TIERS = ("oracle", "both", "probe")
+
+
+def selected(cells: str) -> list[str]:
+    """The cells a `--arg cells=` selects: `all`, a TIER name, or an explicit comma-separated list.
+
+    A TIER rather than a list of names is what a default may be. Two cell names as a default is a choice nobody
+    stated; `both` is the tier whose definition IS this question -- cells sized for correctness and for measurement
+    alike -- so rola measuring itself runs those unless it is told otherwise.
+    """
+    registry = central().cells
+    if cells in TIERS:
+        picked = sorted(n for n, r in registry.items() if r["params"].get("tier") == cells)
+        if not picked:
+            raise SystemExit(f"tier {cells!r} names no central cell")
+        return picked
+    if cells == "all":
+        return sorted(registry)
+    names = [n for n in cells.split(",") if n]
+    unknown = [n for n in names if n not in registry]
+    if unknown:
+        raise SystemExit(f"no central cell {', '.join(unknown)}; a selection is `all`, a tier {TIERS} or cell names")
+    return names
+
+
+def root(g, python: str = sys.executable, label: str = "rola", cells: str = "both",
          instruments: str = ",".join(INSTRUMENTS), rounds: str = "8", reps: str = "11", store_root: str = "") -> dict:
-    names = cells.split(",")
+    names = selected(cells)
     server = start_timing_server(g)
     mine = declare(g.scoped(label), checkout(HERE, python=python, label=label), cells=names, timing=server,
                    instruments=[i for i in instruments.split(",") if i])

@@ -53,6 +53,22 @@ def test_every_declared_code_digest_names_files_that_exist():
         assert not missing, f"{target.label} declares code it cannot digest: {missing}"
 
 
+def test_a_cell_selection_names_a_tier_a_list_or_all_and_refuses_anything_else():
+    """A DEFAULT MAY NAME A TIER, never two cells: who a cell is sized for is a fact the registry states, and two cell
+    names baked into the root is a choice nobody stated."""
+    import pytest
+    from rola_devtools.build.declare import load
+    from rola_devtools.cells import central
+
+    selected = load(ROOT / "declare.py")["selected"]
+    tiered = {name for name, record in central().cells.items() if record["params"].get("tier") == "probe"}
+    assert set(selected("probe")) == tiered and tiered
+    assert selected(f"{SPARSE},{DECODE}") == [SPARSE, DECODE]
+    assert set(selected("all")) == set(central().cells)
+    with pytest.raises(SystemExit, match="no central cell"):
+        selected("flagship-dense,not-a-cell")
+
+
 def test_loading_the_declarations_imports_neither_rola_nor_torch():
     probe = (f"import json, sys; from rola_devtools.build.declare import Graph, load; "
              f"load({str(ROOT / 'declare.py')!r})['root'](Graph(), cells='flagship-alt-k4,{DECODE}'); "
