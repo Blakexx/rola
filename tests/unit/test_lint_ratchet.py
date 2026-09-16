@@ -32,6 +32,20 @@ def test_a_baseline_that_gains_over_head_fails_even_when_it_matches_the_tree():
     assert grown == Counter({B: 1}) and not new and not fixed
 
 
+def test_a_renamed_path_moves_a_finding_and_does_not_grow_the_backlog():
+    """A finding HEAD knew by message and line digest, under a path the baseline no longer carries, is the same
+    finding after a rename: a renamed package moves its backlog. A genuinely new entry still grows it."""
+    from collections import Counter
+
+    from ratchet import verdict
+
+    head = Counter({("old/a.py", "knob x", "d1"): 1, ("old/a.py", "knob y", "d2"): 1})
+    moved = Counter({("new/a.py", "knob x", "d1"): 1, ("new/a.py", "knob y", "d2"): 1})
+    assert verdict(moved, moved, head)[2] == Counter()
+    grown = moved + Counter({("new/a.py", "knob z", "d3"): 1})
+    assert verdict(grown, grown, head)[2] == Counter({("new/a.py", "knob z", "d3"): 1})
+
+
 def test_the_baseline_round_trips():
     entries = Counter({A: 2, B: 1})
     assert ratchet._decode(ratchet._encode("x", entries)) == entries

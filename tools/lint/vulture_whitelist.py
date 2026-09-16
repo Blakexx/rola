@@ -44,7 +44,7 @@ class _Whitelist:
     pytest_configure = None
 
     # rola_devtools.build EXECUTORS: a declared target's worker calls its executor and verify functions from their
-    # `module:function` strings in `declare.py` (`benchmarks/executors.py`'s `compile_kernel`, `binary_present`,
+    # `module:function` strings in `declare.py` (`measure/executors.py`'s `compile_kernel`, `binary_present`,
     # `probe_environment`, `run_tool`, `timed`, `read_clock`).
     compile_kernel = None
     binary_present = None

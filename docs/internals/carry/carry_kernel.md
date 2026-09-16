@@ -307,7 +307,7 @@ a warp's own, gathered after a later barrier; it costs the kernel 10-14%).
 ## Budgets
 
 The budget of each component is the design's own operation count, written in
-`benchmarks/bench/carry_model.py` and generated into `tools/budgets/carry.json` per cell
+`measure/carry_model.py` and generated into `tools/budgets/carry.json` per cell
 (instructions per CTA-window; the formulas name every operation they count). The region
 ledger (`tools/region_ledger.py`) attributes a launch's executed instructions and stalls to
 the component each SASS instruction inlines from, with barrier spins split out, and is red
@@ -318,10 +318,10 @@ head the largest block.
 <a id="part-harness"></a>
 ## The part harness
 
-Its driver (`benchmarks/unit/carry_parts/carry_parts.cu`) is built ahead of time beside the arm
+Its driver (`measure/harness/carry_parts/carry_parts.cu`) is built ahead of time beside the arm
 under `ROLA_BUILD_PARTS=1` (`docs/build.md#parts`), never by a JIT.
 
-`benchmarks/unit/bench_carry_parts.py` builds `benchmarks/unit/carry_parts/carry_parts.cu`
+`measure/harness/bench_carry_parts.py` builds `measure/harness/carry_parts/carry_parts.cu`
 (one driver kernel a component, each the kernel's own prologue plus that component, on the
 call the kernel would run) and checks each against a pure reference: the head's order,
 masks, words and prefix; the fill's slots byte for byte, zero row included; the fold's state

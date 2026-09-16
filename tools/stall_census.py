@@ -28,8 +28,8 @@ import phase_ledger  # noqa: E402
 import toolchains  # noqa: E402
 from rola_devtools import process  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
-from bench.provider import arm_name, oneshot_argv  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "measure"))
+from measure.provider import arm_name, oneshot_argv  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable

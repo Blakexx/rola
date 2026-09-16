@@ -16,7 +16,7 @@
 // and writes registers; snapshot before either, fold complete before the next snapshot.
 // COMPONENTS (KERNEL_STANDARDS §19): each function below is one, with its budget line in
 // docs/internals/carry/carry_kernel.md#budgets and its part bench in
-// benchmarks/unit/bench_carry_parts.py; the phase ledger times them in the composition.
+// measure/harness/bench_carry_parts.py; the phase ledger times them in the composition.
 #pragma once
 
 #include <cuda_bf16.h>

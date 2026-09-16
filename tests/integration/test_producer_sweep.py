@@ -1,8 +1,8 @@
 """THE PRODUCER'S DENSITY SWEEP: the logit gain is the knob that moves realized routing's density, as it does in
 training, so a cell set that claims to cover the distribution has to show the knob moving it.
 
-The constructions are RoLA's `producer-sweep-g*` (`benchmarks.cells.layer.CONSTRUCTIONS`): one entmax constructor at
-four logit gains on one central layer input. Each is built by `benchmarks.cells.layer.build`, and its REALIZED write
+The constructions are RoLA's `producer-sweep-g*` (`measure.cells.layer.CONSTRUCTIONS`): one entmax constructor at
+four logit gains on one central layer input. Each is built by `measure.cells.layer.build`, and its REALIZED write
 density -- the exact-nonzero fraction of the write side's amplitudes -- must fall monotonically as the gain rises, across
 at least a factor of four.
 """
@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import by_name
-from benchmarks.cells.layer import CONSTRUCTIONS, build
+from measure.cells import by_name
+from measure.cells.layer import CONSTRUCTIONS, build
 
 pytestmark = [pytest.mark.cuda,
               pytest.mark.skipif(not torch.cuda.is_available(), reason="the producer is built on the GPU")]

@@ -41,7 +41,7 @@ and the SHA of the ratification manifest the binary was built from. Regression
 thresholds are derived from each cell's own measured spread, never an invented
 percentage, and the kernel's geometry is read out of the *built binary's own* arm
 list rather than modelled.
-→ [`benchmarks/cells/`](benchmarks/cells/), [`docs/build.md`](docs/build.md)
+→ [`measure/cells/`](measure/cells/), [`docs/build.md`](docs/build.md)
 
 **A documentation tree the code is checked against.** The engine's design reasons
 live in `docs/internals/`, one document per source file, with one-line hazard

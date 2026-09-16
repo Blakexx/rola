@@ -48,7 +48,7 @@ LOCKS = {"public": "docs/references.lock.json", "private": ".claude/references.l
 MIRROR_DECLARATIONS = ".github/mirror/declarations.json"
 #: A dotted name in code font is a reference when its first component is one of these; the value is the directory
 #: the package imports from.
-PACKAGES = {"rola": "", "tests": "", "tools": "", "benchmarks": "", "bench": "benchmarks", "rola_cu13": ""}
+PACKAGES = {"rola": "", "tests": "", "tools": "", "measure": "", "bench": "measure", "rola_cu13": ""}
 #: A path in code font is a reference when it ends in one of these, or in `/`.
 PATH_SUFFIXES = (".py", ".md", ".cu", ".cuh", ".cpp", ".h", ".hpp", ".json", ".toml", ".yaml", ".yml", ".sh", ".in",
                  ".cfg", ".txt", ".lock")

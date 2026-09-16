@@ -1,6 +1,6 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""rola's reading of the central cells (`benchmarks/cells`): the window the central cells state their tail and flip
+"""rola's reading of the central cells (`measure/cells`): the window the central cells state their tail and flip
 against is this kernel's, the mode word packs the sparsity a cell declares, and a layer construction names only central
 inputs. No GPU: nothing here draws a cell."""
 from __future__ import annotations
@@ -9,8 +9,8 @@ from rola_devtools.cells import central
 from rola_devtools.cells.carry import WINDOW
 from rola_devtools.cells.layer import LayerCell
 
-from benchmarks.cells import by_name, carry_cells, level_modes
-from benchmarks.cells.layer import CONSTRUCTIONS
+from measure.cells import by_name, carry_cells, level_modes
+from measure.cells.layer import CONSTRUCTIONS
 from rola.ops import carry as carry_ops
 
 

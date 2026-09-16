@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import carry_cells, conservative_activity, descriptor, launch, liveness_words, realize
+from measure.cells import carry_cells, conservative_activity, descriptor, launch, liveness_words, realize
 from rola.ops import carry as carry_ops
 from rola.ops import intra as intra_ops
 from rola.ops.constants import READOUT_EPS

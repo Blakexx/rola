@@ -13,7 +13,7 @@ carrying the module, its 160 parametrised rows and torch's own arenas on top of 
 OOM-killed at 23 GB before the report is written (the K2 journal's open item, and it reappears
 under the one-box cell, so the cell was not the whole of it).
 
-This driver runs the SAME cell through the SAME binding (`benchmarks.cells.carry_call`) with
+This driver runs the SAME cell through the SAME binding (`measure.cells.carry_call`) with
 nothing else resident: one draw, one launch, one synchronise. It asserts nothing -- correctness
 is the oracle tier's row for the same cell -- and it prints a line naming the launch and a
 checksum of its outputs, which is what makes a vacuous pass (a cell whose arm is not built, an
@@ -48,7 +48,7 @@ def main() -> int:
 
     import torch
 
-    from benchmarks.cells import by_name, carry_call
+    from measure.cells import by_name, carry_call
     from rola.ops import carry as carry_ops
 
     spec = by_name(args.cell)

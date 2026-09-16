@@ -24,8 +24,8 @@ import torch
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from benchmarks.cells import CarryCell, descriptor, launch, level_modes
-from benchmarks.cells import carry_cells as registry_cells
+from measure.cells import CarryCell, descriptor, launch, level_modes
+from measure.cells import carry_cells as registry_cells
 from rola.ops import carry as carry_ops
 from tests.oracle.test_carry_vs_oracle import check, run
 

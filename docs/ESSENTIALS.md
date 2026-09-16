@@ -8,9 +8,9 @@ the hook only when the environment names them (`ROLA_SCRATCH`); the repo never r
 incident-derived). Read §19–§21 before touching a kernel:
 - §19 THE COMPONENT BUDGET GATE: SKELETON FIRST (stub components composed in the final form, compiling,
   ledger and edges final); then ONE COMPONENT AT A TIME, each with a BUDGET LINE before code (analytic
-  floors, instruction budget from the design's own operation count — `benchmarks/bench/carry_model.py`,
+  floors, instruction budget from the design's own operation count — `measure/carry_model.py`,
   `tools/budgets/<kernel>.json` — and WHO executes it HOW MANY TIMES: per-window work once per CTA, never
-  on every warp); gated in the part harness (`benchmarks/unit/bench_carry_parts.py`) at <= 1.3x its
+  on every warp); gated in the part harness (`measure/harness/bench_carry_parts.py`) at <= 1.3x its
   binding floor, then in the composed kernel's phase ledger. No design verdict from an ungated build.
 - §20 ptxas SIGNATURES: `tools/sass_gate.py <.so>` on every iteration build — local memory (runtime index
   into a register struct / constexpr helper with a runtime arg / non-inlined capturing lambda),

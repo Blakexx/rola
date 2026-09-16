@@ -615,7 +615,7 @@ def _repo_identifier_text() -> str:
         chunks = []
         for root, suffixes in ((_DOCS_SRC, _DOCS_SOURCE_SUFFIXES),
                                (ROOT / "rola", (".py",)), (ROOT / "tools", (".py", ".sh")),
-                               (ROOT / "tests", (".py",)), (ROOT / "benchmarks", (".py", ".json"))):
+                               (ROOT / "tests", (".py",)), (ROOT / "measure", (".py", ".json"))):
             if not root.is_dir():
                 continue
             for path in root.rglob("*"):
@@ -742,7 +742,7 @@ FLOCK_CHECK_EXEMPT_FILES = {ROOT / "docs" / "KERNEL_STANDARDS.md"}
 FLOCK_CHECK_ROOTS = (
     ROOT / "docs",
     ROOT / ".claude" / "skills",
-    ROOT / "benchmarks",
+    ROOT / "measure",
     ROOT / "tools",
     ROOT / "CLAUDE.md",
     ROOT / "README.md",
@@ -798,7 +798,7 @@ _NOT_A_WORK_CODE = re.compile(
 #: so a bare rung number spelled that way escapes; the standards form is `§R<n>` and is
 #: unambiguous. The sweep that turned this check on removed both classes where it found
 #: them; a new one is caught by review, not here.
-_WORK_CODE_ROOTS = ("csrc", "rola", "docs", "tests", "benchmarks", "tools")
+_WORK_CODE_ROOTS = ("csrc", "rola", "docs", "tests", "measure", "tools")
 _WORK_CODE_SUFFIXES = (".py", ".cu", ".cuh", ".cpp", ".h", ".hpp", ".md", ".json",
                        ".yaml", ".yml", ".sh", ".toml")
 

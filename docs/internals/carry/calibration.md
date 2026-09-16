@@ -1,6 +1,6 @@
 # The calibrations: what one operation costs on this card
 
-`benchmarks/unit/bench_carry_calib.py` runs the kernels in `benchmarks/unit/carry_parts/carry_calib.cuh`
+`measure/harness/bench_carry_calib.py` runs the kernels in `measure/harness/carry_parts/carry_calib.cuh`
 (built into the part harness's module, `ROLA_BUILD_PARTS=1`). Each kernel isolates one cost the
 carry kernel's parts are made of and runs it back to back on every warp of 80 CTAs, one per SM. The
 host times it under the locked clock. A row is the median launch's seconds, times the clock's cycles

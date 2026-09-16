@@ -6,7 +6,7 @@ correctness; closed world (only measured binaries run); one form per mechanism, 
 build the whole design or stop and name the gap; the ancestral-code standard; §17 portability; ONE ATOMIC PRODUCT
 (Blake, 2026-08-28: the repository in published form is ONE self-contained kernel product — never several kernels
 being separately gated; every test lives in exactly one of the three tiers, `tests/unit`, `tests/integration`,
-`tests/oracle` (docs/testing.md), plus `benchmarks/`; the whole tree is gated holistically at its current state;
+`tests/oracle` (docs/testing.md), plus `measure/`; the whole tree is gated holistically at its current state;
 no per-campaign test directories, and no campaign names in the tree — names are roles); SELF-DOCUMENTING
 CODE (Blake, 2026-08-04: code is legible without comments; comments are sparse — a file header and 1-3-line decl
 blocks naming purpose and the one invariant; derivations, histories and why-not-the-other-form prose live in
@@ -443,7 +443,7 @@ ever compared. From here the floor is a GATE, per component, before composition:
   x latency at the stated prefetch distance), its instruction budget derived from the design's own
   operation count, and WHO EXECUTES IT HOW MANY TIMES (a per-window job is done once per CTA, by one
   warp or split across warps -- never replicated on every warp).
-- Each component is built into the PART HARNESS (`benchmarks/unit/bench_carry_parts.py`: one
+- Each component is built into the PART HARNESS (`measure/harness/bench_carry_parts.py`: one
   `__global__` driver per component over the real device functions, inputs shaped by a cell's liveness)
   and measured there -- cycles at the locked clock, instructions, the binding counter -- against its
   floors. It is accepted at <= 1.3x its binding floor and within its instruction budget; the numbers
@@ -523,7 +523,7 @@ the part's HMMAs, same count, atom and accumulators, and drops its other work), 
 rung, each composition checked by its HMMA count against the kernel's and by its device instructions
 against the kernel's hash. A per-part cost is the difference of two measured times. It exists because
 warp-side instruments cannot say whether the pipe is idle, and the MMA-only composition is the phase's
-measured floor; (10) THE CALIBRATIONS (`benchmarks/unit/bench_carry_calib.py`, `docs/internals/carry/calibration.md`):
+measured floor; (10) THE CALIBRATIONS (`measure/harness/bench_carry_calib.py`, `docs/internals/carry/calibration.md`):
 each operation the parts are made of (the kernel's HMMA atom, shared loads and stores, `ldmatrix` loads,
 asynchronous copies, global reductions, CTA and shared-memory barriers, warp syncs) alone on every warp,
 as cycles an operation a warp on this card -- reference rows every reading uses in place of a constant (the

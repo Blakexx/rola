@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """READABILITY SPACING LINT (gating). Two checks, csrc (`.cu`/`.cuh`/`.cpp`/`.h`/`.hpp`, excluding
-csrc/third_party) AND Python (`rola/`, `tools/`, `tests/`, `benchmarks/`):
+csrc/third_party) AND Python (`rola/`, `tools/`, `tests/`, `measure/`):
 
 1. A function/kernel BODY >= 40 LINES with ZERO BLANK LINES inside it. This
    does not dictate WHERE to segment (declarations / loops / branches, this
@@ -45,7 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CSRC = ROOT / "csrc" / "rola"
-PY_ROOTS = [ROOT / "rola", ROOT / "tools", ROOT / "tests", ROOT / "benchmarks"]
+PY_ROOTS = [ROOT / "rola", ROOT / "tools", ROOT / "tests", ROOT / "measure"]
 CSRC_SUFFIXES = (".cu", ".cuh", ".cpp", ".h", ".hpp")
 
 MIN_BODY_LINES = 40

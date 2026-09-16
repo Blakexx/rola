@@ -15,7 +15,7 @@ readout is zero BY THE ARITHMETIC -- a single window over an entry state nothing
 are green now and are the executable spec of everything the frame does own.
 
 THE CELLS ARE DATA (rola-devtools' central registry, `rola_devtools.cells.carry`), read
-through `benchmarks.cells`, so the oracle tier, the probe and the benches name one set of
+through `measure.cells`, so the oracle tier, the probe and the benches name one set of
 cells and one draw. What a record declares is a SHAPE and a DRAW -- never an arm, never a
 window, never a ``(k, m)`` box, because the axis law left the kernel nothing else to
 be told.
@@ -31,7 +31,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from benchmarks.cells import by_name, carry_call, carry_cells, descriptor, launch, realize
+from measure.cells import by_name, carry_call, carry_cells, descriptor, launch, realize
 from rola.ops import carry as carry_ops
 from rola.ops.paging import bytes_equal
 from tests.oracle import reference

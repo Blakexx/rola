@@ -1,4 +1,4 @@
-// benchmarks/unit/carry_parts/carry_parts.cu -- THE PART HARNESS'S DRIVERS: one kernel a
+// measure/harness/carry_parts/carry_parts.cu -- THE PART HARNESS'S DRIVERS: one kernel a
 // component, each the kernel's own prologue plus that component alone, on the call the
 // kernel would run (`derive_carry_call`), its products written out for the harness to check
 // against a reference and its time against the model's floor (KERNEL_STANDARDS §19). A

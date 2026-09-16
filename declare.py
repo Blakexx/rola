@@ -17,7 +17,7 @@ a timing server the timing registrations: `carry_forward` and `carry_intra` on t
 and `decode_step@layer=C` for each RoLA construction on the layer cells declared for it, and the clock reader. Every
 target depends on the binary and the environment, whose outputs reach its key. Every cell is a NODE (`rola_devtools.cells.declare`) whose output is its record and the digest of the code that drew it;
 a target that runs on cells takes those nodes as its data inputs, so nothing here or in the build system resolves a cell
-by name at run time. This file imports nothing of rola's: it reads the constructions from `benchmarks/cells/layer.py` by
+by name at run time. This file imports nothing of rola's: it reads the constructions from `measure/cells/layer.py` by
 path.
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ from rola_devtools.timing.declare import (
 HERE = Path(__file__).resolve().parent
 EXECUTORS = "executors:"
 #: where this checkout's repository-local imports resolve, for code digests
-IMPORT_ROOTS = ["tools", "benchmarks", "."]
+IMPORT_ROOTS = ["tools", "measure", "."]
 #: what the extension is built from, besides the files `setup.py` imports
 BUILD_DATA = ["csrc", "pyproject.toml", "tools/manifests", "tools/toolchains", "tools/sccache_pin.json",
               "tools/mold_pin.json", "tools/devtools.txt"]
@@ -65,7 +65,7 @@ INSTRUMENT_TIMEOUT_S = 3600
 
 def checkout(path, *, python: str, label: str) -> Env:
     path = Path(path).resolve()
-    return Env(label, python, str(path), {"PYTHONPATH": f"{path}:{path}/benchmarks:{path}/tools"})
+    return Env(label, python, str(path), {"PYTHONPATH": f"{path}:{path}/tools"})
 
 
 def kind(cell: str) -> str:
@@ -101,11 +101,11 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
             cache=not per_cell, code=_code(tool, data))
     if timing is None:
         return out
-    timed = _code("benchmarks/executors.py", ["benchmarks/bench"])
+    timed = _code("measure/executors.py", ["measure/bench"])
     for arm in CARRY_ARMS if carry else ():
         out["entries"][arm] = register_timing(g, arm, server=timing, env=env, executor=EXECUTORS + "timed",
                                               cells=cell_nodes(g, carry), params={"arm": arm}, deps=facts, code=timed)
-    constructions = load(Path(env.cwd) / "benchmarks" / "cells" / "layer.py")["CONSTRUCTIONS"]
+    constructions = load(Path(env.cwd) / "measure" / "cells" / "layer.py")["CONSTRUCTIONS"]
     for construction in constructions.values():
         takes = [c for c in layer if c in construction.cells]
         for arm in LAYER_ARMS:
@@ -116,7 +116,7 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
                                                        cells=cell_nodes(g, wanted), params={"arm": name}, deps=facts,
                                                        code=timed)
     out["clock"] = register_clock_reader(g, "clock", server=timing, env=env, executor=EXECUTORS + "read_clock", deps=facts,
-                                         code=_code("benchmarks/executors.py"))
+                                         code=_code("measure/executors.py"))
     return out
 
 
@@ -168,7 +168,7 @@ def surface_cells(surface: str) -> list:
                   and (surface not in BACKWARD_SURFACES or retained_state_bytes(record) < RETAINED_STATE_BUDGET))
 
 
-SIDE_CODE = ("tests/oracle/sides.py", ["tests/oracle", "rola", "benchmarks"])
+SIDE_CODE = ("tests/oracle/sides.py", ["tests/oracle", "rola", "measure"])
 
 
 def _sides(g, env: Env, facts: dict) -> dict:

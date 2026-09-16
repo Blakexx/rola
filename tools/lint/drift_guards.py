@@ -279,7 +279,7 @@ def rule_second_arm_table(files=None) -> list[str]:
     allowed = {"tools/gen_shards.py"}
     decl = re.compile(r"^(\w*ARMS?\w*)\s*(?::[^=]+)?=\s*[\(\[\{]")
     findings = []
-    files = python_files((PYPKG, TESTS, ROOT / "tools", ROOT / "benchmarks")) \
+    files = python_files((PYPKG, TESTS, ROOT / "tools", ROOT / "measure")) \
         if files is None else files
     for path in files:
         rel = _rel(path)

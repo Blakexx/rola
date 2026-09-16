@@ -52,7 +52,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-#: `bench` and `probe` are this repository's benchmark packages under `benchmarks/`,
+#: `bench` and `probe` are this repository's benchmark packages under `measure/`,
 #: reached by the sys.path insert their drivers and `tests/conftest.py` perform. They
 #: are first-party by ownership; without saying so, isort files them as third-party
 #: and every module that imports both `rola` and `bench` is unsortable.
@@ -65,7 +65,7 @@ force-sort-within-sections = false
 #: The benchmark harness is a package next to a script, so its drivers insert their
 #: own directory on `sys.path` before importing it. The import is deliberately after
 #: that line and cannot be moved above it.
-"benchmarks/*.py" = ["E402"]
+"measure/*.py" = ["E402"]
 # RUF022 -- REASON: `rola/__init__.py`'s `__all__` is GROUPED BY CONCEPT with a
 # comment per group (the op, the layer, the state, the configuration objects). That
 # grouping is how a reader learns the shape of the public API; alphabetical order

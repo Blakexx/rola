@@ -11,16 +11,16 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import pytest
 import torch
 
-# `benchmarks/` on the path, so the bench PACKAGES import by their own names -- the
-# repository's existing convention (`benchmarks/bench_regression.py` inserts the same
+# `measure/` on the path, so the bench PACKAGES import by their own names -- the
+# repository's existing convention (`measure/bench_regression.py` inserts the same
 # directory and imports `bench.cells`). What still needs it is `bench.cells` and the
 # bench drivers; the planner CALIBRATION package no longer does -- it moved to
 # `rola/planner/calibration/` (post-merge, 2026-08-02) because an installed wheel has
-# no `benchmarks/` sibling and every relocated name raised `ModuleNotFoundError` there.
+# no `measure/` sibling and every relocated name raised `ModuleNotFoundError` there.
 # The runtime still imports none of it: `rola.planner.schedule` holds lazy call
 # proxies, and the subprocess probe in `tests/unit/test_planner.py` asserts
 # `import rola` leaves `sys.modules` free of the package.
-_BENCHMARKS = pathlib.Path(__file__).resolve().parents[1] / "benchmarks"
+_BENCHMARKS = pathlib.Path(__file__).resolve().parents[1] / "measure"
 if _BENCHMARKS.is_dir() and str(_BENCHMARKS) not in sys.path:
     sys.path.insert(0, str(_BENCHMARKS))
 

@@ -1,7 +1,7 @@
 {
   "public": "Blakexx/rola",
   "ships": [".clang-format", ".clang-tidy", ".devcontainer", ".github", ".gitignore", ".pre-commit-config.yaml", "Dockerfile",
-            "LICENSE", "MANIFEST.in", "NOTICE", "README.md", "benchmarks", "csrc", "declare.py", "docs", "pyproject.toml",
+            "LICENSE", "MANIFEST.in", "NOTICE", "README.md", "measure", "csrc", "declare.py", "docs", "pyproject.toml",
             "requirements.in", "requirements.lock", "rola", "rola_cu13", "setup.py", "sgconfig.yml", "tests", "tools"],
   "private": [".claude", "CLAUDE.md", ".github/workflows/mirror.yml"],
   "allow": {}

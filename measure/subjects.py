@@ -12,9 +12,9 @@ honest report rather than a number for something that did not run.
 
 **TWO CELL KINDS, ONE REGISTRY** (rola-devtools' central cells). A subject declares which kind it takes.
 ``kind="carry"`` is a drawn cell (`rola_devtools.cells.carry`): amplitudes put directly on the simplex, with the state
-the sequence enters with, which is what the carry family's oracle and probe run -- read through `benchmarks.cells`.
+the sequence enters with, which is what the carry family's oracle and probe run -- read through `measure.cells`.
 ``kind="layer"`` is a layer input (`rola_devtools.cells.layer`) under one of RoLA's constructions
-(`benchmarks.cells.layer`): a producer, a routing template and a gain, from which the amplitudes are PRODUCED -- the
+(`measure.cells.layer`): a producer, a routing template and a gain, from which the amplitudes are PRODUCED -- the
 only way to price the producer's own solve or a decode step through the layer.
 
 **EVERYTHING OUTSIDE THE LAUNCH IS BUILT ONCE, HERE.** The packed sides, the support
@@ -77,23 +77,23 @@ class Subject:
     #: the whole sequence in one launch set; a count above one prices what each call's fixed
     #: cost adds, and the difference between the two rows IS the per-call price.
     calls: tuple[int, ...] = (1,)
-    #: THE ARM DIALS it reads, each a property of one arm and never of a run (`bench.provider` names an arm by them):
+    #: THE ARM DIALS it reads, each a property of one arm and never of a run (`measure.provider` names an arm by them):
     #: `schedule`, the carry order policy (`rola.ops.carry.ORDER_POLICIES`). A dial a subject does not read has one
     #: value, its default, so it cannot be set where it would reach nothing. The state a call binds is the CELL's
-    #: (`benchmarks.cells.state_binding`), never a dial.
+    #: (`measure.cells.state_binding`), never a dial.
     dials: tuple[str, ...] = ()
 
 
 # ------------------------------------------------------------------ carry cells
 
 def _carry_operands(fx):
-    from benchmarks.cells import carry_call
+    from measure.cells import carry_call
 
     return carry_call(fx["cell"], 1)
 
 
 def _binding(fx, drawn, descriptor):
-    from benchmarks.cells import state_binding
+    from measure.cells import state_binding
 
     return state_binding(fx["cell"], drawn, descriptor, 1)
 
@@ -147,7 +147,7 @@ def intra_forward(fx) -> Launch:
     different decomposition. A cell whose L is not a whole number of that window has no
     grid for this subject and is not applicable to it.
     """
-    from benchmarks.cells import realize
+    from measure.cells import realize
     from rola.ops import carry as carry_ops
     from rola.ops import intra as intra_ops
 
@@ -198,7 +198,7 @@ def carry_intra(fx) -> Launch:
     state) that many times over the windows one call runs. A carried chain binds its own
     plane, so the cell's state binding is the single call's.
     """
-    from benchmarks.cells import realize
+    from measure.cells import realize
     from rola.ops import carry as carry_ops
     from rola.ops import intra as intra_ops
     from rola.ops import prefill as prefill_ops
@@ -250,7 +250,7 @@ def carry_intra(fx) -> Launch:
 
 def liveness_pass(fx) -> Launch:
     """The class-1 liveness words for both sides -- the pass every carry call reads."""
-    from benchmarks.cells import realize
+    from measure.cells import realize
     from rola.engine.facts import liveness as lv
     from rola.ops.carry import pack_side
     from rola.ops.liveness import liveness_words

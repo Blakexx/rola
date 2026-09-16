@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """ROLA'S EXECUTORS: what rola's declared targets (`declare.py`) run, in this checkout's environment.
 
-The build system's worker runs them from this checkout's directory with `.`, `benchmarks` and `tools` on the path.
+The build system's worker runs them from this checkout's directory with `.`, `measure` and `tools` on the path.
 Each takes the target's context (`rola_devtools.build.context.Context`) and returns its JSON output, keeping raw files
 in its workspace:
 
@@ -14,7 +14,7 @@ in its workspace:
     run_tool            a checkout instrument through its `--json` command line, once or on each cell it takes: a cell
                         the tool cannot run is recorded as that cell's failure (the instrument's domain), a cell-less
                         analysis that writes nothing fails the build
-    timed               a timing entry: this checkout's runner (`bench.provider`) arm on a cell, as a Timed with its reset
+    timed               a timing entry: this checkout's runner (`measure.provider`) arm on a cell, as a Timed with its reset
     read_clock          the SM clock as this binary reads it, for the timing system's proof
 """
 from __future__ import annotations
@@ -107,7 +107,7 @@ def run_tool(ctx) -> dict:
 
 
 def timed(cell, params):
-    from bench.provider import arms
+    from measure.provider import arms
 
     offered = arms(cell)
     if params["arm"] not in offered:

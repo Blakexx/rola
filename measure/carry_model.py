@@ -147,7 +147,7 @@ def cell_liveness(spec, side: str, window: int = 1) -> np.ndarray:
     read order: the outer read-order digit; a token is live in box `b` iff its outer digit
     `b` is nonzero and any inner digit is. Two-level cells only: the general box words are
     the kernel's head, and this model is gated before that head exists."""
-    from benchmarks.cells import level_modes, realize
+    from measure.cells import level_modes, realize
     from rola.ops import carry as c
 
     if len(spec.widths) != 2:
@@ -175,7 +175,7 @@ def main(argv=None) -> int:
     import json
     from pathlib import Path
 
-    from benchmarks.cells import by_name
+    from measure.cells import by_name
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=str(Path(__file__).resolve().parents[2] / "tools/budgets/carry.json"))

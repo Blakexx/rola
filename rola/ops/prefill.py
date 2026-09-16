@@ -108,7 +108,7 @@ def _liveness_words(pread: torch.Tensor, pwrite: torch.Tensor,
 def _conservative_activity(descriptor: StateFormat, bh: int, device) -> torch.Tensor:
     """Every page READ and WRITTEN: the conservative statement this seam makes when
     no facts-pass output is available for the call. It asserts nothing about the
-    draw and therefore skips nothing (`benchmarks.cells.conservative_activity`
+    draw and therefore skips nothing (`measure.cells.conservative_activity`
     states the same fact for a cell)."""
     pages = descriptor.N // carry_ops.PAGE_LEAVES
     return torch.full((bh, pages), carry_ops.ACTIVITY_READ | carry_ops.ACTIVITY_WRITTEN,

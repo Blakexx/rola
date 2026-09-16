@@ -5,8 +5,8 @@ cell's real call, checked against a pure reference and timed against the model's
 `tools/budgets/carry.json`. The drivers are `carry_parts/carry_parts.cu`, built here from the
 repo's headers (a bench instrument, never shipped). Lock the clock first (rola_devtools.locks.clock).
 
-    python benchmarks/unit/bench_carry_parts.py --part head --cell flagship-alt-k4
-    python benchmarks/unit/bench_carry_parts.py --part head --all --ncu   # instructions too
+    python measure/harness/bench_carry_parts.py --part head --cell flagship-alt-k4
+    python measure/harness/bench_carry_parts.py --part head --all --ncu   # instructions too
 
 A part's row: its reference check, its time per CTA-window in cycles, and with `--ncu` its
 executed warp-instructions per CTA-window beside the budget -- red when over.
@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
-from benchmarks import cells  # noqa: E402
+from measure import cells  # noqa: E402
 
 TILE = 16
 WINDOW = 512
@@ -46,7 +46,7 @@ def build():
 
 def call_args(spec, schedule_name: str = "first"):
     """The kernel's positional call for a cell -- the one binding `carry_call` makes."""
-    from benchmarks.cells import carry_call
+    from measure.cells import carry_call
     from rola.ops import carry as c
 
     drawn, kw = carry_call(spec, 1)
@@ -377,8 +377,8 @@ def main(argv=None) -> int:
     ap.add_argument("--budget", default=str(ROOT / "tools/budgets/carry.json"))
     a = ap.parse_args(argv)
 
-    from benchmarks.bench.carry_model import BUDGET_CELLS
-    from benchmarks.cells import by_name
+    from measure.carry_model import BUDGET_CELLS
+    from measure.cells import by_name
     from rola.ops import carry as c
 
     cells = list(BUDGET_CELLS) if a.all else (a.cell or ["flagship-alt-k4"])

@@ -389,25 +389,25 @@ def test_an_unsupported_forward_keyword_raises_rather_than_being_swallowed():
 def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
     """The release blocker this gate exists to close, gated FOREVER.
 
-    **THE DEFECT.** A module under `rola/` reached a package under `benchmarks/`
+    **THE DEFECT.** A module under `rola/` reached a package under `measure/`
     by inserting that directory onto `sys.path` RELATIVE TO ITS OWN FILE. That
     resolves from a source checkout and from nowhere else: `setup.py` packages
     `find_packages(include=["rola", "rola.*"])`, so an installed wheel has no
-    `benchmarks/` sibling and every relocated name raised `ModuleNotFoundError`
+    `measure/` sibling and every relocated name raised `ModuleNotFoundError`
     there.
 
     **WHY A SUBPROCESS OVER A SYNTHESIZED LAYOUT.** `tests/conftest.py` puts
-    `benchmarks/` on `sys.path` for the bench packages, so an in-process import
+    `measure/` on `sys.path` for the bench packages, so an in-process import
     proves nothing about a wheel. This builds the INSTALLED layout -- a directory
     whose only entry is the `rola` package -- runs a fresh interpreter with exactly
     that on the path, and imports the whole prefill path there. A regression
-    re-introducing a `benchmarks/` reach fails here with the import error itself,
-    and one that merely IMPORTS a benchmarks module fails on the second assertion.
+    re-introducing a `measure/` reach fails here with the import error itself,
+    and one that merely IMPORTS a measure module fails on the second assertion.
 
     The module list is the prefill path itself -- the facade, the chunk arm, the
     state, decode, paging -- and nothing else: a module the prefill path does not
     resolve does not belong in a probe about what the prefill path resolves. The
-    general `benchmarks/` clause is the release blocker.
+    general `measure/` clause is the release blocker.
     """
     import os
     import pathlib
@@ -421,7 +421,7 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
         # The wheel's shape: `rola/` and nothing beside it. A symlink rather than a
         # copy so the built extension is the one under test and not a stale duplicate.
         (site / "rola").symlink_to(root / "rola", target_is_directory=True)
-        assert not (site / "benchmarks").exists()
+        assert not (site / "measure").exists()
 
         probe = (
             "import sys;"
@@ -437,10 +437,10 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
             "from rola.engine.dags.chunk_dag import ChunkContext, build_chunk_plan;"
             "from rola.ops.decode import derive_decode_geometry;"
             "from rola.ops.paging import PageArena, MMA_K_QUANTUM;"
-            # Nothing may have come from a `benchmarks/` or `tests/` tree.
+            # Nothing may have come from a `measure/` or `tests/` tree.
             "bad = [m.__name__ for m in list(sys.modules.values())"
             " if getattr(m, '__file__', None)"
-            " and ('benchmarks' in str(m.__file__) or '/tests/' in str(m.__file__))];"
+            " and ('measure' in str(m.__file__) or '/tests/' in str(m.__file__))];"
             "print(('BAD' + repr(bad)) if bad else 'CLEAN')")
 
         env = dict(os.environ)
@@ -454,5 +454,5 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
         "the prefill path does not import from the installed package layout -- this is "
         f"the ModuleNotFoundError class this gate exists to close.\n{out.stderr}")
     assert out.stdout.strip().endswith("CLEAN"), (
-        f"the prefill path pulled in a `benchmarks/` or `tests/` module, which it "
+        f"the prefill path pulled in a `measure/` or `tests/` module, which it "
         f"must not: {out.stdout!r}")

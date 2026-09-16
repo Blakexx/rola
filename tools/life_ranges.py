@@ -33,10 +33,10 @@ INSTR_RE = re.compile(r"^\s*/\*([0-9a-f]{4,5})\*/\s+(\S.*?)\s*;?\s*// \|\s*(\d+)
 
 def compile_arm(arm: int, arch: str) -> Path:
     """The carry arm's translation unit compiled alone with line info, against the build's generated headers."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "measure"))
     import dev_config
 
-    from bench.hw_profile import current
+    from measure.hw_profile import current
 
     arch = arch or "sm_" + current().rsplit("-sm", 1)[1]
     cubin = dev_config.scratch("life_ranges") / f"carry_arm_{arm}.{arch}.cubin"

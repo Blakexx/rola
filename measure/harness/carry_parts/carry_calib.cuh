@@ -1,4 +1,4 @@
-// benchmarks/unit/carry_parts/carry_calib.cuh -- THE CALIBRATION KERNELS (KERNEL_STANDARDS §22 (10)): each
+// measure/harness/carry_parts/carry_calib.cuh -- THE CALIBRATION KERNELS (KERNEL_STANDARDS §22 (10)): each
 // isolates one cost the carry kernel's parts are made of and runs it back to back on every warp of every
 // CTA, timed by the host under the locked clock -- an HMMA of the kernel's own atom, a burst of shared
 // loads or stores, an asynchronous copy (bank-free or aliased), a global reduction, a CTA barrier, a

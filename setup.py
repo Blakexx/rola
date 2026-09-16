@@ -710,14 +710,14 @@ def _link_flags() -> list[str]:
     return ldflags
 
 
-#: THE PART HARNESS'S DRIVER (`benchmarks/unit/bench_carry_parts.py`), built AHEAD OF TIME
+#: THE PART HARNESS'S DRIVER (`measure/harness/bench_carry_parts.py`), built AHEAD OF TIME
 #: beside the arm under `ROLA_BUILD_PARTS=1` -- the same pass, the same lock, the same cache
 #: -- where a torch JIT `load()` of the same three sources ran for minutes and was killed
 #: by the host's memory watchdog (KERNEL_STANDARDS §22: a gating instrument that cannot
 #: run is a defect). Never shipped: an iteration-build instrument, `-lineinfo` for the
 #: ledgers. docs/build.md#parts
 PARTS_MODULE_NAME = f"{PLUGIN}._C_parts"
-PARTS_SOURCES = ["benchmarks/unit/carry_parts/carry_parts.cu",
+PARTS_SOURCES = ["measure/harness/carry_parts/carry_parts.cu",
                  "csrc/rola/src/common/arch_runtime.cu", "csrc/rola/src/common/geom.cu"]
 
 

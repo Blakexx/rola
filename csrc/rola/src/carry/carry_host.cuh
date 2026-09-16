@@ -1,6 +1,6 @@
 // csrc/rola/src/carry/carry_host.cuh -- THE CALL'S DERIVATION: the kernel boundary's
 // refusals and the parameter block, one derivation shared by the launch and by the part
-// harness (benchmarks/unit/carry_parts), so a part runs on the call the kernel would.
+// harness (measure/harness/carry_parts), so a part runs on the call the kernel would.
 // See docs/internals/carry/carry.md
 #pragma once
 #include "common/torch_seam.cuh"

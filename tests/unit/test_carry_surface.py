@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from benchmarks.cells import conservative_activity
+from measure.cells import conservative_activity
 from rola._state import CANONICAL_ORDER, PAGE_RECTANGLE_BITS, SPLIT_PLANE_DTYPE, StateFormat
 from rola.engine.facts.liveness import LivenessLayout
 from rola.ops import carry as carry_ops

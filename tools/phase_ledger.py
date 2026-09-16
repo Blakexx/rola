@@ -27,7 +27,7 @@ PHASES = ("head", "readout", "fold", "snapshot", "edges", "sweep", "head_words",
 
 def cta_windows(cell: str) -> int:
     """The launch's CTA-windows, owners times windows: the one divisor that turns a launch total into a unit."""
-    from benchmarks.cells import by_name
+    from measure.cells import by_name
     from rola.ops import carry as c
 
     spec = by_name(cell)
@@ -49,7 +49,7 @@ def main() -> int:
     import torch
     from rola_devtools.locks.gpu import gpu_lock
 
-    from benchmarks.cells import WARPS_PER_CTA, by_name, carry_call
+    from measure.cells import WARPS_PER_CTA, by_name, carry_call
     from rola.ops import carry as c
 
     spec = by_name(a.cell)

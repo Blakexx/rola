@@ -4,9 +4,9 @@
 """THE CALIBRATIONS (KERNEL_STANDARDS §22 (10)): each cost the carry kernel's parts are made of, alone,
 on every warp of every CTA, timed by the host under the locked clock, as cycles an operation a warp.
 
-    python benchmarks/unit/bench_carry_calib.py [--only hmma,shared_load,...] [--owners 80]
+    python measure/harness/bench_carry_calib.py [--only hmma,shared_load,...] [--owners 80]
 
-The kernels are `benchmarks/unit/carry_parts/carry_calib.cuh`, built into the part harness's module
+The kernels are `measure/harness/carry_parts/carry_calib.cuh`, built into the part harness's module
 (`ROLA_BUILD_PARTS=1`). A calibration is sized from a short launch to take `--seconds` a launch, run
 once to warm, then `--launches` times; the median launch's seconds times the locked clock's cycles a
 second, over the operations a warp issues in it, is the row. The rows are stored
@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
-sys.path.insert(0, str(ROOT / "benchmarks"))
+sys.path.insert(0, str(ROOT / "measure"))
 
 import torch  # noqa: E402
 

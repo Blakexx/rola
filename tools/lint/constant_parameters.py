@@ -52,7 +52,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-ROOTS = ("rola", "tools", "benchmarks")
+ROOTS = ("rola", "tools", "measure")
 
 #: The declaration that a knob is deliberately unexercised, with its reason beside it.
 MARKER = "reserved:"

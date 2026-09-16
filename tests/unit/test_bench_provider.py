@@ -1,4 +1,4 @@
-"""rola's runner (benchmarks/bench/provider.py): it reads central cells, names an arm by its subject, the dials it reads
+"""rola's runner (measure/provider.py): it reads central cells, names an arm by its subject, the dials it reads
 and a layer arm's construction, offers the arms this binary carries at the cell's shape, and refuses a cell by name --
 an uncarried carry arm, an iteration build, a cell of another kind. No GPU: nothing here builds an arm, and the binary's
 arm tables are planted."""
@@ -11,15 +11,15 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT, ROOT / "benchmarks", ROOT / "tools"):
+for path in (ROOT, ROOT / "measure", ROOT / "tools"):
     sys.path.insert(0, str(path))
 
 import gen_shards  # noqa: E402
 
-from bench import provider  # noqa: E402
-from bench.subjects import SUBJECTS  # noqa: E402
-from benchmarks.cells import by_name  # noqa: E402
-from benchmarks.cells.layer import CONSTRUCTIONS  # noqa: E402
+from measure import provider  # noqa: E402
+from measure.cells import by_name  # noqa: E402
+from measure.cells.layer import CONSTRUCTIONS  # noqa: E402
+from measure.subjects import SUBJECTS  # noqa: E402
 
 SHIPPED = [tuple(row) for row in gen_shards.CARRY_ARMS]
 DECODE_CELL = "layer-B2-T128-H2-h128-dv64-fp32-s4-dec8"

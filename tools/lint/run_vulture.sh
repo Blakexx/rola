@@ -50,7 +50,7 @@ set +e
 # gates, and a scan that could not see it reported `tools/build_flags.py`'s DEPFILE_FLAGS
 # and `tools/gen_shards.py`'s declaration_matches_table as dead when setup.py calls both.
 out=$(vulture --exclude '*/tools/lint/fixtures/*' \
-       rola/ tools/ tests/ benchmarks/ setup.py tools/lint/vulture_whitelist.py 2>&1)
+       rola/ tools/ tests/ measure/ setup.py tools/lint/vulture_whitelist.py 2>&1)
 set -e
 
 n=$(printf '%s\n' "$out" | grep -c . || true)

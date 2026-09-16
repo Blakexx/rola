@@ -134,7 +134,7 @@ def carry_kernel(record: dict, **_params) -> dict:
 def carry_reference(record: dict, **_params) -> dict:
     """THE fp64 REFERENCE on the same cell, with each slot's ENVELOPE beside it: the reference run again on `|v|` and
     `|state_in|`, which is the sum of the sizes of the terms each slot adds up (`tests.oracle.fixtures`)."""
-    from benchmarks.cells import carry_call
+    from measure.cells import carry_call
     from tests.oracle.test_carry_vs_oracle import entry, ref
 
     spec = build_cell(record)

@@ -8,7 +8,7 @@ fraction of the bf16/fp32 mma ceiling -- the number that says whether a window's
 the arithmetic or everything around it.
 
 THE CELLS AND THE STEP ARE THE REGISTRY'S. This file defines neither: the cells are
-`benchmarks/cells` records and the timed callable is the registered `intra_forward`
+`measure/cells` records and the timed callable is the registered `intra_forward`
 bench, so a number here is commensurable with the same cell's number from a timing
 session of `declare.py`. What is added is arithmetic ON TOP of that
 measurement -- the issued MAC count is EXACT (the window's lower-triangular tile grid is
@@ -74,10 +74,10 @@ def median_ms(call, repeats: int) -> float:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(root / "benchmarks"))
+    sys.path.insert(0, str(root / "measure"))
     sys.path.insert(0, str(root))
-    from bench.subjects import SUBJECTS, applicable
-    from benchmarks.cells import by_name, carry_cells
+    from measure.cells import by_name, carry_cells
+    from measure.subjects import SUBJECTS, applicable
     from rola.ops.carry import WINDOW
 
     parser = argparse.ArgumentParser(description=__doc__,

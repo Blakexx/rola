@@ -72,8 +72,22 @@ def _head(path: Path) -> Counter | None:
 
 
 def verdict(found: Counter, baseline: Counter, head: Counter | None) -> tuple[Counter, Counter, Counter]:
-    """`(new, fixed, grown)`: findings the baseline lacks, entries no longer found, entries HEAD's baseline lacks."""
-    return found - baseline, baseline - found, (baseline - head) if head is not None else Counter()
+    """`(new, fixed, grown)`: findings the baseline lacks, entries no longer found, entries HEAD's baseline lacks.
+
+    A MOVE IS NOT GROWTH: a finding known to HEAD by its message and line digest under a path the baseline no longer
+    carries is the same finding after a rename, so a renamed package moves its backlog and does not add to it."""
+    if head is None:
+        return found - baseline, baseline - found, Counter()
+    left_behind = Counter()
+    for (path, message, digest), n in (head - baseline).items():
+        left_behind[(message, digest)] += n
+    grown = Counter()
+    for (path, message, digest), n in (baseline - head).items():
+        moved = min(n, left_behind[(message, digest)])
+        left_behind[(message, digest)] -= moved
+        if n - moved:
+            grown[(path, message, digest)] = n - moved
+    return found - baseline, baseline - found, grown
 
 
 def _show(title: str, entries: Counter) -> None:

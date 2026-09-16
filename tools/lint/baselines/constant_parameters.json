@@ -2,73 +2,73 @@
  "lint": "constant_parameters",
  "findings": [
   {
-   "path": "benchmarks/bench/carry_model.py",
+   "path": "measure/carry_model.py",
    "message": "budget(..., D=) is only ever 2 -- across every call in this tree, nothing moves it",
    "line_sha256": "476b0e38936c9ab5",
    "count": 1
   },
   {
-   "path": "benchmarks/bench/carry_model.py",
+   "path": "measure/carry_model.py",
    "message": "budget(..., dv=) is only ever 64 -- across every call in this tree, nothing moves it",
    "line_sha256": "476b0e38936c9ab5",
    "count": 1
   },
   {
-   "path": "benchmarks/bench/carry_model.py",
+   "path": "measure/carry_model.py",
    "message": "budget(..., wlen=) is only ever 512 -- across every call in this tree, nothing moves it",
    "line_sha256": "476b0e38936c9ab5",
    "count": 1
   },
   {
-   "path": "benchmarks/bench/carry_model.py",
+   "path": "measure/carry_model.py",
    "message": "cell_liveness(..., window=) is only ever 1 -- across every call in this tree, nothing moves it",
    "line_sha256": "052a26c1bd76e433",
    "count": 1
   },
   {
-   "path": "benchmarks/bench/provider.py",
+   "path": "measure/provider.py",
    "message": "oneshot_argv(..., arm=) is only ever 'carry_forward' -- across every call in this tree, nothing moves it",
    "line_sha256": "b8fb11a07ad28722",
    "count": 1
   },
   {
-   "path": "benchmarks/bench/subjects.py",
+   "path": "measure/subjects.py",
    "message": "applicable(..., calls=) is only ever 1 -- across every call in this tree, nothing moves it",
    "line_sha256": "9d131a45630289e5",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "call_args(..., schedule_name=) is only ever 'first' -- across every call in this tree, nothing moves it",
    "line_sha256": "4463dc45fee5d97a",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "check_fold(..., reps=) is only ever 1 -- across every call in this tree, nothing moves it",
    "line_sha256": "922fecc6732ee568",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "check_fold(..., warps=) is only ever 8 -- across every call in this tree, nothing moves it",
    "line_sha256": "922fecc6732ee568",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "check_head(..., warps=) is only ever 8 -- across every call in this tree, nothing moves it",
    "line_sha256": "ba7fe269903ef34d",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "main(..., argv=) is only ever None -- across every call in this tree, nothing moves it",
    "line_sha256": "c17e86139ce1c29d",
    "count": 1
   },
   {
-   "path": "benchmarks/unit/bench_carry_parts.py",
+   "path": "measure/harness/bench_carry_parts.py",
    "message": "time_ms(..., iters=) is only ever 20 -- across every call in this tree, nothing moves it",
    "line_sha256": "01597f865f8294e2",
    "count": 1

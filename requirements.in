@@ -4,7 +4,7 @@
 # iterated in (the pre-container `rola311` environment), PRUNED to what the
 # repo actually imports (`pyproject.toml`
 # `dependencies`/`optional-dependencies`, plus a grep of `rola/`, `tests/`,
-# `tools/`, `benchmarks/` for top-level imports) -- not the whole 101-package
+# `tools/`, `measure/` for top-level imports) -- not the whole 101-package
 # freeze, which also carries training-loop packages (`wandb`, `accelerate`,
 # `transformers`, ...) this repository's OWN test/dev/bench extras never import.
 # Anything present in the pruned freeze is pinned to the EXACT version measured
@@ -27,7 +27,7 @@
 torch==2.14.0+cu130
 einops==0.8.2
 
-# --- [bench] extra: benchmarks/ plotting and result tables ---
+# --- [bench] extra: measure/ plotting and result tables ---
 matplotlib
 pandas==3.0.3
 

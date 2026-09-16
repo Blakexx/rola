@@ -6,16 +6,16 @@
 and returns a builder for every arm this checkout runs on it, or refuses the cell by raising:
 - any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
   (`ROLA_CARRY_ARMS`) measures a subset of the tree;
-- a carry cell whose carry arm (D, DV, warps_per_cta at `benchmarks.cells.WARPS_PER_CTA`) the binary does not carry;
+- a carry cell whose carry arm (D, DV, warps_per_cta at `measure.cells.WARPS_PER_CTA`) the binary does not carry;
 - data that is neither kind.
-`benchmarks/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
+`measure/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
 through `oneshot_argv`.
-An arm is a subject that applies to the cell (`bench.subjects.applicable`, the cell's own facts) and whose kernel this
+An arm is a subject that applies to the cell (`measure.subjects.applicable`, the cell's own facts) and whose kernel this
 binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `carry_intra`,
 the decode arm for `decode_step`), with its dials: its name is the subject, then `@calls=N` for a call count other than
 one and `@schedule=S` for a carry order other than `first`, each only where the subject reads that dial
 (`Subject.calls`, `Subject.dials`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
-(`benchmarks.cells.layer.CONSTRUCTIONS`). Only the arm asked for is built.
+(`measure.cells.layer.CONSTRUCTIONS`). Only the arm asked for is built.
 Building one proves two things before anything is timed, and refuses the arm by name when either fails: from a fact the
 device produces, that this binary carries the subject's family (its stamp entry; a path or a hash cannot catch a stale
 binary), and that `import rola` resolved inside this checkout.
@@ -49,9 +49,9 @@ def arms(data) -> dict:
     from rola_devtools.cells.carry import CarryCell
     from rola_devtools.cells.layer import LayerCell
 
-    from bench.subjects import SUBJECTS, applicable
-    from benchmarks.cells import arm_key
-    from benchmarks.cells.layer import CONSTRUCTIONS
+    from measure.cells import arm_key
+    from measure.cells.layer import CONSTRUCTIONS
+    from measure.subjects import SUBJECTS, applicable
     from rola.ops import carry
     from rola.ops.carry import ORDER_POLICIES
 
@@ -94,7 +94,7 @@ def _refuse_a_partial_binary() -> None:
 
 def _kernel_carried(subject: str, spec, construction) -> bool:
     """Whether this binary carries the kernel `subject` launches at the cell's shape, or a layer cell's construction
-    (the cell's own facts are `bench.subjects.applicable`'s)."""
+    (the cell's own facts are `measure.subjects.applicable`'s)."""
     from rola.ops import carry, decode, intra
     from rola.ops.prefill import _intra_level_width
 
@@ -115,7 +115,7 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
     from rola_devtools.timing import Timed
 
     import rola
-    from bench.subjects import SUBJECTS
+    from measure.subjects import SUBJECTS
     from rola.ops import carry as carry_ops
     from rola.ops._ext import extension
 
@@ -160,7 +160,7 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
 
 
 def _layer_fixture(spec, construction):
-    from benchmarks.cells.layer import build
+    from measure.cells.layer import build
 
     return build(spec, construction)
 
@@ -175,7 +175,7 @@ def _oneshot(cell: str, arm: str) -> None:
     import torch
     from rola_devtools.cells import central
 
-    from benchmarks.cells import by_name
+    from measure.cells import by_name
 
     if cell not in central().cells:
         raise SystemExit(f"{cell!r} is not a central cell (rola_devtools.cells)")
@@ -189,5 +189,5 @@ def _oneshot(cell: str, arm: str) -> None:
 if __name__ == "__main__":
     if len(sys.argv) != 4 or sys.argv[1] != "--oneshot":
         raise SystemExit("usage: provider.py --oneshot CELL ARM")
-    sys.path[:0] = [str(CHECKOUT), str(CHECKOUT / "benchmarks")]
+    sys.path[:0] = [str(CHECKOUT), str(CHECKOUT / "measure")]
     _oneshot(sys.argv[2], sys.argv[3])
