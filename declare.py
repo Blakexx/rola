@@ -15,8 +15,10 @@ machine facts, every run), the instruments of `INSTRUMENTS` (SASS and the regist
 pipe counters, stall census, timeline and the intra roofline on every carry cell, every run, holding the GPU), and with
 a timing server the timing registrations: `carry_forward` and `carry_intra` on the carry cells, `entmax_solve@layer=C`
 and `decode_step@layer=C` for each RoLA construction on the layer cells declared for it, and the clock reader. Every
-target depends on the binary and the environment, whose outputs reach its key. This file imports nothing of rola's: it
-reads the constructions from `benchmarks/cells/layer.py` by path.
+target depends on the binary and the environment, whose outputs reach its key. Every cell is a NODE (`rola_devtools.cells.declare`) whose output is its record and the digest of the code that drew it;
+a target that runs on cells takes those nodes as its data inputs, so nothing here or in the build system resolves a cell
+by name at run time. This file imports nothing of rola's: it reads the constructions from `benchmarks/cells/layer.py` by
+path.
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ from pathlib import Path
 
 from rola_devtools.build.declare import Env, load
 from rola_devtools.cells import central
+from rola_devtools.cells.declare import cells as cell_nodes
 from rola_devtools.store import store
 from rola_devtools.timing.declare import (
     measure_memory,
@@ -87,15 +90,16 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
         if per_cell and not carry:
             continue
         out["instruments"][name] = g.node(
-            name, executor=EXECUTORS + "run_tool", env=env, deps=facts, inputs=carry if per_cell else (), holds=holds,
+            name, executor=EXECUTORS + "run_tool", env=env, deps=facts,
+            inputs=cell_nodes(g, carry) if per_cell else (), holds=holds,
             params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": INSTRUMENT_TIMEOUT_S},
             cache=not per_cell, code=_code(tool, data))
     if timing is None:
         return out
     timed = _code("benchmarks/executors.py", ["benchmarks/bench"])
     for arm in CARRY_ARMS if carry else ():
-        out["entries"][arm] = register_timing(g, arm, server=timing, env=env, executor=EXECUTORS + "timed", cells=carry,
-                                              params={"arm": arm}, deps=facts, code=timed)
+        out["entries"][arm] = register_timing(g, arm, server=timing, env=env, executor=EXECUTORS + "timed",
+                                              cells=cell_nodes(g, carry), params={"arm": arm}, deps=facts, code=timed)
     constructions = load(Path(env.cwd) / "benchmarks" / "cells" / "layer.py")["CONSTRUCTIONS"]
     for construction in constructions.values():
         takes = [c for c in layer if c in construction.cells]
@@ -104,7 +108,8 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
             if wanted:
                 name = f"{arm}@layer={construction.name}"
                 out["entries"][name] = register_timing(g, name, server=timing, env=env, executor=EXECUTORS + "timed",
-                                                       cells=wanted, params={"arm": name}, deps=facts, code=timed)
+                                                       cells=cell_nodes(g, wanted), params={"arm": name}, deps=facts,
+                                                       code=timed)
     out["clock"] = register_clock_reader(g, "clock", server=timing, env=env, executor=EXECUTORS + "read_clock", deps=facts,
                                          code=_code("benchmarks/executors.py"))
     return out

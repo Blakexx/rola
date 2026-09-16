@@ -32,7 +32,11 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
             "rola/decode_step@layer=chunk-decode-w16"} <= labels
     assert "rola/decode_step@layer=chunk-sparse-gain8" not in labels
     assert not any("chunk-p73-pinned" in label for label in labels)
-    assert out["targets"]["rola/phases"].inputs == ("flagship-dense", "flagship-alt-k4")
+    #: a cell is a NODE, and an instrument takes the nodes of the cells it runs on as its data inputs
+    assert [t.label for t in out["targets"]["rola/phases"].inputs] == ["cells/flagship-dense", "cells/flagship-alt-k4"]
+    assert out["targets"]["cells/flagship-dense"].params == {"cell": "flagship-dense"}
+    assert [t.label for t in out["targets"]["rola/carry_forward"].inputs] == ["cells/flagship-dense",
+                                                                             "cells/flagship-alt-k4"]
     assert out["targets"]["rola/binary"].holds == {"host_cpu": "all"}
     assert out["targets"]["rola/phases"].holds == {"gpu": "all"}
     assert out["targets"]["timing-server-stop"].always_run
