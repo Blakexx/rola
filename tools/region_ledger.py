@@ -21,16 +21,12 @@ import collections
 import csv
 import json
 import re
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import dev_config  # noqa: E402 -- path insert must precede this import
+import sass  # noqa: E402
 
-CUOBJDUMP = dev_config.cuda_bin("cuobjdump")
-NVDISASM = dev_config.cuda_bin("nvdisasm")
 DEF = [re.compile(r"^__device__ __forceinline__ \S+ (\w+)\("), re.compile(r"^__global__ .* void (\w+)\("),
        re.compile(r"^(?:template <[^>]*>\s*)?struct (\w+)"), re.compile(r"^  __device__ __forceinline__ (?:\w+ )?(\w+)\(")]
 
@@ -75,27 +71,9 @@ def fn_of(fmap: list[tuple[int, str]], ln: int) -> str:
 
 
 def frames_map(so: Path, member: str) -> dict[int, list[tuple[str, int]]]:
-    """SASS offset -> the inline frame chain at that instruction, innermost first, as
-    (file name, line) pairs, from `nvdisasm --print-line-info-inline`."""
-    tmp = Path(tempfile.mkdtemp(prefix="region_ledger_"))
-    subprocess.run([CUOBJDUMP, "-xelf", "all", str(so.resolve())], cwd=tmp, capture_output=True, check=True)
-    cub = next(p for p in tmp.iterdir() if member in p.name and p.suffix == ".cubin")
-    sass = subprocess.run([NVDISASM, "--print-line-info-inline", "-gi", str(cub)], capture_output=True, text=True, check=True).stdout
-    pending: list[tuple[str, int]] = []
-    chain: list[tuple[str, int]] = []
-    out = {}
-    for l in sass.splitlines():
-        m = re.search(r'//## File "([^"]+)", line (\d+)', l)
-        if m:
-            pending.append((m.group(1).split("/")[-1], int(m.group(2))))
-            continue
-        m = re.match(r"\s*/\*([0-9a-f]{4,5})\*/\s+[A-Z@]", l)
-        if m:
-            if pending:
-                chain = pending
-                pending = []
-            out[int(m.group(1), 16)] = chain
-    return out
+    """SASS offset -> the inline frame chain at that instruction, innermost first, as (file name, line) pairs
+    (`tools/sass.py`, the one reader of the disassemblers)."""
+    return sass.frames(sass.disassemble(sass.cubin(so, member), "--print-line-info-inline", "-gi"))
 
 
 class Attribution:

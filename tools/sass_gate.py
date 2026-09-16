@@ -18,31 +18,18 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import dev_config  # noqa: E402 -- path insert must precede this import
+import sass  # noqa: E402 -- path insert must precede this import
 
-NVDISASM = dev_config.cuda_bin("nvdisasm")
-CUOBJDUMP = dev_config.cuda_bin("cuobjdump")
-INSTR = re.compile(r"^\s*/\*[0-9a-f]{4,5}\*/\s+(@!?U?P\w+\s+)?([A-Z0-9_.$]+)")
+#: an instruction line's opcode, off the shared grammar (`tools/sass.py`)
+INSTR = sass.INSTRUCTION
 
 
 def cubins_of(path: Path, member: str | None) -> list[Path]:
-    if path.suffix == ".cubin":
-        return [path]
-    out = Path(tempfile.mkdtemp(prefix="sass_gate_"))
-    names = subprocess.run([CUOBJDUMP, "-lelf", str(path)], capture_output=True, text=True, check=True).stdout
-    picked = []
-    for line in names.splitlines():
-        m = re.search(r"ELF file\s+\d+:\s+(\S+)", line)
-        if m and (member is None or member in m.group(1)):
-            picked.append(m.group(1))
-    subprocess.run([CUOBJDUMP, "-xelf", "all", str(path.resolve())], cwd=out, capture_output=True, check=True)
-    return [out / n for n in picked]
+    return [image for image in sass.cubins(path) if member is None or member in image.name]
 
 
 #: the last `gate` call's signature per function, for `--json`
@@ -50,10 +37,9 @@ STATS: dict[str, dict] = {}
 
 
 def gate(cubin: Path, kernel: str | None, max_per_hmma: float | None) -> tuple[bool, str]:
-    sass = subprocess.run([NVDISASM, str(cubin)], capture_output=True, text=True, check=True).stdout
     funcs: dict[str, list[str]] = {}
     cur = None
-    for line in sass.splitlines():
+    for line in sass.disassemble(cubin).splitlines():
         m = re.match(r"\s*\.text\.(\S+):", line)
         if m:
             cur = m.group(1)
@@ -61,7 +47,7 @@ def gate(cubin: Path, kernel: str | None, max_per_hmma: float | None) -> tuple[b
             continue
         m = INSTR.match(line)
         if m and cur is not None:
-            funcs[cur].append((m.group(1) or "").strip() + " " + m.group(2))
+            funcs[cur].append((m.group(2) or "").strip() + " " + m.group(3))
 
     ok = True
     report = []

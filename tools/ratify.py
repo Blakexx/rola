@@ -122,6 +122,7 @@ import build_flags  # noqa: E402
 import dev_config  # noqa: E402
 import gen_shards  # noqa: E402
 import mold_toolchain  # noqa: E402
+import sass  # noqa: E402
 import sccache_toolchain  # noqa: E402
 import toolchains  # noqa: E402
 from rola_devtools.locks import host  # noqa: E402
@@ -1190,14 +1191,8 @@ def _cache_write(source: Path, cmd: list[str], deps: list[str], entries: dict,
 
 
 def _scan_object(obj: str, wanted: set) -> dict:
-    proc = subprocess.Popen([cuda_bin("cuobjdump"), "-sass", obj],
-                            stdout=subprocess.PIPE, text=True)
-    got = sass_scan(proc.stdout, wanted)
-    rc = proc.wait()
-    if rc != 0:
-        raise SystemExit(f"cuobjdump -sass FAILED (rc={rc}) on {obj}; the SASS gates "
-                         f"cannot pass a binary they cannot read")
-    return got
+    with sass.sass_lines(obj) as lines:
+        return sass_scan(lines, wanted)
 
 
 def measure_units(arches, objdir: str, sources: list[Path], arms=None,
@@ -1381,8 +1376,9 @@ def check(entries: dict, unhonored: list[str], want: dict) -> bool:
 #: iff it lies inside the interval of a BACKWARD branch (a `BRA` whose target
 #: precedes it in the function). That is the same reading the scoping session used.
 
-_SASS_FUNC = re.compile(r"^\s*Function : (\S+)")
-_SASS_ARCH = re.compile(r"^\s*arch = sm_(\d+)\s*$")
+#: the section headers and the body lines, off the shared grammar (`tools/sass.py`, the one reader of the disassemblers)
+_SASS_FUNC = sass.FUNCTION
+_SASS_ARCH = sass.ARCH
 _SASS_INST = re.compile(r"/\*([0-9a-f]{4,})\*/\s+(.*?);")
 _SASS_LABEL_DEF = re.compile(r"^\s*(\.L_[\w.]+):")
 _SASS_LOCAL = re.compile(r"\b(LDL|STL)\b")
@@ -1409,7 +1405,7 @@ _SASS_BRA = re.compile(r"\bBRA\b.*?(?:`?\((\.L_[\w.]+)\)|0x([0-9a-f]+))")
 SASS_HASH_VERSION = 2
 
 _SASS_BODY_INST = re.compile(r"/\*[0-9a-f]{4,}\*/")
-_SASS_BODY_ENC = re.compile(r"^\s*/\*\s*0x[0-9a-f]+\s*\*/\s*$")
+_SASS_BODY_ENC = sass.ENCODING
 
 
 def _hot_locals_in_function(items: list) -> list:

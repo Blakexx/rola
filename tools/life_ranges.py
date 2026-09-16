@@ -22,15 +22,13 @@ import json
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from region_ledger import CUOBJDUMP, NVDISASM, fn_of, function_map  # noqa: E402
+import sass  # noqa: E402
+from region_ledger import fn_of, function_map  # noqa: E402
 
 INSTR_RE = re.compile(r"^\s*/\*([0-9a-f]{4,5})\*/\s+(\S.*?)\s*;?\s*// \|\s*(\d+)")
-LINE_RE = re.compile(r'//## File "([^"]+)", line (\d+)')
-ADDR_RE = re.compile(r"^\s*/\*([0-9a-f]{4,5})\*/\s+[A-Z@]")
 
 
 def compile_arm(arm: int, arch: str) -> Path:
@@ -55,41 +53,21 @@ def cubin_of(args) -> Path:
         return compile_arm(args.arm, args.arch)
     if args.cubin:
         return Path(args.cubin)
-    tmp = Path(tempfile.mkdtemp(prefix="life_ranges_"))
-    subprocess.run([CUOBJDUMP, "-xelf", "all", str(Path(args.so).resolve())], cwd=tmp,
-                   capture_output=True, check=True)
-    return next(p for p in tmp.iterdir() if args.member in p.name and p.suffix == ".cubin")
+    return sass.cubin(Path(args.so), args.member)
 
 
 def line_map(cubin: Path, source_name: str) -> dict[int, int | None]:
     """SASS offset -> innermost line in `source_name` (the life-range dump drops the line
     comments, so the map comes from a separate line-info dump)."""
-    sass = subprocess.run([NVDISASM, "--print-line-info-inline", "-gi", str(cubin)],
-                          capture_output=True, text=True, check=True).stdout
-    pending: list[tuple[str, int]] = []
-    chain: list[tuple[str, int]] = []
-    out = {}
-    for l in sass.splitlines():
-        m = LINE_RE.search(l)
-        if m:
-            pending.append((m.group(1).split("/")[-1], int(m.group(2))))
-            continue
-        m = ADDR_RE.match(l)
-        if m:
-            if pending:
-                chain = pending
-                pending = []
-            ck = [ln for f, ln in chain if f == source_name]
-            out[int(m.group(1), 16)] = ck[0] if ck else None
-    return out
+    frames = sass.frames(sass.disassemble(cubin, "--print-line-info-inline", "-gi"))
+    return {offset: next((line for name, line in chain if name == source_name), None)
+            for offset, chain in frames.items()}
 
 
 def live_counts(cubin: Path) -> list[tuple[int, str, int]]:
     """(offset, instruction, live registers) per SASS instruction."""
-    sass = subprocess.run([NVDISASM, "--print-life-ranges", str(cubin)],
-                          capture_output=True, text=True, check=True).stdout
     rows = []
-    for l in sass.splitlines():
+    for l in sass.disassemble(cubin, "--print-life-ranges").splitlines():
         m = INSTR_RE.match(l)
         if m:
             rows.append((int(m.group(1), 16), m.group(2).strip(), int(m.group(3))))
