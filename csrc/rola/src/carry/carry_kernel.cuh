@@ -798,11 +798,23 @@ __device__ __forceinline__ void pool_fill(const CarryParams& p, const Smem<BP>& 
   ops::mbar_arrive_when_landed(sm.full_bar(s));
 }
 
+//: A COUNT'S BYTE, BUMPED WITHOUT A CARRY: the cursors below keep one byte a slot, and a byte
+//: that wraps carries into its neighbour's count. A barrier needs only the count's PARITY and,
+//: for a fill, whether the slot was ever filled, so the byte wraps in place -- and a fill count
+//: wraps to 2, never to 0: 256 fills is even and the slot has been filled (the 256th fill of
+//: a slot, window 64 of a dense call at this arm's pool, read "never filled", skipped its wait,
+//: and the call hung -- `nl64k-dense`, found 2026-09-16).
+__device__ __forceinline__ uint32_t bump_byte(uint32_t word, int shift, bool fill) {
+  uint32_t v = ((word >> shift) + 1u) & 0xFFu;
+  v = (fill && v == 0u) ? 2u : v;
+  return (word & ~(0xFFu << shift)) | (v << shift);
+}
+
 //: THE POOL CURSOR: a window's chunks take slots from 0 in turn, so chunk 0 always lands
-//: in slot 0; a slot's FILL count and TAKE count (a byte each a slot) give its barriers'
-//: parities: the n-th fill of a slot waits `empty` at parity `(n - 1) & 1` (no wait for
-//: n = 0), the n-th take waits `full` at parity `n & 1`. Two counts, because the fill
-//: stream runs ahead of the fold's takes: with one count a fill into a slot still being
+//: in slot 0; a slot's FILL count and TAKE count (a byte each a slot, bumped by `bump_byte`)
+//: give its barriers' parities: the n-th fill of a slot waits `empty` at parity `(n - 1) & 1`
+//: (no wait for n = 0), the n-th take waits `full` at parity `n & 1`. Two counts, because the
+//: fill stream runs ahead of the fold's takes: with one count a fill into a slot still being
 //: read saw zero uses and skipped its wait (the first interleaved form hung at dense).
 template <class BP>
 struct PoolCursor {
@@ -835,9 +847,9 @@ struct PoolCursor {
     return __all_sync(0xFFFFFFFFu, ok);
   }
 
-  __device__ __forceinline__ void filled(int s) { uses += 1u << (8 * s); }
+  __device__ __forceinline__ void filled(int s) { uses = bump_byte(uses, 8 * s, true); }
 
-  __device__ __forceinline__ void used(int s) { uses += 1u << (16 + 8 * s); }
+  __device__ __forceinline__ void used(int s) { uses = bump_byte(uses, 16 + 8 * s, false); }
 };
 
 //: THE RING CURSOR: a warp's ring slots' use counts, for their barriers' parities.
@@ -856,7 +868,7 @@ struct RingCursor {
     ops::mbar_wait(sm.ring_bar(warp, r), (uint32_t)n_of(r) & 1u);
   }
 
-  __device__ __forceinline__ void used(int r) { uses += 1u << (8 * r); }
+  __device__ __forceinline__ void used(int r) { uses = bump_byte(uses, 8 * r, false); }
 };
 
 // ----------------------------------------------------------------------- the fold

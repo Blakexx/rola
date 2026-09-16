@@ -158,7 +158,12 @@ part harness's fill and fold drivers zero it too: a chunk with no idle lane neve
 (`cp.async.mbarrier.arrive.noinc`), `empty` at `kWarps` arrivals, a warp's after its LAST
 GATHER from the slot, not after its MMAs — a row is free once loaded into registers.
 `PoolCursor` carries a use count a slot for the parities (and `full_now` / `empty_now`, the
-same asked once as a vote), and a window's chunks take slots from 0 in turn; chunk 0 is
+same asked once as a vote) -- a byte a slot, bumped WITHOUT A CARRY (`bump_byte`): a barrier
+needs only a count's parity and, for a fill, whether the slot was ever filled, so a byte wraps in
+place and a fill count wraps to 2, never to 0. A plain add carried the 256th fill of slot 0 into
+slot 1's count and read slot 0 as never filled; that fill skipped its wait, and a dense call of 64
+windows (`nl64k-dense`, 32768 tokens at this arm's pool of 8 chunks a window) hung on it until
+2026-09-16. The ring cursor's bytes wrap the same way. A window's chunks take slots from 0 in turn; chunk 0 is
 issued at the window's edge, under the head. The pool sits beside the readout's blocks, not
 over them: both streams run at once (`smem_ledger.md#pool`).
 
