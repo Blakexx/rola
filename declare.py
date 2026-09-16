@@ -141,11 +141,31 @@ KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference",
                     {"num": "CARRY_NUM", "den": "CARRY_DEN", "state": "CARRY_STATE"})
 
 
+#: THE BACKWARD'S BUDGET. The oracle side runs `naive_rola` forward AND backward in fp64, and autograd retains the
+#: recurrence's state at every token: `B * H * T * N * (DV + 1) * 8` bytes of retained state, and MEASURED (2026-09-16)
+#: a peak above nine times that -- `flat-small-dense`, 1.0 GiB of retained state, could not run under a 9 GiB cap, and
+#: the run over every oracle-tier cell was killed by the host. A surface that runs the backward therefore admits only
+#: the cells whose retained state is under this budget, stated here so the excluded cells are a consequence a reader can
+#: compute and not a run that died. The forward alone is graded on every oracle-tier cell by the carry reference.
+RETAINED_STATE_BUDGET = 512 * 2**20
+BACKWARD_SURFACES = ("oracle",)
+
+
+def retained_state_bytes(record: dict, batch: int = 1, heads: int = 2) -> int:
+    params = record["params"]
+    leaves = 1
+    for width in params["widths"]:
+        leaves *= width
+    return batch * heads * params["tokens"] * leaves * (params["dv"] + 1) * 8
+
+
 def surface_cells(surface: str) -> list:
-    """The cells one surface runs on: its kind, at its tier where it has one."""
+    """The cells one surface runs on: its kind, at its tier where it has one, and under the backward's budget where the
+    surface runs a backward."""
     _executor, kind_, tier, _holds, _strategy, _params = SURFACES[surface]
     return sorted(name for name, record in central().cells.items()
-                  if kind(name) == kind_ and (tier is None or record["params"].get("tier") == tier))
+                  if kind(name) == kind_ and (tier is None or record["params"].get("tier") == tier)
+                  and (surface not in BACKWARD_SURFACES or retained_state_bytes(record) < RETAINED_STATE_BUDGET))
 
 
 SIDE_CODE = ("tests/oracle/sides.py", ["tests/oracle", "rola", "benchmarks"])

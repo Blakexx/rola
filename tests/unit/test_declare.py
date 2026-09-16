@@ -78,6 +78,22 @@ def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_lis
         f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
+def test_a_backward_surface_admits_only_the_cells_under_the_retained_state_budget():
+    """The rule is STATED, so the excluded cells are a consequence a reader can compute and not a run that died: the
+    oracle side retains the fp64 state at every token and its peak is measured at over nine times that."""
+    from rola_devtools.build.declare import load
+    from rola_devtools.cells import central
+
+    d = load(ROOT / "declare.py")
+    admitted = d["surface_cells"]("oracle")
+    assert admitted and "one-box-short" in admitted and "flat-small-dense" not in admitted
+    for name, record in central().cells.items():
+        if d["kind"](name) == "carry" and record["params"].get("tier") == "oracle":
+            assert (name in admitted) == (d["retained_state_bytes"](record) < d["RETAINED_STATE_BUDGET"])
+    #: the kernel's forward-only side takes every oracle-tier cell; the budget is the backward's alone
+    assert "flat-small-dense" in d["surface_cells"]("carry-kernel")
+
+
 def test_loading_the_declarations_imports_neither_rola_nor_torch():
     probe = (f"import json, sys; from rola_devtools.build.declare import Graph, load; "
              f"load({str(ROOT / 'declare.py')!r})['root'](Graph()); "
