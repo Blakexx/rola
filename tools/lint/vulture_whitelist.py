@@ -57,6 +57,7 @@ class _Whitelist:
     # (`declare.py`'s SURFACES and KERNEL_VS_ORACLE), called by the build's side worker and never by name in code.
     carry_reference = None
     carry_kernel = None
+    pytest_tier = None  # `measure/executors.py`, named by `declare.py`'s oracle-tier target
 
     # torch calls `forward` through `Module.__call__`, never by name: every `nn.Module` in the tree defines one and
     # none of them is called explicitly. 13 sites, measured 2026-09-15 (`rola/layer.py`, `rola/routing/`'s decay,
@@ -113,4 +114,4 @@ _referenced = (_.pytestmark, _.ninja, _.pytest_addoption, _.pytest_configure,  #
                _.forward, _.poison_torch_memory, _._gpu_lock_held, _._host_budget_worker_slot, _._take_gpu_lock,
                _.union_table, _.v_row_bytes, _.y_dtype, _.token_bit, _.backing_kind, _.closed, _.owners_total,
                _.free, _.support_differentiable, _.Activation, _.state_size, _.sequence_length,
-               _.build_temp, _.external_attr, _.compress_type, _.carry_reference, _.carry_kernel)
+               _.build_temp, _.external_attr, _.compress_type, _.carry_reference, _.carry_kernel, _.pytest_tier)

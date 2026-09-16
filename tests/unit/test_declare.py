@@ -78,6 +78,19 @@ def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_lis
         f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
+def test_the_oracle_tier_is_one_target_keyed_on_its_code_and_the_binary_and_stored():
+    """The whole pytest tier as a node: a red cell becomes a stored fact, and an unchanged tree is a cache hit."""
+    from rola_devtools.build.declare import load
+
+    g = Graph()
+    load(ROOT / "declare.py")["root"](g, python=sys.executable)
+    tier = g.targets["rola/oracle-tier"]
+    assert tier.executor.endswith(":pytest_tier") and tier.cache and tier.holds == {"gpu": 1}
+    assert tier.params["paths"] == ["tests/oracle"] and {"binary", "environment"} <= set(tier.deps)
+    assert "tests/oracle" in tier.code["files"] and "rola" in tier.code["files"]
+    assert g.targets["store/oracle-tier"].deps["source"] is tier
+
+
 def test_a_backward_surface_admits_only_the_cells_under_the_retained_state_budget():
     """The rule is STATED, so the excluded cells are a consequence a reader can compute and not a run that died: the
     oracle side retains the fp64 state at every token and its peak is measured at over nine times that."""

@@ -61,6 +61,8 @@ CARRY_ARMS = ("carry_forward", "carry_intra")
 LAYER_ARMS = ("entmax_solve", "decode_step")
 #: seconds an instrument may run on one cell
 INSTRUMENT_TIMEOUT_S = 3600
+#: a whole test tier is minutes, not one launch
+TIER_TIMEOUT_S = 3600
 
 
 def checkout(path, *, python: str, label: str) -> Env:
@@ -90,6 +92,12 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
     out = {"binary": binary, "environment": environment, "instruments": {}, "entries": {}, "clock": None,
            "sides": _sides(g, env, facts), "diffs": {}}
     out["diffs"]["carry-vs-oracle"] = _kernel_vs_oracle(g, env, out["sides"])
+    #: THE ORACLE TIER AS ONE TARGET: pytest over `tests/oracle`, keyed on the tier's code and the binary, cached while
+    #: both stand; its output is the outcome and the margins, stored beside the instruments (`rola/oracle-tier`)
+    out["instruments"]["oracle-tier"] = g.node(
+        "oracle-tier", executor=EXECUTORS + "pytest_tier", env=env, deps=facts, holds={"gpu": 1},
+        params={"paths": ["tests/oracle"], "timeout": TIER_TIMEOUT_S},
+        code={"files": ["tests/oracle", "tests/conftest.py", "rola", "measure"]})
     for name in instruments:
         tool, args, per_cell, holds, data = INSTRUMENTS[name]
         if per_cell and not carry:
