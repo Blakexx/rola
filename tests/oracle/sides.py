@@ -118,3 +118,31 @@ def oracle(record: dict, *, batch: int = 1, heads: int = 2, **_params) -> dict:
 
 
 __all__ = ["NO_GRAD", "oracle", "producer"]
+
+
+def carry_kernel(record: dict, **_params) -> dict:
+    """THE CARRY KERNEL on one carry cell, its slots in the reference's layout -- the left side of rola's own
+    kernel-vs-oracle diff, the same call `test_carry_vs_oracle.py` makes."""
+    from tests.oracle.test_carry_vs_oracle import kernel_slots, run
+
+    spec = build_cell(record)
+    drawn, num, den, plane = run(spec)
+    got_num, got_den, got_state = kernel_slots(spec, num, den, plane)
+    return {"num": got_num, "den": got_den, "state": got_state}
+
+
+def carry_reference(record: dict, **_params) -> dict:
+    """THE fp64 REFERENCE on the same cell, with each slot's ENVELOPE beside it: the reference run again on `|v|` and
+    `|state_in|`, which is the sum of the sizes of the terms each slot adds up (`tests.oracle.fixtures`)."""
+    from benchmarks.cells import carry_call
+    from tests.oracle.test_carry_vs_oracle import entry, ref
+
+    spec = build_cell(record)
+    drawn, _call = carry_call(spec, bh=1)
+    want, env = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
+    shape = (1, spec.N, spec.dv + 1)
+    return {"num": want[0], "den": want[1], "state": want[2].reshape(shape),
+            "num_envelope": env[0], "den_envelope": env[1], "state_envelope": env[2].reshape(shape)}
+
+
+__all__ += ["carry_kernel", "carry_reference"]

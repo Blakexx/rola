@@ -9,21 +9,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rola_devtools.build.declare import Graph
+
 ROOT = Path(__file__).resolve().parents[2]
-SPARSE = "layer-B2-T512-H8-h512-dv64-bf16-s1"
-DECODE = "layer-B2-T128-H2-h128-dv64-fp32-s4-dec8"
 
 
-def declared(cells: str) -> dict:
+def declared() -> dict:
     from rola_devtools.build.declare import Graph, load
 
     g = Graph()
-    public = load(ROOT / "declare.py")["root"](g, python=sys.executable, cells=cells)
+    public = load(ROOT / "declare.py")["root"](g, python=sys.executable)
     return {"public": public, "targets": g.targets}
 
 
 def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_stores():
-    out = declared(f"flagship-dense,flagship-alt-k4,{SPARSE},{DECODE}")
+    out = declared()
     labels = set(out["targets"])
     assert {"rola/binary", "rola/environment", "rola/sass", "rola/registers", "rola/phases", "rola/roofline",
             "rola/carry_forward", "rola/carry_intra", "rola/clock", "session", "memory", "store/session", "store/memory",
@@ -31,12 +31,14 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     assert {"rola/entmax_solve@layer=chunk-sparse-gain8", "rola/entmax_solve@layer=chunk-decode-w16",
             "rola/decode_step@layer=chunk-decode-w16"} <= labels
     assert "rola/decode_step@layer=chunk-sparse-gain8" not in labels
-    assert not any("chunk-p73-pinned" in label for label in labels)
-    #: a cell is a NODE, and an instrument takes the nodes of the cells it runs on as its data inputs
-    assert [t.label for t in out["targets"]["rola/phases"].inputs] == ["cells/flagship-dense", "cells/flagship-alt-k4"]
+    #: a cell is a NODE, and an instrument takes the nodes of EVERY carry cell as its data inputs: what a build runs
+    #: on is pruned by label at the CLI, never chosen here
+    from rola_devtools.cells import central
+
+    carry = {f"cells/{n}" for n, r in central().cells.items() if r["data"].endswith("carry_cell")}
+    assert {t.label for t in out["targets"]["rola/phases"].inputs} == carry
     assert out["targets"]["cells/flagship-dense"].params == {"cell": "flagship-dense"}
-    assert [t.label for t in out["targets"]["rola/carry_forward"].inputs] == ["cells/flagship-dense",
-                                                                             "cells/flagship-alt-k4"]
+    assert {t.label for t in out["targets"]["rola/carry_forward"].inputs} == carry
     assert out["targets"]["rola/binary"].holds == {"host_cpu": "all"}
     assert out["targets"]["rola/phases"].holds == {"gpu": "all"}
     assert out["targets"]["timing-server-stop"].always_run
@@ -44,7 +46,7 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
 
 
 def test_every_declared_code_digest_names_files_that_exist():
-    for target in declared(f"flagship-alt-k4,{DECODE}")["targets"].values():
+    for target in declared()["targets"].values():
         if target.code is None:
             continue
         cwd = Path(target.env.cwd)
@@ -53,25 +55,32 @@ def test_every_declared_code_digest_names_files_that_exist():
         assert not missing, f"{target.label} declares code it cannot digest: {missing}"
 
 
-def test_a_cell_selection_names_a_tier_a_list_or_all_and_refuses_anything_else():
-    """A DEFAULT MAY NAME A TIER, never two cells: who a cell is sized for is a fact the registry states, and two cell
-    names baked into the root is a choice nobody stated."""
-    import pytest
-    from rola_devtools.build.declare import load
-    from rola_devtools.cells import central
+def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_list():
+    """Selection is the build CLI's, by label; a node's cells are its own declaration. The sides and the in-checkout
+    kernel-vs-oracle diff are declared beside the instruments, and the kernel's side reads the binary while the pure
+    reference does not."""
+    import inspect
 
-    selected = load(ROOT / "declare.py")["selected"]
-    tiered = {name for name, record in central().cells.items() if record["params"].get("tier") == "probe"}
-    assert set(selected("probe")) == tiered and tiered
-    assert selected(f"{SPARSE},{DECODE}") == [SPARSE, DECODE]
-    assert set(selected("all")) == set(central().cells)
-    with pytest.raises(SystemExit, match="no central cell"):
-        selected("flagship-dense,not-a-cell")
+    from rola_devtools.build.declare import load
+
+    declared = load(ROOT / "declare.py")
+    assert "cells" not in inspect.signature(declared["root"]).parameters
+    g = Graph()
+    declared["root"](g, python=sys.executable)
+    kernel, reference = g.targets["rola/side/carry-kernel"], g.targets["rola/side/carry-reference"]
+    assert "binary" in kernel.deps and "binary" not in reference.deps
+    assert kernel.holds == {"gpu": "all"} and reference.holds == {"host_cpu": "all"}
+    assert [t.label for t in kernel.inputs] == [t.label for t in reference.inputs]
+    diff = g.targets["rola/diff/carry-vs-oracle"]
+    assert diff.params["strategy"] == "per-slot" and set(diff.params["params"]["per_quantity"]) == {"num", "den", "state"}
+    assert diff.params["minimum"] == len(kernel.inputs)
+    assert {t.label for t in g.targets["rola/side/producer"].inputs} == {
+        f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
 def test_loading_the_declarations_imports_neither_rola_nor_torch():
     probe = (f"import json, sys; from rola_devtools.build.declare import Graph, load; "
-             f"load({str(ROOT / 'declare.py')!r})['root'](Graph(), cells='flagship-alt-k4,{DECODE}'); "
+             f"load({str(ROOT / 'declare.py')!r})['root'](Graph()); "
              f"print(json.dumps(sorted(m for m in sys.modules if m.split('.')[0] in ('rola', 'torch'))))")
     done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, cwd="/", timeout=120, check=True)
     assert json.loads(done.stdout.strip().splitlines()[-1]) == []

@@ -3,7 +3,7 @@
 """ROLA'S DECLARATIONS: this checkout's targets for rola-devtools' declared build system (`rola_devtools.build`).
 
     python -m rola_devtools.build plan declare.py:all
-    python -m rola_devtools.build run  declare.py:all --arg cells=both|oracle|probe|all|NAME,NAME
+    python -m rola_devtools.build run  declare.py:all --only 'rola/phases' --skip '*/timeline'
 
 `declare(g, env, cells=..., timing=...)` declares one checkout's targets under the graph's scope and returns them (the
 timing registrations by arm name), so a root elsewhere (rola-bench's) loads this file from each checkout it measures,
@@ -77,14 +77,19 @@ def _code(entry: str, data=()) -> dict:
     return {"entry": entry, "roots": IMPORT_ROOTS, "data": list(data)}
 
 
-def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) -> dict:
+def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict:
+    """EVERY target this checkout has. A node declares the cells it runs on; nothing here takes a cell list, and a build
+    that wants fewer prunes by label."""
+    cells = sorted(central().cells)
     carry = [c for c in cells if kind(c) == "carry"]
     layer = [c for c in cells if kind(c) == "layer"]
     binary = g.node("binary", executor=EXECUTORS + "compile_kernel", env=env, holds={"host_cpu": "all"},
                     verify=EXECUTORS + "binary_present", code=_code("setup.py", BUILD_DATA))
     environment = g.node("environment", executor=EXECUTORS + "probe_environment", env=env, cache=False)
     facts = {"binary": binary, "environment": environment}
-    out = {"binary": binary, "environment": environment, "instruments": {}, "entries": {}, "clock": None}
+    out = {"binary": binary, "environment": environment, "instruments": {}, "entries": {}, "clock": None,
+           "sides": _sides(g, env, facts), "diffs": {}}
+    out["diffs"]["carry-vs-oracle"] = _kernel_vs_oracle(g, env, out["sides"])
     for name in instruments:
         tool, args, per_cell, holds, data = INSTRUMENTS[name]
         if per_cell and not carry:
@@ -115,45 +120,79 @@ def declare(g, env: Env, *, cells, timing=None, instruments=tuple(INSTRUMENTS)) 
     return out
 
 
-#: the cell tiers a selection may name: who a cell is sized for (`rola_devtools.cells.carry.TIERS`)
-TIERS = ("oracle", "both", "probe")
+#: THE DIFF SURFACES (`tests/oracle/sides.py`): for each, the side executor, the cells it runs on (a cell kind and, where
+#: it has one, a tier), what the side holds while it runs, and the rule two sides are held to under a cross-checkout
+#: diff (rola-bench's, over the sides this file exposes).
+#:
+#: The oracle is BIT-IDENTICAL across checkouts because both run fp64 on identical inputs: a rewrite that only nearly
+#: reproduces the old one has changed the definition. The producer is SUPPORT-EQUAL because its declared purpose was to
+#: replace a bisection with a third party's closed form, so agreement to 1e-13 is the RESULT and the support set is the
+#: claim with teeth -- a threshold that moves by one entry is a routing change, not rounding. The carry kernel's side is
+#: exposed for a kernel-vs-kernel diff between checkouts, under bit-identity too: the kernel is deterministic on a cell.
+SURFACES = {
+    "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}, "bit-identical", {}),
+    "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}, "support-equal",
+                 {"rtol": 0.0, "atol": 1e-13}),
+    "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}, "bit-identical", {}),
+}
+#: the kernel-vs-oracle diff INSIDE one checkout: the carry kernel's slots against the fp64 reference's, PER SLOT under
+#: each output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
+KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference",
+                    {"num": "CARRY_NUM", "den": "CARRY_DEN", "state": "CARRY_STATE"})
 
 
-def selected(cells: str) -> list[str]:
-    """The cells a `--arg cells=` selects: `all`, a TIER name, or an explicit comma-separated list.
-
-    A TIER rather than a list of names is what a default may be. Two cell names as a default is a choice nobody
-    stated; `both` is the tier whose definition IS this question -- cells sized for correctness and for measurement
-    alike -- so rola measuring itself runs those unless it is told otherwise.
-    """
-    registry = central().cells
-    if cells in TIERS:
-        picked = sorted(n for n, r in registry.items() if r["params"].get("tier") == cells)
-        if not picked:
-            raise SystemExit(f"tier {cells!r} names no central cell")
-        return picked
-    if cells == "all":
-        return sorted(registry)
-    names = [n for n in cells.split(",") if n]
-    unknown = [n for n in names if n not in registry]
-    if unknown:
-        raise SystemExit(f"no central cell {', '.join(unknown)}; a selection is `all`, a tier {TIERS} or cell names")
-    return names
+def surface_cells(surface: str) -> list:
+    """The cells one surface runs on: its kind, at its tier where it has one."""
+    _executor, kind_, tier, _holds, _strategy, _params = SURFACES[surface]
+    return sorted(name for name, record in central().cells.items()
+                  if kind(name) == kind_ and (tier is None or record["params"].get("tier") == tier))
 
 
-def root(g, python: str = sys.executable, label: str = "rola", cells: str = "both",
-         instruments: str = ",".join(INSTRUMENTS), rounds: str = "8", reps: str = "11", store_root: str = "") -> dict:
-    names = selected(cells)
+SIDE_CODE = ("tests/oracle/sides.py", ["tests/oracle", "rola", "benchmarks"])
+
+
+def _sides(g, env: Env, facts: dict) -> dict:
+    """One side TARGET per surface, in this checkout, over the cells the surface runs on. A side that launches the
+    kernel reads the binary; a pure-torch reference does not, so a rebuilt binary re-keys the one and not the other."""
+    from rola_devtools.diff import side
+
+    return {name: side(g, f"side/{name}", env=env, executor=executor, cells=cell_nodes(g, surface_cells(name)),
+                       code=_code(*SIDE_CODE), binds="rola", holds=holds, deps=facts if "gpu" in holds else {})
+            for name, (executor, _kind, _tier, holds, _strategy, _params) in SURFACES.items()}
+
+
+def _kernel_vs_oracle(g, env: Env, sides: dict):
+    """The carry kernel against the fp64 reference, in this checkout: the clause rule per output kind."""
+    from rola_devtools.diff import diff, side
+
+    kernel_surface, reference_executor, kinds = KERNEL_VS_ORACLE
+    outputs = load(Path(env.cwd) / "tests" / "oracle" / "tolerances.py")
+    nodes = cell_nodes(g, surface_cells(kernel_surface))
+    reference = side(g, "side/carry-reference", env=env, executor=reference_executor, cells=nodes,
+                     code=_code(*SIDE_CODE), binds="rola", holds={"host_cpu": "all"})
+    per_quantity = {q: {"clauses": [list(c) for c in outputs[k].clauses], "rtol": outputs[k].rtol,
+                        "envelope_from": f"{q}_envelope"} for q, k in kinds.items()}
+    #: RECORDED, not a build failure: the verdict is stored per cell, red cells included (an arm the binary does not
+    #: ship is red by decision until kernel work ships it), and the rest of the build measures on
+    return diff(g, "diff/carry-vs-oracle", left=sides[kernel_surface], right=reference, strategy="per-slot",
+                params={"per_quantity": per_quantity}, minimum=len(nodes), on_difference="record")
+
+
+def root(g, python: str = sys.executable, label: str = "rola", rounds: str = "8", reps: str = "11",
+         store_root: str = "") -> dict:
+    """rola measuring and gating itself: EVERY node this checkout has, and the CLI prunes by label (`--only`, `--skip`)."""
     server = start_timing_server(g)
-    mine = declare(g.scoped(label), checkout(HERE, python=python, label=label), cells=names, timing=server,
-                   instruments=[i for i in instruments.split(",") if i])
+    env = checkout(HERE, python=python, label=label)
+    mine = declare(g.scoped(label), env, timing=server)
     root_dir = store_root or None
     stores = [store(g, f"store/{name}", source=target, location=f"rola/{name}", cache=target.cache, root=root_dir)
               for name, target in mine["instruments"].items()]
     session = measure_timing(g, "session", server=server, entries=list(mine["entries"].values()), clock=mine["clock"],
-                             cells=names, rounds=int(rounds), reps=int(reps))
-    memory = measure_memory(g, "memory", server=server, entries=list(mine["entries"].values()), cells=names)
+                             rounds=int(rounds), reps=int(reps))
+    memory = measure_memory(g, "memory", server=server, entries=list(mine["entries"].values()))
     stores += [store(g, "store/session", source=session, location="timing/session", root=root_dir),
-               store(g, "store/memory", source=memory, location="timing/memory", root=root_dir)]
+               store(g, "store/memory", source=memory, location="timing/memory", root=root_dir),
+               store(g, "store/carry-vs-oracle", source=mine["diffs"]["carry-vs-oracle"],
+                     location="rola/carry-vs-oracle", root=root_dir)]
     stop = stop_timing_server(g, server=server, after=[session, memory, *stores])
     return {"all": g.group("all", [*stores, stop])}
