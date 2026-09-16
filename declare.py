@@ -47,20 +47,23 @@ BUILD_DATA = ["csrc", "pyproject.toml", "tools/manifests", "tools/toolchains", "
               "tools/mold_pin.json", "tools/devtools.txt"]
 #: name -> (tool, arguments, runs per carry cell, holds, data files its result depends on)
 INSTRUMENTS = {
-    "sass": ("tools/sass_gate.py", ["{binary}"], False, {"host_cpu": 1}, []),
+    "sass": ("tools/sass_gate.py", ["{binary}"], False, {"host_cpu": 1}, [], 600),
     "registers": ("tools/life_ranges.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], False,
-                  {"host_cpu": 1}, ["csrc/rola/src"]),
-    "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, []),
-    "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, []),
+                  {"host_cpu": 1}, ["csrc/rola/src"], 600),
+    "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, [], 120),
+    "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, [], 900),
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
-               ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"]),
-    "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, []),
-    "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, []),
+               ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"], 900),
+    "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, [], 900),
+    "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, [], 120),
 }
 CARRY_ARMS = ("carry_forward", "carry_intra")
 LAYER_ARMS = ("entmax_solve", "decode_step")
 #: seconds an instrument may run on one cell
-INSTRUMENT_TIMEOUT_S = 3600
+#: EACH INSTRUMENT'S TIMEOUT IS PER CELL AND SIZED TO THE INSTRUMENT: a phase-clock launch is seconds on the largest
+#: cell (37 cells in 1.1 minutes, measured 2026-09-16), an ncu replay minutes. A hang then costs one timeout and lands
+#: as that cell's recorded failure; under one hour for every instrument, `nl64k-dense`'s device hang cost a baseline
+#: four hours of waiting and never a record.
 #: a whole test tier is minutes, not one launch
 TIER_TIMEOUT_S = 3600
 
@@ -104,13 +107,13 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
         params={"paths": ["tests/oracle"], "timeout": TIER_TIMEOUT_S},
         code={"files": ["tests/oracle", "tests/conftest.py", "rola", "measure"]})
     for name in instruments:
-        tool, args, per_cell, holds, data = INSTRUMENTS[name]
+        tool, args, per_cell, holds, data, timeout = INSTRUMENTS[name]
         if per_cell and not carry:
             continue
         out["instruments"][name] = g.node(
             name, executor=EXECUTORS + "run_tool", env=env, deps=facts,
             inputs=cell_nodes(g, carry) if per_cell else (), holds=holds,
-            params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": INSTRUMENT_TIMEOUT_S},
+            params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": timeout},
             cache=not per_cell, code=_code(tool, data))
     if timing is None:
         return out
