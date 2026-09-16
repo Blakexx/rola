@@ -39,9 +39,9 @@ from rola_devtools.timing.declare import (
 )
 
 HERE = Path(__file__).resolve().parent
-EXECUTORS = "executors:"
+EXECUTORS = "measure.executors:"
 #: where this checkout's repository-local imports resolve, for code digests
-IMPORT_ROOTS = ["tools", "measure", "."]
+IMPORT_ROOTS = ["tools", "."]
 #: what the extension is built from, besides the files `setup.py` imports
 BUILD_DATA = ["csrc", "pyproject.toml", "tools/manifests", "tools/toolchains", "tools/sccache_pin.json",
               "tools/mold_pin.json", "tools/devtools.txt"]
