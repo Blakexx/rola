@@ -206,7 +206,7 @@ and a timing only compares within the session that interleaved it.
 | `timing/session`, `timing/memory` | a store target over `measure_timing` / `measure_memory` | the session's semantics: every registration's executor, cells, code and binary, the timing parameters | every sample in order with its round, rep and position, each entry's status, the clock reads; each entry's peak memory |
 | `timing/null` | a store target over `measure_null_gate` (rola-bench's root) | the gate's semantics: the registration, its cells, the timing parameters | the session of the two copies and, per cell, whether they agree |
 | `calibration` | `benchmarks/unit/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
-| `pipe_timeline`, `pipe_timeline.scale` | `tools/pipe_timeline.py` | the cell, binary and scale; a calibration's composition | the series and summary; the plateau |
+| `pipe_timeline.scale` | `tools/pipe_timeline.py --calibrate` | the cell, the binary and the calibration's composition | the plateau the tool reads back as later runs' scale |
 | `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |
 | `environment` | `tools/dev.py container check` | the environment key | the proofs |
 

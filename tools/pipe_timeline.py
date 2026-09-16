@@ -18,8 +18,10 @@ calibration row (`--scale`) is the MMA-only composition's plateau: with every re
 MMA phases issue HMMAs as fast as the pipe takes them (measured 31-33 cycles an HMMA a scheduler), so its plateau
 in this series is 100% saturation, and a reading divided by it is the pipe's true utilization at that moment.
 
-Reports land beside the capture: `<out>.json` (series, summary) and `<out>.html` (the chart). The JSON is stored
-through `rola_results` at `pipe_timeline`, a calibration's row at `pipe_timeline.scale` (`--no-record`: neither).
+Reports land beside the capture: `<out>.json` (series, summary) and `<out>.html` (the chart), and `--json` writes the
+same document where a caller asks for it. The TIMELINE ITSELF is stored by the `timeline` target of `declare.py` and by
+nothing here. A CALIBRATION (`--calibrate`) is the exception and writes `pipe_timeline.scale`, because this tool reads it back
+as the scale of every later run (`--no-record` measures one without storing it).
 """
 from __future__ import annotations
 
@@ -210,7 +212,8 @@ def main() -> int:
     ap.add_argument("--scale", type=float, help="the MMA-only plateau in the tensor series (default: the stored row)")
     ap.add_argument("--calibrate", action="store_true",
                     help="this capture is the MMA-only composition (ROLA_CARRY_PARTS=none): store its plateau as the scale")
-    ap.add_argument("--no-record", action="store_true", help="store nothing: the caller keeps the reports")
+    ap.add_argument("--no-record", action="store_true",
+                    help="store no CALIBRATION: --calibrate then only prints the plateau it measured")
     ap.add_argument("--json", type=Path, help="also write the timeline document here")
     a = ap.parse_args()
     from rola_results import Store, checkout
@@ -237,9 +240,6 @@ def main() -> int:
         a.json.write_text(json.dumps(doc) + "\n")
     out.with_suffix(".html").write_text(f"<title>Pipe timeline {html.escape(a.cell)}</title>\n"
                                         + chart(tl, a.cell, a.scale) + "\n")
-    if not a.no_record:
-        Store("pipe_timeline").put({"cell": a.cell, "binary": binary(), "scale": a.scale}, output=doc,
-                                   provenance=checkout(ROOT))
     print(json.dumps({"cell": a.cell, "duration_us": tl["duration_us"], "series": sorted(tl["series"]), **summ},
                      indent=1))
     return 0

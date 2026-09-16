@@ -7,7 +7,8 @@ column that matters.
 
 **Nothing here writes a measurement record any more except through a declared target.** A measurement is a target of
 `declare.py` (`rola_devtools.build`), its result is stored by a store target beside it, and the tool itself prints or
-writes `--json`. The two exceptions are named below and are drivers rather than instruments.
+writes `--json`. The two exceptions are named below: `compose_ledger` is a driver that builds what it measures, and a `--calibrate`
+run of `pipe_timeline` writes the plateau it reads back as every later run's scale.
 
 ## The build
 
@@ -42,7 +43,7 @@ writes `--json`. The two exceptions are named below and are drivers rather than 
 | [`phase_ledger.py`](phase_ledger.md) | one carry launch with the kernel's phase clock bound | the `phases` target | `--json` |
 | [`pipe_counters.py`](pipe_counters.md) | the profiler's pipe and resource counters for one launch | the `counters` target | `--json` |
 | [`stall_census.py`](stall_census.md) | every warp-stall sample of one launch, by source line | the `census` target | `--json` |
-| [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target (`--no-record`) | `--json`; its own `pipe_timeline` record when run by hand |
+| [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target | `--json`; a `pipe_timeline.scale` record under `--calibrate`, which it reads back as later runs' scale |
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
 | `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |
 | [`compose_ledger.py`](compose_ledger.md) | a phase's time attributed to its parts by composition — a DRIVER: it builds each part | a person, after a component lands | its own `compose_ledger` record |

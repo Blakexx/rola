@@ -54,7 +54,7 @@ INSTRUMENTS = {
     "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, []),
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
                ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"]),
-    "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}", "--no-record"], True, {"gpu": "all"}, []),
+    "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, []),
     "roofline": ("benchmarks/bench_intra.py", ["--cells", "{cell}"], True, {"gpu": "all"}, []),
 }
 CARRY_ARMS = ("carry_forward", "carry_intra")
