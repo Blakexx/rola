@@ -18,7 +18,7 @@ estimate.
 Symbols at first use: ``BH`` = batch times heads, ``L`` = tokens, ``W`` = the window the
 carry and the intra share, ``D`` = routing levels, ``DV`` = the padded value width.
 
-    python benchmarks/bench_intra.py --cells flagship-dense-L16384,flagship-alt-k4-L16384
+    python tools/roofline.py --cells flagship-dense-L16384,flagship-alt-k4-L16384
 """
 from __future__ import annotations
 
@@ -38,9 +38,12 @@ TILE = 64
 MACS_PER_CLOCK_PER_SM = 256
 
 
-def peak_flops(device=0):
-    """The ceiling, taken from the device's own advertised boost clock and SM count."""
-    properties = torch.cuda.get_device_properties(device)
+def peak_flops():
+    """The ceiling, taken from the device's own advertised boost clock and SM count.
+
+    THE CURRENT DEVICE, and no dial for another one: a roofline is a fraction of the machine this launch ran on, so a
+    ceiling read off a second device would be a fraction of something else."""
+    properties = torch.cuda.get_device_properties(torch.cuda.current_device())
     clock = float(subprocess.run(["nvidia-smi", "--query-gpu=clocks.max.sm",
                                   "--format=csv,noheader,nounits"],
                                  capture_output=True, text=True).stdout.split()[0]) * 1e6

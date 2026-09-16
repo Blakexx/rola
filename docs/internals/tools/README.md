@@ -47,6 +47,7 @@ run of `pipe_timeline` writes the plateau it reads back as every later run's sca
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
 | `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |
 | [`compose_ledger.py`](compose_ledger.md) | a phase's time attributed to its parts by composition — a DRIVER: it builds each part | a person, after a component lands | its own `compose_ledger` record |
+| `roofline.py` | one cell's wall time beside the device's own mma.sync ceiling — the fraction of the machine, not the wall time | the `roofline` target | `--json` |
 
 ## The oracle's own gates
 

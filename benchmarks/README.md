@@ -46,6 +46,7 @@ python -m rola_devtools.build run declare.py:all --arg cells=flagship-alt-k4 --a
 **`benchmarks/unit/` — the carry's part harness and its calibration** (`bench_carry_parts.py`,
 `bench_carry_calib.py`), gated against `bench/carry_model.py`'s budgets.
 
-**`benchmarks/bench_intra.py`** adds the ROOFLINE to the intra bench (one of `declare.py`'s instruments): the same
-cells and the same timed callable, with the device's own mma.sync ceiling beside them.
+The ROOFLINE instrument moved to `tools/roofline.py`, where every other instrument lives: it is one of
+`declare.py`'s instruments and never was a bench, and being the only one outside `tools/` is what kept it off the
+tools map (`docs/internals/tools/README.md`).
 

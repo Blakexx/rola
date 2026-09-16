@@ -55,7 +55,7 @@ INSTRUMENTS = {
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
                ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"]),
     "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, []),
-    "roofline": ("benchmarks/bench_intra.py", ["--cells", "{cell}"], True, {"gpu": "all"}, []),
+    "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, []),
 }
 CARRY_ARMS = ("carry_forward", "carry_intra")
 LAYER_ARMS = ("entmax_solve", "decode_step")

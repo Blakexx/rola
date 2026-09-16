@@ -38,12 +38,6 @@
    "count": 1
   },
   {
-   "path": "benchmarks/bench_intra.py",
-   "message": "peak_flops(..., device=) is only ever 0 -- across every call in this tree, nothing moves it",
-   "line_sha256": "78c6eaaf00bbf290",
-   "count": 1
-  },
-  {
    "path": "benchmarks/unit/bench_carry_parts.py",
    "message": "call_args(..., schedule_name=) is only ever 'first' -- across every call in this tree, nothing moves it",
    "line_sha256": "4463dc45fee5d97a",
