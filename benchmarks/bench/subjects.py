@@ -409,8 +409,8 @@ def applicable(spec, kind: str, calls: int = 1) -> list[str]:
             continue
         if name == "intra_forward" and spec.tokens % _shared_window():
             continue
-        #: the combined op runs the intra kernel's tile grid (whole windows) at one uniform level width
-        if name == "prefill_op" and (spec.tokens % _shared_window() or len(set(spec.widths)) != 1):
+        #: the kernel pair runs the intra kernel's tile grid (whole windows) at one uniform level width
+        if name == "carry_intra" and (spec.tokens % _shared_window() or len(set(spec.widths)) != 1):
             continue
         out.append(name)
     return out
