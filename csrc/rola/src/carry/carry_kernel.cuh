@@ -269,22 +269,6 @@ __device__ __forceinline__ uint32_t chan_row_off(int row, int chunk) {
   return (uint32_t)(row * BP::kVRowBytes + ((chunk ^ swz) * 16));
 }
 
-//: THE DRAIN STAGE's element: `[row][kDv]` fp32, the 32-byte chunk (eight floats, an n-tile's
-//: pairs over the four `q` lanes) XORed with the row, so a pass's four rows' stores land in
-//: four chunks and a row's whole-line loads stay one wavefront. -- smem_ledger.md#swizzle
-template <class BP>
-__device__ __forceinline__ uint32_t drain_off(int row, int elem) {
-  return (uint32_t)(row * BP::kDv * 4 + (((((elem >> 3) ^ row) << 3) | (elem & 7)) * 4));
-}
-
-//: the same element for a line load: `line` 32 floats wide, lane `lane`'s float; the row
-//: (below four) flips two bits of the lane within the line, one lane constant a row.
-template <class BP>
-__device__ __forceinline__ uint32_t drain_line_off(int row, int line, int lane) {
-  static_assert(BP::kDrainRows <= 4, "the drain swizzle flips the lane's chunk bits within a line");
-  return (uint32_t)(row * BP::kDv * 4 + (line * 32 + ((lane ^ (row << 3)) & 31)) * 4);
-}
-
 //: THE POOL ROW's parts, in slot `s`: the V row, the inner run tile, the outer run tile.
 template <class BP>
 __device__ __forceinline__ uint32_t pool_v_off(int row, int chunk) {
@@ -1350,42 +1334,50 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
 
   if constexpr (kReadoutDrain) {
     pc.stamp(kTraceReadoutDrain);
-    //: THE ROWS OUT. Four rows a pass through the stage: lanes `r` in the pass's quarter
-
-    //: write their row's pairs; then each lane reduces one float of each of the four rows'
-
-    //: two lines. Dead ranks (past the live count) leave nothing.
+    //: THE ROWS OUT. Four rows a pass through the stage, every address an IMMEDIATE offset
+    //: from one of three lane constants: lanes `r` in the pass's quarter store their rows'
+    //: pairs from the lane's stage row; every lane loads its own float of the four rows' two
+    //: lines from its stage column and reduces each into the output from the row's pointer.
+    //: A rank past the live count (its row zero-filled by the ring) reduces into the window's
+    //: first token by a select, so no branch guards a row. -- carry_kernel.md#readout
     const ops::SmemAddr stage = sm.drain(warp);
+    const ops::SmemAddr stage_row = stage + (uint32_t)((r & 3) * BP::kDrainRowBytes + 8 * q);
+    const ops::SmemAddr stage_lane = stage + (uint32_t)(lane * 4);
+    float* const num_lane = num + (long)t0 * BP::kDv + lane;
+    const uint16_t* const order_tile = order + k * BP::kTile;
+    const int live_tile = live - k * BP::kTile;
 
     rola::static_for<4>([&](auto Pc) {
       constexpr int pass = decltype(Pc)::value;
       constexpr int rlo = (pass & 1) * 4, hsel = pass >> 1;  //: rows rlo..rlo+3 of half hsel
       __syncwarp();
       if ((r & 4) == (rlo & 4)) {
-        const int srow = r & 3;
         rola::static_for<BP::kNT>([&](auto Jc) {
           constexpr int j = decltype(Jc)::value;
-          ops::store_shared_u64(stage + drain_off<BP>(srow, 8 * j + 2 * q),
-                                __float_as_uint(y[j][2 * hsel]),
+          ops::store_shared_u64(stage_row + (uint32_t)(j * 32), __float_as_uint(y[j][2 * hsel]),
                                 __float_as_uint(y[j][2 * hsel + 1]));
         });
       }
       __syncwarp();
+      float v[4][BP::kDv / 32];
+      float* out[4];
       rola::static_for<4>([&](auto Rc) {
         constexpr int srow = decltype(Rc)::value;
-        const int rank = k * BP::kTile + rlo + srow + 8 * hsel;
-        if (rank < live) {
-          const int tok = (int)order[rank];
-          //: the lane's own float of the row, so a line is a CONSTANT offset from it: the
-          //: reduction's address folds into the instruction instead of costing an index and a
-          //: 64-bit add a line. -- carry_kernel.md#readout
-          float* const lane_out = num + (long)(t0 + tok) * BP::kDv + lane;
-          rola::static_for<BP::kDv / 32>([&](auto Lc) {
-            constexpr int line = decltype(Lc)::value;
-            const float v = ops::load_shared_f32(stage + drain_line_off<BP>(srow, line, lane));
-            ops::red_global_add_f32(lane_out + line * 32, v);
-          });
-        }
+        constexpr int rank = rlo + srow + 8 * hsel;
+        rola::static_for<BP::kDv / 32>([&](auto Lc) {
+          constexpr int line = decltype(Lc)::value;
+          v[srow][line] =
+              ops::load_shared_f32(stage_lane + (uint32_t)(srow * BP::kDrainRowBytes + line * 128));
+        });
+        const int tok = rank < live_tile ? (int)order_tile[rank] : 0;
+        out[srow] = num_lane + (long)tok * BP::kDv;
+      });
+      rola::static_for<4>([&](auto Rc) {
+        constexpr int srow = decltype(Rc)::value;
+        rola::static_for<BP::kDv / 32>([&](auto Lc) {
+          constexpr int line = decltype(Lc)::value;
+          ops::red_global_add_f32(out[srow] + line * 32, v[srow][line]);
+        });
       });
     });
 

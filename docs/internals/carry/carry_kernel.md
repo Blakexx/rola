@@ -235,10 +235,16 @@ bits): the rows' outer factors off the outer tile, A scaled per row (four packed
 multiplies), B the box off the snapshot (`ldmatrix.trans`, two n-tiles a load), `kNT`
 HMMAs into y and one against the box's mass column (`massrow`, lanes `r == 0`) into den.
 Then the rows out: four rows a pass through the drain stage (`drain`), row-major, so each
-reduction instruction covers one 128-byte line (reductions cost by the lines they touch;
-fragment layout costs ~3x — FINDINGS §37); den by reduction from the lanes holding it; dead
-ranks leave nothing. `num` and `den` are summed across owner CTAs, so every row leaves by
-reduction in every form.
+reduction instruction covers one 128-byte line (a reduction costs by the sectors it touches:
+the accumulator's own layout, eight rows' sectors a red, calibrates at ~200 cycles of issue a
+red against ~10 -- `calibration.md`, and the register drain built on it lost 4% at dense). The
+drain is instruction-bound, so every address in it is an immediate offset from a lane
+constant (the lane's stage row, its stage column, its output column; `smem_ledger.md`), the
+pass's loads issue before its reductions (both are asm with memory clobbers, so a load
+written after a reduce would wait behind it), and a dead rank (past the live count, its row
+zero-filled by the ring) reduces its zeros into the window's first token by a select, no
+branch a row. den by reduction from the lanes holding it. `num` and `den` are summed across
+owner CTAs, so every row leaves by reduction in every form.
 
 <a id="edges"></a>
 ## Edges

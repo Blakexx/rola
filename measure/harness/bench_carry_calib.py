@@ -57,6 +57,8 @@ CALIBRATIONS = (
     ("hmma_reduce_2", 8, 12, 2, 9, "two reductions between them"),
     ("hmma_reduce_4", 8, 12, 4, 9, "four"),
     ("hmma_reduce_8", 8, 12, 8, 9, "eight, one an HMMA"),
+    ("hmma_reduce_div_4", 8, 13, 4, 9, "four DIVERGENT reductions (a lane at its accumulator's row and column: eight sectors a red)"),
+    ("hmma_reduce_div_8", 8, 13, 8, 9, "eight divergent"),
 )
 
 
@@ -80,7 +82,7 @@ def main() -> int:
     mod = torch.ops.rola_parts
 
     dev = torch.device("cuda")
-    out = torch.zeros((a.owners, 16, 256), dtype=torch.float32, device=dev)
+    out = torch.zeros((a.owners, 128, 256), dtype=torch.float32, device=dev)
     src = torch.randint(0, 255, (a.owners, 256, 16), dtype=torch.uint8, device=dev)
     rows = []
     with gpu_lock(mode="exclusive"):

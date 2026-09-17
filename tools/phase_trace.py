@@ -5,7 +5,7 @@
 warp's stamps (the ledger's laps and the streams' steps, `%clock64`) for the first CTAs -- read
 back as what each warp was doing when, and what the scheduler's tensor pipe saw.
 
-    python tools/phase_trace.py nl64k-dense [--ctas 8] [--cap 16384] [--json out.json] [--raw out.pt]
+    python tools/phase_trace.py nl64k-dense [--ctas 8] [--cap 32768] [--json out.json] [--raw out.pt]
 
 The ledger says how long each phase took a warp; the trace says whether the warps were in it at the
 same time. Its readings: the finer ledger (a warp's cycles a window by activity), the SCHEDULER'S
@@ -97,7 +97,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
     ap.add_argument("--ctas", type=int, default=8, help="the CTAs traced, the grid's first")
-    ap.add_argument("--cap", type=int, default=16384, help="stamps a warp; a warp that fills its row is reported")
+    ap.add_argument("--cap", type=int, default=32768,
+                    help="stamps a warp (a dense window is ~110 stamps; 128 windows fit); a warp that fills its row is reported")
     ap.add_argument("--warmup", type=int, default=1)
     ap.add_argument("--state-arm", choices=("fresh", "null"), default="fresh")
     ap.add_argument("--json", type=Path, default=None)
@@ -134,6 +135,7 @@ def main() -> int:
     by_label = defaultdict(list)     #: label -> cycles a warp a window
     counts = defaultdict(list)       #: label -> events a warp a window
     durations = defaultdict(list)    #: label -> one interval's cycles
+    by_group = defaultdict(list)     #: (label, warp >= 4) -> one interval's cycles: the scheduler's first and second warp
     hist_total = defaultdict(int)
     idle_total = defaultdict(int)
     fold_spread, read_spread, fold_len = [], [], []
@@ -164,6 +166,7 @@ def main() -> int:
                     tot[lab] += e - s
                     cnt[lab] += 1
                     durations[lab].append(e - s)
+                    by_group[(lab, w >= SCHEDULERS)].append(e - s)
                     if first_fold is None and lab in ("fold.walk", "fold.wait") :
                         first_fold = s
                     if first_read is None and lab in ("readout.tile", "readout.wait", "lead:readout.issue"):
@@ -218,10 +221,13 @@ def main() -> int:
               f"fold starts spread {statistics.median(fold_spread):.0f}, "
               f"readout starts spread {statistics.median(read_spread) if read_spread else float('nan'):.0f}, "
               f"window {statistics.median(fold_len):.0f}")
-    for lab, hmmas in (("fold.fragment", 18), ("readout.tile", None)):
-        if lab in durations and hmmas:
+    for lab, hmmas in (("fold.fragment", 18), ("readout.tile", 144)):
+        if lab in durations:
             med = statistics.median(durations[lab])
-            print(f"one {lab}: median {med:.0f} cycles against {hmmas} HMMAs' pipe time {hmmas * HMMA_CYCLES:.0f} "
+            first = statistics.median(by_group[(lab, False)]) if by_group[(lab, False)] else float("nan")
+            second = statistics.median(by_group[(lab, True)]) if by_group[(lab, True)] else float("nan")
+            print(f"one {lab}: median {med:.0f} cycles (warps 0-3 {first:.0f}, 4-7 {second:.0f}) against "
+                  f"{hmmas} HMMAs' pipe time {hmmas * HMMA_CYCLES:.0f} a warp alone, x2 shared "
                   f"(x{med / (hmmas * HMMA_CYCLES):.2f})")
     if a.json:
         a.json.write_text(json.dumps({

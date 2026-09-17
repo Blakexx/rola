@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
 
 
-def measure(cell: str, schedule: str, out: Path) -> None:
+def measure(cell: str, schedule: str, out: Path, keep_csv: Path | None) -> None:
     ncu = dev_config.get("toolchain.ncu")
     with tempfile.TemporaryDirectory(prefix="stall_census_", dir=dev_config.scratch("stall_census")) as tmp:
         rep = Path(tmp) / "rep"
@@ -49,6 +49,8 @@ def measure(cell: str, schedule: str, out: Path) -> None:
             raise SystemExit(f"stall_census: the capture or export failed:\n{(done.stdout + done.stderr + exported.stderr)[-1500:]}")
         csv = Path(tmp) / "source.csv"
         csv.write_text(exported.stdout)
+        if keep_csv is not None:
+            keep_csv.write_text(exported.stdout)
         so = toolchains.built_extension(ROOT)
         ledger = subprocess.run([PY, "tools/region_ledger.py", "--csv", str(csv), "--so", str(so), "--source",
                                  "csrc/rola/src/carry/carry_kernel.cuh", "--budget", "tools/budgets/carry.json", "--cell",
@@ -67,8 +69,10 @@ def main() -> int:
     ap.add_argument("cell")
     ap.add_argument("--schedule", default="first", help="the carry family's order policy the launch runs")
     ap.add_argument("--json", type=Path, required=True)
+    ap.add_argument("--csv", type=Path, default=None,
+                    help="also keep ncu's per-SASS-line export here (a reader's line-level view)")
     a = ap.parse_args()
-    measure(a.cell, a.schedule, a.json)
+    measure(a.cell, a.schedule, a.json, a.csv)
     doc = json.loads(a.json.read_text())
     print(f"{a.cell}: {doc['samples']} stall samples over {len(doc['components'])} components")
     return 0

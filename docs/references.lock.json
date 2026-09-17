@@ -283,7 +283,7 @@
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "05418a085a6fda09", "target": "csrc/rola/src/carry/carry_kernel.cuh::read_boxes"},
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "20ad0e24dcb5", "reviewed": true, "sha256": "ce2c656f44dac633", "target": "csrc/rola/src/carry/carry_kernel.cuh::readout"},
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "d8c5430b9f6283a0", "target": "csrc/rola/src/carry/carry_kernel.cuh::readout_issue"},
-  {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "20ad0e24dcb5", "reviewed": true, "sha256": "57d24c511a832ae6", "target": "csrc/rola/src/carry/carry_kernel.cuh::readout_tile"},
+  {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "ea334cc896cf", "reviewed": true, "sha256": "a61486854a497492", "target": "csrc/rola/src/carry/carry_kernel.cuh::readout_tile"},
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "947bff859a97142a", "target": "csrc/rola/src/carry/carry_kernel.cuh::ring_bar"},
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "427668fe02cdfb02", "target": "csrc/rola/src/carry/carry_kernel.cuh::rring"},
   {"doc": "docs/internals/carry/carry_kernel.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "4dd371cbe1c93575", "target": "csrc/rola/src/carry/carry_kernel.cuh::run_bases"},

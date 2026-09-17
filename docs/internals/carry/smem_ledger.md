@@ -74,10 +74,11 @@ snapshot at N = L alt-k4, 2048 a window where 256 is the ideal, and clean at den
 which is why it hid for a week behind total-time A/Bs. The function is the one place the rule lives;
 every reader and writer of a channel row goes through it.
 
-The drain stage (`drain_off`: a warp's four rows of 64 fp32) XORs the 32-byte chunk (one n-tile's
-pairs over the four `q` lanes) with the stage row, so a pass's four rows' stores take four chunks
-instead of one, and a row's whole-line loads (32 lanes, 128 contiguous bytes before the swizzle)
-permute within the line and stay one wavefront.
+The drain stage (`kDrainRows` = 4 rows of `kDv` fp32) pads each row a 32-byte chunk past the V row
+(`kDrainRowBytes`), so consecutive rows sit eight banks apart: a pass's four rows' stores of one
+n-tile's pairs (16 lanes, 8 bytes each) take four chunks instead of one, and a row's whole-line
+loads (32 lanes, 128 contiguous bytes) stay one wavefront -- with no swizzle, every stage address
+is an immediate offset from a lane constant (the census had priced the XOR form at a logic op an access).
 
 32-byte row tiles (`row32_off`: run tiles) XOR the second chunk with the row's bit two, the form
 that makes eight consecutive rows' `ldmatrix` bank free at that width.

@@ -71,8 +71,10 @@ struct BoxPlan {
   static constexpr int kRunTileBytes = kTile * kRunBytes;
   static constexpr int kRRSlots = 2;
   static constexpr int kRRSlotBytes = 2 * kRunTileBytes;
+  //: rows padded a chunk apart: bank free at immediate offsets. -- smem_ledger.md
   static constexpr int kDrainRows = 4;
-  static constexpr int kDrainBytes = kDrainRows * kDv * 4;
+  static constexpr int kDrainRowBytes = kDv * 4 + 32;
+  static constexpr int kDrainBytes = kDrainRows * kDrainRowBytes;
   static constexpr int kWarpReadBytes = kRRSlots * kRRSlotBytes + kDrainBytes;
 
   //: THE MASS ROW, fp32 in read order; THE ROW MAP, a write leaf's read row.

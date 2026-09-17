@@ -28,7 +28,8 @@ enum CalibMode : int {
   kSharedMatrix = 9,
   kHmmaMatrix = 10,
   kHmmaMatrixFree = 11,
-  kHmmaReduce = 12
+  kHmmaReduce = 12,
+  kHmmaReduceDiv = 13
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -166,12 +167,17 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     ops::store_shared_u32(lines + (uint32_t)(Burst * 128 + lane * 4), __float_as_uint(sink));
   }
 
-  if constexpr (Mode == kHmmaReduce) {
+  if constexpr (Mode == kHmmaReduce || Mode == kHmmaReduceDiv) {
     //: THE REDUCTIONS UNDER THE BURST: `Burst` global f32 reductions a unit, spread between its
     //: nine HMMAs (the drain's fire-and-forget adds beside the readout's boxes): does their issue
-    //: hold the HMMAs back?
-    static_assert(Burst >= 1 && Burst <= 8 && (8 % Burst) == 0, "a reduction every 8 / Burst HMMAs");
-    float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
+    //: hold the HMMAs back? Coalesced (a warp's red one 128-byte line) or DIVERGENT in the
+    //: accumulator's own shape (lane `r, q` at row `r`, floats `2 q`: eight rows' sectors a red).
+    static_assert(Burst >= 1 && Burst <= 8 && (8 % Burst) == 0,
+                  "a reduction every 8 / Burst HMMAs");
+    float* const at = ops::pin_address(
+        c.out + (long)owner * 128 * 256
+        + (Mode == kHmmaReduce ? (long)tid
+                               : (long)(warp * 8 + (lane >> 2)) * 256 + (lane & 3) * 2));
     const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
     const uint32_t ab[4] = {w, w, w, w};
     const uint32_t bf[4] = {w, w, w, w};
@@ -185,7 +191,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
         constexpr int j = decltype(Jc)::value;
         ops::mma(y[j], ab, bf + 2 * (j & 1));
         if constexpr (j % (8 / Burst) == 0)
-          ops::red_global_add_f32(at + (long)((i + j) & 15) * 256, 1.0f);
+          ops::red_global_add_f32(at + (long)((i + j) & 15) * (Mode == kHmmaReduce ? 256 : 8),
+                                  1.0f);
       });
       ops::mma(d, ab, bf);
     }
@@ -276,6 +283,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kHmmaReduce, 2)               \
   F(8, kHmmaReduce, 4)               \
   F(8, kHmmaReduce, 8)               \
+  F(8, kHmmaReduceDiv, 4)            \
+  F(8, kHmmaReduceDiv, 8)            \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
   F(8, kGlobalReduce, 1)             \
@@ -288,8 +297,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
 inline void calibrate(int64_t warps, int64_t mode, int64_t burst, int64_t iters, int64_t owners,
                       Tensor& out, const Tensor& src) {
   STD_TORCH_CHECK(
-      out.is_cuda() && out.scalar_type() == Dtype::Float && out.numel() >= owners * 16 * 256,
-      "calibrate: out is a CUDA float32 tensor of owners x 16 x 256");
+      out.is_cuda() && out.scalar_type() == Dtype::Float && out.numel() >= owners * 128 * 256,
+      "calibrate: out is a CUDA float32 tensor of owners x 128 x 256");
   STD_TORCH_CHECK(
       src.is_cuda() && src.scalar_type() == Dtype::Byte && src.numel() >= owners * 256 * 16,
       "calibrate: src is a CUDA uint8 tensor of owners x 256 x 16");
