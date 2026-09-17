@@ -29,7 +29,9 @@ enum CalibMode : int {
   kHmmaMatrix = 10,
   kHmmaMatrixFree = 11,
   kHmmaReduce = 12,
-  kHmmaReduceDiv = 13
+  kHmmaReduceDiv = 13,
+  kHmmaWide = 14,
+  kHmmaWideChain = 15
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -75,6 +77,53 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
       rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
     });
     ops::store_shared_u32(lines, __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaWide || Mode == kHmmaWideChain) {
+    //: THE FRAGMENT'S BURST: `Burst` HMMAs a unit into `Burst` distinct accumulators (the fold's
+    //: eighteen: two boxes' eight n-tiles and a mass each), A from a register; under
+    //: `kHmmaWideChain` each unit's A comes off the fold's gather chain first: a shuffle, an
+    //: `ldmatrix`, a packed multiply by a shuffled pair, a second multiply.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    rola::static_for<4>([&](auto Kc) {
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), w);
+    });
+    __syncwarp();
+    const uint32_t bf[4] = {w, w, w, w};
+    uint32_t ab[4] = {w, w, w, w};
+    float y[Burst][4];
+    rola::static_for<Burst>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    uint32_t entry = (uint32_t)lane;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      if constexpr (Mode == kHmmaWideChain) {
+        const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+        uint32_t a[4], sp[4];
+        ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
+        ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
+        const uint32_t g = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, 2 * (lane & 3));
+        sp[0] = ops::mul_bf16x2(sp[0], g);
+        sp[2] = ops::mul_bf16x2(sp[2], g);
+        const uint32_t s0 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[0], lane & 3);
+        const uint32_t s1 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[2], lane & 3);
+        ab[0] = ops::mul_bf16x2(a[0], s0);
+        ab[1] = ops::mul_bf16x2(a[1], s0);
+        ab[2] = ops::mul_bf16x2(a[2], s1);
+        ab[3] = ops::mul_bf16x2(a[3], s1);
+        entry += 1u;
+      }
+      rola::static_for<Burst>([&](auto Jc) {
+        constexpr int j = decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+    }
+    float sink = 0.0f;
+    rola::static_for<Burst>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(4 * 128 + lane * 4), __float_as_uint(sink));
   }
 
   if constexpr (Mode == kSharedLoad || Mode == kSharedStore) {
@@ -285,6 +334,10 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kHmmaReduce, 8)               \
   F(8, kHmmaReduceDiv, 4)            \
   F(8, kHmmaReduceDiv, 8)            \
+  F(4, kHmmaWide, 18)                \
+  F(8, kHmmaWide, 18)                \
+  F(4, kHmmaWideChain, 18)           \
+  F(8, kHmmaWideChain, 18)           \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
   F(8, kGlobalReduce, 1)             \

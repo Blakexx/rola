@@ -34,6 +34,8 @@ Nine HMMAs a unit (the atom), read as cycles an HMMA a warp against `hmma_2w`'s 
 | four loads beside the nine, their results a sink | 66.0 | the pipes do not share: +1 cycle an HMMA |
 | one / two / four / eight global f32 reductions between the nine, each a warp's 128-byte line | 65.7 / 67.6 / 68.9 / 76.3 | ~10 cycles of issue a reduction |
 | four / eight DIVERGENT reductions, a lane at its accumulator's row and column (eight rows' sectors a red) | 122.6 / 242.8 | ~200 cycles a reduction: the accumulator layout cannot reduce straight to global |
+| the fold fragment's burst, eighteen HMMAs into eighteen accumulators, one warp / two | = `hmma_1w` / = `hmma_2w` | a wide burst issues at the pipe's rate alone (ratios; taken under a foreign GPU consumer, so the absolute row waits) |
+| the same burst behind the fragment's gather chain (a shuffle, an `ldmatrix`, two packed multiplies), one warp / two | +18% / +0% | the chain is exposed only on a warp with no partner issuing |
 
 **Not yet valid:** the asynchronous-copy rows (347.3 bank-free, 92.7 "aliased" a 16-byte run). The aliased
 variant writes every lane's run to the same destination, so it measures overwriting, not bank conflicts.

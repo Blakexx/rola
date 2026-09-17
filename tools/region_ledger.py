@@ -174,6 +174,8 @@ def main() -> int:
     ap.add_argument("--top", type=int, default=24)
     ap.add_argument("--json", type=Path, default=None,
                     help="also write the components, the phase census and the wavefront census here")
+    ap.add_argument("--lines", default=None, metavar="LO-HI",
+                    help="also print the source lines in this range: instructions a unit, samples, opcodes, stall reasons")
     a = ap.parse_args()
     attr = Attribution(a.so, a.member, a.arch or sass.device_arch(), a.source, a.ops)
     rows = read_source_counters(a.csv)
@@ -206,7 +208,11 @@ def main() -> int:
             flag = f"  RED > budget {b}"
             red = True
         print(f"  {fn:22s} {n / a.per:9.0f} ({100 * n / tot:4.1f}%)  samples {100 * sm / max(1, samp):5.1f}%  {top}{flag}")
-    doc = census(rows, attr, components, a.per, read_source_detail(a.csv), a.source, a.top)
+    detail = read_source_detail(a.csv)
+    if a.lines:
+        lo, hi = (int(x) for x in a.lines.split("-"))
+        print_lines(rows, attr, detail, a.source, lo, hi, a.per)
+    doc = census(rows, attr, components, a.per, detail, a.source, a.top)
     if a.json:
         doc["per"] = a.per
         doc["instructions_per_unit"] = round(tot / a.per, 1)
@@ -215,6 +221,34 @@ def main() -> int:
                                   "budget": by_fn.get(fn)} for fn, (n, sm, st) in agg.items()}
         a.json.write_text(json.dumps(doc, sort_keys=True) + "\n")
     return 1 if red else 0
+
+
+def print_lines(rows, attr: Attribution, detail: dict, source: Path, lo: int, hi: int, per: float) -> None:
+    """THE LINE VIEW: the source lines `lo..hi` of the kernel's file, each with its instructions a unit, its stall
+    samples and their top reasons, and its opcodes -- the isolating measurement below a component's row."""
+    base = rows[0][0]
+    src = source.read_text().splitlines()
+    lines: dict[int, list] = collections.defaultdict(lambda: [0, 0, collections.Counter(), collections.Counter()])
+    total = sum(sm for _, _, sm, _ in rows)
+    here = 0
+    for addr, n, sm, st in rows:
+        chain = attr.frames.get(addr - base, [])
+        inner = [ln for f, ln in chain if f == attr.source]
+        if not inner or not (lo <= inner[0] <= hi):
+            continue
+        e = lines[inner[0]]
+        e[0] += n
+        e[1] += sm
+        e[2].update(st)
+        e[3][detail.get(addr, ("?", 0, 0))[0]] += n
+        here += sm
+    print(f"lines {lo}-{hi}: {here} samples ({100 * here / max(1, total):.1f}% of the launch); instructions a unit, "
+          f"samples, opcodes, stall reasons")
+    for ln in sorted(lines):
+        n, sm, st, ops = lines[ln]
+        opstr = " ".join(f"{k}:{v / per:.0f}" for k, v in ops.most_common(4))
+        stall = " ".join(f"{k}:{100 * v / max(1, sm):.0f}%" for k, v in st.most_common(3))
+        print(f"  {ln:5d} {n / per:8.0f} {sm:8d}  {opstr:50s} {stall:36s} | {src[ln - 1].strip()[:56]}")
 
 
 def census(rows, attr: Attribution, components: set[str] | None, per: float,

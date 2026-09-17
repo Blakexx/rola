@@ -59,6 +59,10 @@ CALIBRATIONS = (
     ("hmma_reduce_8", 8, 12, 8, 9, "eight, one an HMMA"),
     ("hmma_reduce_div_4", 8, 13, 4, 9, "four DIVERGENT reductions (a lane at its accumulator's row and column: eight sectors a red)"),
     ("hmma_reduce_div_8", 8, 13, 8, 9, "eight divergent"),
+    ("hmma_frag_1w", 4, 14, 18, 18, "the fold fragment's burst: eighteen HMMAs into eighteen accumulators, one warp a scheduler"),
+    ("hmma_frag_2w", 8, 14, 18, 18, "the same, two warps a scheduler"),
+    ("hmma_frag_chain_1w", 4, 15, 18, 18, "the burst behind the fragment's gather chain (shuffle, ldmatrix, two multiplies), one warp"),
+    ("hmma_frag_chain_2w", 8, 15, 18, 18, "the same, two warps"),
 )
 
 

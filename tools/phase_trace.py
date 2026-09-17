@@ -93,6 +93,26 @@ def scheduler_view(per_warp: list[list[tuple[int, int, str]]]) -> tuple[dict, di
     return dict(hist), dict(idle_doing)
 
 
+def dump_window(cta_rows, warps: int, win: int) -> None:
+    """One window of one CTA as its warps' interval timelines: offset from the window's start, duration, label."""
+    per = []
+    for w in range(warps):
+        raw = cta_rows[w]
+        raw = raw[raw != 0]
+        cyc, ev = (raw >> 8).tolist(), (raw & 0xFF).tolist()
+        wins = windows(cyc, ev)
+        if win >= len(wins):
+            print(f"warp {w}: no window {win}")
+            return
+        t0, t1 = wins[win]
+        per.append([(s - t0, e - s, lab) for (s, e, lab) in intervals(cyc, ev) if t0 <= s < t1])
+    base = min(iv[0][0] for iv in per if iv)
+    print(f"window {win} of CTA 0, offsets from the earliest warp's start; a line an interval: warp  start  length  label")
+    merged = sorted((s - base, w, d, lab) for w, iv in enumerate(per) for (s, d, lab) in iv)
+    for s, w, d, lab in merged:
+        print(f"  w{w}  {s:7d}  {d:6d}  {lab}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
@@ -103,6 +123,8 @@ def main() -> int:
     ap.add_argument("--state-arm", choices=("fresh", "null"), default="fresh")
     ap.add_argument("--json", type=Path, default=None)
     ap.add_argument("--raw", type=Path, default=None, help="also save the stamp tensor here (torch.save)")
+    ap.add_argument("--dump", type=int, default=None, metavar="WINDOW",
+                    help="print CTA 0's warps' intervals in this window: the timeline itself, one line an interval")
     a = ap.parse_args()
 
     import torch
@@ -192,6 +214,8 @@ def main() -> int:
         for lab, x in idle.items():
             idle_total[lab] += x
 
+    if a.dump is not None:
+        dump_window(rows[0], warps, a.dump)
     windows_n = statistics.median(nwin_seen) if nwin_seen else 0
     print(f"{a.cell}: {ctas} CTAs x {warps} warps traced, {windows_n:.0f} windows a warp"
           + (f"  ({overflow} warp rows FULL: raise --cap)" if overflow else ""))
