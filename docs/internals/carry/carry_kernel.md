@@ -256,7 +256,14 @@ caller waits on the ring. A warp with light work takes more tiles. No CTA barrie
 `readout_tile`: A = the inner tile by `ldmatrix` once; per live box (the tile mask's set
 bits): the rows' outer factors off the outer tile, A scaled per row (four packed
 multiplies), B the box off the snapshot (`ldmatrix.trans`, two n-tiles a load), `kNT`
-HMMAs into y and one against the box's mass column (`massrow`, lanes `r == 0`) into den.
+HMMAs into y; and den ON THE FMA PIPE: the scaled A's pairs (lane (r, q): rows `r`, `r + 8`
+at leaves `2q`, `2q + 1`, `2q + 8`, `2q + 9`) against the box's masses (`massrow`, two
+float pairs a lane), eight fused multiply-adds a lane a box, the quad's four lanes summed
+at the tile's end. A tensor column carried den before: one HMMA in nine, its B a mostly
+zero column, plus the mass loads and a convert on the box's chain. The FMA pipe is idle
+while a warp waits at the tensor pipe, so this is free issue and 11% less pipe time: the
+tile 9,602 -> 8,949 cycles at nl64k-dense, the readout 51.4K -> 48.4K a warp a window, den
+within the per-slot tolerance (the sum's order differs from the tensor column's).
 Then the rows out: four rows a pass through the drain stage (`drain`), row-major, so each
 reduction instruction covers one 128-byte line (a reduction costs by the sectors it touches:
 the accumulator's own layout, eight rows' sectors a red, calibrates at ~200 cycles of issue a

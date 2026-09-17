@@ -342,6 +342,10 @@ __device__ __forceinline__ uint32_t pack_bf16x2(float lo, float hi) {
   return *reinterpret_cast<const uint32_t*>(&p);
 }
 
+__device__ __forceinline__ float pair_lo(uint32_t p) { return __uint_as_float(p << 16); }
+
+__device__ __forceinline__ float pair_hi(uint32_t p) { return __uint_as_float(p & 0xFFFF0000u); }
+
 //: THE ACCUMULATOR'S TOP HALVES, TAKEN AS A bf16 PAIR. -- see docs/internals/common/ops.md#hi-bf16
 __device__ __forceinline__ uint16_t hi_bf16(float v) {
   return (uint16_t)(__float_as_uint(v) >> 16);

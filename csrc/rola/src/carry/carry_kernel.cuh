@@ -1333,7 +1333,9 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
   else
     rola::static_for<4>([&](auto Ec) { a[decltype(Ec)::value] = kStubPair; });
   const ops::SmemAddr outer = slot + (uint32_t)BP::kRunTileBytes;
-  float y[BP::kNT][4], d[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float y[BP::kNT][4];
+  //: den's partials: the lane's two rows over its four leaves of each box.
+  float dr = 0.0f, dr8 = 0.0f;
 
   rola::static_for<BP::kNT>([&](auto Jc) {
     rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
@@ -1360,15 +1362,19 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
         ops::mma(y[2 * i], ab, bf);
         ops::mma(y[2 * i + 1], ab, bf + 2);
       });
-      //: den: the box's masses as a B column, lanes `r == 0`.
-      uint32_t bm[2] = {0u, 0u};
-      if (r == 0) {
-        const float2 m0 = *reinterpret_cast<const float2*>(massrow + b * 16 + 2 * q);
-        const float2 m1 = *reinterpret_cast<const float2*>(massrow + b * 16 + 2 * q + 8);
-        bm[0] = ops::hi_bf16x2(m0.x, m0.y);
-        bm[1] = ops::hi_bf16x2(m1.x, m1.y);
-      }
-      ops::mma(d, ab, bm);
+      //: den on the FMA pipe: the scaled A's pairs (rows `r`, `r + 8` at leaves `2q`, `2q +
+      //: 1`, `2q + 8`, `2q + 9`) against the box's masses, eight products a lane; the quad
+      //: sums at the tile's end. A tensor column for this cost one HMMA in nine.
+      const float2 m0 = *reinterpret_cast<const float2*>(massrow + b * 16 + 2 * q);
+      const float2 m1 = *reinterpret_cast<const float2*>(massrow + b * 16 + 2 * q + 8);
+      dr = fmaf(ops::pair_lo(ab[0]), m0.x, dr);
+      dr = fmaf(ops::pair_hi(ab[0]), m0.y, dr);
+      dr = fmaf(ops::pair_lo(ab[2]), m1.x, dr);
+      dr = fmaf(ops::pair_hi(ab[2]), m1.y, dr);
+      dr8 = fmaf(ops::pair_lo(ab[1]), m0.x, dr8);
+      dr8 = fmaf(ops::pair_hi(ab[1]), m0.y, dr8);
+      dr8 = fmaf(ops::pair_lo(ab[3]), m1.x, dr8);
+      dr8 = fmaf(ops::pair_hi(ab[3]), m1.y, dr8);
     } else {
       (void)b;
       (void)massrow;
@@ -1379,10 +1385,16 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
         ops::mma(y[2 * i], ab, bf);
         ops::mma(y[2 * i + 1], ab, bf + 2);
       });
-      const uint32_t bm[2] = {kStubPair, kStubPair};
-      ops::mma(d, ab, bm);
+      dr += ops::pair_lo(ab[0]);
+      dr8 += ops::pair_lo(ab[1]);
     }
   }
+  //: den's rows: the quad's four lanes summed into lane `q == 0`.
+  dr += __shfl_xor_sync(0xFFFFFFFFu, dr, 1);
+  dr += __shfl_xor_sync(0xFFFFFFFFu, dr, 2);
+  dr8 += __shfl_xor_sync(0xFFFFFFFFu, dr8, 1);
+  dr8 += __shfl_xor_sync(0xFFFFFFFFu, dr8, 2);
+  const float d[4] = {dr, 0.0f, dr8, 0.0f};
 
   if constexpr (kReadoutDrain) {
     pc.stamp(kTraceReadoutDrain);
