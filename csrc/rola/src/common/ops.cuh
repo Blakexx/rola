@@ -447,6 +447,13 @@ __device__ __forceinline__ float join_hi_lo(uint32_t hi, uint32_t lo, int k) {
   return __uint_as_float(k ? ((hi & 0xFFFF0000u) | (lo >> 16)) : ((hi << 16) | (lo & 0xFFFFu)));
 }
 
+//: a byte off shared memory, zero-extended (the fold ring's row).
+__device__ __forceinline__ uint32_t load_shared_u8(SmemAddr a) {
+  uint32_t v;
+  asm volatile("ld.shared.u8 %0, [%1];" : "=r"(v) : "r"(a) : "memory");
+  return v;
+}
+
 //: A SEQUENTIAL SHARED STORE, ADDRESSED RATHER THAN INDEXED. -- see docs/internals/common/ops.md#store-shared-u16
 __device__ __forceinline__ void store_shared_u16(SmemAddr a, uint16_t v) {
   asm volatile("st.shared.u16 [%0], %1;" ::"r"(a), "h"(v) : "memory");

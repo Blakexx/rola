@@ -23,7 +23,7 @@ of the bytes is before it) and the wait that lands it.
 | live counts (`kLiveOffset`) | 16 | |
 | snapshot (`kSnapshotOffset`) | 32,768 | written at the window start, read by the readout |
 | mass row (`kMassRowOffset`), row map (`kRowMapOffset`) | ~1,500 | |
-| page slots, phase ledger, counter, take words, pool and ring barriers, walk rings (`kSlotOffset`..`kWalkOffset`) | ~2,800 | |
+| page slots, phase ledger, counter, take words, fold words, pool and ring barriers, walk rings (`kSlotOffset`..`kWalkOffset`) | ~2,800 | a walk ring is 64 words a warp: a chunk's kept rows, the pool row in the low byte and the gain in the high half, fragment `n` at entry `16 n` |
 | THE REGION (`kRegionOffset`) | 50,080 | below |
 
 Total `kSmemBytes` = 96,416 B, 94.2 KB of the 99 KB maximum (the 4 KB mass table of the union

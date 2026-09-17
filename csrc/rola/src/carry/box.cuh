@@ -71,7 +71,6 @@ struct BoxPlan {
   static constexpr int kRunTileBytes = kTile * kRunBytes;
   static constexpr int kRRSlots = 2;
   static constexpr int kRRSlotBytes = 2 * kRunTileBytes;
-  //: rows padded a chunk apart: bank free at immediate offsets. -- smem_ledger.md
   static constexpr int kDrainRows = 4;
   static constexpr int kDrainRowBytes = kDv * 4 + 32;
   static constexpr int kDrainBytes = kDrainRows * kDrainRowBytes;
@@ -80,9 +79,10 @@ struct BoxPlan {
   //: THE MASS ROW, fp32 in read order; THE ROW MAP, a write leaf's read row.
   static constexpr int kMassRowBytes = kBC * 4;
   static constexpr int kRowMapBytes = kBC * 2;
-  //: THE PHASE LEDGER's accumulators; the readout's tile counter; THE WALK RING, a warp's.
+  //: THE PHASE LEDGER's accumulators; the readout's tile counter; THE WALK RING, a warp's
+  //: (a chunk's kept rows, a word each); a warp's TAKE and FOLD words. -- smem_ledger.md
   static constexpr int kLedgerBytes = kWarps * kPhases * 8;
-  static constexpr int kWalkEntries = 64;
+  static constexpr int kWalkEntries = kPoolTokMax;
   static constexpr int kWalkBytes = kWarps * kWalkEntries * 4;
 
   //: WHAT THE ARM'S ORDERS CAN DO (compile-time variants of the streams). -- carry_kernel.md#layout
@@ -112,7 +112,8 @@ struct BoxPlan {
   //: a warp's TAKE WORD: the tile its lane 0 took, read back by every lane (a shared
   //: load is warp-uniform to the compiler where a shuffle's result is not).
   static constexpr int kTakeOffset = kCounterOffset + 16;
-  static constexpr int kPoolBarOffset = round_up16(kTakeOffset + kWarps * 4);
+  static constexpr int kFoldWordOffset = kTakeOffset + kWarps * 4;
+  static constexpr int kPoolBarOffset = round_up16(kFoldWordOffset + kWarps * 4);
   static constexpr int kRingBarOffset = kPoolBarOffset + 2 * kPoolSlots * 8;
   static constexpr int kWalkOffset = round_up16(kRingBarOffset + kWarps * kRRSlots * 8);
   static constexpr int kRegionOffset = round_up128(kWalkOffset + kWalkBytes);
@@ -156,6 +157,8 @@ struct BoxPlan {
   static_assert(kRegionBytes >= kSnapshotBytes,
                 "the sweeps stage the low halves across the pool region");
   static_assert(kPoolTok >= 16, "a pool slot holds at least one fragment of tokens");
+  static_assert(kPoolTok <= kWalkEntries && kPoolTok < 255,
+                "a chunk's rows fit the ring, a byte a row");
   static_assert(denseref::design::smem_fits((size_t)kSmemBytes),
                 "the carry box's shared-memory ledger exceeds this architecture's per-CTA "
                 "maximum");

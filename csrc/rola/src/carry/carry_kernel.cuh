@@ -51,8 +51,7 @@ constexpr bool kReadoutDrain = ((ROLA_CARRY_PARTS >> 2) & 1u) != 0u;
 constexpr bool kFoldPool = ((ROLA_CARRY_PARTS >> 3) & 1u) != 0u;
 constexpr bool kFoldRing = ((ROLA_CARRY_PARTS >> 4) & 1u) != 0u;
 constexpr bool kFoldLoads = ((ROLA_CARRY_PARTS >> 5) & 1u) != 0u;
-constexpr uint32_t kStubPair = 0x3F003E80u;   //: bf16 (0.5, 0.25): a stub's operand
-constexpr uint32_t kStubEntry = 0x3F800000u;  //: pool row 0 at gain 1.0: a stub's ring entry
+constexpr uint32_t kStubPair = 0x3F003E80u;  //: bf16 (0.5, 0.25): a stub's operand
 
 //: THE SHARED BLOCK, as the ledger lays it out. -- see docs/internals/carry/smem_ledger.md
 template <class BP>
@@ -159,8 +158,12 @@ struct Smem {
     return at(BP::kTakeOffset + warp * 4);
   }
 
-  __device__ __forceinline__ uint32_t* walk(int warp) const {
-    return reinterpret_cast<uint32_t*>(base + BP::kWalkOffset) + warp * BP::kWalkEntries;
+  __device__ __forceinline__ ops::SmemAddr ring(int warp) const {
+    return at(BP::kWalkOffset + warp * BP::kWalkEntries * 4);
+  }
+
+  __device__ __forceinline__ ops::SmemAddr fold_word(int warp) const {
+    return at(BP::kFoldWordOffset + warp * 4);
   }
 
   //: THE REGION: the readout's blocks then the pool; whole, the sweeps' low-half stage.
@@ -969,37 +972,51 @@ __device__ __forceinline__ int run_lane_row(int lane) { return (lane & 7) + 8 * 
 
 __device__ __forceinline__ int v_lane_row(int lane) { return (lane & 7) + 8 * ((lane >> 3) & 1); }
 
-//: THE FOLD FRAGMENT: sixteen pool rows (lane `j < 16` holds entry `j`: row | gain << 16);
-//: A, the outer pairs and V gathered once, the pairs scaled by the gains; then a box: its
-//: pairs by shuffle, A scaled, `kNT` HMMAs into its state, one into its mass. -- #fold
+//: THE FRAGMENT'S OPERANDS: A scaled by each box's outer pair (`ab`, a box) and the V
+//: n-tiles, one set a fragment, two sets alternating in the fold's pairs. -- #fold
+template <class BP>
+struct FragOperands {
+  uint32_t ab[BP::kDealt][4];
+  uint32_t v[2 * BP::kNT];
+};
+
+//: ORDERED AFTER: `x` whole, with a data dependency on `y`, so ptxas issues what `y` needs
+//: before the instruction that consumes the result.
+__device__ __forceinline__ uint32_t after(uint32_t x, uint32_t y) {
+  uint32_t r;
+  asm volatile("prmt.b32 %0, %1, %2, 0x3210;\n" : "=r"(r) : "r"(x), "r"(y));
+  return r;
+}
+
+//: THE GATHER of fragment `n` off the ring: the lanes' rows and gain pairs at static
+//: offsets, A, the outer pairs and V by `ldmatrix`, the pairs scaled by the gains, then a
+//: box's pairs by shuffle and A scaled by them. -- #fold
 template <class BP, int D, int BC>
-__device__ __forceinline__ void fold_fragment(ops::SmemAddr slot, uint32_t entry, int warp,
-                                              int lane, State<BP>& st) {
+__device__ __forceinline__ void frag_load(ops::SmemAddr slot, ops::SmemAddr ring, int n, int warp,
+                                          int lane, FragOperands<BP>& f) {
   if constexpr (kFoldLoads) {
     const int q = lane & 3;
-
-    const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, run_lane_row(lane));
-
-    const uint32_t ve = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, v_lane_row(lane));
-    const int rrow = (int)(re & 0xFFu), vrow = (int)(ve & 0xFFu);
+    const ops::SmemAddr rows = ring + (uint32_t)(n * BP::kTile * 4);
+    const int rrow = (int)ops::load_shared_u8(rows + (uint32_t)(run_lane_row(lane) * 4));
+    const int vrow = (int)ops::load_shared_u8(rows + (uint32_t)(v_lane_row(lane) * 4));
     const int rchunk = (lane >> 3) & 1;
-    uint32_t a[4], sp[4], v[2 * BP::kNT];
+    uint32_t a[4], sp[4];
     ops::load_frag_t(a, slot + pool_inner_off<BP>(rrow, rchunk));
     ops::load_frag_t(sp, slot + pool_outer_off<BP>(rrow, rchunk));
 
     rola::static_for<BP::kNT / 2>([&](auto Ic) {
       constexpr int i = decltype(Ic)::value;
-      ops::load_frag_t(*reinterpret_cast<uint32_t(*)[4]>(v + 4 * i),
+      ops::load_frag_t(*reinterpret_cast<uint32_t(*)[4]>(f.v + 4 * i),
                        slot + pool_v_off<BP>(vrow, 2 * i + (lane >> 4)));
     });
 
-    //: the gains of tokens 2q, 2q + 1 and 2q + 8, 2q + 9, off the entries' high halves.
+    //: the gains of tokens 2q, 2q + 1 and 2q + 8, 2q + 9, off their entries' high halves.
     uint32_t gp[2];
 
     rola::static_for<2>([&](auto Hc) {
       constexpr int h = decltype(Hc)::value;
-      const uint32_t e0 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, 2 * q + 8 * h);
-      const uint32_t e1 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, 2 * q + 8 * h + 1);
+      const uint32_t e0 = ops::load_shared_u32(rows + (uint32_t)((2 * q + 8 * h) * 4));
+      const uint32_t e1 = ops::load_shared_u32(rows + (uint32_t)((2 * q + 8 * h + 1) * 4));
       gp[h] = __byte_perm(e0, e1, 0x7632);
     });
 
@@ -1017,41 +1034,53 @@ __device__ __forceinline__ void fold_fragment(ops::SmemAddr slot, uint32_t entry
       const int src = ((b & 7) << 2) | q;
       const uint32_t s0 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[b < 8 ? 0 : 1], src);
       const uint32_t s1 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[b < 8 ? 2 : 3], src);
-      const uint32_t ab[4] = {ops::mul_bf16x2(a[0], s0), ops::mul_bf16x2(a[1], s0),
-                              ops::mul_bf16x2(a[2], s1), ops::mul_bf16x2(a[3], s1)};
-      rola::static_for<BP::kNT>([&](auto Jc) {
-        constexpr int j = decltype(Jc)::value;
-        ops::mma(st.c[bi][j], ab, v + 2 * j);
-      });
-      const uint32_t ones = (lane >> 2) == 0 ? 0x3F803F80u : 0u;
-      const uint32_t bm[2] = {ones, ones};
-      ops::mma(st.m[bi], ab, bm);
+      f.ab[bi][0] = ops::mul_bf16x2(a[0], s0);
+      f.ab[bi][1] = ops::mul_bf16x2(a[1], s0);
+      f.ab[bi][2] = ops::mul_bf16x2(a[2], s1);
+      f.ab[bi][3] = ops::mul_bf16x2(a[3], s1);
     });
   } else {
     (void)slot;
-    (void)entry;
+    (void)ring;
+    (void)n;
     (void)warp;
-    const uint32_t ab[4] = {kStubPair, kStubPair, kStubPair, kStubPair};
-    uint32_t v[2 * BP::kNT];
-    rola::static_for<2 * BP::kNT>([&](auto Ic) { v[decltype(Ic)::value] = kStubPair; });
+    (void)lane;
     rola::static_for<BP::kDealt>([&](auto Bi) {
-      constexpr int bi = decltype(Bi)::value;
-      rola::static_for<BP::kNT>([&](auto Jc) {
-        constexpr int j = decltype(Jc)::value;
-        ops::mma(st.c[bi][j], ab, v + 2 * j);
-      });
-      const uint32_t ones = (lane >> 2) == 0 ? 0x3F803F80u : 0u;
-      const uint32_t bm[2] = {ones, ones};
-      ops::mma(st.m[bi], ab, bm);
+      rola::static_for<4>(
+          [&](auto Ec) { f.ab[decltype(Bi)::value][decltype(Ec)::value] = kStubPair; });
     });
+    rola::static_for<2 * BP::kNT>([&](auto Ic) { f.v[decltype(Ic)::value] = kStubPair; });
   }
 }
 
+//: THE BURST of fragment `f`, INTERLEAVED with the gather of `next`: box 0's fifth HMMA
+//: is ordered after `next`'s V loads and box 1's first after its whole gather, so those
+//: issue in this burst's pipe time and never between bursts. -- #fold
+template <class BP>
+__device__ __forceinline__ void frag_mma(FragOperands<BP>& f, const FragOperands<BP>& next,
+                                         int lane, State<BP>& st) {
+  uint32_t loads = next.v[3];
+  rola::static_for<BP::kNT / 2 - 1>([&](auto Ic) { loads ^= next.v[4 * decltype(Ic)::value + 7]; });
+  const uint32_t chain = next.ab[0][3] ^ next.ab[BP::kDealt - 1][3];
+  const uint32_t ones = (lane >> 2) == 0 ? 0x3F803F80u : 0u;
+  const uint32_t bm[2] = {ones, ones};
+  rola::static_for<BP::kDealt>([&](auto Bi) {
+    constexpr int bi = decltype(Bi)::value;
+    rola::static_for<BP::kNT>([&](auto Jc) {
+      constexpr int j = decltype(Jc)::value;
+      if constexpr (bi == 0 && j == BP::kNT / 2) f.v[2 * j] = after(f.v[2 * j], loads);
+      if constexpr (bi == BP::kDealt - 1 && j == 0) f.v[0] = after(f.v[0], chain);
+      ops::mma(st.c[bi][j], f.ab[bi], f.v + 2 * j);
+    });
+    ops::mma(st.m[bi], f.ab[bi], bm);
+  });
+}
+
 //: THE FOLD STREAM (component `fold`): the write side over the pool as a step function. A
-//: step is one fragment (the walk until sixteen kept rows queue, then `fold_fragment`), or
-//: the chunk's tail and the slot's release, or the next chunk taken once full; the fill of
-//: the chunk after is issued once its slot is empty. A step that would wait returns false;
-//: done when the chunks are folded AND the fills issued. BUDGET: #budgets. -- #fold
+//: chunk's kept rows are WALKED ONCE at its take into the warp's ring; the fragments are then
+//: a counted loop, two a step: each burst's dependencies pull the next gather under it. A
+//: warp's fill share of a later chunk issues when its slot frees, polled through the fold
+//: word. BUDGET: carry_kernel.md#budgets. -- #fold
 template <class BP, int D, int BC>
 struct FoldStream {
   const CarryParams& p;
@@ -1063,9 +1092,10 @@ struct FoldStream {
   int parity, warp, lane;
   uint32_t rowbase;
   int chunks, c, s;
-  int rr, r1, queued, taken;
+  int nfrag, n;
   int fill_c;  //: the chunk whose fill this warp still owes, or -1
   bool taken_slot, done;
+  FragOperands<BP> f0;
 
   __device__ __forceinline__ FoldStream(const CarryParams& p_, const Smem<BP>& sm_, int2 bases_,
                                         int parity_, int live, uint32_t rowbase_, int warp_,
@@ -1084,10 +1114,8 @@ struct FoldStream {
         chunks((live + BP::kPoolTok - 1) / BP::kPoolTok),
         c(0),
         s(0),
-        rr(0),
-        r1(-1),
-        queued(0),
-        taken(0),
+        nfrag(0),
+        n(0),
         fill_c(-1),
         taken_slot(false),
         done(false) {
@@ -1111,14 +1139,82 @@ struct FoldStream {
     }
   }
 
-  __device__ __forceinline__ void try_fill() {
+  //: a fact lane 0 knows, made every lane's through the fold word: uniform to the compiler,
+  //: so the branch on it is a plain branch.
+  __device__ __forceinline__ uint32_t uniform(uint32_t fact) const {
+    if (lane == 0) ops::store_shared_u32(sm.fold_word(warp), fact);
+    __syncwarp();
+    return ops::load_shared_u32(sm.fold_word(warp));
+  }
+
+  __device__ __forceinline__ bool slot_empty(int fs) const {
+    const int k = cur.fills_of(fs);
+    return uniform(k == 0 || ops::mbar_test(sm.empty_bar(fs), (uint32_t)(k - 1) & 1u)) != 0u;
+  }
+
+  __device__ __forceinline__ bool slot_full(int fs) const {
+    return uniform(ops::mbar_test(sm.full_bar(fs), (uint32_t)cur.takes_of(fs) & 1u)) != 0u;
+  }
+
+  __device__ __forceinline__ void fill_now() {
     const int fs = fill_c % BP::kPoolSlots;
-    if (cur.empty_now(sm, fs)) {
-      pc.stamp(kTraceFoldFill);
-      pool_fill<BP, D, BC>(p, sm, bases, parity, fill_c, fs, rowbase, warp, lane);
-      cur.filled(fs);
-      fill_c = fill_c + 1 < chunks ? fill_c + 1 : -1;
+    pc.stamp(kTraceFoldFill);
+    pool_fill<BP, D, BC>(p, sm, bases, parity, fill_c, fs, rowbase, warp, lane);
+    cur.filled(fs);
+    fill_c = fill_c + 1 < chunks ? fill_c + 1 : -1;
+  }
+
+  //: THE WALK of chunk `c` into the ring: its rounds' kept rows and gains by rank, the
+  //: entries past the count the zero row at gain zero up to a whole pair of fragments; the
+  //: fragment count through the fold word.
+  __device__ __forceinline__ void walk() {
+    pc.stamp(kTraceFoldWalk);
+    const ops::SmemAddr slot = sm.pool(s), ring = sm.ring(warp);
+    const uint32_t* const ww = sm.warpwords(parity, warp);
+    const uint32_t* const uw = sm.unionwords(parity);
+    const uint16_t* const prefix = sm.prefix(parity);
+    const uint32_t lt = (1u << lane) - 1u;
+    const int lo = c * BP::kPoolTok, hi = lo + BP::kPoolTok;
+    const int pr = lane < BP::kRounds ? (int)prefix[lane] : 0x7FFFFFFF;
+    int rr = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr <= lo));
+    const int r1 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr < hi));
+    int queued = 0;
+
+    //: two rounds an iteration, their gain loads together: a round's entry is its pool row
+    //: with the token's gain (the half of the row's gain pair its parity names), and one
+    //: load's latency a round would serialize the walk.
+    const auto keep = [&](int round, int base, uint32_t& idx, uint32_t& row, bool& in) {
+      const uint32_t u = round <= r1 ? uw[round] : 0u, w = round <= r1 ? ww[round] : 0u;
+      const int rank = (int)prefix[round & (BP::kRounds - 1)] + __popc(u & lt);
+      in = ((w >> lane) & 1u) != 0u && rank >= lo && rank < hi;
+      const uint32_t kept = __ballot_sync(0xFFFFFFFFu, in);
+      idx = (uint32_t)(base + __popc(kept & lt));
+      row = (uint32_t)(rank - lo);
+      return __popc(kept);
+    };
+#pragma unroll 1
+    for (; rr <= r1; rr += 2) {
+      uint32_t idx0, row0, idx1, row1;
+      bool in0, in1;
+      const int n0 = keep(rr, queued, idx0, row0, in0);
+      const int n1 = keep(rr + 1, queued + n0, idx1, row1, in1);
+      const uint32_t gw0 = ops::load_shared_u32(slot + pool_gain_off<BP>(in0 ? (int)row0 : 0));
+      const uint32_t gw1 = ops::load_shared_u32(slot + pool_gain_off<BP>(in1 ? (int)row1 : 0));
+      const uint32_t g0 = (lane & 1) ? (gw0 & 0xFFFF0000u) : (gw0 << 16);
+      const uint32_t g1 = (lane & 1) ? (gw1 & 0xFFFF0000u) : (gw1 << 16);
+      if (in0) ops::store_shared_u32(ring + 4u * idx0, kFoldRing ? (row0 | g0) : 0x3F800000u);
+      if (in1) ops::store_shared_u32(ring + 4u * idx1, kFoldRing ? (row1 | g1) : 0x3F800000u);
+      queued += n0 + n1;
     }
+
+    nfrag = (int)uniform((uint32_t)((queued + BP::kTile - 1) / BP::kTile));
+    const int padded = (nfrag + 1) & ~1;
+#pragma unroll 1
+    for (int idx = queued + lane; idx < padded * BP::kTile; idx += 32)
+      ops::store_shared_u32(ring + (uint32_t)(4 * idx), (uint32_t)BP::kPoolTok);
+    __syncwarp();
+    n = 0;
+    if (nfrag > 0) frag_load<BP, D, BC>(slot, ring, 0, warp, lane, f0);
   }
 
   //: THE WAIT, when no stream can progress: on the slot this warp's fill owes (its readers
@@ -1127,93 +1223,50 @@ struct FoldStream {
   __device__ __forceinline__ void wait() {
     pc.stamp(kTraceFoldWait);
     if (fill_c >= 0 && (c >= chunks || fill_c == c)) {
-      const int fs = fill_c % BP::kPoolSlots;
-      cur.wait_empty(sm, fs);
-      pc.stamp(kTraceFoldFill);
-      pool_fill<BP, D, BC>(p, sm, bases, parity, fill_c, fs, rowbase, warp, lane);
-      cur.filled(fs);
-      fill_c = fill_c + 1 < chunks ? fill_c + 1 : -1;
+      cur.wait_empty(sm, fill_c % BP::kPoolSlots);
+      fill_now();
     } else if (c < chunks && !taken_slot) {
       cur.wait_full(sm, s);
     }
   }
 
+  //: A STEP: a pair of fragments, or the chunk's take or release.
   __device__ __forceinline__ bool step() {
-    if (fill_c >= 0) try_fill();
+    if (fill_c >= 0 && slot_empty(fill_c % BP::kPoolSlots)) fill_now();
     if (c >= chunks) {
       done = fill_c < 0;
       return false;
     }
     if (!taken_slot) {
       if constexpr (kFoldPool) {
-        if (!cur.full_now(sm, s)) return false;
+        if (!slot_full(s)) return false;
       }
-      pc.stamp(kTraceFoldWalk);
-      const int lo = c * BP::kPoolTok, hi = lo + BP::kPoolTok;
-      const int pr = lane < BP::kRounds ? (int)sm.prefix(parity)[lane] : 0x7FFFFFFF;
-      rr = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr <= lo));
-      r1 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr < hi));
-      queued = taken = 0;
       taken_slot = true;
+      walk();
     }
-
-    const ops::SmemAddr slot = sm.pool(s);
-    uint32_t* const ring = sm.walk(warp);
-    const uint32_t* const ww = sm.warpwords(parity, warp);
-    const uint32_t* const uw = sm.unionwords(parity);
-    const uint16_t* const prefix = sm.prefix(parity);
-    const uint32_t lt = (1u << lane) - 1u;
-    const int lo = c * BP::kPoolTok, hi = lo + BP::kPoolTok;
-
-    //: walk rounds until a fragment queues or the chunk's rounds are out.
-#pragma unroll 1
-    while (queued - taken < BP::kTile && rr <= r1) {
-      const uint32_t u = uw[rr], w = ww[rr];
-      const int rank = (int)prefix[rr] + __popc(u & lt);
-      const bool in = ((w >> lane) & 1u) != 0u && rank >= lo && rank < hi;
-      const uint32_t kept = __ballot_sync(0xFFFFFFFFu, in);
-      if constexpr (kFoldRing) {
-        if (in) {
-          const int slot_ix = (queued + __popc(kept & lt)) & (BP::kWalkEntries - 1);
-          //: the token's gain: the half of its pool row's gain pair its parity names.
-          const uint32_t gw = ops::load_shared_u32(slot + pool_gain_off<BP>(rank - lo));
-          const uint32_t g = (lane & 1) ? (gw >> 16) : (gw & 0xFFFFu);
-          ring[slot_ix] = (uint32_t)(rank - lo) | (g << 16);
-        }
-      }
-      queued += __popc(kept);
-      ++rr;
-      __syncwarp();
-    }
-
-    if (queued - taken >= BP::kTile) {
+    if (n < nfrag) {
       pc.stamp(kTraceFoldFragment);
-      if constexpr (kFoldRing) {
-        const uint32_t entry = ring[(taken + (lane & 15)) & (BP::kWalkEntries - 1)];
-        fold_fragment<BP, D, BC>(slot, entry, warp, lane, st);
-      } else {
-        fold_fragment<BP, D, BC>(slot, kStubEntry, warp, lane, st);
-      }
-      taken += BP::kTile;
+      const ops::SmemAddr slot = sm.pool(s), ring = sm.ring(warp);
+      //: the pair: the next fragment's gather, this burst after it, the fragment after
+      //: next's gather, the next burst after that -- each gather only for a real fragment
+      //: (the count is uniform, so these are plain branches).
+      const bool second = n + 1 < nfrag;
+      FragOperands<BP> f1;
+      if (second) frag_load<BP, D, BC>(slot, ring, n + 1, warp, lane, f1);
+      frag_mma<BP>(f0, f1, lane, st);
+      if (n + 2 < nfrag) frag_load<BP, D, BC>(slot, ring, n + 2, warp, lane, f0);
+      if (second) frag_mma<BP>(f1, f0, lane, st);
+      n += 2;
       return true;
     }
+    release();
+    return true;
+  }
 
-    //: the tail: the queued rows past the last fragment, the rest from the zero row.
-#pragma unroll 1
-    for (int n = ops::once(queued > taken); n > 0; --n) {
-      pc.stamp(kTraceFoldFragment);
-      const int j = lane & 15;
-      if constexpr (kFoldRing) {
-        const uint32_t entry = j < queued - taken ? ring[(taken + j) & (BP::kWalkEntries - 1)]
-                                                  : (uint32_t)BP::kPoolTok;
-        fold_fragment<BP, D, BC>(slot, entry, warp, lane, st);
-      } else {
-        fold_fragment<BP, D, BC>(slot, j < queued - taken ? kStubEntry : (uint32_t)BP::kPoolTok,
-                                 warp, lane, st);
-      }
-    }
+  //: THE RELEASE of the chunk's slot: its rows are in registers (the warp's own loads are
+  //: ordered before the arrive by the sync), so the fill of a later chunk may take it.
+  __device__ __forceinline__ void release() {
     __syncwarp();
-
     if constexpr (kFoldPool) {
       if (lane == 0) ops::mbar_arrive(sm.empty_bar(s));
       cur.used(s);
@@ -1222,7 +1275,6 @@ struct FoldStream {
     s = c % BP::kPoolSlots;
     taken_slot = false;
     done = c >= chunks && fill_c < 0;
-    return true;
   }
 };
 

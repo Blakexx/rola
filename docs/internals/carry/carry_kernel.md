@@ -190,25 +190,48 @@ and every warp still arrives at the slot's barrier.
 ## The fold
 
 `FoldStream`, a step function with a cursor. A step: if the warp still owes a fill (the
-chunk after the one it last took), issue it when its slot is empty; take the chunk's slot
-once full (else return false: the caller does other work) and the chunk's rounds by the two
-ballots; walk rounds until sixteen kept rows queue -- per round each lane's token is KEPT
-when the warp's word has it and its rank is in the chunk; kept lanes queue their pool row
-with the token's gain (`walk`, a 64-entry ring a warp) at the slot their prefix popcount
-names -- then `fold_fragment`; or, the rounds out, the tail padded from the zero row, the
-slot released after the last gather, the next chunk. Done when its chunks are folded AND its
-fills are issued (a warp that left with a fill owed would hold the others). `fold` runs a
-stream alone to completion: the part harness's form.
+chunk after the one it last took), issue it when its slot is empty -- the barrier tested by
+lane 0 and the answer parked in the warp's FOLD WORD, a shared load every lane reads back, so
+the branch on it is a plain branch and not a vote; take the chunk's slot once full (else
+return false: the caller does other work) and WALK the chunk once into the ring; then a
+PAIR of fragments a step until the count is out; then the slot released, the next chunk.
+Done when its chunks are folded AND its fills are issued (a warp that left with a fill owed
+would hold the others). `fold` runs a stream alone to completion: the part harness's form.
 
-`fold_fragment`: the sixteen entries shuffled to the `ldmatrix` lane maps (`run_lane_row`,
-`v_lane_row`); A = the inner runs transposed (`ldmatrix.trans`: lane (r, q) holds positions
+**The walk** (`walk`): the chunk's rounds by the two ballots, TWO ROUNDS AN ITERATION; per
+round each lane's token is KEPT when the warp's word has it and its rank is in the chunk, and
+kept lanes write their entry -- the pool row in the low byte, the token's gain in the high
+half, one word -- at the index their prefix popcount names in the ring (`ring`, `kPoolTokMax`
+words a warp: the chunk's rows, fragment `n` at entry `16 n`). The two rounds' gain loads
+issue together: one load's latency a round serialized the walk (at k = 4 a chunk spans a
+dozen rounds, and the walk is the fold's largest item there). The entries past the count, up to a whole pair of fragments,
+hold the zero row at gain zero; the fragment count reaches every lane through the fold word.
+So the fragments after it are a COUNTED loop over static addresses, with no vote, ballot or
+shuffle between two bursts: what an in-order warp can pipeline.
+
+**The gather** (`frag_load`): a fragment's lanes load their rows off the ring at the
+`ldmatrix` lane maps (`run_lane_row`, `v_lane_row`, a byte each) and their gain pairs off
+two entries; A = the inner runs transposed (`ldmatrix.trans`: lane (r, q) holds positions
 `r`, `r + 8` at tokens `2q..`, `2q + 8..`), the outer runs transposed the same way (lane
 (r, q) holds boxes `r`, `r + 8`: pairs `[0]` (box r, low tokens), `[1]` (box r + 8, low),
 `[2]` (box r, high), `[3]` (box r + 8, high)), V as B (four `ldmatrix.trans` for eight
-n-tiles); the outer pairs scaled by the tokens' gains (two shuffles of the entries); then a
-box: its pairs by shuffle from the lanes holding boxes `b & 7`, A scaled by them (four
-packed multiplies), `kNT` HMMAs into the box's state and one against a ones column into
-its mass. About 102 instructions and 18 HMMAs a fragment at DV = 64.
+n-tiles); the outer pairs scaled by the gains; then a box: its pairs by shuffle from the
+lanes holding boxes `b & 7`, A scaled by them (four packed multiplies). The result is one
+operand set (`FragOperands`: `ab` a box, the V tiles), 24 registers.
+
+**The burst** (`frag_mma`): a box's `kNT` HMMAs into its state and one against a ones column
+into its mass. A pair alternates two operand sets and INTERLEAVES the next gather with this
+burst: box 0's fifth HMMA is ordered after the next set's V loads and box 1's first after
+its whole gather (`after`, a `prmt` that selects the operand whole but depends on the other
+set), so ptxas issues the loads inside the first half of the burst and the multiplies and
+shuffles inside the second, in the pipe time this burst would have idled through. Why it is
+needed: a warp issues one or two HMMAs ahead of the pipe and in order, so any chain longer
+than a slot placed after a burst is exposed whole on a warp whose partner is not issuing
+(calibration.md, the fragment rows); ptxas at 213 registers sinks loads to their uses and
+regroups the bursts unless a dependency forbids it. Measured at nl64k-dense: a fragment 1,325
+-> 1,128 cycles paired, the fold 51.4K -> 47.0K a warp a window (alt-k4 7.8K -> 7.5K),
+registers 213 -> 239 (peak live ~157 in the fold; the allocation's peak sits in the fill
+and the head), the ring 2 KB more shared memory.
 
 <a id="readout"></a>
 ## The readout

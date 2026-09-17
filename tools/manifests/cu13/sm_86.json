@@ -27,7 +27,7 @@
   }
  },
  "source": {
-  "csrc_sha256": "b4b650bdf20435fa6833e1b7c6d261ae793ef757f4857092abccfb81691d9541",
+  "csrc_sha256": "50397426c658ee306d80b66c47ac5d309689d36226d3ea769f54bf3f8a5579e7",
   "date": "2026-09-16",
   "image_digest": ""
  },
@@ -39,12 +39,12 @@
  },
  "entries": {
   "sm_86:_ZN4rola5carry12carry_kernelILi2ELi64ELi8EEEvNS0_11CarryParamsE": {
-   "regs": 213,
+   "regs": 239,
    "spill_stores": 0,
    "spill_loads": 0,
    "hot_locals": 0,
    "local_ops": 0,
-   "sass_sha256": "42b640bbaefa0e753d634d9cac6862443a66ca6e4ba5d3178917ab23c234d5f7"
+   "sass_sha256": "7b008f67f6a023c2baa389e6a7cd9d9c6b0586dc1fab621d483dd1e42f9f9eeb"
   },
   "sm_86:_ZN4rola5intra6detail12intra_kernelILi2ELi256ELi384EEEvNS1_11IntraParamsE": {
    "regs": 190,
@@ -2796,7 +2796,7 @@
    "spill_loads": 0,
    "hot_locals": 0,
    "local_ops": 0,
-   "sass_sha256": "54aa7c893db548cc74c2fc2aeeff21e91521860274a0034d3f78f1ba867579a5"
+   "sass_sha256": "adf70990fcd941d6bee47ff531c792407e6ae9d29eea0e042065629635787c2e"
   }
  }
 }
