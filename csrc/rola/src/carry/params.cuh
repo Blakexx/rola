@@ -34,6 +34,10 @@ struct CarryParams {
   int order;
   //: THE PHASE LEDGER, `[cta][warp][kPhases]` int64, or null. -- carry_kernel.md#phase-ledger
   long long* ledger;
+  //: THE PHASE TRACE, `[cta][warp][trace_cap]` stamps, or null. -- carry_kernel.md#phase-trace
+  long long* trace;
+  int trace_ctas;
+  int trace_cap;
 };
 
 //: THE PHASES the ledger counts; the head's two edges split its row. -- carry_kernel.md#phase-ledger
@@ -47,6 +51,19 @@ enum CarryPhase : int {
   kPhaseHeadWords = 6,
   kPhaseHeadScans = 7,
   kPhases = 8
+};
+
+//: THE TRACE'S EVENTS: a lap's phase, then the streams' steps. -- carry_kernel.md#phase-trace
+enum CarryTraceEvent : int {
+  kTraceFoldWalk = kPhases,
+  kTraceFoldFragment = 9,
+  kTraceFoldWait = 10,
+  kTraceFoldFill = 11,
+  kTraceReadoutTile = 12,
+  kTraceReadoutIssue = 13,
+  kTraceReadoutWait = 14,
+  kTraceReadoutDrain = 15,
+  kTraceEvents = 16
 };
 
 //: THE ORDER POLICIES. -- carry_kernel.md#order

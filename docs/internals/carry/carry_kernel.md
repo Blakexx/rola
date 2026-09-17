@@ -308,6 +308,38 @@ the rest is the readout's per-warp imbalance arriving at that edge. A wait is re
 stamps taken BEFORE the barrier (the edge-wait meter, a measurement variant: the latest arrival minus
 a warp's own, gathered after a later barrier; it costs the kernel 10-14%).
 
+<a id="phase-trace"></a>
+## The phase trace
+
+The ledger says how long a warp spent in each phase; the trace says WHEN. Bound through
+`carry_trace_bind` (a `[ctas][warps][cap]` int64 tensor and the warps per CTA), every lap of
+the first `ctas` CTAs' warps and every step of their streams stamps `%clock64 << 8 | event`
+into the warp's row, lane 0, one 64-bit store an event: a lap stamps the phase that ended
+(`CarryPhase`), a stream stamps the activity that begins (`CarryTraceEvent`: the fold's walk,
+fragment, wait and fill; the readout's tile, issue, wait and drain). A row that fills stops
+recording. Unbound, the stamps are a predicated branch each and the kernel holds four more
+registers (209 against 205 at flagship); one CTA's clock is one SM's, so a CTA's warps are on
+one time base and CTAs are not.
+
+`tools/phase_trace.py` reads it as three things the ledger cannot say: the finer ledger (a
+warp's cycles a window by activity, with the readout's drain apart from its boxes), THE
+SCHEDULER'S VIEW (the two warps a scheduler: the share of time zero, one or both are inside an
+HMMA-issuing activity, and what they are doing when neither is), and the lockstep (the spread
+of the warps' phase starts within a window). The scheduler pairing is `warp % 4`.
+
+**Read at N = L dense (nl64k-dense, 2026-09-16).** A window is 109.6K cycles a warp; the
+HMMA work in it, 1,152 an atom a warp at 32.5 cycles a scheduler for two warps, is 74.9K: the
+pipe is 68% busy INSIDE a CTA. The warps are not out of step -- the fold's starts spread 139
+cycles, the readout's 972 -- and both warps of a scheduler are inside HMMA-issuing activities
+65% of the time. The pipe's idle time is not bursts of loads: the loads calibrate free under
+a burst (`calibration.md`). It is (a) the 19% of the span where neither warp issues, of which
+the readout's drain is half (both warps drain together, 2.8K cycles a tile), the head and
+snapshot a quarter, the pool fill a tenth; and (b) the fragments' own rate, 1,325 cycles for
+eighteen HMMAs against 1,170 for two warps sharing the pipe. The other loss is outside the
+CTA: 256 boxes on 80 SMs at one CTA an SM is 3.2 waves, and the kernel runs four, so the
+card sees 20% of the wall idle by wave quantization (the per-CTA 8.4 ms times four is the
+33.7 ms measured under the lock).
+
 <a id="budgets"></a>
 ## Budgets
 

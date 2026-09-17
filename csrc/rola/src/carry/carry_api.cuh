@@ -20,6 +20,8 @@ void carry_forward(const Tensor& read, const Tensor& write, const Tensor& gain, 
 
 //: the phase ledger binding (a debug instrument; None unbinds). -- carry_kernel.md#phase-ledger
 void carry_ledger_bind(const std::optional<Tensor>& ledger);
+//: the phase trace binding, `[ctas][warps][cap]` (a debug instrument; None unbinds). -- carry_kernel.md#phase-trace
+void carry_trace_bind(const std::optional<Tensor>& trace, int64_t warps_per_cta);
 int64_t carry_build_stamp();
 std::vector<std::vector<int64_t>> carry_census();
 std::vector<std::vector<int64_t>> carry_arms();

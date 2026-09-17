@@ -78,6 +78,7 @@ _LAUNCHLESS = {
     "vmm_facts": "reads a driver allocation's bookkeeping",
     "carry_census": "a cudaFuncGetAttributes query of the compiled arms, not a kernel launch",
     "carry_ledger_bind": "binds the device buffer the next carry launch adds into; issues no launch",
+    "carry_trace_bind": "binds the device buffer the next carry launch stamps into; issues no launch",
 }
 
 

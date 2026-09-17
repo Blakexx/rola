@@ -47,6 +47,16 @@ CALIBRATIONS = (
     ("cta_barrier", 8, 6, 1, 1, "a CTA barrier over every lane"),
     ("shm_barrier", 8, 7, 1, 1, "a shared-memory barrier: arrive and wait"),
     ("warp_sync", 8, 8, 1, 1, "a warp sync between one lane's store and every lane's load"),
+    #: the settling rows: an HMMA burst (nine, the atom) with the parts' loads or reductions interleaved,
+    #: read as cycles an HMMA against `hmma_2w`'s 65 (32.5 a scheduler)
+    ("hmma_load_1", 8, 10, 1, 9, "nine HMMAs a unit fed by one ldmatrix.trans load issued ahead of them, two warps a scheduler"),
+    ("hmma_load_4", 8, 10, 4, 9, "nine HMMAs fed by four loads ahead of them (the readout's box)"),
+    ("hmma_load_4_1w", 4, 10, 4, 9, "the same, one warp a scheduler: no partner warp to hide the loads"),
+    ("hmma_load_4_free", 8, 11, 4, 9, "four loads beside nine HMMAs, the loads' results a sink: the pipes' sharing alone"),
+    ("hmma_reduce_1", 8, 12, 1, 9, "nine HMMAs with one global f32 reduction issued between them"),
+    ("hmma_reduce_2", 8, 12, 2, 9, "two reductions between them"),
+    ("hmma_reduce_4", 8, 12, 4, 9, "four"),
+    ("hmma_reduce_8", 8, 12, 8, 9, "eight, one an HMMA"),
 )
 
 
@@ -64,7 +74,7 @@ def main() -> int:
 
     from rola.ops import carry as carry_ops
     try:
-        from rola_cu13 import _C_parts  # noqa: F401 -- loading the library registers torch.ops.rola_parts
+        from rola_cu13 import _C_parts  # loading the library registers torch.ops.rola_parts
     except ImportError as ex:
         raise SystemExit("the part harness's module is not built (ROLA_BUILD_PARTS=1)") from ex
     mod = torch.ops.rola_parts
@@ -104,7 +114,7 @@ def main() -> int:
     from rola_results import Store, checkout, digest
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H%MZ")
-    semantics = {"binary": digest(mod.__file__), "device": torch.cuda.get_device_name(0), "owners": a.owners,
+    semantics = {"binary": digest(_C_parts.__file__), "device": torch.cuda.get_device_name(0), "owners": a.owners,
                  "seconds": a.seconds, "launches": a.launches, "only": sorted(only),
                  "clock_ghz": clock["ghz"] if clock else None}
     sample = Store("calibration").put(semantics, output={"utc": stamp, "owners": a.owners, "clock": clock,

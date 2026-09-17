@@ -129,6 +129,7 @@ STABLE_TORCH_LIBRARY(rola, m) {
       "int dv, int page_bits, int warps_per_cta, int[] carve_order, Tensor liveness, Tensor activity, "
       "Tensor? state_in, Tensor? d_state_out, Tensor? page_table) -> ()");
   m.def("carry_ledger_bind(Tensor? ledger) -> ()");
+  m.def("carry_trace_bind(Tensor? trace, int warps_per_cta) -> ()");
   m.def("carry_build_stamp() -> int");
   m.def("carry_census() -> int[][]");
   m.def("carry_arms() -> int[][]");
@@ -202,6 +203,7 @@ STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
   m.impl("carry_forward", TORCH_BOX(&rola::carry::carry_forward));
   m.impl("carry_backward", TORCH_BOX(&carry_backward_unimplemented));
   m.impl("carry_ledger_bind", TORCH_BOX(&rola::carry::carry_ledger_bind));
+  m.impl("carry_trace_bind", TORCH_BOX(&rola::carry::carry_trace_bind));
   m.impl("carry_build_stamp", TORCH_BOX(&rola::carry::carry_build_stamp));
   m.impl("carry_census", TORCH_BOX(&rola::carry::carry_census));
   m.impl("carry_arms", TORCH_BOX(&rola::carry::carry_arms));

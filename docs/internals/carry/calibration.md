@@ -22,6 +22,18 @@ the tracer's readings use them in place of assumed constants (KERNEL_STANDARDS Â
 | a shared-memory barrier, arrive and wait | 123.9 | |
 | a warp sync between one lane's store and every lane's load | 57.5 | |
 
+### The settling rows (2026-09-16): an HMMA burst with the parts' loads or reductions interleaved
+
+Nine HMMAs a unit (the atom), read as cycles an HMMA a warp against `hmma_2w`'s 64.8.
+
+| calibration | cycles an HMMA a warp | reading |
+|---|---|---|
+| one `ldmatrix.trans` load ahead of the nine, feeding their B, two warps a scheduler | 64.9 | free |
+| four loads ahead of the nine, feeding their B (the readout's box) | 65.0 | free: the loads issue under the previous burst's pipe time |
+| four loads, one warp a scheduler (`hmma_1w` is 32.4) | 32.7 | free WITHOUT a partner warp: in-order issue runs ahead of the pipe |
+| four loads beside the nine, their results a sink | 66.0 | the pipes do not share: +1 cycle an HMMA |
+| one / two / four / eight global f32 reductions between the nine | 65.7 / 67.6 / 68.9 / 76.3 | ~1.4 cycles a reduction; the drain's 136 a window are ~200 cycles |
+
 **Not yet valid:** the asynchronous-copy rows (347.3 bank-free, 92.7 "aliased" a 16-byte run). The aliased
 variant writes every lane's run to the same destination, so it measures overwriting, not bank conflicts.
 The time also includes each group's landed wait. The kernel is being redesigned: distinct destinations
@@ -29,13 +41,14 @@ sharing one bank group, group sizes swept, and the wait timed apart.
 
 ## What the rows already explain
 
-- **The readout's drain.** At flagship-dense a warp issues 136 global reductions a window. At ~86 cycles
-  each that is ~11.6K cycles, against the drain's composer step of 9.8K. The drain is reduction-bound:
-  the lever is the reduction count and width (the card's open "bf16 partial outputs" question), not the
-  drain's placement.
-- **The two loads parts.** An `ldmatrix` load costs one HMMA's pipe time and the loads of a burst do not
-  overlap each other. The readout's box issues 4 per 9 HMMAs and the fold's fragment 6 per 18, which is
-  why both parts step the short scoreboard and push their HMMAs back.
+- **The readout's drain.** Not reduction-bound: the reduction row times the global path's throughput
+  until every add has landed, and the kernel depends on none of them (corrected 2026-09-12); the
+  settling row prices a reduction's issue at ~1.4 cycles. The drain's 2.8K cycles a tile is its stage
+  round trip -- the stores, the syncs and the loads of four passes through one stage.
+- **The two loads parts.** An `ldmatrix` load costs half an HMMA's pipe time a scheduler when timed
+  alone, and NOTHING under a burst: in-order issue runs a warp's loads ahead while its last burst drains
+  the pipe, with or without a partner warp. The loads parts' short-scoreboard signature is the loads
+  waiting on what precedes them (a wait, a sync, a ballot), not the pipe.
 - **The HMMA floor.** The kernel's own atom confirms the 32-cycle constant: 32.5 a scheduler.
 
 The reduction row uses a small output. The kernel's output at N = L alt-k4 is 16.7 MB, so a large-output

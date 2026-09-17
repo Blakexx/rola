@@ -2,7 +2,9 @@
 // isolates one cost the carry kernel's parts are made of and runs it back to back on every warp of every
 // CTA, timed by the host under the locked clock -- an HMMA of the kernel's own atom, a burst of shared
 // loads or stores, an asynchronous copy (bank-free or aliased), a global reduction, a CTA barrier, a
-// shared-memory barrier, a warp sync. Built into the part harness's module; never shipped.
+// shared-memory barrier, a warp sync; and the SETTLING ROWS, an HMMA burst with the loads or the
+// reductions of the kernel's parts interleaved, which say whether those overlap the pipe or share
+// it. Built into the part harness's module; never shipped.
 // See docs/internals/carry/calibration.md
 #pragma once
 
@@ -23,7 +25,10 @@ enum CalibMode : int {
   kCtaBarrier = 6,
   kShmBarrier = 7,
   kWarpSync = 8,
-  kSharedMatrix = 9
+  kSharedMatrix = 9,
+  kHmmaMatrix = 10,
+  kHmmaMatrixFree = 11,
+  kHmmaReduce = 12
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -112,6 +117,85 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     ops::store_shared_u32(lines + (uint32_t)(Burst * 128 + lane * 4), acc);
   }
 
+  if constexpr (Mode == kHmmaMatrix || Mode == kHmmaMatrixFree) {
+    //: THE LOADS UNDER THE BURST: `Burst` two-n-tile `ldmatrix.trans` loads a unit ahead of nine
+    //: HMMAs. Under `kHmmaMatrix` the HMMAs take their B from the loads in turn (the readout's box,
+    //: the fold's fragment: the dependency the kernel has); under `kHmmaMatrixFree` the loads'
+    //: results go to a sink and the HMMAs take a register B, so only the pipes' sharing is timed.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    rola::static_for<Burst>([&](auto Kc) {
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), w);
+    });
+    __syncwarp();
+    const uint32_t ab[4] = {w, w, w, w};
+    const uint32_t bf[4] = {w, w, w, w};
+    float y[8][4], d[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    rola::static_for<8>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    uint32_t acc = 0u;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      uint32_t r[Burst][4];
+      rola::static_for<Burst>([&](auto Kc) {
+        constexpr int k = decltype(Kc)::value;
+        ops::load_frag_t(r[k], lines + (uint32_t)(k * 128));
+      });
+      if constexpr (Mode == kHmmaMatrix) {
+        rola::static_for<8>([&](auto Jc) {
+          constexpr int j = decltype(Jc)::value;
+          ops::mma(y[j], ab, r[j % Burst] + 2 * (j & 1));
+        });
+        ops::mma(d, ab, r[0]);
+      } else {
+        rola::static_for<Burst>([&](auto Kc) {
+          constexpr int k = decltype(Kc)::value;
+          acc ^= r[k][0] ^ r[k][3];
+        });
+        rola::static_for<8>([&](auto Jc) {
+          constexpr int j = decltype(Jc)::value;
+          ops::mma(y[j], ab, bf + 2 * (j & 1));
+        });
+        ops::mma(d, ab, bf);
+      }
+    }
+    float sink = d[0] + d[1] + d[2] + d[3] + __uint_as_float(acc);
+    rola::static_for<8>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(Burst * 128 + lane * 4), __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaReduce) {
+    //: THE REDUCTIONS UNDER THE BURST: `Burst` global f32 reductions a unit, spread between its
+    //: nine HMMAs (the drain's fire-and-forget adds beside the readout's boxes): does their issue
+    //: hold the HMMAs back?
+    static_assert(Burst >= 1 && Burst <= 8 && (8 % Burst) == 0, "a reduction every 8 / Burst HMMAs");
+    float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    const uint32_t ab[4] = {w, w, w, w};
+    const uint32_t bf[4] = {w, w, w, w};
+    float y[8][4], d[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    rola::static_for<8>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<8>([&](auto Jc) {
+        constexpr int j = decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+        if constexpr (j % (8 / Burst) == 0)
+          ops::red_global_add_f32(at + (long)((i + j) & 15) * 256, 1.0f);
+      });
+      ops::mma(d, ab, bf);
+    }
+    float sink = d[0] + d[1] + d[2] + d[3];
+    rola::static_for<8>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines, __float_as_uint(sink));
+  }
+
   if constexpr (Mode == kAsyncCopy || Mode == kAsyncCopyAliased) {
     //: `Burst` 16-byte runs a unit into the warp's lines: bank-free (each run its own line and lane
     //: offset) or ALIASED (every run's lane at the same 128-byte stride, one bank group).
@@ -184,6 +268,14 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kSharedStore, 64)             \
   F(8, kSharedMatrix, 4)             \
   F(8, kSharedMatrix, 16)            \
+  F(8, kHmmaMatrix, 1)               \
+  F(8, kHmmaMatrix, 4)               \
+  F(4, kHmmaMatrix, 4)               \
+  F(8, kHmmaMatrixFree, 4)           \
+  F(8, kHmmaReduce, 1)               \
+  F(8, kHmmaReduce, 2)               \
+  F(8, kHmmaReduce, 4)               \
+  F(8, kHmmaReduce, 8)               \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
   F(8, kGlobalReduce, 1)             \

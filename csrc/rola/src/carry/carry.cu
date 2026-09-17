@@ -28,6 +28,11 @@ namespace {
 //: the bound tensor covers its grid. -- carry_kernel.md#phase-ledger
 long long* g_phase_ledger = nullptr;
 int64_t g_phase_ledger_ctas = 0;
+//: THE PHASE TRACE BINDING: a device int64 tensor `[ctas][warps][cap]` the next launches stamp
+//: their first `ctas` CTAs' events into; unbound in production. -- carry_kernel.md#phase-trace
+long long* g_phase_trace = nullptr;
+int64_t g_phase_trace_ctas = 0;
+int64_t g_phase_trace_cap = 0;
 
 }  // namespace
 
@@ -50,6 +55,9 @@ void carry_forward(const Tensor& read, const Tensor& write, const Tensor& gain, 
     STD_TORCH_CHECK(g_phase_ledger_ctas >= (int64_t)p.g.owners * BH,
                     "the bound phase ledger covers ", g_phase_ledger_ctas,
                     " CTAs, the launch needs ", (int64_t)p.g.owners * BH);
+  p.trace = g_phase_trace;
+  p.trace_ctas = (int)g_phase_trace_ctas;
+  p.trace_cap = (int)g_phase_trace_cap;
 
   const auto stream = current_stream();
   cudaError_t status = cudaSuccess;
@@ -80,6 +88,22 @@ void carry_ledger_bind(const std::optional<Tensor>& ledger) {
                   "]");
   g_phase_ledger = reinterpret_cast<long long*>(ledger->mutable_data_ptr<int64_t>());
   g_phase_ledger_ctas = ledger->size(0);
+}
+
+void carry_trace_bind(const std::optional<Tensor>& trace, int64_t warps_per_cta) {
+  if (!trace) {
+    g_phase_trace = nullptr;
+    g_phase_trace_ctas = 0;
+    g_phase_trace_cap = 0;
+    return;
+  }
+  STD_TORCH_CHECK(trace->is_cuda() && trace->scalar_type() == Dtype::Long && trace->dim() == 3
+                      && trace->size(1) == warps_per_cta && trace->is_contiguous(),
+                  "the phase trace is a contiguous CUDA int64 tensor [ctas][", warps_per_cta,
+                  " warps][cap]");
+  g_phase_trace = reinterpret_cast<long long*>(trace->mutable_data_ptr<int64_t>());
+  g_phase_trace_ctas = trace->size(0);
+  g_phase_trace_cap = trace->size(2);
 }
 
 namespace stamp {

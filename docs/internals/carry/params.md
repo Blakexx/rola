@@ -14,3 +14,6 @@ write side has no order: its fold compacts as it walks.
 
 `ledger` is the phase ledger's device row, `[cta][warp][kPhases]` int64, or null; the
 phases are `CarryPhase`. See [`carry_kernel.md#phase-ledger`](carry_kernel.md#phase-ledger).
+`trace`, `trace_ctas` and `trace_cap` are the phase trace's rows, `[cta][warp][cap]` int64
+stamps for the grid's first `trace_ctas` CTAs, or null; a stamp is `cycle << 8 | event`, the
+events `CarryTraceEvent`. See [`carry_kernel.md#phase-trace`](carry_kernel.md#phase-trace).
