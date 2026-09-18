@@ -25,6 +25,7 @@
 
 #include "carry/box.cuh"
 #include "carry/params.cuh"
+#include "common/burst.cuh"
 #include "common/design.cuh"
 #include "common/geom.cuh"
 #include "common/ops.cuh"
@@ -980,14 +981,6 @@ struct FragOperands {
   uint32_t v[2 * BP::kNT];
 };
 
-//: ORDERED AFTER: `x` whole, with a data dependency on `y`, so ptxas issues what `y` needs
-//: before the instruction that consumes the result.
-__device__ __forceinline__ uint32_t after(uint32_t x, uint32_t y) {
-  uint32_t r;
-  asm volatile("prmt.b32 %0, %1, %2, 0x3210;\n" : "=r"(r) : "r"(x), "r"(y));
-  return r;
-}
-
 //: THE GATHER of fragment `n` off the ring: the lanes' rows and gain pairs at static
 //: offsets, A, the outer pairs and V by `ldmatrix`, the pairs scaled by the gains, then a
 //: box's pairs by shuffle and A scaled by them. -- #fold
@@ -1068,8 +1061,8 @@ __device__ __forceinline__ void frag_mma(FragOperands<BP>& f, const FragOperands
     constexpr int bi = decltype(Bi)::value;
     rola::static_for<BP::kNT>([&](auto Jc) {
       constexpr int j = decltype(Jc)::value;
-      if constexpr (bi == 0 && j == BP::kNT / 2) f.v[2 * j] = after(f.v[2 * j], loads);
-      if constexpr (bi == BP::kDealt - 1 && j == 0) f.v[0] = after(f.v[0], chain);
+      if constexpr (bi == 0 && j == BP::kNT / 2) f.v[2 * j] = rola::burst::after(f.v[2 * j], loads);
+      if constexpr (bi == BP::kDealt - 1 && j == 0) f.v[0] = rola::burst::after(f.v[0], chain);
       ops::mma(st.c[bi][j], f.ab[bi], f.v + 2 * j);
     });
     ops::mma(st.m[bi], f.ab[bi], bm);
@@ -1092,10 +1085,9 @@ struct FoldStream {
   int parity, warp, lane;
   uint32_t rowbase;
   int chunks, c, s;
-  int nfrag, n;
+  int nfrag;
   int fill_c;  //: the chunk whose fill this warp still owes, or -1
   bool taken_slot, done;
-  FragOperands<BP> f0;
 
   __device__ __forceinline__ FoldStream(const CarryParams& p_, const Smem<BP>& sm_, int2 bases_,
                                         int parity_, int live, uint32_t rowbase_, int warp_,
@@ -1115,7 +1107,6 @@ struct FoldStream {
         c(0),
         s(0),
         nfrag(0),
-        n(0),
         fill_c(-1),
         taken_slot(false),
         done(false) {
@@ -1213,8 +1204,6 @@ struct FoldStream {
     for (int idx = queued + lane; idx < padded * BP::kTile; idx += 32)
       ops::store_shared_u32(ring + (uint32_t)(4 * idx), (uint32_t)BP::kPoolTok);
     __syncwarp();
-    n = 0;
-    if (nfrag > 0) frag_load<BP, D, BC>(slot, ring, 0, warp, lane, f0);
   }
 
   //: THE WAIT, when no stream can progress: on the slot this warp's fill owes (its readers
@@ -1230,7 +1219,8 @@ struct FoldStream {
     }
   }
 
-  //: A STEP: a pair of fragments, or the chunk's take or release.
+  //: A STEP: a chunk -- the fill poll and the take (the decide tier), its fragments as one
+  //: burst, its release.
   __device__ __forceinline__ bool step() {
     if (fill_c >= 0 && slot_empty(fill_c % BP::kPoolSlots)) fill_now();
     if (c >= chunks) {
@@ -1244,21 +1234,21 @@ struct FoldStream {
       taken_slot = true;
       walk();
     }
-    if (n < nfrag) {
-      pc.stamp(kTraceFoldFragment);
-      const ops::SmemAddr slot = sm.pool(s), ring = sm.ring(warp);
-      //: the pair: the next fragment's gather, this burst after it, the fragment after
-      //: next's gather, the next burst after that -- each gather only for a real fragment
-      //: (the count is uniform, so these are plain branches).
-      const bool second = n + 1 < nfrag;
-      FragOperands<BP> f1;
-      if (second) frag_load<BP, D, BC>(slot, ring, n + 1, warp, lane, f1);
-      frag_mma<BP>(f0, f1, lane, st);
-      if (n + 2 < nfrag) frag_load<BP, D, BC>(slot, ring, n + 2, warp, lane, f0);
-      if (second) frag_mma<BP>(f1, f0, lane, st);
-      n += 2;
-      return true;
-    }
+    //: THE BURST TIER: the chunk's fragments, two counted loops with nothing data-dependent
+    //: in them (`common/burst.cuh`), the fill poll between them so a freed slot's fill
+    //: issues mid-chunk.
+    pc.stamp(kTraceFoldFragment);
+    const ops::SmemAddr slot = sm.pool(s), ring = sm.ring(warp);
+    const auto gather = [&](int n, FragOperands<BP>& f) {
+      frag_load<BP, D, BC>(slot, ring, n, warp, lane, f);
+    };
+    const auto mma = [&](FragOperands<BP>& f, const FragOperands<BP>& next) {
+      frag_mma<BP>(f, next, lane, st);
+    };
+    const int half = (nfrag + 1) / 2;
+    rola::burst::Burst<FragOperands<BP>>::run(0, half, gather, mma);
+    if (fill_c >= 0 && slot_empty(fill_c % BP::kPoolSlots)) fill_now();
+    rola::burst::Burst<FragOperands<BP>>::run(half, nfrag - half, gather, mma);
     release();
     return true;
   }

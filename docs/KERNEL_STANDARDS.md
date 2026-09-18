@@ -582,3 +582,31 @@ manual steps, and the dev container had drifted for two weeks unnoticed.
    the result under that key; a commit changing any input is refused by the commit gate unless a passing record exists
    for the key of what it stages. A host-side toolchain change that the image does not share (a driver, a toolkit
    path) is not an input and needs no container record; a pin, a lock or a Dockerfile line always is.
+
+## §23 — TWO TIERS: DECIDE COARSELY, BURST STATICALLY (law, 2026-09-17, from the fold's and readout's forms)
+
+The facts, each a calibration or trace row (`docs/internals/carry/calibration.md`, `carry_kernel.md#phase-trace`):
+
+1. A warp issues in order and runs one or two HMMAs ahead of the tensor pipe. Loads issued ahead of a burst are
+   free (four `ldmatrix` ahead of nine HMMAs: +0.3 a HMMA alone); a chain placed after a burst is exposed whole on a
+   warp whose partner is not issuing (the fragment's gather: +18% alone, 0 paired).
+2. With two warps a scheduler, every cycle either warp spends outside a burst costs the pipe half a cycle: a lone warp
+   drives it at ~50%. The window equals the pipe work plus one warp's non-MMA work (nl64k-dense: 70.7K + 32.5K).
+3. ptxas schedules within a basic block. A vote, a barrier poll, a data-dependent branch or a rolled loop's back-edge
+   ends the block; under register pressure it sinks loads to their uses and regroups bursts. Registers are the
+   pipelining budget: a set of operands a unit of depth.
+
+The rule: a phase that issues MMAs is two tiers. The DECIDE tier is everything data-dependent -- which units, in what
+order, a barrier's state -- run at a boundary, into a list and a count. The BURST tier is `Burst<Ops>::run`
+(`common/burst.cuh`, `docs/internals/common/burst.md`): a counted loop over the list, two operand sets alternating,
+each unit's gather ordered under the burst before it by a data dependency; no vote, wait or data branch inside it;
+sparsity a shorter list, never a skip. A decision needed mid-way is two bursts with the decision between them. The
+list is built by the lanes at once, never by a serial scan (the readout's sixteen-iteration list cost a tile 12%).
+
+What it forbids: `ops::mma` outside a burst functor; `#pragma unroll 1` on a burst loop; a collective or an `mbar_`
+inside a gather or a burst functor; a unit's operands loaded in the unit that consumes them. What it measures: the
+burst's lone-warp rate on the trace, and (when built) the static pipe floor per burst loop in the SASS gate.
+
+Precedent: CUTLASS's tile scheduler against its collective mainloop; FlashAttention-2's unrolled, branch-free KV loop
+with masking by predication; ThunderKittens' producer and consumer warpgroups. On Hopper the tier split is the
+hardware (`wgmma` async, TMA, mbarriers); on Ampere it is this rule.

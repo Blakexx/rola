@@ -193,8 +193,9 @@ and every warp still arrives at the slot's barrier.
 chunk after the one it last took), issue it when its slot is empty -- the barrier tested by
 lane 0 and the answer parked in the warp's FOLD WORD, a shared load every lane reads back, so
 the branch on it is a plain branch and not a vote; take the chunk's slot once full (else
-return false: the caller does other work) and WALK the chunk once into the ring; then a
-PAIR of fragments a step until the count is out; then the slot released, the next chunk.
+return false: the caller does other work) and WALK the chunk once into the ring; then the
+chunk's fragments as two BURSTS (`common/burst.cuh`, `docs/internals/common/burst.md`) with
+the fill poll between them; then the slot released, the next chunk.
 Done when its chunks are folded AND its fills are issued (a warp that left with a fill owed
 would hold the others). `fold` runs a stream alone to completion: the part harness's form.
 
@@ -220,18 +221,20 @@ lanes holding boxes `b & 7`, A scaled by them (four packed multiplies). The resu
 operand set (`FragOperands`: `ab` a box, the V tiles), 24 registers.
 
 **The burst** (`frag_mma`): a box's `kNT` HMMAs into its state and one against a ones column
-into its mass. A pair alternates two operand sets and INTERLEAVES the next gather with this
-burst: box 0's fifth HMMA is ordered after the next set's V loads and box 1's first after
-its whole gather (`after`, a `prmt` that selects the operand whole but depends on the other
-set), so ptxas issues the loads inside the first half of the burst and the multiplies and
-shuffles inside the second, in the pipe time this burst would have idled through. Why it is
+into its mass. `Burst::run` alternates two operand sets and INTERLEAVES the next gather with
+this burst: box 0's fifth HMMA is ordered after the next set's V loads and box 1's first
+after its whole gather (`rola::burst::after`, a `prmt` that selects the operand whole but
+depends on the other set), so ptxas issues the loads inside the first half of the burst and
+the multiplies and shuffles inside the second, in the pipe time this burst would have idled
+through. Why it is
 needed: a warp issues one or two HMMAs ahead of the pipe and in order, so any chain longer
 than a slot placed after a burst is exposed whole on a warp whose partner is not issuing
 (calibration.md, the fragment rows); ptxas at 213 registers sinks loads to their uses and
 regroups the bursts unless a dependency forbids it. Measured at nl64k-dense: a fragment 1,325
--> 1,128 cycles paired, the fold 51.4K -> 47.0K a warp a window (alt-k4 7.8K -> 7.5K),
-registers 213 -> 239 (peak live ~157 in the fold; the allocation's peak sits in the fill
-and the head), the ring 2 KB more shared memory.
+-> 1,128 cycles paired as hand-written pairs and the fold 51.4K -> 47.0K a warp a window
+(alt-k4 7.8K -> 7.5K); on the primitive, with the first gather out of the walk and the poll
+between two bursts, the fold 43.7K. Registers 213 -> 242 (peak live ~157 in the fold; the
+allocation's peak sits in the fill and the head), the ring 2 KB more shared memory.
 
 <a id="readout"></a>
 ## The readout
