@@ -5,12 +5,15 @@
 
     python tools/compose_ledger.py --cells flagship-dense,nl64k-alt-k4 \\
         --ladder readout:stream,loads,drain --ladder fold:pool,ring,loads
+    python tools/compose_ledger.py --cells nl64k-dense --ladder all:fold.pool,fold.ring,fold.loads,readout.stream,readout.loads,readout.drain
 
 The carry kernel's MMA phases are built from PARTS (`gen_shards.CARRY_PARTS`); a build may stub
 any of them (`ROLA_CARRY_PARTS`): a stub keeps the part's HMMAs -- the same count, atom and
 accumulators -- and drops its other work. A LADDER over a phase builds the kernel with none of
 that phase's parts real (every other part real), then adds the parts back in the order named, one
-rung a build; the last rung is the kernel. Each rung is read in wall time by the phase ledger (a
+rung a build; the last rung is the kernel. The ladder `all` starts with NO part real -- both MMA
+phases as pure bursts of stubs, the kernel's structure and phase changes alone: the floor the
+kernel's own shape reaches -- and adds every part back in the order named. Each rung is read in wall time by the phase ledger (a
 warm-up launch, then `--launches`), so a part's cost is the step between two rungs -- no constant,
 no reading of samples. Each rung is CHECKED: the profiler's HMMA count for the cell must equal the
 kernel's (a stub that changed the workload fails its rung), and the build's device code must differ
@@ -171,11 +174,18 @@ def main() -> int:
     ladders = []
     for spec in a.ladder:
         phase, names = spec.split(":", 1)
-        order = [f"{phase}.{n}" for n in names.split(",") if n]
-        bad = sorted(set(order) - set(everything))
-        if bad or len(set(order)) != len([x for x in everything if x.startswith(phase + ".")]):
-            ap.error(f"--ladder {spec}: name every part of {phase} once ({[x for x in everything if x.startswith(phase + '.')]})")
-        others = tuple(x for x in everything if not x.startswith(phase + "."))
+        if phase == "all":
+            #: THE LADDER FROM NOTHING: no part real at the base -- both MMA phases pure bursts of stubs, the
+            #: kernel's structure and its phase changes alone -- then every part back in the order named
+            order = [n for n in names.split(",") if n]
+            mine = list(everything)
+        else:
+            order = [f"{phase}.{n}" for n in names.split(",") if n]
+            mine = [x for x in everything if x.startswith(phase + ".")]
+        bad = sorted(set(order) - set(mine))
+        if bad or len(set(order)) != len(mine):
+            ap.error(f"--ladder {spec}: name every part of {phase} once ({mine})")
+        others = tuple(x for x in everything if x not in mine)
         rungs = [others + tuple(order[:i]) for i in range(len(order) + 1)]
         ladders.append((phase, order, rungs))
 
@@ -208,7 +218,8 @@ def main() -> int:
             rows.append(row)
             print(f"{phase} rung {len(rows) - 1} real={[x for x in order if x in real]} hash={row['hash']} "
                   f"took={row['mask_took']} hmma_ok={row['hmma_ok']}: "
-                  + "; ".join(f"{c} {phase} {row['phases'][c].get(phase)}" for c in cells), flush=True)
+                  + "; ".join(f"{c} {phase} {row['phases'][c].get(phase if phase != 'all' else 'total')}"
+                              for c in cells), flush=True)
         rows.append({"real": sorted(everything), "stubbed": [], "hash": ref, "mask_took": True, "hmma_ok": True,
                      **{k: report["kernel"][k] for k in ("phases", "counters", "census", "registers", "hmma", "timeline")}})
         report["ladders"].append({"phase": phase, "order": order, "rungs": rows})

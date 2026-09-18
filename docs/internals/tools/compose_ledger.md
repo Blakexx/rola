@@ -7,6 +7,14 @@ named, one rung a build; the last rung is the kernel itself.
 
     python tools/compose_ledger.py --cells flagship-dense,nl64k-alt-k4 \
         --ladder readout:stream,loads,drain --ladder fold:pool,ring,loads
+    python tools/compose_ledger.py --cells nl64k-dense,nl64k-alt-k4 \
+        --ladder all:fold.pool,fold.ring,fold.loads,readout.stream,readout.loads,readout.drain
+
+The ladder `all` (2026-09-18, from Blake's "make a dummy kernel where bursts are guaranteed to be fully
+covered, then see its latency") starts with NO part real: both MMA phases as pure bursts of stubs, the
+kernel's own structure, its walks, polls and phase changes alone -- the floor the kernel's shape
+reaches on this card -- and adds every part back in the order named, so each part's cost is read
+against a base where every burst is covered by construction.
 
 Each rung is read in wall time by `tools/phase_ledger.py` (one warm-up launch, then `--launches`):
 a part's cost is the step between the rung without it and the rung with it. No constant enters and
