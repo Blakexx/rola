@@ -58,9 +58,11 @@ buys one more (248 buys two, 168 three — GA102 whitepaper, Jia et al.).
 
 | loop | instructions | HMMAs | alone | paired | exposed | floor |
 |---|---|---|---|---|---|---|
-| the fold's pair (`burst.cuh:run`) | 155 | 36 | 1,351 of 1,170: 86.6% | 2,400: 97.5% | 58 (three shuffle-to-multiply chains) | 86.6 |
+| the fold's pair (`carry_kernel.cuh:step`, the `Burst::run` user) | 155 | 36 | 1,351 of 1,170: 86.6% | 2,400: 97.5% | 58 (three shuffle-to-multiply chains) | 86.6 |
 | the readout's box loop (`readout_tile`) | 68 | 8 | 381 of 260: 68.2% | 520: 100% | 24 (the outer-factor load to its multiply) | 68.2 |
 
+A loop is named by its USER function (`--loop FILE:FUNCTION`), never by `burst.cuh:run`: every user inlines
+the same lines of the primitive, so the primitive's lines attribute to every user's loop at once.
 Registers 244, allocated 248: two warps a scheduler; a third at 168. The floors were re-seeded when the
 model was fitted (`pipe_sim.md#calibrate`): the alone reading lost the two-deep HMMA queue and gained the
 SM's memory pipe, so the same loops read lower than under the first model (94.8 and 82.3).

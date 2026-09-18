@@ -15,7 +15,7 @@ cubin with line information, deterministically.
 
     python tools/burst_gate.py --arm 0 --source csrc/rola/src/carry/carry_kernel.cuh [--loop FILE:FUNCTION ...]
 
-The loops default to every `Burst::run` instantiation's loop (`common/burst.cuh:run`); `--loop`
+The loops are named by their user functions (`--loop`), since every `Burst::run` user inlines the same lines; `--loop`
 adds a rolled loop for reading (the readout's `readout_tile`). Exit 1 on a purity or coverage red.
 Docs: docs/internals/tools/burst_gate.md.
 """
@@ -142,7 +142,9 @@ def main() -> int:
     ap.add_argument("--arch", default=None)
     ap.add_argument("--source", type=Path, required=True, help="the kernel source the burst functions live in")
     ap.add_argument("--loop", action="append", default=[], metavar="FILE:FUNCTION",
-                    help="a loop to read for coverage beside the bursts (default: common/burst.cuh:run)")
+                    help="a loop to read for coverage: FILE:FUNCTION, the function whose lines the loop's "
+                         "instructions are attributed to (a `Burst::run` user, since every user inlines the "
+                         "same lines of `common/burst.cuh`)")
     ap.add_argument("--json", type=Path, default=None)
     ap.add_argument("--write-floors", action="store_true",
                     help="record every loop's occupancy as its floor (a ratchet: a later build may not read lower)")
@@ -159,7 +161,7 @@ def main() -> int:
         print(line)
 
     floors = json.loads(FLOORS.read_text()) if FLOORS.exists() else {}
-    loops = [("csrc/rola/src/common/burst.cuh", "run")] + [tuple(x.rsplit(":", 1)) for x in a.loop]
+    loops = [tuple(x.rsplit(":", 1)) for x in a.loop]
     cov = {}
     for file, function in loops:
         source = Path(file) if Path(file).exists() else a.source.parent / file

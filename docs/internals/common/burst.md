@@ -57,7 +57,14 @@ stays about 600 cycles a tile behind the rolled loop with den on the FMA pipe, w
 at the first and fifth HMMA or the fifth and last. The box's burst is eight HMMAs to the
 fragment's eighteen, so the pair's own work (two hooks, a guard, the list load) is a larger
 share of it, and the rolled loop, at the shared pipe rate when paired, gives up less alone than
-the model predicts. Which of those it is needs the static pipe simulator on the two SASS
-loops; until then the readout is the documented exception to §24 (`ops::mma` outside a
-burst functor, which §24 forbids elsewhere) — no lint enforces the rule yet, so the
-exception is carried here in prose rather than as a checked exemption.
+the model predicts. A fourth form (2026-09-18) settled which: the mask scanned in the gather
+itself (`__ffs` and clear, in the order the primitive gathers, so no list is built), the
+loads hooked to the third HMMA, den on the FMA pipe -- alone 68 -> 76% in the fitted model,
+paired 100% both ways, and MEASURED +2.6% at nl64k-dense. Its census: the gather lines lost
+29K samples and the HMMA lines gained 53K. Paired, the rolled loop was already at the pipe's
+rate, its gather's waits covered by the partner's HMMAs; hiding them inside the warp bought
+nothing, and the form's extra issue (161 instructions a box pair against 136) was paid in the
+lockstep pair. So the readout is the documented exception to §24 (`ops::mma` outside a burst
+functor, which §24 forbids elsewhere) for a measured reason: a burst on the primitive hides
+latency, and the readout's latency is already hidden by its pair -- no lint enforces the
+rule yet, so the exception is carried here in prose rather than as a checked exemption.
