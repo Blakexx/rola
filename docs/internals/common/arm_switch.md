@@ -48,8 +48,9 @@ prevent, and `tools/lint/drift_guards.py`'s `rule_host_dispatch_is_arm_switch` r
 
 The set is allowed to be EMPTY, and that is not a degenerate case to be asserted away:
 a binary that carries no arm of a family refuses every call to it, by name, with both
-counts. That is the shipped state of the carry family, and it is what
-`tests/unit/test_arm_switch.py`'s last case pins.
+counts (the carry family's shipped set was empty before its first arm landed; it now
+carries one row). `tests/unit/test_arm_switch.py`'s last case pins the empty-set
+behavior with a synthetic header.
 
 `ArmSet` is a type rather than a bare count so that the family's name, its key's
 spelling and both counts travel with the set into the refusal. A second family adds a
@@ -57,10 +58,11 @@ second `ArmSet`, not a second switch.
 
 ## Users
 
-- none in the shipped entry points yet: the carry family's launch surface has no
-  implementation to dispatch to, and the set is empty. The primitive lands with the
-  declaration, the generated set and the post-build sweep, so the body that arrives
-  finds the dispatch already contracted.
+- `carry.cu`'s dispatch: the shipped set (`tools/manifests/shipped_set.json`) carries
+  one row, `[D=2, DV=64, warps_per_cta=8]`, and `arm_switch<CarryArmSet>` resolves every
+  launch to that arm's body. The primitive landed with the declaration, the generated
+  set and the post-build sweep before the first arm shipped, so the body that arrived
+  found the dispatch already contracted.
 - `tests/unit/test_arm_switch.py` compiles a probe against the shipped header with a
   synthetic three-arm selection header — rendered by the same renderer a build uses —
   and exercises every layer: both counts, a built arm dispatching with its own

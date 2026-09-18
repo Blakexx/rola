@@ -1,9 +1,17 @@
 # The state page's split bf16 planes
 
-Mirror doc for `csrc/rola/src/common/state_page.cuh`, the ONE gather/scatter every
-body's state I/O goes through: the carved carry, the channel-split carry and the
-backward's slab sweeps all call it, and the decode step addresses the same blocks
-inline (its access is per leaf row, not a CTA sweep).
+Mirror doc for `csrc/rola/src/common/state_page.cuh`. `Blocks<DV>` — the page's byte
+geometry below — is the ONE definition every body's state I/O is laid out against: the
+carry kernel's `box.cuh` (`BP::Page = Blocks<DV_>`) and the decode step both read its
+offsets (`kBytes`, `kLo`, `kMassHi`, `kMassLo`) directly. `load`/`store`, the two
+functions below that gather and scatter a whole page through those offsets, are NOT
+currently called by either: both bodies inline their own sweep over the same layout
+(the carry kernel's `state_copy`, `carry_kernel.md#state-io`; decode's per-leaf-row
+access), so `load`/`store` document the layout's intended access pattern rather than a
+function every consumer shares today. The channel-split carry body and the two-scan
+backward pass this page once served were deleted whole in the 2026-08-30 carry-family
+rebuild (`docs/internals/DELETIONS.md`, commit ef567f9) and have not been rebuilt; the
+current carry kernel is the single body that replaced them.
 
 ## <a id="geometry"></a>The page, in bytes
 

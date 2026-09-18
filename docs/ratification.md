@@ -17,9 +17,10 @@ tools/manifests/cu13/sm_86.json
                                             "sass_sha256": "..." }, ... } }
 ```
 
-**347 entries per architecture** on this line, measured on the current tree: 320 entmax
-solves, 17 `decode_step_kernel` and the decode path's device build stamp, and 10
-`intra_kernel` arms.
+**345 entries per architecture**, measured on the current tree: 320 entmax solves, 17
+`decode_step_kernel` arms, 6 `intra_kernel` arms, the carry family's one shipped arm
+(`[2, 64, 8]`, `tools/manifests/shipped_set.json`) and the decode path's device build
+stamp.
 
 THE CLEAN SLATE REMOVED 103 PER ARCH (450 -> 347): the carry family's 43 (`carry_kernel`
 `<D, B, K, M, W, C, STATE>`, `carry_split_kernel`, the `scan_a_kernel`/`scan_b_kernel`
@@ -40,7 +41,9 @@ product that four shards once carried retired with the tiled consumer
 ([`docs/internals/DELETIONS.md`](internals/DELETIONS.md)).
 `defines` is the empty tuple — `RATIFIED_DEFINES = ()` in `tools/ratify.py`, since
 the closed-world codegen surface carries no `#define` this gate has to pin. Two
-ratified architectures (`sm_80`, `sm_86`) make **804 entries total**. The manifest is
+ratified architectures (`sm_80`, `sm_86`) make **690 entries total** today (345 each,
+above) — the carry family's rebuild and the lattice walk's later intra changes have
+each moved the per-arch count since the clean slate's 347. The manifest is
 the authority on the count and no comment restates it independently. The mangled
 name is the key because it is exact, stable, and encodes every template argument
 — an entry cannot be silently re-pointed at a different instantiation by a rename
@@ -73,12 +76,13 @@ header, the per-arm translation units and `ROLA_CARRY_ARMS` name, so it must be 
 property of the declaration and not of where a row was typed.
 `python tools/gen_shards.py --self-test` requires the reader to refuse ten malformed
 declarations by name, and renders a synthetic three-row table so the selection header,
-the arm set and the shard block are shown producing rows — which the live declaration,
-being empty, cannot show.
+the arm set and the shard block are shown producing rows at a width the live
+declaration does not reach today.
 
-**The declaration is empty on this line.** The carry family's kernels are not present,
-so no arm is declared, no per-arm unit is generated and no build carries a carry arm.
-The mechanism is the build's contract, and it is exercised at zero rows.
+**The declaration carries one row.** `tools/manifests/shipped_set.json`'s `shipped`
+list is `[[2, 64, 8]]` — the flagship shape, one CTA per SM, `DV = 64` — so one arm is
+declared, one per-arm unit is generated, and every build carries that one carry arm.
+The other two declared `DV` values (32, 128) are domain members with no built arm yet.
 
 <a id="arm-switch"></a>
 ## `arm_switch`, and what the post-build check proves about it
@@ -183,11 +187,11 @@ ratchet, not a spill ban** (the recorded adjudication): a spill is admissible
 when it is priced, recorded here, and worse than every alternative in hand — not
 when it is absent.
 
-**On the current tree, 804 instantiations measured, 0 with an unhonored bound, and
+**On the current tree, 690 instantiations measured, 0 with an unhonored bound, and
 4 that spill at all** — all four the same entmax kernel, `union_backward_kernel`
-`<32, 8, false>` in both its bf16 and fp32 forms, at 16 stores / 16 loads on
-`sm_86` and 24/24 on `sm_80`, 64 registers. **Every chunk and decode instantiation
-is zero-spill.**
+`<32, 8, false>` across its bf16/fp32 dtype combinations, at 8 stores / 8 loads on
+`sm_80` and 64 registers; `sm_86` carries all four spill-free. **Every carry, intra
+and decode instantiation is zero-spill.**
 
 The tiled consumer's two priced-spill arms (`<BC=16, DV=32|64, D=1, nodecay,
 GT=16>`, carried deliberately because a 72-register budget removed the spill and
@@ -200,9 +204,9 @@ RECORDED AND FLAGGED RATHER THAN LAUNDERED").
 ## What it compiles, and why that is the shipped source
 
 `python tools/ratify.py` compiles **the translation units the build compiles** —
-the generated per-arm carry units under `csrc/rola/src/instantiations/` (none on this
-line: the arm list is empty), plus `decode.cu`, `entmax.cu`, `factor.cu`, the
-intra family and its reverse translation unit — under the flag list `setup.py` uses,
+the generated per-arm carry units under `csrc/rola/src/instantiations/` (one today,
+`carry_arm_0.cu`, matching the one-row shipped set), plus `decode.cu`, `entmax.cu`,
+`factor.cu` and the intra family (`intra.cu`) — under the flag list `setup.py` uses,
 imported from
 `tools/build_flags.py` rather than restated. A family is shipped codegen the moment it
 is in `SOURCES`, so it is measured like every other shipped translation unit. Two properties follow, and
@@ -217,9 +221,12 @@ neither held before:
   X-macro walk and this gate's source list all come out of `tools/gen_shards.py`;
   there is no second file that could enumerate a different arm set.
 
-The chunk keys are unaffected by the shard split by construction:
-`rola::chunk::compacted_kernel` lives in a NAMED namespace, so its mangled name
-does not depend on which translation unit expands it.
+Every family's keys are unaffected by which translation unit expands them, by
+construction: `rola::carry::carry_kernel`, `rola::entmax::detail`'s kernels and
+`rola::decode::detail::decode_step_kernel` all live in NAMED namespaces (the anonymous-
+namespace path-trap fix, `internals/common/build_stamp.md`), so a mangled name is a
+function of source content and toolchain only, whichever shard or per-arm unit compiled
+it.
 
 `--shard NAME` scopes the compile to one shard's slice for triage. It is a
 measurement scope only: `--write` refuses it, because a manifest written from a

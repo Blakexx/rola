@@ -100,24 +100,24 @@ the same central cell nodes, and compared by a diff target (`rola_devtools.diff`
 `SURFACES` states: the oracle under BIT-IDENTITY, forward and backward, with "no gradient" an empty tensor and never a
 zero one; the producer under support equality. A side proves which tree it imported, a comparison that compared fewer
 quantities than declared refuses, and the raw tensors never leave the build cache.
-Three declaration forms exist and none of them is an exemption: `--except`
-names a quantity whose answer legitimately changed and which must then be
-asserted in its own test, `--reassociated` holds a reordered sum to
-`REASSOCIATION_RTOL` instead of bit-identity, and `--mutate` injects a known
-defect that the run MUST fail on -- a protocol that cannot fail is not a
-protocol.
+A surface's numerics are a declared FACT rather than a blanket tolerance: `declare.py`'s
+`NUMERICS` names, per surface and per quantity, whether it is held EXACT (the carry
+kernel's `state`, written once per leaf) or RE-ASSOCIATED to a measured `rtol`/`atol`
+(`carry-kernel`'s `num`/`den`: the readout fan-in is an fp32 atomic reduction whose
+association order varies run to run — MEASURED 2026-09-16, three runs of one binary
+against itself over every oracle-tier cell, `den` within 7e-7 relative and `num` within
+1.9e-9 absolute). There is no floor-count refusal or exemption CLI on this line; a
+surface's cell set is `declare.py`'s `surface_cells`, and a shrinking cell set is a
+diff of the declaration itself.
 
-**THE RUN MUST PROVE IT COMPARED.** Every verdict is gated on a per-surface floor
-(`MINIMUM_COMPARISONS`: `oracle` 512, `producer` 162) and a run below it fails RED
-rather than reporting PASS over whatever survived. This is not hypothetical
-bookkeeping: the `oracle` surface was UNRUNNABLE for a window after `raw` died --
-the matrix emitted a `raw` row, `naive_rola` refused it, and the run aborted in emit
--- and a shrinking matrix is the same defect wearing a green face. A matrix that
-legitimately shrinks moves the floor in the same commit, with the reason.
-
-**`flock /tmp/rola_ram.lock`, and the grid runs in slices.** The backward
-retains one autograd graph per token per cell; run whole, the protocol peaked
-near 18 GB and froze the host twice. One grid at a time, host-wide.
+**The backward's retained state is a declared BUDGET, not a lock and a slicing loop.**
+The oracle side runs `naive_rola` forward and backward in fp64, and autograd retains
+the recurrence's state at every token — MEASURED (2026-09-16) a peak above nine times
+the retained-state byte count, one cell killed by the host under a 9 GiB cap at 1.0 GiB
+of retained state. `RETAINED_STATE_BUDGET` (512 MiB) is checked per cell
+(`retained_state_bytes`), and only `BACKWARD_SURFACES` (`oracle`) runs the backward at
+all; a cell over budget is excluded from that surface, a consequence a reader can
+compute from the declaration rather than a run that died.
 
 **`rola` is installed editable, so a tool run from a WORKTREE imports the
 canonical checkout unless it is stopped.** The protocol binds and then CHECKS
@@ -231,11 +231,16 @@ file per pair rather than one table over all of them:
 | file | the pair it relates |
 |---|---|
 | `test_chunk_paging_equivalence.py` | paged vs dense backing — bit identity, a continuation and a three-call chain, absent-atom inertness, residency at every built `BC`, a fragmented non-monotone slot arena, the plan's exact demand through a real launch |
-| `test_chunk_dense_inplace.py` | the dense continuation's one plane vs the double-buffer form it replaced — the aliasing isolated from the `R \| W` skip row, ragged and aligned chains, both terms of the row given teeth |
-| `test_chunk_final_state.py` | the register-resident state against its stored plane, and the leaf-order law |
 | `test_decode_bc_blindness.py` | one decode step across prefill arms that differ in `BC` |
 | `test_decode_paging.py`, `test_page_arena_vmm.py`, `test_atom_bitmap.py` | the backing's own structures |
-| `test_paging_stream_races.py`, `test_stream_discipline_fixture.py` | the crossing paths (below) |
+| `test_stream_discipline_fixture.py` | the crossing paths (below) |
+
+`test_chunk_dense_inplace.py` (the dense continuation's one plane vs the double-buffer
+form it replaced), `test_chunk_final_state.py` (the register-resident state against its
+stored plane) and `test_paging_stream_races.py` (the crossing paths, before its rewrite
+onto `test_stream_discipline_fixture.py`'s subject) were deleted whole with the tiled
+consumer's test surface (`docs/internals/DELETIONS.md`, 2026-08-20); their claims have
+no successor on this line yet.
 
 The two contract classes below still govern every one of those comparisons, and
 the prohibitions in them are what the deleted table's meta-tests enforced
@@ -456,10 +461,12 @@ clauses — `static_assert(tabulated(kArch))` in `csrc/rola/src/common/arch_caps
 a per-device `check_arch_table()` on the first launch. Neither half substitutes for the
 other: a derivation is only as good as the facts it closed over, and only a fact read
 off the DEVICE says this is the device they were read for. The test states the clause
-over EVERY declared entry surface, not one family's, so the next entry inherits it. **It
-is RED, for one reason:** the runtime half's single definition went with the cleared
-dispatch translation unit and the surviving entries kept their launches and lost the
-clause. The day it passes is the day the refusal is back.
+over EVERY declared entry surface, not one family's, so the next entry inherits it.
+**The runtime half has its definition back**, in its own translation unit
+(`csrc/rola/src/common/arch_runtime.cu`, `docs/internals/common/arch_runtime.md`),
+called as the first statement of every launching entry this pass has checked (carry,
+decode, entmax/factor, liveness, intra, the SM clock read) — the state this test's own
+module docstring still describes as red predates that file landing.
 
 (The fatbin gate that read device entry points per originating object and caught a
 FAILED translation-unit split lived here. It decoded a stats-pass mangled name to ask

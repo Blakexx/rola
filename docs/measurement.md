@@ -177,7 +177,7 @@ number from it enters the record. Named here because an undelivered item named i
 
 ## What is deliberately not here
 
-* **A second method.** The in-process A/B driver, and later `tools/compare.py` and the interleaving driver, were deleted
+* **A second method.** The in-process A/B driver, and later tools/compare.py and the interleaving driver, were deleted
   once the declared build system timed the same subjects (`docs/internals/DELETIONS.md`): two methods are how a harness
   comes to disagree with itself.
 * **A committed SQLite database.** A binary blob has no diff and cannot be reviewed in a landing. Any query artifact is

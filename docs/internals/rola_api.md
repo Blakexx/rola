@@ -76,9 +76,10 @@ The `shared_ptr` is required rather than stylistic: `VmmOwner` is `enable_shared
 handle's release ([`paging/vmm_owner.md`](paging/vmm_owner.md#view-lifetime)).
 
 `rola/ops/_ext.py`'s `RoLAVmmOwner` is the handle's Python face and keeps the surface the arena reads: the verbs
-(`grow`, `rollback_to`, `reset`, `close`) are methods, the observables (`closed`, `mapped_capacity_pages`,
-`dense_limit_pages`, `committed_bytes`, `virtual_bytes`, `allocation_granularity`, `chunk_pages`, `backing_kind`) are
-read-only properties over one `vmm_facts` call, and dropping the object releases the handle. `rola_vmm_probe` returns
+(`grow`, `rollback_to`, `reset`, `close`) are methods, the seven observables `closed`, `mapped_capacity_pages`,
+`dense_limit_pages`, `committed_bytes`, `virtual_bytes`, `allocation_granularity` and `chunk_pages` are
+read-only properties over one `vmm_facts` call, `backing_kind` is a plain class constant (`"cuda_driver_vmm"`,
+naming the backing rather than reading it), and dropping the object releases the handle. `rola_vmm_probe` returns
 `vmm_probe`'s four facts as a dict (`device`, `supported`, `allocation_granularity`, `reason`), and `rola_vmm_create`
 is the factory.
 

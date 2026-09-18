@@ -242,9 +242,13 @@ CTA that built them ([§12](#factor-tables)); the step's one leaf-level output i
 16-deep condensation of the write side's.
 
 `rola.ops.decode._write_atom_bitmap` survives as the ENUMERATED REFERENCE for that
-condensation — the same set derived from the Cartesian-product definition in torch, with
-the comparison in `tests/integration/test_decode_growth_trigger.py` as its only caller. It
-is not a fallback and not a second path a caller may select; it is what makes the gate a
+condensation — the same set derived from the Cartesian-product definition in torch,
+wired into the engine DAG as `write_atom_bitmap`'s `reference_only=True` node
+(`rola/engine/dags/decode_dag.py`) and exercised directly by the paging/growth
+integration tests (`tests/integration/test_decode_growth_trigger.py`,
+`test_decode_graph_step.py`, `test_decode_paging.py`, `test_page_arena_vmm.py`). It
+is not a fallback and not a second path a caller may select — `reference_only` is what
+`validate_dag` refuses to let an executed recipe select — it is what makes the gate a
 check rather than the kernel agreeing with itself ([§39](#second-derivation)).
 
 ## <a id="the-gate"></a>4c. The verdict is PER BATCH-HEAD, and the done flags are what make a replay idempotent
@@ -674,9 +678,9 @@ whole prologue in a second wave for work the first wave could have finished, and
 knows its own range, and knowing its range means running the prologue. So
 `rola.ops.decode.derive_n_split` takes `SMs * residency / BH`, with the residency read
 back off the launch bound itself
-([`decode_api.md` §2](decode_api.md#residency)), bounded below by the UNIT SUPPLY so a
-small topology does not launch CTAs there is no work for. Both bounds are static facts —
-an occupancy fact and a geometry fact.
+([`decode_api.md` §2](decode_api.md#residency)), bounded ABOVE by the UNIT SUPPLY (`min`
+of the two) so a small topology does not launch CTAs there is no work for. Both bounds
+are static facts — an occupancy fact and a geometry fact.
 
 <a id="retirement"></a>**THE CEILING IS WHAT THE HOST CAPTURES; THE DEVICE IS WHAT SPENDS
 IT.** `n_split` is derived from the DENSE unit ceiling because that is the only count a

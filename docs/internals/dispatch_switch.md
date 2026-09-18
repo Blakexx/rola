@@ -1,18 +1,28 @@
 # `csrc/rola/src/dispatch_switch.cuh` — host-side compile-time dispatch
 
 A kernel whose structural axes are template parameters has to be selected at runtime
-from runtime values. This header is the mechanism for that selection in the
-hand-written launchers: `decode.cu`'s `launch_decode_step` and `entmax.cu`'s forward
-and backward launchers.
+from runtime values. This header is the mechanism for that selection in a hand-written
+launcher: `entmax.cu`'s forward and backward launchers (`factor.cu`'s four launchers use
+it the same way).
 
-The carry family does not use it, and does not use a switch at all. Its dispatch
-walks a GENERATED ARM LIST: `tools/gen_shards.py` defines `CARRY_ARMS` (the closed-world
-`(D, DV, warps_per_cta)` table) and emits `carry_selection.inc`, one X-macro over every
-SHIPPED arm, and `carry/carry.cu` expands that same macro four times via
-`ROLA_CARRY_ARM_SET_X` — the arm declarations, the launch dispatch, the census and the
-per-arm row listing — so the enumeration exists once and is single-sourced with the
-per-arm translation units it partitions into (`carry_arm_0.cu`,
-[`carry/carry_kernel.md`](carry/carry_kernel.md), `instantiations/README.md`).
+`decode.cu`'s `launch_decode_step` no longer uses it: decode moved to the same
+GENERATED-ARM-LIST shape the carry family uses (`ROLA_DECODE_ARMS`, an X-macro over the
+declared `(DV, D, decay)` rows, tried in order and refused by name if none matches).
+Both generated-list families and this file's function-template dispatch are answers to
+the same problem — a launch selected at runtime from a closed compile-time set — and a
+family picks whichever fits its axis count and instantiation shape: this file when the
+axes compose as a nested nest of nearly-independent nested nests; a generated list when
+the shipped set is itself the thing worth declaring as one table (carry's `(D, DV,
+warps_per_cta)`, decode's `(DV, D, decay)`).
+
+The carry family does not use it either, and never did. Its dispatch walks a GENERATED
+ARM LIST: `tools/gen_shards.py` defines `CARRY_ARMS` (the closed-world `(D, DV,
+warps_per_cta)` table) and emits `carry_selection.inc`, one X-macro over every SHIPPED
+arm, and `carry/carry.cu` expands that same macro four times via `ROLA_CARRY_ARM_SET_X`
+— the arm declarations, the launch dispatch, the census and the per-arm row listing —
+so the enumeration exists once and is single-sourced with the per-arm translation units
+it partitions into (`carry_arm_0.cu`, [`carry/carry_kernel.md`](carry/carry_kernel.md),
+`instantiations/README.md`).
 
 THE RULE BETWEEN THE TWO IS WHERE THE ENUMERATION LIVES. A launcher with a handful of
 axes and one kernel writes its selection here, in the one place its `<<<...>>>`
@@ -29,18 +39,20 @@ point of use, so a launcher's template arguments and its `<<<...>>>` configurati
 exist in exactly one place.
 
 ```cpp
-int_switch<32, 64>(d_v, "decode d_v", [&](auto DV) {
-  bool_switch(global_norm, [&](auto GLOBAL) {
-    bool_switch(decay, [&](auto DECAY) {
-      int_switch<1, 2, 3, 4>(p.D, "D (spec §1)", [&](auto LEVELS) {
-        decode_gemv_kernel<decltype(DV)::value, decltype(LEVELS)::value,
-                           decltype(DECAY)::value, decltype(GLOBAL)::value>
-            <<<dim3(p.n_split, p.BH), kDecodeThreads, smem, stream>>>(p);
+int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
+    w_pad, "union entmax padded width (MAX_BRANCH_WIDTH = 256)", [&](auto WPAD) {
+      constexpr int kWPad = decltype(WPAD)::value;
+      constexpr int kLaneWidth = kWPad < 32 ? kWPad : 32;
+      constexpr int kItemsPerThread = kWPad / kLaneWidth;
+      bool_switch(alpha_is_1p5, [&](auto ALPHA) {
+        union_forward_kernel<kLaneWidth, kItemsPerThread, decltype(ALPHA)::value, LogitT, OutT>
+            <<<grid, BLOCK_THREADS, 0, stream>>>(/* ... */);
       });
     });
-  });
-});
 ```
+
+(`entmax.cu`'s `launch_forward`; `launch_backward` and `factor.cu`'s four launchers
+follow the same shape.)
 
 **Uniqueness of the launch text is the property this file exists to hold.**
 `entmax.cu`'s forward launch takes FIFTEEN arguments across thirty-two selectable
@@ -64,8 +76,10 @@ line has a source location a debugger and a profiler can name.
 arms are declared, so a runtime value outside it is a NAMED REFUSAL and never a
 silently missing arm; `what` is the axis's name in that message.
 
-The sets in this engine are two to six values wide, so the expansion is a comparison
-chain rather than a jump table, which is the right shape at that width.
+The one `int_switch` set still live in this engine is eight values wide (entmax/factor's
+padded width, `{2, 4, 8, 16, 32, 64, 128, 256}`) and its `bool_switch` axes are all
+two-way, so the expansion is a comparison chain rather than a jump table, which is the
+right shape at that width.
 
 **A derived arm parameter stays derived.** `entmax.cu`'s width axis carries a
 `(lane width, items per thread)` pair, computed from the padded width inside the
@@ -88,7 +102,7 @@ do not have.
 
 | half | what it is | what covers it |
 |---|---|---|
-| the instantiation SET | which `(template arguments)` tuples exist in the binary | `tools/ratify.py` (347 entries per arch: 17 decode + 320 entmax + 10 intra), reading the built `.so`. A tuple that stops being instantiated fails it. |
+| the instantiation SET | which `(template arguments)` tuples exist in the binary | `tools/ratify.py` (345 entries per arch: 320 entmax + 17 decode + 6 intra + 1 carry + 1 build stamp), reading the built `.so`. A tuple that stops being instantiated fails it. |
 | the SELECTION | which tuple a given set of runtime values reaches | the CUDA suites, which exercise every arm |
 
 `tools/sass_bodies.py` hashes DEVICE entry points. Host `.text` is not in that hash, so
@@ -149,5 +163,5 @@ than a silently missing arm -- `what` names the axis in the message.
 ### near line 31
 
 An expansion over the candidate set, evaluated left to right: exactly one arm
-runs. The sets in this engine are two to six values wide, so the chain is not a
+runs. The one `int_switch` set live today is eight values wide, so the chain is not a
 jump table and does not need to be.

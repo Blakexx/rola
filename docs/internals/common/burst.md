@@ -58,5 +58,6 @@ at the first and fifth HMMA or the fifth and last. The box's burst is eight HMMA
 fragment's eighteen, so the pair's own work (two hooks, a guard, the list load) is a larger
 share of it, and the rolled loop, at the shared pipe rate when paired, gives up less alone than
 the model predicts. Which of those it is needs the static pipe simulator on the two SASS
-loops; until then the readout is the documented exception to §23, and the lint that binds
-`ops::mma` to a burst functor carries it as its one allowed exemption.
+loops; until then the readout is the documented exception to §24 (`ops::mma` outside a
+burst functor, which §24 forbids elsewhere) — no lint enforces the rule yet, so the
+exception is carried here in prose rather than as a checked exemption.

@@ -33,7 +33,8 @@ same week.
   straight-through estimator, no thresholded skip. A skip is exact by
   construction or it does not ship.
 - **Membership is decided by the realized support bits and by nothing else.**
-  `read_tok_bits` is the sole support authority. Amplitude comparisons exist in
+  `digit_in_mask` (`csrc/rola/src/facts/liveness_contract.cuh`) is the sole support
+  authority. Amplitude comparisons exist in
   the kernel only as *performance* skips on a value where inclusion is a no-op
   (`if (out != 0.0f)`), and none of them decides membership
   ([`carry/carry_kernel.md`](../internals/carry/carry_kernel.md)).

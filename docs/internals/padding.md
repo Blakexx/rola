@@ -53,10 +53,11 @@ in a backward pass, and no parameter reads a pad column, so its gradient is exac
   seam onto `rola.ops.carry`'s C1c launch surface) pads BOTH axes: every level to
   `rola.routing.topology.padded_level_width` (next power of two >= 16 -- the
   box/warp-sub-box register-shape floor), and `v` to the smallest of
-  `rola.ops.carry.SHIPPED_DV` that admits it. There is no kernel body on this line
-  (`C_CLEAN_SLATE`), so
-  every call past the pad reaches the honest absence of the deleted extension symbol --
-  the expected failure for a LAWFUL padded call, distinct from a shape refusal.
+  `rola.ops.carry.SHIPPED_DV` that admits it. The clean-slate rebuild has since landed a
+  real kernel body (`extension().carry_forward`, `docs/internals/carry/carry_kernel.md`), so
+  a lawful padded call now reaches a real launch rather than the deleted extension
+  symbol's absence -- but only at the one arm the shipped set carries (below): a call
+  padded to a `DV` outside it meets the arm-table refusal instead.
 * **decode** (`rola.ops.decode.derive_decode_geometry`, `_decode_step`) pads ONLY
   `d_v` -> the smallest `DV` its own shipped arm table
   (`rola.ops.decode.arms`, keyed `(DV, D, decay)`) carries at that `(D, decay)`. Its

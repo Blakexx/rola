@@ -63,18 +63,6 @@
   },
   {
    "path": "docs/architecture/fp32-accumulators.md",
-   "message": "names the work code 'D2-b'",
-   "line_sha256": "6c5ba2c24696d49b",
-   "count": 1
-  },
-  {
-   "path": "docs/architecture/fp32-accumulators.md",
-   "message": "names the work code 'P67'",
-   "line_sha256": "6c5ba2c24696d49b",
-   "count": 1
-  },
-  {
-   "path": "docs/architecture/fp32-accumulators.md",
    "message": "names the work code 'P67'",
    "line_sha256": "9dd023d9727fe5cc",
    "count": 1
@@ -976,12 +964,6 @@
   {
    "path": "docs/internals/common/constants.md",
    "message": "names the work code 'C2e'",
-   "line_sha256": "5d84a3835c90bda4",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/constants.md",
-   "message": "names the work code 'C2e'",
    "line_sha256": "eccc19bb15befb45",
    "count": 1
   },
@@ -989,12 +971,6 @@
    "path": "docs/internals/common/constants.md",
    "message": "names the work code 'C3'",
    "line_sha256": "0c588860b8442890",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/constants.md",
-   "message": "names the work code 'C3'",
-   "line_sha256": "7b34648999a02453",
    "count": 1
   },
   {
@@ -1017,26 +993,8 @@
   },
   {
    "path": "docs/internals/common/geom.md",
-   "message": "names the work code 'C0'",
-   "line_sha256": "beb816b249826691",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/geom.md",
-   "message": "names the work code 'G1'",
-   "line_sha256": "6e8cea8bc4f0ac07",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/geom.md",
    "message": "names the work code 'G2'",
    "line_sha256": "5de8f34ad63783c6",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/geom.md",
-   "message": "names the work code 'G2'",
-   "line_sha256": "79bac4aa2a670874",
    "count": 1
   },
   {
@@ -1073,12 +1031,6 @@
    "path": "docs/internals/common/geom.md",
    "message": "names the work code 'G2c'",
    "line_sha256": "ce605792ee6ff60e",
-   "count": 1
-  },
-  {
-   "path": "docs/internals/common/geom.md",
-   "message": "names the work code 'G2c'",
-   "line_sha256": "e3049e498994a51b",
    "count": 1
   },
   {
@@ -1593,54 +1545,6 @@
   },
   {
    "path": "docs/open-work.md",
-   "message": "names the work code 'C0'",
-   "line_sha256": "eea033a4dcfea6e8",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C0'",
-   "line_sha256": "f3f64c40f6b09be7",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C1'",
-   "line_sha256": "65fd1b1439f91266",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C2'",
-   "line_sha256": "65fd1b1439f91266",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C3'",
-   "line_sha256": "226894d89eecd190",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C3'",
-   "line_sha256": "687d0845906da837",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C3'",
-   "line_sha256": "784ee5beaf5fb838",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'C4'",
-   "line_sha256": "784ee5beaf5fb838",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
    "message": "names the work code 'D2'",
    "line_sha256": "0139ce4dda984fd7",
    "count": 1
@@ -1667,12 +1571,6 @@
    "path": "docs/open-work.md",
    "message": "names the work code 'E12'",
    "line_sha256": "c05700965d2bb0cc",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'K0'",
-   "line_sha256": "687d0845906da837",
    "count": 1
   },
   {
@@ -1709,12 +1607,6 @@
    "path": "docs/open-work.md",
    "message": "names the work code 'K33'",
    "line_sha256": "cc558588a8b66d82",
-   "count": 1
-  },
-  {
-   "path": "docs/open-work.md",
-   "message": "names the work code 'K6'",
-   "line_sha256": "687d0845906da837",
    "count": 1
   },
   {

@@ -71,14 +71,16 @@ resolve in no published repository ([`docs/provenance.md`](../provenance.md)).**
 ## What this tree does not hold, and where it is
 
 The mirror rule runs source → doc, so a family with no sources here has no pages
-here. The carry (window body) and stats families were deleted from this branch by
-the clean-slate line: their pages went with them, and the bodies are readable on
-the `k35-final` branch tip, which is never edited again and is the parity
-reference the rebuild is graded against. What those kernels ARE — what gets
-built, in what order, and which file or record each mechanism was proven in — is
-stated in [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) §6.1 and §6.2, and what is
-knowingly missing in the meantime is a row in [`docs/open-work.md`](../open-work.md).
-Their mirror pages come back with their stages, one page per source file as ever.
+here. The carry family's pre-clean-slate body (the window body, the channel-split
+body, the two-scan backward) was deleted from this branch whole in the 2026-08-30
+rebuild (`DELETIONS.md`); its pages went with it, and the old bodies are readable
+on the `k35-final` branch tip, which is never edited again and is the parity
+reference the rebuild is graded against. The carry family's pages HAVE come back,
+one page per source file, as the rebuild (F-P) landed a new body under
+`csrc/rola/src/carry/`: `docs/internals/carry/*` mirrors it today. What is still
+missing on this branch is what `docs/ARCHITECTURE.md` §6.1 and §6.2 state gets
+built and in what order, and what is knowingly missing in the meantime is a row in
+[`docs/open-work.md`](../open-work.md).
 
 ## Where the other docs live
 

@@ -46,9 +46,11 @@ was typed — a row inserted in the middle would silently renumber every arm.
 `python tools/gen_shards.py --self-test` requires the reader to refuse ten malformed
 declarations BY NAME (the message must name the field), refuses a missing declaration,
 and then installs a synthetic three-row table to show the selection header, the arm set
-and the shard block actually rendering rows. The live declaration is empty, so nothing
-else in the file ever exercises a row, and a renderer nobody has seen render is a
-renderer nobody knows works.
+and the shard block actually rendering rows. The live declaration carries one row today
+(`tools/manifests/shipped_set.json`'s `[2, 64, 8]`), which exercises the single-row case;
+the self-test's synthetic three-row table is what shows the renderer working at a width
+the live declaration does not yet reach, so a change to the multi-row path is not first
+seen the day a second arm ships.
 
 `--check` regenerates into memory and diffs, and additionally asserts the selection
 header's schema directly — the header is never checked in, so there is no file to diff

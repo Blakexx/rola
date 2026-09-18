@@ -96,8 +96,10 @@ zero in floating point, which is a separate claim with two load-bearing parts.
 
 **(a) The amplitude is never logged.** The coefficient is built as a direct
 product of staged per-level factors (`build_wt_rows` in the retired tiled
-consumer's `consumer_kernel.cuh`; the chunk arm's panel production is the same
-product form), so a structurally dead route is an exact `0.0f`. The alternative log-space
+consumer's `consumer_kernel.cuh`; the chunk arm carried the same product form
+and is itself since retired — `675d6b6`, `docs/internals/DELETIONS.md` — with
+today's carry arm the current instance), so a structurally dead route is an
+exact `0.0f`. The alternative log-space
 lowering — log the factors, select with a binary MMA, exponentiate in the
 epilogue — would turn that zero into `-inf`, and a clamped `-inf` exponentiates
 to `6e-39`, a *small* number rather than a zero. The decision not to take that
@@ -111,11 +113,14 @@ and binds every arm.
 `0 * inf == NaN`. The spec's rule-3 read-side format guard
 (`clamp_bf16_finite`, carried by the tiled consumer's `readout_mma.cuh` until P67
 D2 retired that arm) is what kept the multiplicand finite on that narrowing arm.
-On the CHUNK arm the multiplicand is a bf16 simplex amplitude produced host-side —
-finite by construction rather than by a read-side clamp — and
-`chunk_kernel.cuh`'s panel production says so at the site: a zeroed panel row
-propagates through "a multiplication whose other operand is a finite simplex
-amplitude". The composition is the same one the tiled arm's `build_wt_rows`
+On the carry arm (as on the chunk arm before it) the multiplicand is a bf16
+simplex amplitude produced host-side by the entmax activation family
+(`rola/routing/entmax/`) — finite by construction (a simplex output is bounded
+in `[0, 1]`) rather than by a read-side clamp. `carry_kernel.cuh` carries no
+inline restatement of this at the multiply site (comments in this tree live in
+`docs/internals/`, not the source — see the comments-to-docs standard); the
+claim rests on the host-side activation's own finiteness rather than a
+kernel-local guard. The composition is the same one the tiled arm's `build_wt_rows`
 stated: rule 4's
 zero-route annihilation is satisfied *branchlessly and structurally* because the
 coefficient is a product of amplitudes, the factor it multiplies is finite by
@@ -160,9 +165,11 @@ the engine's granularity coarsening legal:
 
 - The **paging atom** is one `MMA_K_QUANTUM`-leaf granule, not the true support
   ([`paging/paging.md`](../internals/paging/paging.md), the atom re-key);
-- **chunk unions** over a chunk's tokens are an OR, deliberately coarser than the
-  per-token AND (the `BT` token tile the tiled consumer took this union over is
-  retired; the chunk arm's super-chunk is what takes it now);
+- **Window unions** over the carry kernel's window tokens are an OR, deliberately
+  coarser than the per-token AND (the `BT` token tile the tiled consumer took this
+  union over, and the chunk arm's super-chunk after it, are both retired; the
+  carry kernel's 512-token window head takes the any-digit OR now —
+  `docs/internals/carry/box.md`);
 - The **block rectangle** is the granularity of a visit: every leaf of the block
   is resident for the whole visit whether or not the visit's support names it, so a
   leaf outside the support is read, multiplied by an exactly-zero coefficient, and

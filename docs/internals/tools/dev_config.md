@@ -21,7 +21,7 @@ bootstrap), and `python tools/dev.py init` links the `workspace.devtools` checko
 | `host.json` | `nvcc_threads`, `build_jobs`, `budget_slots`, `lock_dir`, `gpu_lock`, `gpu_shared_slots`, `nice`, `locks_trace`, `scratch`, `tools_dir`, `windows_system32`, `wsl_lib` |
 | `clock.json` | `ghz`, `lock`, `unlock` (null `ghz`: the host measures unlocked) |
 | `store.json` | `root` (the measurements store: a rola-results checkout) |
-| `workspace.json` | `suite` (the rola-bench checkout whose root `declare.py` measures this tree), `worktrees` (the one folder worktrees live in), `base_venv` (the venv pointer venvs borrow from) |
+| `workspace.json` | `suite` (the rola-bench checkout whose root `declare.py` measures this tree), `devtools` (the rola-devtools checkout, the public mirror's declared build system, linked into every venv), `worktrees` (the one folder worktrees live in), `base_venv` (the venv pointer venvs borrow from) |
 | `environment.json` | `image_digest` (inside the dev container) |
 
 Each key's type, default and meaning are declared in `SCHEMA`. `python tools/dev.py show` prints every
@@ -47,6 +47,7 @@ f-string prefixes resolved) and shell expansions.
   - The inputs `setup.py` sets for torch (`CUDA_HOME`, `MAX_JOBS`, `PYTORCH_NVCC`).
   - pytest-xdist's worker id.
   - The agent harness's campaign directory.
+  - The login name printed into the sudoers rule `tools/dev.py clock` suggests (`USER`).
 - `BUILD_PARAMETERS`: what one build is, set per invocation, because pip passes nothing else to `setup.py`:
   `ROLA_CUDA_ARCHS`, `ROLA_CARRY_ARMS`, `ROLA_DECODE_ARMS`, `ROLA_CARRY_PARTS`, `ROLA_BUILD_PARTS`,
   `ROLA_NO_EXTENSION`, `ROLA_STRICT_MANIFEST`, `ROLA_SKIP_POST_BUILD_RATIFY`.

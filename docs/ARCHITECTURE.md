@@ -401,11 +401,18 @@ Four kernels and one host-side derivation. They share the window grid, the descr
 and the atom; they share no code path that could make a wrong convention agree with
 itself.
 
-**Two of them are not in this tree, and the two sections below are their
-specification.** The clean-slate line (`development/queue/C_CLEAN_SLATE.md`) deleted
-the stats passes and the carry body from this branch: §6.1 states what the foundation
-builds in their place and §6.2 what the body is, mechanism by mechanism, in the order
-the mechanisms are built. The deleted bodies are readable on the `k35-final` branch
+**Both of them have since landed, and the two sections below were their
+specification while they did not.** The clean-slate line (`development/queue/C_CLEAN_SLATE.md`)
+deleted the stats passes and the carry body from this branch; §6.1's liveness pass is
+now built (`csrc/rola/src/facts/liveness.{cu,cuh}`, `docs/internals/facts/liveness.md`)
+and a carry body has shipped (`csrc/rola/src/carry/`, `docs/internals/carry/carry_kernel.md`),
+though the pipelined body's actual mechanism diverges in places from §6.2's blueprint
+below (its window/snapshot/head/pool structure is not identical to the fold-with-streams
+and hybrid-transit design stage 3 and stage 4 describe, and the shipped arm's layout is
+PLAIN rather than a `uniform_switch` over a generated member set) — §6.2 is left as the
+design record it was written as rather than rewritten stage by stage against the shipped
+mechanism, which this pass could not responsibly complete; `docs/internals/carry/carry_kernel.md`
+is the authority on what actually runs. The deleted bodies are readable on the `k35-final` branch
 tip, which is never edited again and which is the parity reference every stage of the
 rebuild is graded against from its first probe. §6.3 and §6.4 — decode and intra —
 describe kernels that are here and unchanged.
@@ -457,11 +464,12 @@ emitted bytes as above; the host folds linear in boxes × levels; and, on the co
 side, the word operations per (warp, window, side) that the span OR and the level AND
 cost, which is the term the layout is answerable for.
 
-*(Ruled, not yet built: the pass is the FIRST foundation feature of the clean-slate
-line, built and tested on its own before any kernel body, and its word layout, its
-Python reader and its host folds are pinned by the contract stage as an executable
-model before the pass exists. Decode's paged path is red until it lands —
-`docs/open-work.md`.)*
+*(In the tree: the pass was the FIRST foundation feature of the clean-slate line, built
+and tested on its own before the kernel body, with its word layout, its Python reader
+and its host folds pinned by the contract stage as an executable model. Decode's own
+step condenses its write-atom set on device rather than depending on this pass for it
+(`docs/internals/decode/decode.md#atom-bits`), so decode's paged path was never actually
+blocked on it the way this note once anticipated — `docs/open-work.md`.)*
 
 ### 6.2 Carry — the window body
 

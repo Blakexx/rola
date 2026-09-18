@@ -133,12 +133,16 @@ floor-at-one refusal, monotonicity in the budget), never a real kernel's numbers
 
 ## On the tip
 
-Nothing on this branch calls any of these functions from a kernel yet — `C3-K0`
-onward is what will (`development/queue/C_CLEAN_SLATE.md`). This stage's job is
-naming the ONE PLACE these values live so no kernel stage re-derives or re-states
-them: `csrc/rola/src/common/constants.cuh` for device code, `rola.engine.constants`
-for the host, `tests/unit/test_carry_constants.py` the agreement gate between them.
-`rola/ops/carry.py`'s pre-existing `WINDOW`/`WARPS_PER_CTA`/`leaves_per_warp`
-and `common/geom.cuh`'s `warps_per_sm`/`leaves_per_warp` are read here, not
-duplicated; repointing those call sites at this module is `C_CLEAN_SLATE.md`'s C2e
-consolidation stage, not this one.
+The carry kernel now calls into this file directly: `box.cuh` sizes `kTiles`, `kRounds`,
+`kOrderBytes` and `kMaskBytes` off `kWindow`, `carry_kernel.cuh`'s window loop walks in
+`kWindow` steps, and `carry_host.cuh` calls `is_warps_per_cta` and `box_leaves` at the
+refusal boundary. This module's job is naming the ONE PLACE these values live so no
+kernel stage re-derives or re-states them: `csrc/rola/src/common/constants.cuh` for
+device code, `rola.engine.constants` for the host, `tests/unit/test_carry_constants.py`
+the agreement gate between them. The S-from-SMEM rule (`derive_stream_count`) is the
+exception: no stream segments exist on this branch yet, so it stays a model tested
+against a stated layout rather than a call site. `rola/ops/carry.py`'s pre-existing
+`WINDOW`/`WARPS_PER_CTA`/`leaves_per_warp` and `common/geom.cuh`'s
+`warps_per_sm`/`leaves_per_warp` are still separately declared on the Python side;
+a later consolidation stage (`development/queue/C_CLEAN_SLATE.md`) is what repoints
+those call sites at this module, not this one.

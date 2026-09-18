@@ -92,8 +92,8 @@ python -m pip install -e . --no-build-isolation
 5. **Compile.** `ninja`. The carry family's instantiation matrix is generated
    translation units under `csrc/rola/src/instantiations/` — **one translation unit
    per carry arm**, so the arms parallelize across `MAX_JOBS` processes instead
-   of serializing inside one `cicc`. The arm list is empty on this line, so there is no
-   generated unit and the directory does not exist; a declared shipped set refills it.
+   of serializing inside one `cicc`. The shipped set carries one row today
+   (`[2, 64, 8]`), so this is one generated unit, `carry_arm_0.cu`.
 6. **Post-build ratification.** `tools/ratify.py --arch …` for exactly the archs
    just built — the pre-build gates prove the *inputs* were ratified; this proves
    the codegen still matches what was measured.
@@ -193,12 +193,15 @@ parsing) and pin every arm TU's resident set at 2.9 GB, which is the term `MAX_J
 derived from. (These rows measure the k35-final carry family, which C0 deleted from this line; they
 are kept as the cost model the rebuilt arm units are measured against.)
 
-**Whole-build walls**, both architectures unless stated, sccache OFF, `MAX_JOBS=3`:
+**Whole-build walls**, both architectures unless stated, sccache OFF, `MAX_JOBS=3`
+(these rows measure the k35-final carry family's 23-arm matrix, deleted from this line
+by the clean-slate rebuild and kept as the cost model the rebuilt arm units are measured
+against; today's shipped set carries one arm):
 
 | | one unit | per-arm units |
 |---|---|---|
 | full build, all 23 carry arms | **15m02s** | **4m01s** |
-| the SHIPPED gate build (14 arms) | — (no shipped set) | **3m48s** |
+| the SHIPPED gate build (14 arms of the k35-final matrix) | — (no shipped set) | **3m48s** |
 | all 23 arms, sm_86 only, `MAX_JOBS=7` | — | **3m12s** |
 | `ratify`, both arches, cold | **935 s** | **62 s** |
 | `ratify`, no source change | 935 s (no incrementality) | **28 s** |

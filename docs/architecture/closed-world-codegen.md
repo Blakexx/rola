@@ -84,7 +84,7 @@ instance. One instantiation carries a **4-byte spill accepted as the measured
 optimum**, because every alternative spills worse. A judgement of that kind
 recorded only in a document is enforced by nothing: a codegen change can grow the
 spill with no gate failing ([`ratification.md`](../ratification.md#why-it-exists)).
-Under AOT it is instead an asserted invariant over 144 entries per architecture.
+Under AOT it is instead an asserted invariant over 345 entries per architecture.
 Under JIT it could not be asserted at all, because the entries would not exist
 until run time, on a machine the project does not control.
 

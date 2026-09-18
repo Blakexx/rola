@@ -20,13 +20,16 @@ the lifetime of the state.
 **HISTORICAL, and kept because the ruling it tests is not.** The mechanism this
 section governs was the TILED consumer's, retired whole in P67 D2
 ([`DELETIONS.md`](../internals/DELETIONS.md); revival `git show c7eaeb9:<path>`).
-The prefill arm in the tree today is the chunk consumer, whose state plane is
-plain fp32 (the tiled consumer's chunk_kernel.cuh carried them as s_in/s_out) — there is no compensated pair in
-this tree now, and the paragraphs below are the record of how the split was
-applied when there was one. What is NOT historical is the distinction, the ruling,
-and the gate: tests/oracle/test_bf16_family_gate.py (retired with the chunk arm) re-anchored onto
-the chunk arm in the same phase and still runs the `sqrt(T)` walk over
-`T in {512, 2048, 8192}`.
+The chunk consumer this section once repointed onto is itself gone (deleted
+whole at `675d6b6`, 2026-08-20, alongside its own re-anchored
+`test_bf16_family_gate.py`); the prefill arm in the tree today is the carry
+family (`carry/carry_kernel.md`), whose state plane is plain fp32
+(`Blocks<DV>`) — there is no compensated pair in this tree now, and the
+paragraphs below are the record of how the split was applied when there was
+one. The distinction and the ruling are NOT historical, but the length-scaling
+`sqrt(T)` gate is: no test in the tree today re-runs that walk against the
+carry family's state, so the ruling stands unenforced by a live gate rather
+than actively re-verified.
 
 The tiled consumer's resident state was two bf16 planes (`Shi`, a value's bf16
 rounding, and `Slo`, its residual) rather than one fp32 plane. That was NOT the
@@ -50,8 +53,9 @@ the `< 0.25` bar against the resident-state walk's measured `+0.49`. That is exa
 what distinguishes a compensated pair from a single narrowing — 16 mantissa bits
 leave enough headroom that the walk does not surface inside the swept range. A plain
 single-narrowing bf16 state remains refused for the reason measured below; the same
-gate is what killed it, and that gate now reports on the chunk arm (slope `+0.053`
-over the same three lengths, P67 D2-b).
+gate is what killed it, and in the same phase it was re-run once more against the
+(since also deleted) chunk arm, holding there too (slope `+0.053` over the same
+three lengths) before the gate itself was retired with that arm.
 
 ## The measured reason
 

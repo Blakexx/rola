@@ -586,7 +586,7 @@ manual steps, and the dev container had drifted for two weeks unnoticed.
    for the key of what it stages. A host-side toolchain change that the image does not share (a driver, a toolkit
    path) is not an input and needs no container record; a pin, a lock or a Dockerfile line always is.
 
-## §23 — TWO TIERS: DECIDE COARSELY, BURST STATICALLY (law, 2026-09-17, from the fold's and readout's forms)
+## §24 — TWO TIERS: DECIDE COARSELY, BURST STATICALLY (law, 2026-09-17, from the fold's and readout's forms)
 
 The facts, each a calibration or trace row (`docs/internals/carry/calibration.md`, `carry_kernel.md#phase-trace`):
 

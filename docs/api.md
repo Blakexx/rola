@@ -159,13 +159,16 @@ addressing somebody else's bytes inside a kernel. Re-laying out a state is an ex
 op, never a side effect of a call. See
 [`internals/state.md`](internals/state.md#format).
 
-**Status.** The kernel half of this contract is live: the carry launch surface and its
-three refusals are built and tested. The *body* behind it is not — the carry family is
-being rebuilt from the ground up (card `development/queue/C_CLEAN_SLATE.md`), so a carry
-call today reaches the surface, passes its refusals and then fails with one honest
-reason: there is no implementation on this line. The envelope table in
-[1.1](#11-the-built-envelope-is-the-surface) is what is *built*; this section is the law
-it is built against.
+**Status.** The kernel half of this contract is live at the OP level: `rola.ops.carry`'s
+launch surface, its three refusals, and now the pipelined box-native body behind it
+(`docs/internals/carry/carry_kernel.md`) are all built and tested — a call into
+`extension().carry_forward` reaches a real, shipped launch, at the one arm the carry
+family's shipped set currently declares (`[D=2, DV=64, warps_per_cta=8]`). What is not
+yet built is the LAYER wiring: `rola.interface.rola_op` (and therefore `rola.RoLA`'s
+prefill path through it) still raises `NotImplementedError` unconditionally, so the op
+is not yet reachable end to end through the public surface this page otherwise
+documents. The envelope table in [1.1](#11-the-built-envelope-is-the-surface) is what
+`rola_op` is built against once that wiring lands, not a description of what runs today.
 
 ## 2. The feature map
 
@@ -472,14 +475,14 @@ machine and with the built matrix. The model facts it carries are the exception,
 because they are not decisions.
 
 **Every pin is a declared restriction rather than a dial, and each refuses by name
-rather than being ignored.** `state_block` (`BC`) is not
-host-selectable: the chunk arm's `BC` belongs to the built arm the manifest carries
-for a topology, so any value but `None` is refused at the call — a knob that
-silently does nothing is how a caller comes to believe a launch was shaped a way it
-never was.
-the fp64 reference path. `paging` overrides the MAPPING only: `None` is the paged
+rather than being ignored.** `PlanOverrides` carries exactly one field today, `paging`
+— the state's BACKING, never a launch shape: `None` is the paged
 default, `False` pins the dense plane the bit-identity gate compares against, and
-`True` is refused because paging is on by default and bitwise invisible.
+`True` is refused because paging is on by default and bitwise invisible. A `BC`-style
+launch-shape pin (`state_block`, on the tiled consumer's `Plan`) went with that
+consumer's deletion (`internals/DELETIONS.md`) and has no successor here: the carry
+family's arm — and therefore its `BC` — is a property of the built matrix a topology
+resolves to, not a per-call override.
 
 **There is no plan object and no derive/execute seam.** `Plan`, `Schedule`,
 `derive_plan` and `execute` were the tiled consumer's, and went with it in P67 D2

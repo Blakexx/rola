@@ -1,8 +1,9 @@
 # `csrc/rola/src/decode/decode_api.cuh` — the decode path's host-facing declarations
 
-The ONLY decode header `csrc/rola/rola_api.cpp` includes. It declares four
-symbols and carries no definitions: the two capacity accessors, the build
-stamp and `rola_decode_forward`. The decode path itself is documented in
+The ONLY decode header `csrc/rola/rola_api.cpp` includes. It declares six
+symbols and carries no definitions: the two capacity accessors, the residency
+accessor, the build stamp, the arm list and `rola_decode_forward`. The decode
+path itself is documented in
 [`decode.md`](decode.md); this file exists for a compilation reason, and the
 reason is the whole content of this doc.
 

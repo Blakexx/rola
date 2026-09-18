@@ -5,19 +5,19 @@ published (execution checklist E12); until then this file is the list.
 
 ## The clean-slate line (card C, ratified 2026-08-30) — what is knowingly absent
 
-This branch has NO carry kernel and NO stats passes: C0 deleted them
-(`docs/internals/DELETIONS.md`, two rows). This is not a regression list, it is the
-plan's own starting state, and the tests are how it is measured — they were KEPT,
-pointed at the final surface, and are RED until the kernel passes them (card C's
-test-driven ruling: no skips, no xfails, no designed refusal).
+This section recorded the plan's own starting state right after the clean-slate deletion
+took out the old carry kernel and the old stats passes (`docs/internals/DELETIONS.md`, two
+rows). Most of the rebuild stages named below have since landed; the row-by-row state is
+UPDATED IN PLACE rather than left describing the pre-rebuild tree, per this file's own
+no-regression-list rule — a reader here wants what is absent NOW, not an obsolete snapshot.
 
 | # | Absent, and what builds it back |
 |---|---|
-| **C-a** | **The prefill (carry) forward.** `rola/ops/carry.py`, `rola.layer`'s prefill path and the engine's chunk DAG still CALL it and fail at `torch.ops.rola` with a missing attribute. C3 (K0–K6) builds it ground up in the pipelined structure, graded from its first probe against the OLD reference on the `k35-final` tip. |
-| **C-b** | **The prefill backward.** C4, after C3. |
-| **C-c** | **The liveness pass** (was: the facts family's union table, atom bitmap, block bitmap). C2 builds it as a foundation feature with host folds; C1 adjusts the Python seam where its outputs replace the atom/block bitmaps. |
-| **C-d** | **Decode's PAGED path, in the meantime.** Decode's own kernel is untouched and its oracle tier is green, but its DAG sourced `atom_bits` from the deleted stats pass, so the paged decode integration tests are red until C-c. This is the one cost C0 pays outside the carry family, and it is stated rather than worked around. |
-| **C-e** | **The carry arm table.** The declaration at `tools/manifests/shipped_set.json` declares NO row. Selection, the generated arm set, the manifests' `shards` block and the post-build check are all keyed `(D, DV, warps_per_cta)` and run at zero rows; C3 fills the declaration and brings back the per-arm translation units and the fatbin gate that reads them. |
+| **C-a** | **The prefill (carry) forward is BUILT** (the pipelined box-native body, `docs/internals/carry/carry_kernel.md`): `extension().carry_forward` is a real, shipped launch, and `rola.ops.carry.carry_forward` reaches it. What remains absent is the higher-level wiring: `rola.interface.rola_op` (and therefore `rola.layer`'s prefill path) still `raise NotImplementedError("the prefill arm is deleted...")` unconditionally — the op-level kernel exists, the layer/facade path to it does not yet. |
+| **C-b** | **The prefill backward.** Still absent; follows C-a's layer wiring. |
+| **C-c** | **The liveness pass is BUILT** (`csrc/rola/src/facts/liveness.{cu,cuh}`, `docs/internals/facts/liveness.md`): one geometry-independent pass, graded against `rola.engine.facts.liveness.liveness_words`. |
+| **C-d** | **Decode's PAGED path.** Resolved differently than this row originally anticipated: decode's own kernel condenses its write-atom set ON DEVICE (`atom_bits`, `docs/internals/decode/decode.md#atom-bits`) rather than sourcing it from the facts/stats pass, so the paged decode integration tests (`tests/integration/test_decode_paging.py`) were never actually blocked on C-c's liveness pass landing. |
+| **C-e** | **The carry arm table carries ONE row.** `tools/manifests/shipped_set.json` declares `[2, 64, 8]` — the flagship shape, one CTA per SM, `DV = 64`. Selection, the generated arm set, the manifests' `shards` block and the post-build check all run against that one row; the other two declared `DV` values (32, 128) are domain members with no built arm yet. |
 | **C-f** | **Whether the other families' instantiation axes fold into the carry key.** `shipped_set.json` is the CARRY family's declaration. The producer's solves key on `(LW, IPT, ALPHA15)`, the decode step on `(DV, D, DECAY)`, the intra family on `(D, B, W)` — each its own closed set, none of them the carry key. Whether they become one keyed set or stay separate declarations is unruled, and `tools/lint/drift_guards.py`'s `rule_arm_axes` rule reads carry kernels only until it is. |
 
 ## Blocking the release

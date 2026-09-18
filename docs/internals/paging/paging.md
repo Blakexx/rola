@@ -184,8 +184,8 @@ chunks plus the owner's one-chunk lookahead, asserted exactly rather than as a b
 Two consequences, both binding on anything that quotes a number:
 
 * every savings claim carries its pool size and its dense counterfactual — which is why
-  `PagingResult` reports `committed_bytes` and `dense_bytes` beside every fraction, and
-  why a paging measurement reports all three;
+  `PagingResult` reports `committed_bytes` and `dense_bytes` beside `committed_fraction`,
+  and why a paging measurement reports all three;
 * The small topologies the test suite uses (0.5–8 MiB pools) are inside the granule
   regime and CANNOT show a saving. They gate correctness, never the claim. The claim is
   measured at pools many chunks wide, which is the standing
