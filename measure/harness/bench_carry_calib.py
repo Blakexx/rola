@@ -74,6 +74,10 @@ CALIBRATIONS = (
     ("hmma_alu_32_2w", 8, 21, 32, 18, "the same, two warps"),
     ("hmma_alu_64_1w", 4, 21, 64, 18, "sixty-four adds, one warp"),
     ("hmma_alu_64_2w", 8, 21, 64, 18, "sixty-four, two warps"),
+    ("hmma_queue_16_1w", 4, 22, 16, 18, "eighteen HMMAs then one dependent chain of sixteen fp32 fmas, one warp: the pipe's queue depth"),
+    ("hmma_queue_40_1w", 4, 22, 40, 18, "a chain of forty"),
+    ("hmma_queue_80_1w", 4, 22, 80, 18, "a chain of eighty"),
+    ("hmma_queue_40_2w", 8, 22, 40, 18, "a chain of forty, two warps"),
 )
 
 

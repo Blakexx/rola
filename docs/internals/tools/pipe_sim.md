@@ -61,6 +61,7 @@ locked and the card idle:
 | `ldmatrix` as the kernel issues it, 4 / 16 a unit, 8 warps; 4 a unit, 4 warps | 32.6 / 32.0 / 19.0 | 32.3 / 32.3 / 16.4 | 1% / 1% / **+16%** |
 | the wide burst with 32 / 64 fp32 adds beside it, 1 warp | 37.4 / 42.8 | 38.0 / 43.6 | 2% |
 | the same, 2 warps | 65.0 / 65.0 | 71.3 / 78.9 | **−9 / −18%** |
+| the burst then one dependent chain of 16 / 40 / 80 fmas, 1 warp; 40, 2 warps | 33.2 / 33.4 / 41.2; 65.0 | 34.7 / 35.5 / 43.5; 69.4 | −4 / −6 / −5%; **−6%** |
 | hmma + 1 / 2 / 4 / 8 coalesced global reductions | 65.0 flat | 65.6 / 67.6 / 70.0 / 76.4 | to **−15%** |
 | hmma + 4 / 8 divergent reductions | 65.0 flat | 122.6 / 242.8 | **−47 / −73%** |
 
@@ -81,6 +82,19 @@ read on the long scoreboard) -- and the model charges a read barrier at most 20 
 because the kernel's drain issues its reductions once a tile, not between HMMAs. Divergent
 reductions are eight sectors a lane and are not read off the text. An asynchronous copy's lines are
 not read off the text either (the fill's runs touch sixteen lines an instruction, modelled as four).
+
+THE QUEUE, SETTLED BY ROWS (2026-09-18, after Blake's "I thought an mma only stalls if the pipe is
+full and can't queue anything else"). On A100 a warp's `mma.m16n8k16` throughput converges at three
+in flight (Sun et al. 2022, Fig. 6): an 8-cycle issue interval against a 25-cycle latency. On this
+card the same instruction with fp32 accumulate holds the unit 32.5 cycles, about its own latency, so
+the question is whether a warp can post one or two HMMAs ahead and run under them. Three rows say
+no more than about one: the chain row, where ptxas placed the whole gather before eighteen
+back-to-back HMMAs, exposes 104 of its ~110-cycle chain (depth 0 reads 92, depth 2 reads 25); the
+ALU rows expose 3 cycles an add; the queue rows (a dependent chain the model reads at 4 cycles a
+link, half of it interleaved by ptxas) read within 6% at depth 0 and 25% low at depth 2. So an HMMA
+here stalls when the unit is busy, and "the pipe is full" means one in it. An attempt to pin the
+chain after the burst with `asm volatile` changed nothing: ptxas interleaves volatile asm too, so a
+probe's placement is read off its SASS, never assumed from its source.
 
 What the fit changed, and why. The first model had no memory pipe and read the kernel-pattern
 `ldmatrix` row at 5.7 cycles a load against 32.3 measured (the SM's 128 bytes a cycle over eight

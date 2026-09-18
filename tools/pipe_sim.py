@@ -137,7 +137,8 @@ CALIBRATION_ROWS = {
     "hmma_frag_1w": (4, 14, 18), "hmma_frag_2w": (8, 14, 18), "hmma_frag_chain_1w": (4, 15, 18),
     "hmma_frag_chain_2w": (8, 15, 18),
     "hmma_alu_32_1w": (4, 21, 32), "hmma_alu_32_2w": (8, 21, 32), "hmma_alu_64_1w": (4, 21, 64),
-    "hmma_alu_64_2w": (8, 21, 64),
+    "hmma_alu_64_2w": (8, 21, 64), "hmma_queue_16_1w": (4, 22, 16), "hmma_queue_40_1w": (4, 22, 40),
+    "hmma_queue_80_1w": (4, 22, 80), "hmma_queue_40_2w": (8, 22, 40),
     "matrix_load_4": (8, 9, 4), "matrix_load_16": (8, 9, 16),
     "matrix_load_rows_4": (8, 20, 4), "matrix_load_rows_16": (8, 20, 16), "matrix_load_rows_4_1w": (4, 20, 4),
 }

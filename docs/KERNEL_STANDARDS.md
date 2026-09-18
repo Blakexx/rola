@@ -660,4 +660,8 @@ only measurement there is; the sub-core instruction buffer is three deep, the me
    that compares a measurement to an ideal states where the ideal's count comes from.
 5. A STALL CENSUS IS READ PER LINE. Per component it says a warp waits; per line it says on what. The isolating
    measurement for a model's miss is the per-line census of the two forms, not a reading of the model.
+6. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
+   burst was interleaved among its HMMAs by ptxas all the same (the queue rows, 2026-09-18). What a row measures
+   is the placement in its SASS, which the row's reading states; a row whose placement differs from the kernel's
+   measures a different thing.
 

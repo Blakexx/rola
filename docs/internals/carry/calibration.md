@@ -59,6 +59,11 @@ THE BURST WITH ALU WORK BESIDE IT (`hmma_alu`, eighteen HMMAs and 32 / 64 fp32 a
 38.0 / 43.6 (3 cycles an add exposed), two warps 71.3 / 78.9 -- the partner covers none of it, where it covers
 the gather chain's exposure (`hmma_frag_chain_2w` 65.3): a warp's ALU stretch beside its burst is paid in full
 by the pair, the number behind the mass-on-FMA form's loss.
+THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
+34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
+chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this
+card: a warp posts no HMMA more than about one ahead of the unit; the A100's three in flight is its 8-cycle
+issue interval, not this card's 32.5 (`docs/internals/tools/pipe_sim.md#calibrate`).
 
 ## What the rows already explain
 

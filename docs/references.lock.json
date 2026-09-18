@@ -249,6 +249,7 @@
   {"doc": "docs/internals/carry/box.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "csrc/rola/src/carry/box.cuh"},
   {"doc": "docs/internals/carry/box.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "docs/internals/carry/carry_kernel.md"},
   {"doc": "docs/internals/carry/box.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "docs/internals/carry/smem_ledger.md"},
+  {"doc": "docs/internals/carry/calibration.md", "pinned_at": "c9cc5971982a", "reviewed": true, "sha256": "2d05415e24761dcb", "target": "docs/internals/tools/pipe_sim.md#calibrate"},
   {"doc": "docs/internals/carry/calibration.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "measure/harness/bench_carry_calib.py"},
   {"doc": "docs/internals/carry/calibration.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "measure/harness/carry_parts/carry_calib.cuh"},
   {"doc": "docs/internals/carry/calibration.md", "pinned_at": "7468b8830617", "reviewed": true, "sha256": "", "target": "tools/pipe_sim.py"},

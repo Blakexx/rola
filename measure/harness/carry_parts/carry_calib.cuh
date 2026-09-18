@@ -37,7 +37,8 @@ enum CalibMode : int {
   kAsyncCopyRows = 18,
   kAsyncCopyLines = 19,
   kSharedMatrixRows = 20,
-  kHmmaWideAlu = 21
+  kHmmaWideAlu = 21,
+  kHmmaQueue = 22
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -83,6 +84,39 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
       rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
     });
     ops::store_shared_u32(lines, __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaQueue) {
+    //: THE TENSOR PIPE'S QUEUE DEPTH: eighteen HMMAs a unit, then ONE dependent chain of `Burst` fp32
+    //: adds (~5 cycles a link) that nothing can interleave with the HMMAs. A warp that can post q HMMAs
+    //: ahead of the pipe runs q x 32.5 cycles of the chain under them; the exposed part of the chain,
+    //: read against the burst's pipe time, is the depth.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    const uint32_t bf[4] = {w, w, w, w};
+    const uint32_t ab[4] = {w, w, w, w};
+    float y[18][4];
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    float m = 0.0f;
+    const float d = __uint_as_float(w & 0xFFFF0000u);
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<18>([&](auto Jc) {
+        constexpr int j = decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+      //: the chain as volatile asm: ptxas keeps it AFTER the burst's HMMAs (which are volatile asm too), so
+      //: what is hidden is hidden by HMMAs already posted, never by interleaving
+      rola::static_for<Burst>([&](auto Kc) {
+        asm volatile("fma.rn.f32 %0, %0, %1, %2;" : "+f"(m) : "f"(d), "f"(__int_as_float((int)i + decltype(Kc)::value)));
+      });
+    }
+    float sink = m;
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink));
   }
 
   if constexpr (Mode == kHmmaWideAlu) {
@@ -441,6 +475,10 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kHmmaWideAlu, 32)             \
   F(4, kHmmaWideAlu, 64)             \
   F(8, kHmmaWideAlu, 64)             \
+  F(4, kHmmaQueue, 16)               \
+  F(4, kHmmaQueue, 40)               \
+  F(4, kHmmaQueue, 80)               \
+  F(8, kHmmaQueue, 40)               \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
   F(8, kAsyncCopyStrided, 4)         \
