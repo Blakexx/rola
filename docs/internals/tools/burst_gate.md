@@ -54,15 +54,34 @@ partition's 16,384 registers: the warps a scheduler it leaves room for, and the 
 buys one more (248 buys two, 168 three — GA102 whitepaper, Jia et al.).
 
 <a id="readings"></a>
-## Readings at 9bb3a14 (2026-09-18)
+## Readings at 20bfa2a4 (2026-09-18), the pipe two deep
 
-| loop | instructions | HMMAs | alone | exposed | floor |
-|---|---|---|---|---|---|
-| the fold's pair (`burst.cuh:run`) | 155 | 36 | 1,287 of 1,170: 90.9% | 58 (shuffle to multiply, three chains) | 90.9 |
-| the readout's box loop (`readout_tile`) | 68 | 8 | 378 of 260: 68.8% | 24 (the outer-factor load to its multiply) | 68.8 |
+| loop | instructions | HMMAs | alone | paired | exposed | floor |
+|---|---|---|---|---|---|---|
+| the fold's pair (`burst.cuh:run`) | 155 | 36 | 1,234 of 1,170: 94.8% | 2,340: 100% | 58 (three shuffle-to-multiply chains) | 94.8 |
+| the readout's box loop (`readout_tile`) | 68 | 8 | 316 of 260: 82.3% | 520: 100% | 24 (the outer-factor load to its multiply) | 82.3 |
 
-Registers 244, allocated 248: two warps a scheduler; a third at 168. Against the trace: the model
-runs 8 to 9% fast paired, and the lone box loop's 69% sits between the 49% the drain overlap
-implied and the shared rate; the latency table is the literature's until `pipe_sim --calibrate`
-sets it from the trace. What the two rows say together: the fold's interleave holds a lone warp
-near the pipe's rate; the readout's rolled loop does not, and the gate names the dependence.
+Registers 244, allocated 248: two warps a scheduler; a third at 168.
+
+<a id="calibration"></a>
+## What the model is and is not, so far
+
+The pipe queue is two deep (the row with four loads after each burst hid 35 of their 42 cycles: one
+slot's worth). Paired, the model puts both loops at the pipe's rate, which the trace confirms
+(a fragment pair 2,147 measured against 2,340 modelled; a box 559 against 520: the model is 5 to
+8% fast). ALONE the model is optimistic, and by a known amount: the fragment-chain calibration
+row, eighteen HMMAs behind their gather with one warp a scheduler, measures 830 cycles where the
+model says about 620; and the trace's "lone" tile, during the partner's drain, runs at 44% where
+the model says 82% -- because a partner in its drain is not absent, it is issuing stores, loads
+and reductions through the same memory pipe the tile's `ldmatrix` uses. The model has no memory
+pipe. So the floors are model-relative ratchets (a form that reads lower than the last is
+refused), the paired reading is trustworthy, and the lone reading ranks forms without predicting
+their cycles. `--calibrate`, the step that fits the latency table and adds the memory pipe against
+the two calibration rows and the trace, is the next thing the tool needs; until then the trace
+remains the measurement of a form's lone rate.
+
+Forms read this way today (2026-09-18): the two-box readout on the burst primitive, alone 73%
+then 81% after the gate named its two exposed dependences (a list-byte load and a four-load XOR
+chain), paired 95 to 98% against the rolled loop's 100% -- the measured +7% paired loss, reproduced
+without a launch; the rotated rolled loop (the next box's loads at the bottom of the body), alone
+80%, no better than the plain rolled loop's 82%. The plain rolled loop stays.

@@ -1,4 +1,4 @@
 {
- "burst.cuh:run": 90.9,
- "carry_kernel.cuh:readout_tile": 68.8
+ "burst.cuh:run": 96.0,
+ "carry_kernel.cuh:readout_tile": 82.3
 }

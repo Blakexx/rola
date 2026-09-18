@@ -39,11 +39,13 @@ import sass_control as sc  # noqa: E402
 #: the machine row the last `main` selected; `simulate` reads these
 HMMA_PIPE = sc.MACHINES["sm_86"]["hmma_pipe"]
 LATENCY = sc.MACHINES["sm_86"]["latency"]
+HMMA_QUEUE = sc.MACHINES["sm_86"]["hmma_queue"]
 
 
 def select(arch: str) -> None:
-    global HMMA_PIPE, LATENCY
-    HMMA_PIPE, LATENCY = sc.MACHINES[arch]["hmma_pipe"], sc.MACHINES[arch]["latency"]
+    global HMMA_PIPE, LATENCY, HMMA_QUEUE
+    m = sc.MACHINES[arch]
+    HMMA_PIPE, LATENCY, HMMA_QUEUE = m["hmma_pipe"], m["latency"], m["hmma_queue"]
 
 
 def simulate(body, warps: int, iterations: int, trace: bool) -> dict:
@@ -51,7 +53,7 @@ def simulate(body, warps: int, iterations: int, trace: bool) -> dict:
     n = len(body)
     period_guess = sum(HMMA_PIPE for _, t, _ in body if sc.opcode(t) == "HMMA") * warps
     starts = [w * period_guess / warps for w in range(warps)]
-    pipe_free = 0.0
+    pipe_done: list[float] = []  #: the completion times of the HMMAs in the pipe, in order
     port_busy: set[int] = set()
     issued = []
     state = [{"t": starts[w], "bars": [0.0] * 6, "i": 0, "it": 0, "last": None} for w in range(warps)]
@@ -67,14 +69,18 @@ def simulate(body, warps: int, iterations: int, trace: bool) -> dict:
             if (c["wait"] >> b) & 1:
                 ready = max(ready, s["bars"][b])
         if op == "HMMA":
-            ready = max(ready, pipe_free)
+            #: a slot in the queue: the pipe executes one and holds `HMMA_QUEUE` behind it
+            pending = [d for d in pipe_done if d > ready]
+            if len(pending) > HMMA_QUEUE:
+                ready = pending[-HMMA_QUEUE - 1]
         t = int(ready)
         while t in port_busy:
             t += 1
         port_busy.add(t)
 
         if op == "HMMA":
-            pipe_free = t + HMMA_PIPE
+            pipe_done = [d for d in pipe_done if d > t]
+            pipe_done.append(max(t, pipe_done[-1] if pipe_done else t) + HMMA_PIPE)
         lat = LATENCY.get(op, LATENCY["DEFAULT"])
         if c["wr"] < 6:
             s["bars"][c["wr"]] = t + lat

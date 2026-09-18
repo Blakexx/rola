@@ -963,7 +963,7 @@
   {"doc": "docs/internals/tools/pipe_counters.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "3fd23f3039a47ace", "target": "tools/pipe_counters.py::COUNTERS"},
   {"doc": "docs/internals/tools/pipe_counters.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "1b1e714118a3ab3f", "target": "tools/pipe_counters.py::oneshot_argv"},
   {"doc": "docs/internals/tools/pipe_sim.md", "pinned_at": "f497bc66f788", "reviewed": true, "sha256": "", "target": "tools/pipe_sim.py"},
-  {"doc": "docs/internals/tools/pipe_sim.md", "pinned_at": "9bb3a140663e", "reviewed": true, "sha256": "03c3c64a0363532c", "target": "tools/sass_control.py::MACHINES"},
+  {"doc": "docs/internals/tools/pipe_sim.md", "pinned_at": "20bfa2a4fe2f", "reviewed": true, "sha256": "5ed5fcdbc362c9ee", "target": "tools/sass_control.py::MACHINES"},
   {"doc": "docs/internals/tools/pipe_timeline.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/pipe_timeline.py"},
   {"doc": "docs/internals/tools/ratify.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "csrc"},
   {"doc": "docs/internals/tools/ratify.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "docs/ratification.md"},

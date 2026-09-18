@@ -26,14 +26,16 @@ import sass  # noqa: E402
 #: THE MACHINE, an architecture: the cycles an HMMA holds the tensor pipe a scheduler (sm_86: bf16 with
 #: fp32 accumulate at half rate, calibration `hmma_1w` 32.4; sm_80 full rate) and the issue-to-result
 #: latency of the scoreboard classes (calibration.md's rows where one exists, else the microbenchmark
-#: literature, bounded above). A cubin of an architecture without a row is refused.
+#: literature, bounded above), and the HMMAs the pipe queues past the one it executes (`hmma_queue`: the
+#: calibration row with four loads after each burst hid 35 of their 42 cycles, one slot's worth, so two in
+#: flight). A cubin of an architecture without a row is refused.
 MACHINES = {
     "sm_86": {"hmma_pipe": 32.5, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6},
+                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 2},
     "sm_80": {"hmma_pipe": 16.0, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6},
+                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 2},
 }
 ENC = re.compile(r"\s*/\*([0-9a-f]{4,5})\*/\s+(.*?);\s*/\*\s*0x([0-9a-f]{16})\s*\*/")
 ENC_HIGH = re.compile(r"\s*/\*\s*0x([0-9a-f]{16})\s*\*/")
