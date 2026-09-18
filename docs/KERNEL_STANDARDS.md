@@ -613,3 +613,28 @@ gate.
 Precedent: CUTLASS's tile scheduler against its collective mainloop; FlashAttention-2's unrolled, branch-free KV loop
 with masking by predication; ThunderKittens' producer and consumer warpgroups. On Hopper the tier split is the
 hardware (`wgmma` async, TMA, mbarriers); on Ampere it is this rule.
+
+## §23 addendum (law, 2026-09-18, from the research behind the burst: the coordinator's research journal, SASS guidelines)
+
+1. THE EMITTED DISTANCE IS THE LATENCY BUDGET. ptxas sets an instruction's stall count to the producer's latency
+   minus the instructions it placed between producer and first consumer (Huerta et al. 2025, §4, validated on
+   GA102), so a dependence is hidden only by what sits between its ends in the SASS, never by anything in the
+   source. The burst gate reads that accounting (`docs/internals/tools/burst_gate.md#coverage`).
+2. ORDER BY DEPENDENCY, NEVER BY HOPE. There is no scheduling knob (nvcc §4.2.9.1) and no supported ordering; the
+   one sanctioned device is a data dependency, `rola::burst::after`, in one header. No fence for ordering (it
+   orders memory operations and costs runtime), no clock trick. The burst-tier lint refuses a fence in a burst.
+3. LOADS FIRST, ALL OF THEM, THEN THE ARITHMETIC ON THEM. The canonical hand schedule spaces the loads and pushes
+   the stores down (Gray, SGEMM: 98.5% useful cycles); the measured good attention kernel keeps about eight
+   instructions between an `ldmatrix` and its consumer, the bad one one or two, and the cause was register
+   pressure (lubits.ch, A100). The gate's exposed-latency reading is this rule's number.
+4. REGISTERS ARE THE PIPELINING BUDGET, AND THE THRESHOLDS ARE NUMBERS. Allocation is in eights a thread against
+   a 16,384-register partition: 248 a thread buys two warps a scheduler, 168 three (GA102 whitepaper; Jia et al.).
+   A component states its live-register cost; the gate prints the arm's distance to the next threshold.
+5. CONTROL BITS ARE THE COMPILER'S UNTIL THE GATE SAYS OTHERWISE. Patching yield and reuse bits gave Hopper 10%
+   once and was retired when the compiler learned the interleave (DeepGEMM). Nothing below ptxas is patched
+   unless the coverage reading shows the order right and only the bits wrong, and then as a ratified artifact
+   with its patch script under the same gate.
+Facts the laws rest on, with their rows: one warp can saturate this card, completion latency (~25) under the
+issue interval (32, the GA102 whitepaper's arithmetic), so a lone warp at half rate is always the chain; a warp's
+MMA throughput is flat to three in flight on A100 (Sun et al.) and one or two on GA102 by our calibration, the
+only measurement there is; the sub-core instruction buffer is three deep, the memory queue four (Huerta et al.).

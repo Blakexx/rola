@@ -16,7 +16,7 @@ alone and for two sharing the scheduler, offset by half a period.
 <a id="machine"></a>
 ## The machine is an architecture
 
-`MACHINES` holds one row an architecture: the pipe cost of an HMMA (sm_86 32.5 cycles, bf16 with
+`tools/sass_control.py`'s `MACHINES` holds one row an architecture: the pipe cost of an HMMA (sm_86 32.5 cycles, bf16 with
 fp32 accumulate at half rate; sm_80 full rate) and the latency by opcode class, from
 `carry/calibration.md` where a row exists. The cubin's `.target` selects the row and an
 architecture without one is refused, never approximated. Hopper and after are a different

@@ -33,6 +33,7 @@ FORBIDDEN = (
     (re.compile(r"__syncwarp\s*\("), "a warp sync in a burst function"),
     (re.compile(r"\bmbar_\w+\s*\("), "a shared-memory barrier in a burst function"),
     (re.compile(r"\brendezvous\w*\s*\("), "a CTA rendezvous in a burst function"),
+    (re.compile(r"__threadfence\w*\s*\(|\bmembar\b|\bfence\."), "a fence in a burst function (order by dependency)"),
     (re.compile(r"^\s*while\s*\("), "a `while` in a burst function"),
     (re.compile(r"^\s*(?:\}\s*)?(?:else\s+)?if\s*\((?!\s*constexpr)"), "a data-dependent `if` in a burst function"),
     (re.compile(r"^\s*#pragma\s+unroll\s+1\b"), "`#pragma unroll 1` in a burst function"),
