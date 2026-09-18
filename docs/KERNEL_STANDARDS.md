@@ -515,9 +515,12 @@ number that says whether two warps a scheduler can cover each other (the other w
 the partner's burst), and the instructions a component against its budget with the launch's
 CTA-window divisor (a budget is per CTA-window; a per-launch total against it flagged everything
 red and meant nothing); (8) THE WAVEFRONT CENSUS: shared-memory wavefronts above the profiler's
-ideal, by source line -- bank conflicts on the store side of a layout, which the load side's
-conflict-free `ldmatrix` hides from every other instrument (an 8-way conflict sat in the snapshot
-for a week as "wider stores don't pay"); (9) THE COMPOSER (`tools/compose_ledger.py`): a phase's
+ideal, by source line -- on a shared store or load, bank conflicts on the store side of a layout,
+which the load side's conflict-free `ldmatrix` hides from every other instrument (an 8-way conflict
+sat in the snapshot for a week as "wider stores don't pay"); on an asynchronous copy (`LDGSTS`) the
+count is the GLOBAL LINES the copy touches, not a bank conflict (calibrated 2026-09-18: a line a lane
+reads 32 of ideal 4, the fill's sixteen token rows 16 of 4, whole lines 4 of 4, and the rows and the
+lines forms copy at the same rate -- the sectors are what a gather pays); (9) THE COMPOSER (`tools/compose_ledger.py`): a phase's
 time attributed to its PARTS by building compositions in which a part is real or a stub (the stub keeps
 the part's HMMAs, same count, atom and accumulators, and drops its other work), read in wall time rung by
 rung, each composition checked by its HMMA count against the kernel's and by its device instructions
@@ -638,3 +641,23 @@ Facts the laws rest on, with their rows: one warp can saturate this card, comple
 issue interval (32, the GA102 whitepaper's arithmetic), so a lone warp at half rate is always the chain; a warp's
 MMA throughput is flat to three in flight on A100 (Sun et al.) and one or two on GA102 by our calibration, the
 only measurement there is; the sub-core instruction buffer is three deep, the memory queue four (Huerta et al.).
+
+## §23 addendum 2 (law, 2026-09-18, from Blake's "either the simulator is wrong, or something is binding the kernel that shouldn't be. we need a way to find that out")
+
+1. A MODEL READS AGAINST THE PROBE BEFORE IT READS THE KERNEL. `tools/pipe_sim.py --calibrate` simulates every
+   calibration row's loop as the probe runs it and prints it beside the row's latest clocked measurement; a floor
+   is ratcheted on a loop only while the model reproduces the rows that exercise what the loop does (the tensor
+   pipe, the memory pipe, a gather chain). The first model passed one point and was called trusted; its own
+   chain row already refuted it, and it budgeted a form that lost.
+2. ONE POINT IS NOT VALIDATION. A model's reading of the kernel is trusted after two forms of the same loop have
+   been measured and both reproduced, never after one; a second point that misses names what the model lacks, and
+   the miss is worked before the model reads another form.
+3. A PROBE ROW MEASURES WHAT ITS ADDRESSES SAY. A row is named by its access pattern, and the pattern is the
+   kernel's: the `matrix_load` rows were broadcasts (one wavefront a load) for a week and read as the kernel's
+   four-wavefront loads; `matrix_load_rows` is the kernel's pattern. Every row's header states its pattern.
+4. AN INSTRUMENT'S DENOMINATOR IS READ OFF THE KERNEL. The phase trace divided a chunk's fragment phase by one
+   fragment's HMMAs and reported the fold at 3.8x its pipe time; the phase holds a chunk's four fragments. A tool
+   that compares a measurement to an ideal states where the ideal's count comes from.
+5. A STALL CENSUS IS READ PER LINE. Per component it says a warp waits; per line it says on what. The isolating
+   measurement for a model's miss is the per-line census of the two forms, not a reading of the model.
+

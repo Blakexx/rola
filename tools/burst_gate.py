@@ -110,10 +110,11 @@ def exposed_latency(body, mach: dict) -> tuple[float, list[str]]:
 
 
 def coverage(body, mach: dict, arch: str) -> dict:
-    """One warp alone: the loop's period with the tensor pipe as a resource (`pipe_sim.simulate`) and the share of
-    it the pipe is busy; beside it the exposed latency the control words admit."""
+    """One warp a scheduler, one on every scheduler of the SM sharing its memory pipe: the loop's period with the
+    tensor pipe as a resource (`pipe_sim.simulate`) and the share of it the pipe is busy; beside it the exposed
+    latency the control words admit."""
     pipe_sim.select(arch)
-    alone = pipe_sim.simulate(body, 1, 6, False)
+    alone = pipe_sim.simulate(body, 1, 6, False, sm_warps=pipe_sim.MACHINE["schedulers"])
     exposed, worst = exposed_latency(body, mach)
     hmmas = alone["hmmas"]
     return {"instructions": alone["instructions"], "hmmas": hmmas, "period": round(alone["period"], 1),

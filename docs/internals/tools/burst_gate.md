@@ -54,44 +54,34 @@ partition's 16,384 registers: the warps a scheduler it leaves room for, and the 
 buys one more (248 buys two, 168 three — GA102 whitepaper, Jia et al.).
 
 <a id="readings"></a>
-## Readings at 20bfa2a4 (2026-09-18), the pipe two deep
+## Readings at 7468b883 (2026-09-18), the fitted model
 
 | loop | instructions | HMMAs | alone | paired | exposed | floor |
 |---|---|---|---|---|---|---|
-| the fold's pair (`burst.cuh:run`) | 155 | 36 | 1,234 of 1,170: 94.8% | 2,340: 100% | 58 (three shuffle-to-multiply chains) | 94.8 |
-| the readout's box loop (`readout_tile`) | 68 | 8 | 316 of 260: 82.3% | 520: 100% | 24 (the outer-factor load to its multiply) | 82.3 |
+| the fold's pair (`burst.cuh:run`) | 155 | 36 | 1,351 of 1,170: 86.6% | 2,400: 97.5% | 58 (three shuffle-to-multiply chains) | 86.6 |
+| the readout's box loop (`readout_tile`) | 68 | 8 | 381 of 260: 68.2% | 520: 100% | 24 (the outer-factor load to its multiply) | 68.2 |
 
-Registers 244, allocated 248: two warps a scheduler; a third at 168.
+Registers 244, allocated 248: two warps a scheduler; a third at 168. The floors were re-seeded when the
+model was fitted (`pipe_sim.md#calibrate`): the alone reading lost the two-deep HMMA queue and gained the
+SM's memory pipe, so the same loops read lower than under the first model (94.8 and 82.3).
 
 <a id="calibration"></a>
-## What the model is and is not, so far
+## What the model is and is not
 
-The pipe queue is two deep (the row with four loads after each burst hid 35 of their 42 cycles: one
-slot's worth). Paired, the model puts both loops at the pipe's rate, which the trace confirms
-(a fragment pair 2,147 measured against 2,340 modelled; a box 559 against 520: the model is 5 to
-8% fast). ALONE the model is optimistic, and by a known amount: the fragment-chain calibration
-row, eighteen HMMAs behind their gather with one warp a scheduler, measures 830 cycles where the
-model says about 620; and the trace's "lone" tile, during the partner's drain, runs at 44% where
-the model says 82% -- because a partner in its drain is not absent, it is issuing stores, loads
-and reductions through the same memory pipe the tile's `ldmatrix` uses. The model has no memory
-pipe. So the floors are model-relative ratchets (a form that reads lower than the last is
-refused), the paired reading held at its first point, and the lone reading ranks forms without predicting
-their cycles. `--calibrate`, the step that fits the latency table and adds the memory pipe against
-the two calibration rows and the trace, is the next thing the tool needs; until then the trace
-remains the measurement of a form's lone rate.
+The model is read against the calibration probe before it is read against the kernel
+(`tools/pipe_sim.py --calibrate`, KERNEL_STANDARDS §23 addendum 2): it reproduces every tensor-pipe,
+gather-chain and kernel-pattern load row within 2%, and misses the reduction rows and the four-warp
+load row by known amounts, stated with the table in `pipe_sim.md#calibrate`. Its first version was
+called trusted on one point (a fragment pair 2,147 measured against 2,340 modelled) and budgeted the
+fold's mass on the FMA pipe at -11% paired; the form measured +3% on the fragment and lost the A/B.
+That second point still misses under the fitted model (2,133 modelled against 2,223 measured for the
+form, 2,400 against 2,159 for the reference), so the fold's fragment is bound by something the probe
+does not exercise, and the per-line stall census of the two forms is the measurement that names it.
+Until it does: the floors are ratchets on the alone reading (a form that reads lower than the last is
+refused), the paired reading is advisory, and no form is budgeted from the model.
 
-Forms read this way today (2026-09-18): the two-box readout on the burst primitive, alone 73%
-then 81% after the gate named its two exposed dependences (a list-byte load and a four-load XOR
+Forms read this way (2026-09-18): the two-box readout on the burst primitive, alone 73% then 81% under
+the first model after the gate named its two exposed dependences (a list-byte load and a four-load XOR
 chain), paired 95 to 98% against the rolled loop's 100% -- the measured +7% paired loss, reproduced
-without a launch; the rotated rolled loop (the next box's loads at the bottom of the body), alone
-80%, no better than the plain rolled loop's 82%. The plain rolled loop stays.
-
-**The second point refutes the paired reading for the fold (2026-09-18).** The fold's masses moved
-from two HMMAs a fragment (a ones column) to the FMA pipe (thirty-two unpack-and-add instructions
-a fragment): the pair's loop went from 155 instructions and 36 HMMAs to 220 and 32, the model read
-it 2,340 -> 2,080 paired (the pipe's 11%), and the trace measured a fragment 2,159 -> 2,223, the
-A/B nl64k-dense -0.8%, nl64k-alt-k4 +2.4%. Paired, the fold's fragment is not at the pipe's rate
-either: it runs at 2.1x the two warps' pipe time, on whatever the model lacks (the memory pipe the
-fills' landings and the gather's `ldmatrix` share). So the model's paired reading is trusted only
-where the trace has confirmed the loop pipe-bound (the readout's box loop); for the fold it ranks
-forms by their pipe work, which is not the fold's bound. The form is tombstoned on the card.
+without a launch; the rotated rolled loop, alone 80%, no better than the plain rolled loop. The plain
+rolled loop stays.

@@ -142,7 +142,8 @@ def _num(x: str) -> int:
 def read_source_detail(csv_path: Path) -> dict[int, tuple[str, int, int]]:
     """address -> (opcode, shared wavefronts, ideal shared wavefronts) per SASS line of the
     same dump: the opcode classes an instruction (HMMA or not), the wavefronts above the ideal
-    are bank conflicts (KERNEL_STANDARDS §22: a layout's store side is gated by this count)."""
+    are bank conflicts on a shared store or load (KERNEL_STANDARDS §22: a layout's store side is
+    gated by this count) and the global lines touched on an asynchronous copy (`LDGSTS`)."""
     out = {}
     with csv_path.open() as f:
         hdr = None

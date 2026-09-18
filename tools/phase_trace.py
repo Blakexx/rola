@@ -245,7 +245,9 @@ def main() -> int:
               f"fold starts spread {statistics.median(fold_spread):.0f}, "
               f"readout starts spread {statistics.median(read_spread) if read_spread else float('nan'):.0f}, "
               f"window {statistics.median(fold_len):.0f}")
-    for lab, hmmas in (("fold.fragment", 18), ("readout.tile", 144)):
+    #: a fold.fragment event is a CHUNK's fragments (kPoolTok / kTile of them at dense, four at this arm), eighteen
+    #: HMMAs each; the first form divided by one fragment's and read the fold at 3.8x its pipe time
+    for lab, hmmas in (("fold.fragment", 4 * 18), ("readout.tile", 144)):
         if lab in durations:
             med = statistics.median(durations[lab])
             first = statistics.median(by_group[(lab, False)]) if by_group[(lab, False)] else float("nan")

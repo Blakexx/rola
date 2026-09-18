@@ -62,7 +62,9 @@ a warp's ring slot's barrier, full at its 32 lanes' landed copies (`RingCursor`)
 A bank line is 128 bytes, eight 16-byte groups. A row layout whose rows are a multiple of 128
 bytes apart puts the same chunk of every row in the same group, so any instruction touching several
 rows at one chunk serializes: the wavefront census (KERNEL_STANDARDS §22 (8)) counts those
-wavefronts above the ideal, and the ideal is the gate.
+wavefronts above the ideal, and the ideal is the gate -- for shared stores and loads. An asynchronous
+copy's count is its global lines (a 16-row gather reads 16 of ideal 4 with no conflict at all), so the
+fill's lines in the census are read as the gather's line count, never as a landing conflict.
 
 Channel rows (`chan_row_off`: the pool's V rows and the snapshot's leaf rows, `[row][kDv]` bf16)
 XOR the 16-byte chunk with `(row ^ row >> 4) & 7`. Two access patterns share the rows: eight

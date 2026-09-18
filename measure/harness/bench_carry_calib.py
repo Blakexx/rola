@@ -41,8 +41,15 @@ CALIBRATIONS = (
     ("shared_store_64", 8, 2, 64, 64, "sixty-four"),
     ("matrix_load_4", 8, 9, 4, 4, "four two-n-tile ldmatrix.trans loads a unit (the readout's B, the fold's operands)"),
     ("matrix_load_16", 8, 9, 16, 16, "sixteen"),
+    ("matrix_load_rows_4", 8, 20, 4, 4, "four ldmatrix.trans loads a unit as the kernel issues them: a lane its own row, four wavefronts a load"),
+    ("matrix_load_rows_16", 8, 20, 16, 16, "sixteen"),
+    ("matrix_load_rows_4_1w", 4, 20, 4, 4, "four, one warp a scheduler"),
     ("async_copy", 8, 3, 4, 4, "four 16-byte asynchronous runs a group, bank-free, landed each group"),
     ("async_copy_aliased", 8, 4, 4, 4, "the same runs aliased to one bank group"),
+    ("async_copy_strided", 8, 16, 4, 4, "the bank-free runs fed from a 128-byte line a lane (sixteen lines a run)"),
+    ("async_copy_4", 8, 17, 4, 4, "four-byte runs a lane, one contiguous line in and out"),
+    ("async_copy_rows", 8, 18, 4, 4, "the pool fill's V pattern: sixteen token rows, two adjacent chunks a run, swizzled"),
+    ("async_copy_lines", 8, 19, 4, 4, "the same rows landed a whole line at a time: eight lanes a row, four rows a run"),
     ("global_reduce", 8, 5, 1, 1, "a global f32 reduction into the output's pages"),
     ("cta_barrier", 8, 6, 1, 1, "a CTA barrier over every lane"),
     ("shm_barrier", 8, 7, 1, 1, "a shared-memory barrier: arrive and wait"),
@@ -63,6 +70,10 @@ CALIBRATIONS = (
     ("hmma_frag_2w", 8, 14, 18, 18, "the same, two warps a scheduler"),
     ("hmma_frag_chain_1w", 4, 15, 18, 18, "the burst behind the fragment's gather chain (shuffle, ldmatrix, two multiplies), one warp"),
     ("hmma_frag_chain_2w", 8, 15, 18, 18, "the same, two warps"),
+    ("hmma_alu_32_1w", 4, 21, 32, 18, "eighteen HMMAs with thirty-two fp32 adds after them (four chains), one warp a scheduler"),
+    ("hmma_alu_32_2w", 8, 21, 32, 18, "the same, two warps"),
+    ("hmma_alu_64_1w", 4, 21, 64, 18, "sixty-four adds, one warp"),
+    ("hmma_alu_64_2w", 8, 21, 64, 18, "sixty-four, two warps"),
 )
 
 
@@ -87,7 +98,7 @@ def main() -> int:
 
     dev = torch.device("cuda")
     out = torch.zeros((a.owners, 128, 256), dtype=torch.float32, device=dev)
-    src = torch.randint(0, 255, (a.owners, 256, 16), dtype=torch.uint8, device=dev)
+    src = torch.randint(0, 255, (a.owners, 256, 128), dtype=torch.uint8, device=dev)
     rows = []
     with gpu_lock(mode="exclusive"):
         clock = clock_lock.engage(carry_ops.sm_clock_ghz)

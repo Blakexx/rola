@@ -32,11 +32,37 @@ import sass  # noqa: E402
 MACHINES = {
     "sm_86": {"hmma_pipe": 32.5, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 2},
+                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
+              "schedulers": 4, "mem_wavefront": 1.0, "mem_sector": 2.0, "mem_queue": 4.0, "issue": {"RED": 12, "ATOM": 12, "ATOMG": 12,
+                                                                                    "STG": 4, "LDG": 4}},
     "sm_80": {"hmma_pipe": 16.0, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 2},
+                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
+              "schedulers": 4, "mem_wavefront": 1.0, "mem_sector": 2.0, "mem_queue": 4.0, "issue": {"RED": 12, "ATOM": 12, "ATOMG": 12,
+                                                                                    "STG": 4, "LDG": 4}},
 }
+
+
+def mem_cost(op: str, text: str, mach: dict) -> float:
+    """The cycles an instruction holds the SM's memory pipe: a 128-byte shared wavefront a cycle (`mem_wavefront`:
+    the SM's shared-memory bandwidth, calibration.md's `matrix_load` rows), a global sector `mem_sector`. The
+    counts are the instruction's own: an `ldmatrix` of `k` matrices `k` wavefronts, a 128-bit shared access four,
+    a coalesced global access its width's sectors -- a divergent one is not read off the text."""
+    if op == "LDSM":
+        m = re.search(r"\.(\d)\s", text + " ")
+        return (int(m.group(1)) if m else 4) * mach["mem_wavefront"]
+    if op in ("LDS", "STS", "LDGSTS"):
+        width = 4 if ".128" in text else 2 if ".64" in text else 1
+        return width * mach["mem_wavefront"]
+    if op in ("SHFL", "ATOMS"):
+        return mach["mem_wavefront"]
+    if op in ("LDG", "STG"):
+        return (4 if ".128" in text else 2 if ".64" in text else 1) * mach["mem_sector"]
+    if op in ("RED", "ATOM", "ATOMG"):
+        return mach["mem_sector"]
+    return 0.0
+
+
 ENC = re.compile(r"\s*/\*([0-9a-f]{4,5})\*/\s+(.*?);\s*/\*\s*0x([0-9a-f]{16})\s*\*/")
 ENC_HIGH = re.compile(r"\s*/\*\s*0x([0-9a-f]{16})\s*\*/")
 

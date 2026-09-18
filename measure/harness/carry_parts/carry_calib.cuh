@@ -31,7 +31,13 @@ enum CalibMode : int {
   kHmmaReduce = 12,
   kHmmaReduceDiv = 13,
   kHmmaWide = 14,
-  kHmmaWideChain = 15
+  kHmmaWideChain = 15,
+  kAsyncCopyStrided = 16,
+  kAsyncCopy4 = 17,
+  kAsyncCopyRows = 18,
+  kAsyncCopyLines = 19,
+  kSharedMatrixRows = 20,
+  kHmmaWideAlu = 21
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -39,7 +45,7 @@ constexpr int kCalibSmemBytes = 96416;
 struct CalibParams {
   int iters;
   float* out;       //: the reduction target, `[owners][16 rows][256 lanes]` floats
-  const char* src;  //: the copy source, `[owners][256 lanes][16]` bytes
+  const char* src;  //: the copy source, `[owners][256 lanes][128]` bytes
 };
 
 //: ONE CALIBRATION: `Mode` run `iters` times by every warp, `Burst` operations a unit where a unit has
@@ -77,6 +83,38 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
       rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
     });
     ops::store_shared_u32(lines, __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaWideAlu) {
+    //: THE FRAGMENT'S BURST WITH ALU WORK BESIDE IT: eighteen HMMAs a unit into eighteen accumulators
+    //: and `Burst` fp32 adds a unit in four independent chains (the mass-on-FMA form's unpack-and-add,
+    //: 32 a fragment), the adds placed after the HMMAs as ptxas placed them there: what an ALU
+    //: instruction costs a warp whose HMMAs hold the pipe.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    const uint32_t bf[4] = {w, w, w, w};
+    const uint32_t ab[4] = {w, w, w, w};
+    float y[18][4];
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    float m[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const float d = __uint_as_float(w & 0xFFFF0000u);
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<18>([&](auto Jc) {
+        constexpr int j = decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+      rola::static_for<Burst>([&](auto Kc) {
+        constexpr int k = decltype(Kc)::value;
+        m[k & 3] += d + __int_as_float((int)i + k);
+      });
+    }
+    float sink = m[0] + m[1] + m[2] + m[3];
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink));
   }
 
   if constexpr (Mode == kHmmaWide || Mode == kHmmaWideChain) {
@@ -147,9 +185,31 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     ops::store_shared_u32(lines + (uint32_t)(Burst * 128 + lane * 4), acc);
   }
 
+  if constexpr (Mode == kSharedMatrixRows) {
+    //: `Burst` `ldmatrix.trans` loads a unit AS THE KERNEL ISSUES THEM: a lane its own row of a
+    //: 128-byte-row tile, the chunk swizzled by the row, so each of the four matrices reads eight
+    //: distinct bank groups -- four wavefronts a load (the broadcast row below is one).
+    rola::static_for<8>([&](auto Rc) {
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Rc)::value * 128 + lane * 4), (uint32_t)tid);
+    });
+    __syncwarp();
+    const uint32_t at = (uint32_t)((lane & 7) * 128 + (((lane >> 3) ^ (lane & 7)) & 7) * 16);
+    uint32_t acc = 0u;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto Kc) {
+        uint32_t r[4];
+        ops::load_frag_t(r, lines + (uint32_t)((decltype(Kc)::value & 7) * 1024) + at);
+        acc ^= r[0] ^ r[3];
+      });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(8 * 1024 + lane * 4), acc);
+  }
+
   if constexpr (Mode == kSharedMatrix) {
-    //: `Burst` two-n-tile `ldmatrix.trans` loads a unit, each its own line: the readout's B and the
-    //: fold's operand loads, whose short-scoreboard stalls hold back the HMMAs that consume them.
+    //: `Burst` two-n-tile `ldmatrix.trans` loads a unit off ONE line each (every lane the same
+    //: address: a broadcast, one wavefront a load): the load's latency and issue, not the
+    //: kernel's bandwidth -- `kSharedMatrixRows` is the kernel's pattern.
     rola::static_for<Burst>([&](auto Kc) {
       ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4),
                             (uint32_t)tid);
@@ -269,6 +329,42 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     }
   }
 
+  if constexpr (Mode == kAsyncCopyStrided || Mode == kAsyncCopy4 || Mode == kAsyncCopyRows ||
+                Mode == kAsyncCopyLines) {
+    //: the source side of a landing, `[owners][256 lanes][128]` bytes, a lane a 128-byte line:
+    //: STRIDED, the bank-free destination fed from a line a lane (sixteen-byte runs); FOUR, four-byte
+    //: runs a lane, one contiguous line in and out; ROWS, the pool fill's V pattern (a lane a token row
+    //: at `j`, its half at `h`, two adjacent chunks of sixteen rows a run, the channel-row swizzle);
+    //: LINES, the same rows landed a whole line at a time (eight lanes a row, four rows a run).
+    const char* const block = c.src + (long)owner * 256 * 128;
+    const int j = lane & 15, h = lane >> 4;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto Kc) {
+        constexpr int k = decltype(Kc)::value;
+        if constexpr (Mode == kAsyncCopyStrided) {
+          const uint32_t off = (uint32_t)(k * 128 + (lane & 7) * 16 + (lane >> 3) * 128 * Burst);
+          ops::stage_run<16>(lines + off, block + (long)tid * 128 + k * 16);
+        }
+        if constexpr (Mode == kAsyncCopy4) {
+          ops::stage_run<4>(lines + (uint32_t)(k * 128 + lane * 4), block + (long)k * 128 + lane * 4);
+        }
+        if constexpr (Mode == kAsyncCopyRows) {
+          const int chunk = 2 * k + h;
+          ops::stage_run<16>(lines + (uint32_t)(j * 128 + ((chunk ^ (j & 7)) * 16)),
+                             block + (long)(warp * 16 + j) * 128 + chunk * 16);
+        }
+        if constexpr (Mode == kAsyncCopyLines) {
+          const int r = 4 * k + (lane >> 3), chunk = lane & 7;
+          ops::stage_run<16>(lines + (uint32_t)(r * 128 + ((chunk ^ (r & 7)) * 16)),
+                             block + (long)(warp * 16 + r) * 128 + chunk * 16);
+        }
+      });
+      ops::stage_commit();
+      ops::stage_wait<0>();
+    }
+  }
+
   if constexpr (Mode == kGlobalReduce) {
     float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
 #pragma unroll 1
@@ -324,6 +420,9 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kSharedStore, 64)             \
   F(8, kSharedMatrix, 4)             \
   F(8, kSharedMatrix, 16)            \
+  F(8, kSharedMatrixRows, 4)         \
+  F(8, kSharedMatrixRows, 16)        \
+  F(4, kSharedMatrixRows, 4)         \
   F(8, kHmmaMatrix, 1)               \
   F(8, kHmmaMatrix, 4)               \
   F(4, kHmmaMatrix, 4)               \
@@ -338,8 +437,16 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kHmmaWide, 18)                \
   F(4, kHmmaWideChain, 18)           \
   F(8, kHmmaWideChain, 18)           \
+  F(4, kHmmaWideAlu, 32)             \
+  F(8, kHmmaWideAlu, 32)             \
+  F(4, kHmmaWideAlu, 64)             \
+  F(8, kHmmaWideAlu, 64)             \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
+  F(8, kAsyncCopyStrided, 4)         \
+  F(8, kAsyncCopy4, 4)               \
+  F(8, kAsyncCopyRows, 4)            \
+  F(8, kAsyncCopyLines, 4)           \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \
@@ -353,8 +460,8 @@ inline void calibrate(int64_t warps, int64_t mode, int64_t burst, int64_t iters,
       out.is_cuda() && out.scalar_type() == Dtype::Float && out.numel() >= owners * 128 * 256,
       "calibrate: out is a CUDA float32 tensor of owners x 128 x 256");
   STD_TORCH_CHECK(
-      src.is_cuda() && src.scalar_type() == Dtype::Byte && src.numel() >= owners * 256 * 16,
-      "calibrate: src is a CUDA uint8 tensor of owners x 256 x 16");
+      src.is_cuda() && src.scalar_type() == Dtype::Byte && src.numel() >= owners * 256 * 128,
+      "calibrate: src is a CUDA uint8 tensor of owners x 256 x 128");
   const CalibParams c{(int)iters, out.mutable_data_ptr<float>(),
                       reinterpret_cast<const char*>(src.mutable_data_ptr<uint8_t>())};
   bool found = false;
