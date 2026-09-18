@@ -55,6 +55,10 @@ The 2026-09-17 03:xx rows were taken under a Windows-side GPU consumer and read 
 row, four wavefronts a load): 4 / 16 a unit with eight warps 32.3 / 32.3, 4 a unit with four warps 16.4
 -- the SM's shared-memory pipe at 128 bytes a cycle, shared by the SM's warps: eight warps' four-wavefront
 loads cost 32 cycles a load a warp, four warps' 16. These rows are the memory pipe of `tools/pipe_sim.py`.
+THE BURST WITH ALU WORK BESIDE IT (`hmma_alu`, eighteen HMMAs and 32 / 64 fp32 adds in four chains): one warp
+38.0 / 43.6 (3 cycles an add exposed), two warps 71.3 / 78.9 -- the partner covers none of it, where it covers
+the gather chain's exposure (`hmma_frag_chain_2w` 65.3): a warp's ALU stretch beside its burst is paid in full
+by the pair, the number behind the mass-on-FMA form's loss.
 
 ## What the rows already explain
 

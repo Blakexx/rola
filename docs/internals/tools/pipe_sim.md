@@ -59,10 +59,20 @@ locked and the card idle:
 | the fragment's wide burst, 1 / 2 warps | 32.5 / 65.0 | 32.4 / 65.2 | <1% |
 | the burst behind its gather chain, 1 / 2 warps | 37.6 / 65.0 | 38.3 / 65.3 | 2% |
 | `ldmatrix` as the kernel issues it, 4 / 16 a unit, 8 warps; 4 a unit, 4 warps | 32.6 / 32.0 / 19.0 | 32.3 / 32.3 / 16.4 | 1% / 1% / **+16%** |
+| the wide burst with 32 / 64 fp32 adds beside it, 1 warp | 37.4 / 42.8 | 38.0 / 43.6 | 2% |
+| the same, 2 warps | 65.0 / 65.0 | 71.3 / 78.9 | **−9 / −18%** |
 | hmma + 1 / 2 / 4 / 8 coalesced global reductions | 65.0 flat | 65.6 / 67.6 / 70.0 / 76.4 | to **−15%** |
 | hmma + 4 / 8 divergent reductions | 65.0 flat | 122.6 / 242.8 | **−47 / −73%** |
 
-What the misses are. The four-warp `ldmatrix` row: with fewer warps the model leaves the memory pipe
+What the misses are. THE PAIR AND A WARP'S ALU WORK: alone, a warp's thirty-two dependent adds beside
+its burst cost 3 cycles an add and the model reads them (the control words' stall counts); paired,
+the hardware still pays them (+113 and +250 cycles an iteration for 32 and 64 adds) where the model
+has the partner's HMMAs cover them entirely. The gather chain's exposure (shuffles and loads) IS
+covered paired (65.3 measured), the adds' is not; the two warps of a scheduler run their ALU stretches
+at the same time and the pipe idles through them. This is the kernel's second point: the mass form's
+seventy-six-instruction block after the burst cost ~80% of the pipe it freed (the per-line census of
+both forms, filed with the form's record). The model does not yet reproduce it -- its pair drifts out of phase and covers -- so the
+PAIRED READING IS ADVISORY until it does. The four-warp `ldmatrix` row: with fewer warps the model leaves the memory pipe
 idle between a warp's landings and its next issue where the hardware does not (the queue or the
 landing latency is finer than modelled). The reductions: the per-line census puts the loss at the
 instructions after each `RED` waiting on the LONG scoreboard -- a reduction's operand registers are
