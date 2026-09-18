@@ -75,7 +75,7 @@ model says about 620; and the trace's "lone" tile, during the partner's drain, r
 the model says 82% -- because a partner in its drain is not absent, it is issuing stores, loads
 and reductions through the same memory pipe the tile's `ldmatrix` uses. The model has no memory
 pipe. So the floors are model-relative ratchets (a form that reads lower than the last is
-refused), the paired reading is trustworthy, and the lone reading ranks forms without predicting
+refused), the paired reading held at its first point, and the lone reading ranks forms without predicting
 their cycles. `--calibrate`, the step that fits the latency table and adds the memory pipe against
 the two calibration rows and the trace, is the next thing the tool needs; until then the trace
 remains the measurement of a form's lone rate.
@@ -85,3 +85,13 @@ then 81% after the gate named its two exposed dependences (a list-byte load and 
 chain), paired 95 to 98% against the rolled loop's 100% -- the measured +7% paired loss, reproduced
 without a launch; the rotated rolled loop (the next box's loads at the bottom of the body), alone
 80%, no better than the plain rolled loop's 82%. The plain rolled loop stays.
+
+**The second point refutes the paired reading for the fold (2026-09-18).** The fold's masses moved
+from two HMMAs a fragment (a ones column) to the FMA pipe (thirty-two unpack-and-add instructions
+a fragment): the pair's loop went from 155 instructions and 36 HMMAs to 220 and 32, the model read
+it 2,340 -> 2,080 paired (the pipe's 11%), and the trace measured a fragment 2,159 -> 2,223, the
+A/B nl64k-dense -0.8%, nl64k-alt-k4 +2.4%. Paired, the fold's fragment is not at the pipe's rate
+either: it runs at 2.1x the two warps' pipe time, on whatever the model lacks (the memory pipe the
+fills' landings and the gather's `ldmatrix` share). So the model's paired reading is trusted only
+where the trace has confirmed the loop pipe-bound (the readout's box loop); for the fold it ranks
+forms by their pipe work, which is not the fold's bound. The form is tombstoned on the card.
