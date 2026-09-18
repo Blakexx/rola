@@ -45,6 +45,7 @@ tell a real finding from a false one, so a human decides each, and the decision 
 | `run_vulture.sh` | 60 | a ruling per finding: delete the dead code, or whitelist a demonstrated dynamic use (name-dispatched methods, fixtures, `setup.py` users) |
 | `drift_guards.py` | 20 over 11 rules | the table below |
 | `r9_enforcement.py` | 1 | `decode_lattice.cuh`'s `switch (kind)` folds its fourth case into a bare default; the fix is a `uniform_switch`, a decode kernel change |
+| `burst_tier.py` | see the baseline | KERNEL_STANDARDS §23: an MMA issued outside a `//: @burst` function (the intra kernel, pre-§23) or a vote, sync, barrier, `while`, data `if` or `unroll 1` inside one; `//: @burst-exempt <reason>` names a debt (the readout's box loop) |
 
 <a id="drift-guards"></a>
 ## The drift guards, and the inventory they exist to size

@@ -603,9 +603,12 @@ each unit's gather ordered under the burst before it by a data dependency; no vo
 sparsity a shorter list, never a skip. A decision needed mid-way is two bursts with the decision between them. The
 list is built by the lanes at once, never by a serial scan (the readout's sixteen-iteration list cost a tile 12%).
 
-What it forbids: `ops::mma` outside a burst functor; `#pragma unroll 1` on a burst loop; a collective or an `mbar_`
-inside a gather or a burst functor; a unit's operands loaded in the unit that consumes them. What it measures: the
-burst's lone-warp rate on the trace, and (when built) the static pipe floor per burst loop in the SASS gate.
+What it forbids, mechanically (`tools/lint/burst_tier.py`, a ratchet): an MMA issued by a function without
+`//: @burst` in its declaration block (`//: @burst-exempt <reason>` names a debt the ratchet holds); inside a burst
+function a vote, a warp sync, a shared-memory barrier, a rendezvous, a `while`, an `if` that is not `constexpr`, or
+`#pragma unroll 1`. The primitive's own pair loop is the one loop a burst runs and is not in a burst function. What it
+measures: the burst's lone-warp rate on the trace, and (when built) the static pipe floor per burst loop in the SASS
+gate.
 
 Precedent: CUTLASS's tile scheduler against its collective mainloop; FlashAttention-2's unrolled, branch-free KV loop
 with masking by predication; ThunderKittens' producer and consumer warpgroups. On Hopper the tier split is the

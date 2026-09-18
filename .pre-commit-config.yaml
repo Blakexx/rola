@@ -139,6 +139,12 @@ repos:
         entry: python3 tools/lint/ratchet.py work_codes
         pass_filenames: false
         always_run: true
+      - id: ratchet-burst-tier
+        name: "ratchet: the burst tier (KERNEL_STANDARDS section 23: an MMA only in a burst function, nothing data-dependent inside one)"
+        language: system
+        entry: python3 tools/lint/ratchet.py burst_tier
+        pass_filenames: false
+        always_run: true
       # THE DOC REFERENCES (tools/docrefs.py, docs/internals/tools/docrefs.md): every citation a doc makes is pinned;
       # a new one is read and accepted, a pin no doc makes is pruned, the broken backlog only shrinks. A changed
       # target waits in `python3 tools/docrefs.py pending` for the docs pass.

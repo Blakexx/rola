@@ -1,0 +1,11 @@
+{
+ "lint": "burst_tier",
+ "findings": [
+  {
+   "path": "csrc/rola/src/intra/intra_kernel.cuh",
+   "message": "`intra_kernel` issues an MMA outside the burst tier (no `//: @burst` in its declaration block; `//: @burst-exempt <reason>` names a debt)",
+   "line_sha256": "3f31498e26eaa339",
+   "count": 1
+  }
+ ]
+}

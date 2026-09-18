@@ -90,6 +90,7 @@
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/compose_ledger.py"},
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/dev.py"},
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/dev_config.py"},
+  {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "d0282b9b0322", "reviewed": true, "sha256": "", "target": "tools/lint/burst_tier.py"},
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/lint/lint_standards.py"},
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/pipe_timeline.py"},
   {"doc": "docs/KERNEL_STANDARDS.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/region_ledger.py"},

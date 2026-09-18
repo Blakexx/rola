@@ -984,6 +984,7 @@ struct FragOperands {
 //: THE GATHER of fragment `n` off the ring: the lanes' rows and gain pairs at static
 //: offsets, A, the outer pairs and V by `ldmatrix`, the pairs scaled by the gains, then a
 //: box's pairs by shuffle and A scaled by them. -- #fold
+//: @burst
 template <class BP, int D, int BC>
 __device__ __forceinline__ void frag_load(ops::SmemAddr slot, ops::SmemAddr ring, int n, int warp,
                                           int lane, FragOperands<BP>& f) {
@@ -1049,6 +1050,7 @@ __device__ __forceinline__ void frag_load(ops::SmemAddr slot, ops::SmemAddr ring
 //: THE BURST of fragment `f`, INTERLEAVED with the gather of `next`: box 0's fifth HMMA
 //: is ordered after `next`'s V loads and box 1's first after its whole gather, so those
 //: issue in this burst's pipe time and never between bursts. -- #fold
+//: @burst
 template <class BP>
 __device__ __forceinline__ void frag_mma(FragOperands<BP>& f, const FragOperands<BP>& next,
                                          int lane, State<BP>& st) {
@@ -1311,6 +1313,7 @@ __device__ __forceinline__ void readout_issue(const CarryParams& p, const Smem<B
 //: `kNT` HMMAs into y and one against the box's mass column into den; then the rows out:
 //: y through the drain stage four rows at a time as whole lines by reduction, den by
 //: reduction from the lanes holding it.
+//: @burst-exempt the rolled box loop measured faster than the primitive (burst.md#users)
 template <class BP, int D, int BC>
 __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr slot, uint32_t mask,
                                              const uint16_t* order, int k, int live, float* num,

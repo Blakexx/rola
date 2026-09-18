@@ -37,6 +37,7 @@ LINTS = {
     "constant_parameters": [sys.executable, "tools/lint/constant_parameters.py"],
     "drift_guards": [sys.executable, "tools/lint/drift_guards.py"],
     "r9_enforcement": [sys.executable, "tools/lint/r9_enforcement.py"],
+    "burst_tier": [sys.executable, "tools/lint/burst_tier.py"],
 }
 FINDING = re.compile(r"^\s*([^\s:]+):(\d+): (.+)$")
 
