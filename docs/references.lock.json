@@ -898,6 +898,8 @@
   {"doc": "docs/internals/tools/build_lock.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tests/unit/test_lock_priority.py"},
   {"doc": "docs/internals/tools/build_lock.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/build_lock.py"},
   {"doc": "docs/internals/tools/build_lock.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "38821bd01f7f8d3a", "target": "tools/build_lock.py::acquire"},
+  {"doc": "docs/internals/tools/burst_purity.md", "pinned_at": "97373acbbd35", "reviewed": true, "sha256": "", "target": "tools/burst_purity.py"},
+  {"doc": "docs/internals/tools/burst_purity.md", "pinned_at": "97373acbbd35", "reviewed": true, "sha256": "", "target": "tools/lint/burst_tier.py"},
   {"doc": "docs/internals/tools/compose_ledger.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "5f789b4842f117a8", "target": "docs/internals/carry/carry_kernel.md#parts"},
   {"doc": "docs/internals/tools/compose_ledger.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "docs/internals/tools/pipe_timeline.md"},
   {"doc": "docs/internals/tools/compose_ledger.md", "pinned_at": "c1e86602038e", "reviewed": false, "sha256": "", "target": "tools/compose_ledger.py"},

@@ -50,6 +50,8 @@ INSTRUMENTS = {
     "sass": ("tools/sass_gate.py", ["{binary}"], False, {"host_cpu": 1}, [], 600),
     "registers": ("tools/life_ranges.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], False,
                   {"host_cpu": 1}, ["csrc/rola/src"], 600),
+    "purity": ("tools/burst_purity.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], False,
+               {"host_cpu": 1}, ["csrc/rola/src"], 600),
     "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, [], 120),
     "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, [], 900),
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
