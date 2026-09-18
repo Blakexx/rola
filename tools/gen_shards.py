@@ -275,17 +275,24 @@ def shard_manifest_block() -> dict:
     return out
 
 
-def carry_parts_header(parts) -> str:
+def carry_parts_header(parts, trivial) -> str:
     """THE GENERATED (never checked in) PARTS HEADER: `ROLA_CARRY_PARTS` as a bit mask over
-    `CARRY_PARTS`, written on every build and every ratify run (a composer's stubbed mask left
-    behind must never reach a gate). Included only by `carry/carry_kernel.cuh`."""
-    bad = sorted(set(parts) - set(CARRY_PARTS))
+    `CARRY_PARTS` (bit i: part i real), and `ROLA_CARRY_TRIVIAL` (bit i: a real part i named `=trivial` in its
+    TRIVIAL form -- its loads and stores from fixed addresses, no dependence, no waits), written
+    on every build and every ratify run (a composer's mask left behind must never reach a gate).
+    Included only by `carry/carry_kernel.cuh`."""
+    bad = sorted((set(parts) | set(trivial)) - set(CARRY_PARTS))
     if bad:
         raise ValueError(f"carry_parts_header: no such part(s) {bad}; the parts are {CARRY_PARTS}")
+    if set(trivial) - set(parts):
+        raise ValueError(f"carry_parts_header: trivial parts {sorted(set(trivial) - set(parts))} are not real")
     mask = sum(1 << CARRY_PARTS.index(x) for x in set(parts))
-    lines = [BANNER, "// the CARRY KERNEL'S PARTS for this build: bit i is CARRY_PARTS[i] REAL.\n"]
-    lines += [f"//   bit {i}: {name} {'real' if mask >> i & 1 else 'STUB'}\n" for i, name in enumerate(CARRY_PARTS)]
+    tmask = sum(1 << CARRY_PARTS.index(x) for x in set(trivial))
+    lines = [BANNER, "// the CARRY KERNEL'S PARTS for this build: bit i is CARRY_PARTS[i] REAL (TRIVIAL if also in the second mask).\n"]
+    lines += [f"//   bit {i}: {name} {'TRIVIAL' if tmask >> i & 1 else 'real' if mask >> i & 1 else 'STUB'}\n"
+              for i, name in enumerate(CARRY_PARTS)]
     lines.append(f"#define ROLA_CARRY_PARTS 0x{mask:x}u\n")
+    lines.append(f"#define ROLA_CARRY_TRIVIAL 0x{tmask:x}u\n")
     return "".join(lines)
 
 
@@ -572,12 +579,12 @@ def _self_test() -> int:
         CARRY_ARMS = saved
 
     #: THE PARTS HEADER: every part real is the full mask, a subset its bits, a stranger refused.
-    if f"0x{(1 << len(CARRY_PARTS)) - 1:x}u" not in carry_parts_header(CARRY_PARTS):
+    if f"0x{(1 << len(CARRY_PARTS)) - 1:x}u" not in carry_parts_header(CARRY_PARTS, ()):
         bad.append("    carry_parts_header(all): not the full mask")
-    if "#define ROLA_CARRY_PARTS 0x8u" not in carry_parts_header(["fold.pool"]):
+    if "#define ROLA_CARRY_PARTS 0x8u" not in carry_parts_header(["fold.pool"], ()):
         bad.append("    carry_parts_header(['fold.pool']): not bit 3 alone")
     try:
-        carry_parts_header(["readout.nothing"])
+        carry_parts_header(["readout.nothing"], ())
         bad.append("    carry_parts_header: accepted an unknown part")
     except ValueError:
         pass

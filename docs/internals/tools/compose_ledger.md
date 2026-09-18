@@ -16,6 +16,18 @@ kernel's own structure, its walks, polls and phase changes alone -- the floor th
 reaches on this card -- and adds every part back in the order named, so each part's cost is read
 against a base where every burst is covered by construction.
 
+A rung item is `part` (real) or `part=trivial`: the part in its TRIVIAL form (`part=trivial` in `ROLA_CARRY_PARTS`, the
+third mode beside real and stub), its memory instructions issued but its dependence or structure removed,
+so a part named trivial then real gives two rungs: stub to trivial is its traffic, trivial to real its
+chains and waits. The forms (`carry_kernel.cuh`, the `k*Trivial` constants): the fills copy a dense
+chunk's two rounds with no ballot and no rank; the drain reduces the tile's thirty-two values a lane
+straight from the accumulators to fixed rows, no stage, no sync, no order; the two gathers issue their
+loads with their real addresses, consume the results in an empty volatile asm and feed the HMMAs
+constants. A trivial form must not let ptxas hoist the loads (fixed addresses did, 2026-09-18: those
+rungs measured no loads at all) -- its device code is checked to differ from the kernel's like any rung,
+and its per-unit instruction count is read off the SASS when in doubt. Never correct, never shipped: a
+trivial mask makes the build an iteration build.
+
 Each rung is read in wall time by `tools/phase_ledger.py` (one warm-up launch, then `--launches`):
 a part's cost is the step between the rung without it and the rung with it. No constant enters and
 no stall sample is interpreted. A rung is VALID only when two checks pass. The profiler's HMMA

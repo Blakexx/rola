@@ -71,10 +71,12 @@ def device_hash(arch: str = "sm_86") -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def build(real: tuple[str, ...]) -> tuple[int, str]:
+def build(real: tuple[str, ...], trivial: tuple[str, ...] = ()) -> tuple[int, str]:
     env = dict(os.environ)
     env.pop("ROLA_BUILD_PARTS", None)
-    env["ROLA_CARRY_PARTS"] = "all" if set(real) == set(gen_shards.CARRY_PARTS) else (",".join(real) or "none")
+    items = [x + ("=trivial" if x in trivial else "") for x in real]
+    env["ROLA_CARRY_PARTS"] = ("all" if set(real) == set(gen_shards.CARRY_PARTS) and not trivial
+                               else (",".join(items) or "none"))
     return run([PY, "-m", "pip", "install", "-e", ".", "--no-build-isolation", "--no-deps", "-q"], env=env, timeout=3600)
 
 
@@ -174,19 +176,28 @@ def main() -> int:
     ladders = []
     for spec in a.ladder:
         phase, names = spec.split(":", 1)
+        #: a rung item is `part` (real) or `part=trivial` (real in its trivial form, KERNEL_STANDARDS §22 (9));
+        #: a part named trivial then real gives two rungs, its traffic apart from its chains
+        items = [n for n in names.split(",") if n]
         if phase == "all":
             #: THE LADDER FROM NOTHING: no part real at the base -- both MMA phases pure bursts of stubs, the
             #: kernel's structure and its phase changes alone -- then every part back in the order named
-            order = [n for n in names.split(",") if n]
             mine = list(everything)
         else:
-            order = [f"{phase}.{n}" for n in names.split(",") if n]
+            items = [f"{phase}.{n}" for n in items]
             mine = [x for x in everything if x.startswith(phase + ".")]
-        bad = sorted(set(order) - set(mine))
-        if bad or len(set(order)) != len(mine):
-            ap.error(f"--ladder {spec}: name every part of {phase} once ({mine})")
+        steps = [(x.split("=")[0], x.endswith("=trivial")) for x in items]
+        order = [part for part, _ in steps]
+        bad = sorted(set(order) - set(mine)) + [x for x in items if "=" in x and not x.endswith("=trivial")]
+        if bad or len(set(order)) != len(mine) or order[-1:] and steps[-1][1]:
+            ap.error(f"--ladder {spec}: name every part of {phase} once, trivial before real, real last ({mine})")
         others = tuple(x for x in everything if x not in mine)
-        rungs = [others + tuple(order[:i]) for i in range(len(order) + 1)]
+        rungs = [others]
+        for i in range(1, len(steps) + 1):
+            real = others + tuple(dict.fromkeys(p for p, _ in steps[:i]))
+            trivial = tuple(p for p, t in steps[:i] if t and not any(p2 == p and not t2 for p2, t2 in steps[:i]))
+            rungs.append((real, trivial))
+        rungs = [(r, ()) if isinstance(r, tuple) and (not r or isinstance(r[0], str)) else r for r in rungs]
         ladders.append((phase, order, rungs))
 
     report = {"utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H%MZ"),
@@ -204,9 +215,10 @@ def main() -> int:
 
     for phase, order, rungs in ladders:
         rows = []
-        for real in rungs[:-1]:
-            rc, out = build(real)
-            row = {"real": sorted(real), "stubbed": sorted(set(everything) - set(real)), "build_rc": rc}
+        for real, trivial in rungs[:-1]:
+            rc, out = build(real, trivial=trivial)
+            row = {"real": sorted(real), "trivial": sorted(trivial), "stubbed": sorted(set(everything) - set(real)),
+                   "build_rc": rc}
             if rc:
                 row["raw"] = out[-1500:]
                 rows.append(row)
@@ -216,11 +228,13 @@ def main() -> int:
             row.update(measure(cells, a.launches))
             row["hmma_ok"] = all(row["hmma"][c] == report["kernel"]["hmma"][c] for c in cells)
             rows.append(row)
-            print(f"{phase} rung {len(rows) - 1} real={[x for x in order if x in real]} hash={row['hash']} "
+            print(f"{phase} rung {len(rows) - 1} real={[x + ('=trivial' if x in trivial else '') for x in order if x in real]} "
+                  f"hash={row['hash']} "
                   f"took={row['mask_took']} hmma_ok={row['hmma_ok']}: "
                   + "; ".join(f"{c} {phase} {row['phases'][c].get(phase if phase != 'all' else 'total')}"
                               for c in cells), flush=True)
-        rows.append({"real": sorted(everything), "stubbed": [], "hash": ref, "mask_took": True, "hmma_ok": True,
+        rows.append({"real": sorted(everything), "trivial": [], "stubbed": [], "hash": ref, "mask_took": True,
+                     "hmma_ok": True,
                      **{k: report["kernel"][k] for k in ("phases", "counters", "census", "registers", "hmma", "timeline")}})
         report["ladders"].append({"phase": phase, "order": order, "rungs": rows})
 

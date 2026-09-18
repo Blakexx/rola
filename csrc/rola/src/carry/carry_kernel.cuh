@@ -52,6 +52,14 @@ constexpr bool kReadoutDrain = ((ROLA_CARRY_PARTS >> 2) & 1u) != 0u;
 constexpr bool kFoldPool = ((ROLA_CARRY_PARTS >> 3) & 1u) != 0u;
 constexpr bool kFoldRing = ((ROLA_CARRY_PARTS >> 4) & 1u) != 0u;
 constexpr bool kFoldLoads = ((ROLA_CARRY_PARTS >> 5) & 1u) != 0u;
+//: THE TRIVIAL FORMS (the composer's third mode: `part=trivial` in `ROLA_CARRY_PARTS`): a real part with its
+//: loads and stores present but from fixed addresses -- no dependence on the ring, the walk or
+//: the read order, no waits -- so a part's cost splits into its traffic and its chains. Never
+//: correct; never shipped: a trivial mask makes the build an iteration build.
+constexpr bool kReadoutLoadsTrivial = ((ROLA_CARRY_TRIVIAL >> 1) & 1u) != 0u;
+constexpr bool kReadoutDrainTrivial = ((ROLA_CARRY_TRIVIAL >> 2) & 1u) != 0u;
+constexpr bool kFoldPoolTrivial = ((ROLA_CARRY_TRIVIAL >> 3) & 1u) != 0u;
+constexpr bool kFoldLoadsTrivial = ((ROLA_CARRY_TRIVIAL >> 5) & 1u) != 0u;
 constexpr uint32_t kStubPair = 0x3F003E80u;  //: bf16 (0.5, 0.25): a stub's operand
 
 //: THE SHARED BLOCK, as the ledger lays it out. -- see docs/internals/carry/smem_ledger.md
@@ -763,10 +771,16 @@ __device__ __forceinline__ void pool_fill(const CarryParams& p, const Smem<BP>& 
 
   //: the chunk's rounds: the last round starting at or before `lo`, the last starting
 
-  //: before `hi`.
-  const int pr = lane < BP::kRounds ? (int)sm.prefix(parity)[lane] : 0x7FFFFFFF;
-  const int r0 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr <= lo));
-  const int r1 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr < hi));
+  //: before `hi`. TRIVIAL: a dense chunk's two rounds, no ballot, no prefix.
+  int r0, r1;
+  if constexpr (kFoldPoolTrivial) {
+    r0 = chunk * (BP::kPoolTok / 32);
+    r1 = r0 + BP::kPoolTok / 32 - 1;
+  } else {
+    const int pr = lane < BP::kRounds ? (int)sm.prefix(parity)[lane] : 0x7FFFFFFF;
+    r0 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr <= lo));
+    r1 = ops::last_set(__ballot_sync(0xFFFFFFFFu, pr < hi));
+  }
   const ops::SmemAddr slot = sm.pool(s);
 
   rola::static_for<2>([&](auto Ic) {
@@ -777,10 +791,11 @@ __device__ __forceinline__ void pool_fill(const CarryParams& p, const Smem<BP>& 
     //: a warp without this round, or a round with no live token, skips it: an opaque
     //: one-trip loop, not an `if` ptxas would if-convert into passes of zero-size copies
     //: (KERNEL_STANDARDS §20). At N = L most rounds are dead for a CTA.
-    const uint32_t u = rr <= r1 ? sm.unionwords(parity)[rr] : 0u;
+    const uint32_t u = kFoldPoolTrivial ? (rr <= r1 ? 0xFFFFFFFFu : 0u)
+                                        : (rr <= r1 ? sm.unionwords(parity)[rr] : 0u);
 #pragma unroll 1
     for (int n = ops::once(u != 0u); n > 0; --n) {
-      const int base = (int)sm.prefix(parity)[rr];
+      const int base = kFoldPoolTrivial ? rr * 32 : (int)sm.prefix(parity)[rr];
       rola::static_for<2>([&](auto Hc) {
         constexpr int half = decltype(Hc)::value;
         const int t = half * 16 + j;
@@ -1033,6 +1048,23 @@ __device__ __forceinline__ void frag_load(ops::SmemAddr slot, ops::SmemAddr ring
       f.ab[bi][2] = ops::mul_bf16x2(a[2], s1);
       f.ab[bi][3] = ops::mul_bf16x2(a[3], s1);
     });
+    if constexpr (kFoldLoadsTrivial) {
+      //: TRIVIAL: the gather issued as above, its results consumed by an empty volatile asm
+      //: (kept, never on the MMA path), the HMMAs fed constants -- the traffic without the
+      //: load-to-HMMA dependence.
+      uint32_t sink = 0u;
+      rola::static_for<BP::kDealt>([&](auto Bi) {
+        rola::static_for<4>(
+            [&](auto Ec) { sink ^= f.ab[decltype(Bi)::value][decltype(Ec)::value]; });
+      });
+      rola::static_for<2 * BP::kNT>([&](auto Ic) { sink ^= f.v[decltype(Ic)::value]; });
+      asm volatile("" ::"r"(sink));
+      rola::static_for<BP::kDealt>([&](auto Bi) {
+        rola::static_for<4>(
+            [&](auto Ec) { f.ab[decltype(Bi)::value][decltype(Ec)::value] = kStubPair; });
+      });
+      rola::static_for<2 * BP::kNT>([&](auto Ic) { f.v[decltype(Ic)::value] = kStubPair; });
+    }
   } else {
     (void)slot;
     (void)ring;
@@ -1343,8 +1375,8 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
     if constexpr (kReadoutLoads) {
       const uint32_t o_r = ops::splat_u16(ops::load_shared_u16(outer + row32_elem(r, b)));
       const uint32_t o_r8 = ops::splat_u16(ops::load_shared_u16(outer + row32_elem(r + 8, b)));
-      const uint32_t ab[4] = {ops::mul_bf16x2(a[0], o_r), ops::mul_bf16x2(a[1], o_r8),
-                              ops::mul_bf16x2(a[2], o_r), ops::mul_bf16x2(a[3], o_r8)};
+      uint32_t ab[4] = {ops::mul_bf16x2(a[0], o_r), ops::mul_bf16x2(a[1], o_r8),
+                        ops::mul_bf16x2(a[2], o_r), ops::mul_bf16x2(a[3], o_r8)};
       const ops::SmemAddr brow = sm.snapshot() + chan_row_off<BP>(b * 16 + snap_row, 0);
       rola::static_for<BP::kNT / 2>([&](auto Ic) {
         constexpr int i = decltype(Ic)::value;
@@ -1352,9 +1384,18 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
         //: the chunk index XORs with the row's swizzle: chunk `c` of the row is chunk 0's
         //: address XOR `16 c`.
         ops::load_frag_t(bf, brow ^ (uint32_t)((2 * i + (lane >> 4)) * 16));
+        if constexpr (kReadoutLoadsTrivial) {
+          //: TRIVIAL: the box's loads issued as above, consumed by an empty volatile asm, the
+          //: HMMAs fed constants -- the traffic without the load-to-HMMA dependence.
+          asm volatile("" ::"r"(bf[0] ^ bf[1] ^ bf[2] ^ bf[3] ^ ab[0] ^ ab[1] ^ ab[2] ^ ab[3]));
+          rola::static_for<4>([&](auto Ec) { bf[decltype(Ec)::value] = kStubPair; });
+          if constexpr (i == 0)
+            rola::static_for<4>([&](auto Ec) { ab[decltype(Ec)::value] = kStubPair; });
+        }
         ops::mma(y[2 * i], ab, bf);
         ops::mma(y[2 * i + 1], ab, bf + 2);
       });
+
       //: den on the FMA pipe: the scaled A's pairs (rows `r`, `r + 8` at leaves `2q`, `2q +
       //: 1`, `2q + 8`, `2q + 9`) against the box's masses, eight products a lane; the quad
       //: sums at the tile's end. A tensor column for this cost one HMMA in nine.
@@ -1389,7 +1430,33 @@ __device__ __forceinline__ void readout_tile(const Smem<BP>& sm, ops::SmemAddr s
   dr8 += __shfl_xor_sync(0xFFFFFFFFu, dr8, 2);
   const float d[4] = {dr, 0.0f, dr8, 0.0f};
 
-  if constexpr (kReadoutDrain) {
+  if constexpr (kReadoutDrain && kReadoutDrainTrivial) {
+    //: TRIVIAL: the tile's thirty-two reductions a lane straight from the accumulators to
+    //: fixed rows of the output, coalesced as the real drain's are (a lane its own float of a
+    //: line) -- the reduction traffic without the stage round trip, its syncs and the order.
+    pc.stamp(kTraceReadoutDrain);
+    float* const num_lane = num + (long)t0 * BP::kDv + lane;
+    rola::static_for<4>([&](auto Pc) {
+      constexpr int pass = decltype(Pc)::value;
+      rola::static_for<4>([&](auto Rc) {
+        constexpr int srow = decltype(Rc)::value;
+        rola::static_for<BP::kDv / 32>([&](auto Lc) {
+          constexpr int line = decltype(Lc)::value;
+          ops::red_global_add_f32(num_lane + (long)(4 * pass + srow) * BP::kDv + line * 32,
+                                  y[(2 * pass + line) % BP::kNT][srow]);
+        });
+      });
+    });
+
+    if (q == 0) {
+      ops::red_global_add_f32(den + t0 + r, d[0]);
+      ops::red_global_add_f32(den + t0 + r + 8, d[2]);
+    }
+
+    (void)order;
+    (void)k;
+    (void)live;
+  } else if constexpr (kReadoutDrain) {
     pc.stamp(kTraceReadoutDrain);
     //: THE ROWS OUT. Four rows a pass through the stage, every address an IMMEDIATE offset
     //: from one of three lane constants: lanes `r` in the pass's quarter store their rows'

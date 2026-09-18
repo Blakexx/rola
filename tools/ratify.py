@@ -1230,7 +1230,7 @@ def measure_units(arches, objdir: str, sources: list[Path], arms=None,
         (gen_shards.GENERATED_DIR / gen_shards.CARRY_SELECTION_INC).write_text(
             gen_shards.carry_selection_header(want_arms))
         (gen_shards.GENERATED_DIR / gen_shards.CARRY_PARTS_INC).write_text(
-            gen_shards.carry_parts_header(gen_shards.CARRY_PARTS))
+            gen_shards.carry_parts_header(gen_shards.CARRY_PARTS, ()))
     #: AND THE CSRC STAMP, for the same reason and from the same function `setup.py`
     #: calls: the stamp sites include it, so a gate that did not write it would
     #: measure a tree nobody builds.

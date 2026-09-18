@@ -258,20 +258,29 @@ def _arm_coverage_sweep(build_lib: str, want: list[int]) -> int:
     return len(got)
 
 
-def _carry_parts() -> tuple[str, ...]:
-    """The carry kernel's REAL parts for this build (the composer's switches): every part
-    unless `ROLA_CARRY_PARTS` names a subset -- `all`, or a comma list of `gen_shards.CARRY_PARTS`
-    names, or `none`. A subset stubs the rest and makes the build an ITERATION build."""
+def _carry_parts_spec() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The carry kernel's REAL parts for this build and, of those, the TRIVIAL ones (the composer's
+    switches): every part unless `ROLA_CARRY_PARTS` names a subset -- `all`, or `none`, or a comma
+    list of `gen_shards.CARRY_PARTS` names, an item `part=trivial` naming a real part built in its
+    trivial form (its memory instructions issued, its dependence or structure removed). A subset
+    stubs the rest; a subset or a trivial part makes the build an ITERATION build."""
     spec = os.getenv("ROLA_CARRY_PARTS", "all").strip()
     if spec in ("", "all"):
-        return gen_shards.CARRY_PARTS
+        return gen_shards.CARRY_PARTS, ()
     if spec == "none":
-        return ()
-    names = tuple(x for x in spec.replace(" ", "").split(",") if x)
-    bad = sorted(set(names) - set(gen_shards.CARRY_PARTS))
+        return (), ()
+    items = [x for x in spec.replace(" ", "").split(",") if x]
+    names = tuple(x.split("=")[0] for x in items)
+    trivial = tuple(x.split("=")[0] for x in items if x.endswith("=trivial"))
+    bad = sorted(set(names) - set(gen_shards.CARRY_PARTS)) + [x for x in items if "=" in x and not x.endswith("=trivial")]
     if bad:
-        raise SystemExit(f"ROLA_CARRY_PARTS: no such part(s) {bad}; the parts are {gen_shards.CARRY_PARTS}")
-    return names
+        raise SystemExit(f"ROLA_CARRY_PARTS: no such part(s) {bad}; the parts are {gen_shards.CARRY_PARTS}, "
+                         "an item `part` or `part=trivial`")
+    return names, trivial
+
+
+def _carry_parts() -> tuple[str, ...]:
+    return _carry_parts_spec()[0]
 
 
 def _write_carry_parts() -> None:
@@ -279,7 +288,7 @@ def _write_carry_parts() -> None:
     outlives the build that asked for it."""
     gen_shards.GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     (gen_shards.GENERATED_DIR / gen_shards.CARRY_PARTS_INC).write_text(
-        gen_shards.carry_parts_header(_carry_parts()))
+        gen_shards.carry_parts_header(*_carry_parts_spec()))
 
 
 def _write_csrc_stamp() -> None:
@@ -319,7 +328,7 @@ def _is_iteration_build() -> bool:
     ships, whichever direction it differs in.
     """
     return (set(_carry_arms()) != set(range(len(gen_shards.CARRY_ARMS))) or _decode_arm_subset_active()
-            or set(_carry_parts()) != set(gen_shards.CARRY_PARTS))
+            or set(_carry_parts()) != set(gen_shards.CARRY_PARTS) or _carry_parts_spec()[1])
 
 
 #: THE ITERATION ARM SUBSET FOR DECODE (KERNEL_STANDARDS section 7, D1b). Same

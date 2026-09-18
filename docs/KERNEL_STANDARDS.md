@@ -660,7 +660,15 @@ only measurement there is; the sub-core instruction buffer is three deep, the me
    that compares a measurement to an ideal states where the ideal's count comes from.
 5. A STALL CENSUS IS READ PER LINE. Per component it says a warp waits; per line it says on what. The isolating
    measurement for a model's miss is the per-line census of the two forms, not a reading of the model.
-6. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
+6. ONE BODY, A REGISTER SELECT FOR A VARIANT. A large inlined body instantiated twice (a tile called with
+   its two outputs swapped) with four statically named variants inside (a drain pass a compile-time half)
+   put twelve copies of one body in the kernel; ptxas outlined the shared body into a real subroutine
+   (`CALL.REL.NOINC` from twelve sites), allocated 255 registers and spilled 117 times, and `nvdisasm`
+   refused the cubin's life ranges (2026-09-19). One body with the variant a runtime value, its register
+   chosen by a select (`hsel ? y[j][2] : y[j][0]`, never an index, which is local memory), took the same
+   kernel to one copy, 254 registers, no spill. A form's register cost is read at one arm's compile
+   (`burst_gate.py`: registers, purity's `CALL` count) before its chain runs.
+7. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
    burst was interleaved among its HMMAs by ptxas all the same (the queue rows, 2026-09-18). What a row measures
    is the placement in its SASS, which the row's reading states; a row whose placement differs from the kernel's
    measures a different thing.
