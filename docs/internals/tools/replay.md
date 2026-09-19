@@ -46,6 +46,9 @@ memory instruction after it (every barrier site's census wait sits on the first 
 after the fold's rendezvous is read BEFORE the barrier releases, so the timeline's `snapshot` holds the fold-end
 wait), and fair arbitration between a scheduler's warps.
 
+`--json out.json` writes the replay in the timeline's record format; the page (`timeline_page.render` of the real
+record and the replay's) draws the replay beneath each warp under "beneath each warp", same window, same scale.
+
 `--per-instruction N` prints the N instructions whose modelled cycles a warp differ most from the census's (a sample is
 a warp-cycle waiting at an instruction, which is what the replay books at each instruction), with both sides' reasons:
 the instrument that found the uniform move's latency, the counting scoreboards and the taken branches.

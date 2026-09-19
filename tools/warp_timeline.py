@@ -115,6 +115,7 @@ def main() -> int:
         import timeline_page
 
         pages = {a.cell: tl}
+        #: a replay of the same cell draws beside it (`tools/replay.py --json`)
         for other in a.also:
             o = json.loads(other.read_text())
             pages[o["cell"]] = o

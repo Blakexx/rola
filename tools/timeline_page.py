@@ -61,7 +61,7 @@ table{border-collapse:collapse;margin-top:14px;font-variant-numeric:tabular-nums
 </style></head><body>
 <h1>Carry Warp Timeline</h1>
 <p class="sub">One CTA of the carry kernel: the real run's cycles from the kernel's own stamps, each interval carrying the instructions the same activity executed in a traced run. Rows are the four schedulers, each with its two warps and a strip for its tensor pipe.</p>
-<div class="bar"><label>cell <select id="cell"></select></label><label>window <select id="win"></select></label><label>scheduler pipe strip <select id="pipeMode"><option value="hmma">HMMA issue estimate</option><option value="burst">either warp in a burst</option></select></label><button id="reset">reset zoom</button><span id="info" style="color:var(--ink2);font-size:13px"></span></div>
+<div class="bar"><label>cell <select id="cell"></select></label><label>window <select id="win"></select></label><label>beneath each warp <select id="cmp"></select></label><label>scheduler pipe strip <select id="pipeMode"><option value="hmma">HMMA issue estimate</option><option value="burst">either warp in a burst</option></select></label><button id="reset">reset zoom</button><span id="info" style="color:var(--ink2);font-size:13px"></span></div>
 <div class="wrap"><canvas id="cv" width="1400" height="520"></canvas>
 <div class="legend"><span><i class="sw" style="background:var(--burst)"></i>fold fragment run</span><span><i class="sw" style="background:var(--burst2)"></i>readout tile</span><span><i class="sw" style="background:var(--decide)"></i>walk / fill</span><span><i class="sw" style="background:var(--decide2)"></i>readout issue / drain</span><span><i class="sw" style="background:var(--wait)"></i>wait</span><span><i class="sw" style="background:var(--lap)"></i>head, words, scans</span><span><i class="sw" style="background:var(--lap2)"></i>snapshot, edges, sweep</span><span><i class="sw" style="background:var(--pipe)"></i>pipe strip: dark = fed</span></div></div>
 <div id="tip"></div>
@@ -74,11 +74,12 @@ const EV=D.evs, K=D.keys; const ki=Object.fromEntries(K.map((k,i)=>[k,i+3]));
 const cls=e=>{const n=EV[e]||'';if(n.endsWith('fold.fragment'))return 'burst';if(n.endsWith('readout.tile'))return 'burst2';if(/fold\.(walk|fill)$/.test(n))return 'decide';if(/readout\.(issue|drain)$/.test(n))return 'decide2';if(/wait$/.test(n))return 'wait';if(/^(head|head_words|head_scans)$/.test(n))return 'lap';return 'lap2'};
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue('--'+v).trim();
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),tip=document.getElementById('tip');
-const selC=document.getElementById('cell'),selW=document.getElementById('win'),selP=document.getElementById('pipeMode');
+const selC=document.getElementById('cell'),selW=document.getElementById('win'),selP=document.getElementById('pipeMode'),selX=document.getElementById('cmp');
 for(const c of Object.keys(D.cells)){const o=document.createElement('option');o.value=c;o.textContent=c;selC.appendChild(o)}
+{const o=document.createElement('option');o.value='';o.textContent='nothing';selX.appendChild(o);for(const c of Object.keys(D.cells)){const q=document.createElement('option');q.value=c;q.textContent=c;selX.appendChild(q)}}
 let view={x0:0,x1:1},boxes=[];
 function fillWins(){selW.innerHTML='';const n=D.cells[selC.value][0].length;for(let i=0;i<n;i++){const o=document.createElement('option');o.value=i;o.textContent=i;selW.appendChild(o)}selW.value=Math.min(10,n-1)}
-function draw(){const warps=D.cells[selC.value],wi=+selW.value;const L=Math.max(...warps.map(w=>w[wi].len));
+function draw(){const warps=D.cells[selC.value],wi=+selW.value;const otherCell=D.cells[selX.value];const L=Math.max(...warps.map(w=>w[wi].len),...(otherCell?otherCell.map(w=>(w[wi]||{len:0}).len):[]));
  const W=cv.width,H=cv.height,left=90,top=24,rowH=34,gap=6,schedH=rowH*2+18+gap*3;boxes=[];
  ctx.fillStyle=css('panel');ctx.fillRect(0,0,W,H);ctx.font='12px IBM Plex Mono, monospace';
  const X=t=>left+(t/L-view.x0)/(view.x1-view.x0)*(W-left-10);
@@ -86,9 +87,13 @@ function draw(){const warps=D.cells[selC.value],wi=+selW.value;const L=Math.max(
  const pipeMode=selP.value;
  for(let s=0;s<4;s++){const y0=top+s*schedH;
   for(const [j,w] of [[0,s],[1,s+4]]){const y=y0+j*(rowH+gap);ctx.fillStyle=css('ink2');ctx.fillText('S'+s+' W'+w,8,y+rowH/2+4);
-   for(const iv of warps[w][wi].ivs){const x0=X(iv[1]),x1=X(iv[2]);if(x1<left||x0>W)continue;const c=cls(iv[0]);ctx.fillStyle=css(c);ctx.fillRect(Math.max(left,x0),y,Math.max(1,Math.min(W,x1)-Math.max(left,x0)),rowH);
-    if(iv[3+K.length])ctx.fillStyle='rgba(0,0,0,.25)',ctx.fillRect(Math.max(left,x0),y,Math.max(1,x1-x0),rowH);
-    boxes.push({x0:Math.max(left,x0),x1:Math.min(W,x1),y0:y,y1:y+rowH,iv,w})}}
+   const other=D.cells[selX.value],hTop=other?Math.round(rowH*0.58):rowH;
+   for(const iv of warps[w][wi].ivs){const x0=X(iv[1]),x1=X(iv[2]);if(x1<left||x0>W)continue;const c=cls(iv[0]);ctx.fillStyle=css(c);ctx.fillRect(Math.max(left,x0),y,Math.max(1,Math.min(W,x1)-Math.max(left,x0)),hTop);
+    if(iv[3+K.length])ctx.fillStyle='rgba(0,0,0,.25)',ctx.fillRect(Math.max(left,x0),y,Math.max(1,x1-x0),hTop);
+    boxes.push({x0:Math.max(left,x0),x1:Math.min(W,x1),y0:y,y1:y+hTop,iv,w,cell:selC.value})}
+   if(other&&other[w]&&other[w][wi]){const y2=y+hTop+2,h2=rowH-hTop-2;
+    for(const iv of other[w][wi].ivs){const x0=X(iv[1]),x1=X(iv[2]);if(x1<left||x0>W)continue;ctx.fillStyle=css(cls(iv[0]));ctx.globalAlpha=0.8;ctx.fillRect(Math.max(left,x0),y2,Math.max(1,Math.min(W,x1)-Math.max(left,x0)),h2);ctx.globalAlpha=1;
+     boxes.push({x0:Math.max(left,x0),x1:Math.min(W,x1),y0:y2,y1:y2+h2,iv,w,cell:selX.value})}}}
   const py=y0+2*(rowH+gap);ctx.fillStyle=css('ink2');ctx.fillText('S'+s+' pipe',8,py+13);
   const bins=W-left-10,occ=new Float32Array(bins);
   for(const w of [s,s+4])for(const iv of warps[w][wi].ivs){const n=EV[iv[0]]||'';let d=0;if(pipeMode==='hmma'){const h=iv[ki.hmma];if(!h)continue;d=Math.min(1,h*32.5/Math.max(1,iv[2]-iv[1]))}else{if(!(n.endsWith('fold.fragment')||n.endsWith('readout.tile')))continue;d=1}
@@ -102,7 +107,7 @@ function summary(warps,wi,L){const acc={};let idle=[0,0,0,0];
  document.getElementById('summary').innerHTML=`<table><thead><tr><th>activity</th><th>cycles a warp</th><th>events a warp</th><th>cycles an event</th><th>instr an event</th><th>HMMA an event</th><th>cycles / (HMMA x 32.5)</th><th>ldmatrix</th><th>copies</th><th>back branches</th></tr></thead><tbody>${rows}</tbody></table>`}
 cv.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect(),sx=cv.width/r.width,sy=cv.height/r.height,x=(e.clientX-r.left)*sx,y=(e.clientY-r.top)*sy;const b=boxes.find(b=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1);
  if(!b){tip.style.display='none';return}const iv=b.iv,n=EV[iv[0]]||'?',cyc=iv[2]-iv[1],h=iv[ki.hmma];
- tip.innerHTML=`<b>${n}</b> warp ${b.w}<br>${cyc} cycles, ${iv[ki.n]} instructions${iv[3+K.length]?' (mix unmatched)':''}<br>HMMA ${h}${h?' → floor '+Math.round(h*32.5)+' alone, '+Math.round(h*65)+' paired ('+(cyc/(h*32.5)).toFixed(2)+'x alone)':''}<br>ldmatrix ${iv[ki.ldsm]} · copies ${iv[ki.copy]} · lds ${iv[ki.lds]} · sts ${iv[ki.sts]} · shfl ${iv[ki.shfl]}<br>bar ${iv[ki.bar]} · mbarrier ${iv[ki.mbar]} · red ${iv[ki.red]} · back branches ${iv[ki.back]}`;
+ tip.innerHTML=`<b>${n}</b> warp ${b.w} · ${b.cell}<br>${cyc} cycles, ${iv[ki.n]} instructions${iv[3+K.length]?' (mix unmatched)':''}<br>HMMA ${h}${h?' → floor '+Math.round(h*32.5)+' alone, '+Math.round(h*65)+' paired ('+(cyc/(h*32.5)).toFixed(2)+'x alone)':''}<br>ldmatrix ${iv[ki.ldsm]} · copies ${iv[ki.copy]} · lds ${iv[ki.lds]} · sts ${iv[ki.sts]} · shfl ${iv[ki.shfl]}<br>bar ${iv[ki.bar]} · mbarrier ${iv[ki.mbar]} · red ${iv[ki.red]} · back branches ${iv[ki.back]}`;
  tip.style.display='block';tip.style.left=Math.min(window.innerWidth-380,e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px'});
 cv.addEventListener('mouseleave',()=>tip.style.display='none');
 let picked=null;
@@ -122,6 +127,6 @@ document.getElementById('byline').onchange=panel;
 let drag=null;cv.addEventListener('mousedown',e=>{const r=cv.getBoundingClientRect();drag=(e.clientX-r.left)*cv.width/r.width});
 cv.addEventListener('mouseup',e=>{if(drag===null)return;const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*cv.width/r.width;const a=Math.min(drag,x),b=Math.max(drag,x);drag=null;if(b-a<8)return;const f=t=>view.x0+(t-90)/(cv.width-100)*(view.x1-view.x0);view={x0:Math.max(0,f(a)),x1:Math.min(1,f(b))};draw()});
 document.getElementById('reset').onclick=()=>{view={x0:0,x1:1};draw()};
-selC.onchange=()=>{fillWins();view={x0:0,x1:1};draw()};selW.onchange=draw;selP.onchange=draw;
+selC.onchange=()=>{fillWins();view={x0:0,x1:1};draw()};selW.onchange=draw;selP.onchange=draw;selX.onchange=draw;
 fillWins();draw();
 </script></body></html>'''

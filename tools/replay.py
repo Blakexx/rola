@@ -785,12 +785,41 @@ def pair_overlap(sim_stamps: list, keys: list, real, nwarps: int) -> None:
               f"{100 * sum(shares) / n:.0f}% of a run (median {100 * shares[n // 2]:.0f}%)")
 
 
+def as_timeline(cell: str, sim_stamps: list, keys: list, seqs: list, table: dict) -> dict:
+    """The replay in `tools/warp_timeline.py`'s record format: per warp, per window, each interval's event, cycles from
+    the window's first replayed interval, and its instruction mix, so the timeline page draws it beside the real run."""
+    from warp_timeline import summaries
+    from warp_trace import CLASSES
+
+    warps = []
+    for w, sim in enumerate(sim_stamps):
+        cut = [i for i, item in enumerate(seqs[w]) if table[item[0]][1] == "clock"]
+        by_window: dict[int, list] = collections.defaultdict(list)
+        for i in range(len(sim) - 1):
+            key = keys[w][i] if i < len(keys[w]) else None
+            if key is None:
+                continue
+            seg = seqs[w][cut[i] + 1:cut[i + 1]] if i + 1 < len(cut) else []
+            mix = collections.Counter(CLASSES.get(table[item[0]][0], "alu") for item in seg)
+            mix["n"] = len(seg)
+            by_window[key[0]].append((sim[i], sim[i + 1], key, dict(mix)))
+        wins = []
+        for wi in range(max(by_window) + 1 if by_window else 0):
+            ivs = sorted(by_window.get(wi, []))
+            t0 = ivs[0][0] if ivs else 0.0
+            wins.append({"len": (ivs[-1][1] - t0) if ivs else 0.0,
+                         "ivs": [{"ev": k[1], "k": k[2], "t0": a - t0, "t1": b - t0, "mix": m} for a, b, k, m in ivs]})
+        warps.append({"warp": w, "windows": wins})
+    return {"cell": f"{cell} replay", "warps": warps, "windows": summaries(warps), "unmatched_intervals": 0}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
     ap.add_argument("--cta", type=int, default=0)
     ap.add_argument("--learn-only", action="store_true")
     ap.add_argument("--census", type=Path, default=None, help="`auto` or a stall_census export: measured wavefronts")
+    ap.add_argument("--json", type=Path, default=None, help="write the replay as a timeline record (real order only)")
     ap.add_argument("--order", choices=("real", "traced"), default="real",
                     help="issue each warp's activities in the real run's order (validation) or the traced run's")
     ap.add_argument("--per-instruction", type=int, default=0, metavar="N",
@@ -846,6 +875,10 @@ def main() -> int:
     cmp_ = compare_keyed(res["stamps"], keys, real) if keys is not None else compare(res["stamps"], child, real)
     if keys is not None:
         pair_overlap(res["stamps"], keys, real, len(seqs))
+        if a.json is not None:
+            import json
+
+            a.json.write_text(json.dumps(as_timeline(a.cell, res["stamps"], keys, seqs, table)))
     tot_s = sum(v["sim"] for v in cmp_["by_activity"].values())
     tot_r = sum(v["real"] for v in cmp_["by_activity"].values())
     print(f"{'activity':20s} {'n':>5s} {'real a warp':>11s} {'replay':>9s} {'ratio':>6s}")

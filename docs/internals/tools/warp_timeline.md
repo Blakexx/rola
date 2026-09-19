@@ -45,7 +45,8 @@ activity is what is read, and a stall reason is read the way §22 (7) reads it.
 
 The page (`tools/timeline_page.py`): four schedulers, each its two warps and its pipe strip; a window selector; drag
 to zoom; hover an interval for its cycles, instructions, HMMAs against the pipe floor (alone and paired), loads,
-copies, barriers and spins; a table of the window by activity. Several cells on one page through `--also`.
+copies, barriers and spins; a table of the window by activity. Several cells on one page through `--also`, and any
+second record drawn beneath each warp ("beneath each warp": a replay from `tools/replay.py --json`, or another build).
 
 ## What it is read for, and the rules
 
