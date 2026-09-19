@@ -668,7 +668,14 @@ only measurement there is; the sub-core instruction buffer is three deep, the me
    chosen by a select (`hsel ? y[j][2] : y[j][0]`, never an index, which is local memory), took the same
    kernel to one copy, 254 registers, no spill. A form's register cost is read at one arm's compile
    (`burst_gate.py`: registers, purity's `CALL` count) before its chain runs.
-7. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
+7. A SHADOW HIDES ISSUE, NOT OCCUPANCY. An instruction between two HMMAs costs nothing only if its issue
+   releases the warp in a cycle: ALU work and register-fed loads do. An asynchronous copy of sixteen global
+   lines, a global reduction (~13 cycles each, the `hmma_reduce` rows), a four-byte `cp.async.ca` (48.8 a run) and
+   a warp sync hold the warp at the instruction while the LSU takes their wavefronts, and in order the HMMAs
+   behind them wait: the fill's copies pinned under the fold's bursts doubled the fragment phase (2026-09-19,
+   +9% dense, +14 to +16% sparse) though every piece sat between HMMAs. Such work is placed where the partner
+   warp is bursting, or made cheaper (fewer lines a copy), never interleaved into a burst.
+8. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
    burst was interleaved among its HMMAs by ptxas all the same (the queue rows, 2026-09-18). What a row measures
    is the placement in its SASS, which the row's reading states; a row whose placement differs from the kernel's
    measures a different thing.
