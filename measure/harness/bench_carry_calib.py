@@ -78,6 +78,13 @@ CALIBRATIONS = (
     ("hmma_queue_40_1w", 4, 22, 40, 18, "a chain of forty"),
     ("hmma_queue_80_1w", 4, 22, 80, 18, "a chain of eighty"),
     ("hmma_queue_40_2w", 8, 22, 40, 18, "a chain of forty, two warps"),
+    ("hmma_frag_chain_hooked_1w", 4, 23, 18, 18, "the burst with the next gather's chain in four pieces, each pinned into a three-HMMA window (the granular fork), one warp"),
+    ("hmma_frag_chain_hooked_2w", 8, 23, 18, 18, "the same, two warps"),
+    ("hmma_frag_chain_hooked2_1w", 4, 24, 18, 18, "the fork with the hook values pinned after an earlier HMMA's result too, one warp"),
+    ("hmma_frag_chain_hooked2_2w", 8, 24, 18, 18, "the same, two warps"),
+    ("hmma_latency", 4, 25, 18, 18, "eighteen HMMAs into one accumulator, each dependent on the last: the completion latency"),
+    ("hmma_operands_1w", 4, 26, 18, 18, "the fragment's burst with its operand pattern: a different B register pair every HMMA, two A sets, no loads, one warp"),
+    ("hmma_operands_2w", 8, 26, 18, 18, "the same, two warps"),
 )
 
 

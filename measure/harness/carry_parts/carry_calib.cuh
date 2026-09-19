@@ -8,6 +8,7 @@
 // See docs/internals/carry/calibration.md
 #pragma once
 
+#include "common/burst.cuh"
 #include "common/ops.cuh"
 #include "common/static_for.cuh"
 
@@ -38,7 +39,11 @@ enum CalibMode : int {
   kAsyncCopyLines = 19,
   kSharedMatrixRows = 20,
   kHmmaWideAlu = 21,
-  kHmmaQueue = 22
+  kHmmaQueue = 22,
+  kHmmaWideChainHooked = 23,
+  kHmmaWideChainHooked2 = 24,
+  kHmmaLatency = 25,
+  kHmmaWideOperands = 26
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -84,6 +89,199 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
       rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
     });
     ops::store_shared_u32(lines, __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaWideChainHooked) {
+    //: THE GRANULAR FORK: the fragment's burst (eighteen HMMAs) with the NEXT unit's gather chain
+    //: cut in four pieces, each pinned into a three-HMMA window by two dependencies -- its input
+    //: after an HMMA's result (`rola::burst::after` on the accumulator), its output hooked into
+    //: a later HMMA's B -- so the schedule is HMMA, piece, HMMA, piece and no piece's latency
+    //: sits outside a shadow. The chain and its operands are `kHmmaWideChain`'s.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    rola::static_for<4>([&](auto Kc) {
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), w);
+    });
+    __syncwarp();
+    const uint32_t bf[4] = {w, w, w, w};
+    uint32_t ab[4] = {w, w, w, w};
+    float y[18][4];
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    uint32_t entry = (uint32_t)lane;
+    const auto hmma = [&](int j, uint32_t hook) {
+      uint32_t b[4] = {bf[0], bf[1], bf[2], bf[3]};
+      b[0] = rola::burst::after(b[0], hook);
+      ops::mma(y[j], ab, b);
+    };
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      //: piece 1: the next entry's rows -- a shuffle, two loads (issued at the top: loads first)
+      const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+      uint32_t a[4], sp[4];
+      ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
+      ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
+      ops::mma(y[0], ab, bf);
+      ops::mma(y[1], ab, bf + 2);
+      ops::mma(y[2], ab, bf);
+      hmma(3, a[0] ^ sp[0] ^ re);  //: the loads landed under HMMAs 0-2
+      //: piece 2: the gain, after HMMA 3's result
+      const uint32_t gin = rola::burst::after(entry, __float_as_uint(y[3][0]));
+      const uint32_t g = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)gin, 2 * (lane & 3));
+      sp[0] = ops::mul_bf16x2(sp[0], g);
+      sp[2] = ops::mul_bf16x2(sp[2], g);
+      ops::mma(y[4], ab, bf);
+      ops::mma(y[5], ab, bf + 2);
+      hmma(6, sp[0] ^ sp[2]);
+      //: piece 3: the scaled pair to the lanes, after HMMA 6's result
+      const uint32_t s0in = rola::burst::after(sp[0], __float_as_uint(y[6][0]));
+      const uint32_t s0 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)s0in, lane & 3);
+      const uint32_t s1 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[2], lane & 3);
+      ops::mma(y[7], ab, bf + 2);
+      ops::mma(y[8], ab, bf);
+      hmma(9, s0 ^ s1);
+      //: piece 4: the next A, after HMMA 9's result
+      a[0] = rola::burst::after(a[0], __float_as_uint(y[9][0]));
+      uint32_t nab[4];
+      nab[0] = ops::mul_bf16x2(a[0], s0);
+      nab[1] = ops::mul_bf16x2(a[1], s0);
+      nab[2] = ops::mul_bf16x2(a[2], s1);
+      nab[3] = ops::mul_bf16x2(a[3], s1);
+      ops::mma(y[10], ab, bf);
+      ops::mma(y[11], ab, bf + 2);
+      hmma(12, nab[0] ^ nab[3]);
+      rola::static_for<5>([&](auto Jc) {
+        constexpr int j = 13 + decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+      rola::static_for<4>([&](auto Ec) { ab[decltype(Ec)::value] = nab[decltype(Ec)::value]; });
+      entry += 1u;
+    }
+    float sink = 0.0f;
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(4 * 128 + lane * 4), __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaWideOperands) {
+    //: THE FRAGMENT'S BURST WITH ITS OPERAND PATTERN: eighteen HMMAs a unit into eighteen
+    //: accumulators, A one of two register sets a box, B a DIFFERENT register pair every n-tile
+    //: (the fold's sixteen V registers) and a ones pair for the mass -- all resident, no loads:
+    //: the unit's rate when no operand is reused across HMMAs, against `hmma_wide`'s constants.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    uint32_t ab[2][4], v[16], bm[2] = {w, w};
+    rola::static_for<2>([&](auto Bc) {
+      rola::static_for<4>([&](auto Ec) { ab[decltype(Bc)::value][decltype(Ec)::value] = w ^ (uint32_t)(decltype(Bc)::value * 4 + decltype(Ec)::value); });
+    });
+    rola::static_for<16>([&](auto Ic) { v[decltype(Ic)::value] = w ^ (uint32_t)(16 + decltype(Ic)::value); });
+    float y[2][9][4];
+    rola::static_for<2>([&](auto Bc) {
+      rola::static_for<9>([&](auto Jc) {
+        rola::static_for<4>([&](auto Ec) { y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+      });
+    });
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<2>([&](auto Bc) {
+        constexpr int bi = decltype(Bc)::value;
+        rola::static_for<8>([&](auto Jc) {
+          constexpr int j = decltype(Jc)::value;
+          ops::mma(y[bi][j], ab[bi], v + 2 * j);
+        });
+        ops::mma(y[bi][8], ab[bi], bm);
+      });
+    }
+    float sink = 0.0f;
+    rola::static_for<2>([&](auto Bc) {
+      rola::static_for<9>([&](auto Jc) {
+        rola::static_for<4>([&](auto Ec) { sink += y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value]; });
+      });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink));
+  }
+
+  if constexpr (Mode == kHmmaLatency) {
+    //: THE HMMA'S COMPLETION LATENCY: eighteen HMMAs a unit into ONE accumulator, each dependent
+    //: on the last -- cycles an HMMA is the latency, not the pipe's rate.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    const uint32_t bf[4] = {w, w, w, w};
+    const uint32_t ab[4] = {w, w, w, w};
+    float y[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<18>([&](auto Jc) { ops::mma(y, ab, bf + 2 * (decltype(Jc)::value & 1)); });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(y[0] + y[1] + y[2] + y[3]));
+  }
+
+  if constexpr (Mode == kHmmaWideChainHooked2) {
+    //: THE GRANULAR FORK, second pinning: each piece's INPUT after an HMMA's result two ahead of
+    //: its window, and its HOOK VALUE (the XOR the hooked HMMA's B waits on) after the result of
+    //: the HMMA two before the hooked one -- so ptxas can neither hoist a piece to the top nor
+    //: compute a hook while its loads are in flight (the first pinning left a 30-cycle wait at
+    //: the loads' XOR, placed right behind them).
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    rola::static_for<4>([&](auto Kc) {
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Kc)::value * 128 + lane * 4), w);
+    });
+    __syncwarp();
+    const uint32_t bf[4] = {w, w, w, w};
+    uint32_t ab[4] = {w, w, w, w};
+    float y[18][4];
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    uint32_t entry = (uint32_t)lane;
+    const auto hmma = [&](int j, uint32_t hook) {
+      const uint32_t b[4] = {rola::burst::after(bf[0], hook), bf[1], bf[2], bf[3]};
+      ops::mma(y[j], ab, b);
+    };
+    const auto res = [&](int j) { return __float_as_uint(y[j][0]); };
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+      uint32_t a[4], sp[4];
+      ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
+      ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
+      ops::mma(y[0], ab, bf);
+      ops::mma(y[1], ab, bf + 2);
+      ops::mma(y[2], ab, bf);
+      hmma(3, rola::burst::after(a[0] ^ sp[0] ^ re, res(1)));
+      const uint32_t gin = rola::burst::after(entry, res(2));
+      const uint32_t g = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)gin, 2 * (lane & 3));
+      sp[0] = ops::mul_bf16x2(sp[0], g);
+      sp[2] = ops::mul_bf16x2(sp[2], g);
+      ops::mma(y[4], ab, bf);
+      ops::mma(y[5], ab, bf + 2);
+      hmma(6, rola::burst::after(sp[0] ^ sp[2], res(4)));
+      const uint32_t s0in = rola::burst::after(sp[0], res(5));
+      const uint32_t s0 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)s0in, lane & 3);
+      const uint32_t s1 = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)sp[2], lane & 3);
+      ops::mma(y[7], ab, bf + 2);
+      ops::mma(y[8], ab, bf);
+      hmma(9, rola::burst::after(s0 ^ s1, res(7)));
+      a[0] = rola::burst::after(a[0], res(8));
+      uint32_t nab[4];
+      nab[0] = ops::mul_bf16x2(a[0], s0);
+      nab[1] = ops::mul_bf16x2(a[1], s0);
+      nab[2] = ops::mul_bf16x2(a[2], s1);
+      nab[3] = ops::mul_bf16x2(a[3], s1);
+      ops::mma(y[10], ab, bf);
+      ops::mma(y[11], ab, bf + 2);
+      hmma(12, rola::burst::after(nab[0] ^ nab[3], res(10)));
+      rola::static_for<5>([&](auto Jc) {
+        constexpr int j = 13 + decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+      rola::static_for<4>([&](auto Ec) { ab[decltype(Ec)::value] = nab[decltype(Ec)::value]; });
+      entry += 1u;
+    }
+    float sink = 0.0f;
+    rola::static_for<18>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(4 * 128 + lane * 4), __float_as_uint(sink));
   }
 
   if constexpr (Mode == kHmmaQueue) {
@@ -479,6 +677,13 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(4, kHmmaQueue, 40)               \
   F(4, kHmmaQueue, 80)               \
   F(8, kHmmaQueue, 40)               \
+  F(4, kHmmaWideChainHooked, 18)     \
+  F(8, kHmmaWideChainHooked, 18)     \
+  F(4, kHmmaWideChainHooked2, 18)    \
+  F(8, kHmmaWideChainHooked2, 18)    \
+  F(4, kHmmaLatency, 18)             \
+  F(4, kHmmaWideOperands, 18)        \
+  F(8, kHmmaWideOperands, 18)        \
   F(8, kAsyncCopy, 4)                \
   F(8, kAsyncCopyAliased, 4)         \
   F(8, kAsyncCopyStrided, 4)         \

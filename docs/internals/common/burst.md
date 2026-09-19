@@ -42,6 +42,23 @@ between them: the pipeline restarts once, one exposed gather, and the decide tie
 of the loop.
 
 <a id="users"></a>
+
+<a id="fork"></a>
+## The granular fork (2026-09-19)
+
+`run(first, count, gather, mma, last)`: `gather(unit, set)` fills the first unit's set ahead of
+the loop; `mma(cur, next, unit)` bursts `cur` while gathering `unit` into `next` IN PIECES, each
+pinned into a window of the burst's HMMAs by two dependencies -- the piece's input `after` an
+HMMA's accumulator, so it cannot issue before that HMMA completes (an HMMA's completion latency
+is its own issue interval, 33 cycles: `calibration.md`), and its result hooked into a later HMMA's
+operand, so it must issue before that one; `last(cur, next)` bursts the final unit with nothing
+to gather. The loop runs while two units remain, then one `mma` and one `last` or one `last`.
+Pinning both ends is what makes the schedule HMMA, piece, HMMA, piece: pinned by the hook alone,
+ptxas computed the hook's value right behind the loads it waits on (the probe row read 36.3 an
+HMMA alone against 33.0 with both ends pinned, 38.5 unpinned). What it costs: a permute an end,
+about twenty-six instructions a fragment pair, paid in a lockstep pair (the two-warp hooked probe
+row 66.1 against 64.9); what it buys is a lone warp at the pipe's rate through its own gather.
+
 ## Its users, and the one that is not
 
 The fold's chunk (`carry/carry_kernel.md#fold`): the decide tier is the walk into the ring; the

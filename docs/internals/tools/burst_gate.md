@@ -61,8 +61,13 @@ buys one more (248 buys two, 168 three — GA102 whitepaper, Jia et al.).
 | the fold's pair (`carry_kernel.cuh:step`, the `Burst::run` user) | 155 | 36 | 1,351 of 1,170: 86.6% | 2,400: 97.5% | 58 (three shuffle-to-multiply chains) | 86.6 |
 | the readout's box loop (`readout_tile`) | 68 | 8 | 381 of 260: 68.2% | 520: 100% | 24 (the outer-factor load to its multiply) | 68.2 |
 
-A loop is named by its USER function (`--loop FILE:FUNCTION`), never by `burst.cuh:run`: every user inlines
-the same lines of the primitive, so the primitive's lines attribute to every user's loop at once.
+A loop is named by its burst function (`--loop FILE:FUNCTION`, the fold's `frag_mma`, the readout's
+`readout_tile`), never by `burst.cuh:run`: every user inlines the same lines of the primitive. The loop found
+is the backward-branch loop of the whole kernel that is DENSEST in the function's HMMAs -- the primitive's
+control carries the primitive's frames, not its user's, and a phase loop around the burst holds more HMMAs
+but fewer per instruction. Purity attributes a branch by its innermost frame (a burst function's frames sit
+under the primitive's when the branch is the primitive's exit or latch) and does not count a vote on the
+constant predicate (the uniform datapath materializing a warp-uniform value).
 Registers 244, allocated 248: two warps a scheduler; a third at 168. The floors were re-seeded when the
 model was fitted (`pipe_sim.md#calibrate`): the alone reading lost the two-deep HMMA queue and gained the
 SM's memory pipe, so the same loops read lower than under the first model (94.8 and 82.3).

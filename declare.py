@@ -51,7 +51,7 @@ INSTRUMENTS = {
     "registers": ("tools/life_ranges.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], False,
                   {"host_cpu": 1}, ["csrc/rola/src"], 600),
     "burst": ("tools/burst_gate.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh",
-                                     "--loop", "csrc/rola/src/carry/carry_kernel.cuh:step",
+                                     "--loop", "csrc/rola/src/carry/carry_kernel.cuh:frag_mma",
                                      "--loop", "csrc/rola/src/carry/carry_kernel.cuh:readout_tile"], False,
               {"host_cpu": 1}, ["csrc/rola/src"], 600),
     "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, [], 120),

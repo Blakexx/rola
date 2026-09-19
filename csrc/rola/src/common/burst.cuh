@@ -13,23 +13,28 @@ __device__ __forceinline__ uint32_t after(uint32_t x, uint32_t y) {
 
 template <class Ops>
 struct Burst {
-  //: units `first .. first + count - 1`, two sets alternating. -- burst.md#run
+  //: units `first .. first + count - 1`, two sets alternating; `mma(cur, next, unit)` bursts
+  //: `cur` while gathering `unit` into `next`, `last` with nothing to gather. -- burst.md#fork
   //: @burst-exempt the primitive itself: the loop and its guards on the uniform count
-  template <class Gather, class Mma>
-  __device__ __forceinline__ static void run(int first, int count, Gather&& gather, Mma&& mma) {
+  template <class Gather, class Mma, class Last>
+  __device__ __forceinline__ static void run(int first, int count, Gather&& gather, Mma&& mma,
+                                             Last&& last) {
     if (count <= 0) return;
     Ops a, b;
     gather(first, a);
     int i = first;
     const int end = first + count;
 #pragma unroll 1
-    for (; i + 1 < end; i += 2) {
-      gather(i + 1, b);
-      mma(a, b);
-      if (i + 2 < end) gather(i + 2, a);
-      mma(b, a);
+    for (; i + 2 < end; i += 2) {
+      mma(a, b, i + 1);
+      mma(b, a, i + 2);
     }
-    if (i < end) mma(a, b);
+    if (i + 1 < end) {
+      mma(a, b, i + 1);
+      last(b, a);
+    } else {
+      last(a, b);
+    }
   }
 };
 

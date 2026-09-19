@@ -127,15 +127,25 @@ def attributed(cubin: Path, source: Path, function: str) -> list[tuple[int, str,
 
 
 def loop_of(cubin: Path, source: Path, function: str) -> list[tuple[int, str, dict]]:
-    """One iteration of the function's loop: its attributed instructions from the target of the last backward
-    branch to that branch; the whole attribution when there is no loop."""
+    """One iteration of the function's burst loop: among the backward branches in its attributed instructions,
+    the loop holding the most HMMAs (a tail or a guard loop after the burst is not the burst), from the branch's
+    target to the branch; the whole attribution when there is no loop."""
     body = attributed(cubin, source, function)
     if not body:
         raise SystemExit(f"no SASS attributed to {function}")
-    back = [i for i, (a, t, _) in enumerate(body)
-            if opcode(t) == "BRA" and branch_target(t) is not None and branch_target(t) < a]
-    if back:
-        target = branch_target(body[back[-1]][1])
-        first = min(i for i, (a, _, _) in enumerate(body) if a >= target)
-        body = body[first : back[-1] + 1]
-    return body
+    #: the loops are found over the WHOLE kernel (a primitive's loop branch carries the primitive's frames,
+    #: not its user's) and the one chosen is the DENSEST in the function's HMMAs -- the burst itself, never a
+    #: phase loop around it
+    enc = encoded(cubin)
+    addrs = sorted(enc)
+    mine = {a for a, t, _ in body if opcode(t) == "HMMA"}
+    best = None
+    for a in addrs:
+        t = enc[a][0]
+        if opcode(t) == "BRA" and branch_target(t) is not None and branch_target(t) < a:
+            target = branch_target(t)
+            loop = [(x, *enc[x]) for x in addrs if target <= x <= a]
+            held = sum(1 for x, _, _ in loop if x in mine)
+            if held and (best is None or (held / len(loop), held) > best[0]):
+                best = ((held / len(loop), held), loop)
+    return best[1] if best else body

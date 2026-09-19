@@ -1079,28 +1079,132 @@ __device__ __forceinline__ void frag_load(ops::SmemAddr slot, ops::SmemAddr ring
   }
 }
 
-//: THE BURST of fragment `f`, INTERLEAVED with the gather of `next`: box 0's fifth HMMA
-//: is ordered after `next`'s V loads and box 1's first after its whole gather, so those
-//: issue in this burst's pipe time and never between bursts. -- #fold
+//: THE BURST of fragment `f`, the next fragment's gather in pieces pinned between its HMMAs
+//: (the granular fork: each piece after an accumulator and hooked into a later HMMA's B); the
+//: HMMAs numbered `k = bi * (kNT + 1) + j`, a box's mass HMMA last in its box; `Gather` false
+//: for the last unit. -- carry_kernel.md#fold, burst.md#fork
 //: @burst
-template <class BP>
-__device__ __forceinline__ void frag_mma(FragOperands<BP>& f, const FragOperands<BP>& next,
+template <class BP, int D, int BC, bool Gather>
+__device__ __forceinline__ void frag_mma(FragOperands<BP>& f, FragOperands<BP>& next,
+                                         ops::SmemAddr slot, ops::SmemAddr ring, int n, int warp,
                                          int lane, State<BP>& st) {
-  uint32_t loads = next.v[3];
-  rola::static_for<BP::kNT / 2 - 1>([&](auto Ic) { loads ^= next.v[4 * decltype(Ic)::value + 7]; });
-  const uint32_t chain = next.ab[0][3] ^ next.ab[BP::kDealt - 1][3];
+  static_assert(BP::kNT >= 8 && BP::kDealt == 2,
+                "the fork's piece windows are laid out for this shape");
+  const int q = lane & 3;
+  const auto res = [&](int bi, int j) { return __float_as_uint(st.c[bi][j][0]); };
   const uint32_t ones = (lane >> 2) == 0 ? 0x3F803F80u : 0u;
   const uint32_t bm[2] = {ones, ones};
+  int rrow = 0, vrow = 0;
+  uint32_t e[2][2] = {{0u, 0u}, {0u, 0u}}, s[2][2] = {{0u, 0u}, {0u, 0u}};
+  if constexpr (Gather && kFoldLoads) {
+    //: the rows and the gain words of the next unit: byte and word loads, at the top
+    const ops::SmemAddr rows = ring + (uint32_t)(n * BP::kTile * 4);
+    rrow = (int)ops::load_shared_u8(rows + (uint32_t)(run_lane_row(lane) * 4));
+    vrow = (int)ops::load_shared_u8(rows + (uint32_t)(v_lane_row(lane) * 4));
+    rola::static_for<2>([&](auto Hc) {
+      constexpr int h = decltype(Hc)::value;
+      e[h][0] = ops::load_shared_u32(rows + (uint32_t)((2 * q + 8 * h) * 4));
+      e[h][1] = ops::load_shared_u32(rows + (uint32_t)((2 * q + 8 * h + 1) * 4));
+    });
+  }
+
   rola::static_for<BP::kDealt>([&](auto Bi) {
     constexpr int bi = decltype(Bi)::value;
     rola::static_for<BP::kNT>([&](auto Jc) {
       constexpr int j = decltype(Jc)::value;
-      if constexpr (bi == 0 && j == BP::kNT / 2) f.v[2 * j] = rola::burst::after(f.v[2 * j], loads);
-      if constexpr (bi == BP::kDealt - 1 && j == 0) f.v[0] = rola::burst::after(f.v[0], chain);
+      constexpr int k = bi * (BP::kNT + 1) + j;
+      if constexpr (Gather && kFoldLoads) {
+        if constexpr (k == 2) {
+          //: the operand loads: A into `next.ab[0]`, the outer pairs into `next.ab[1]`, V
+          const int rr = (int)rola::burst::after((uint32_t)rrow, res(0, 0));
+          const int rchunk = (lane >> 3) & 1;
+          ops::load_frag_t(next.ab[0], slot + pool_inner_off<BP>(rr, rchunk));
+          ops::load_frag_t(next.ab[1], slot + pool_outer_off<BP>(rr, rchunk));
+          rola::static_for<BP::kNT / 2>([&](auto Ic) {
+            constexpr int i = decltype(Ic)::value;
+            ops::load_frag_t(*reinterpret_cast<uint32_t(*)[4]>(next.v + 4 * i),
+                             slot + pool_v_off<BP>(vrow, 2 * i + (lane >> 4)));
+          });
+        }
+
+        if constexpr (k == 4) {
+          //: the gains of tokens 2q, 2q + 1 and 2q + 8, 2q + 9 off their entries' high halves,
+          //: the outer pairs scaled by them
+          const uint32_t gp0 = rola::burst::after(__byte_perm(e[0][0], e[0][1], 0x7632), res(0, 2));
+          const uint32_t gp1 = __byte_perm(e[1][0], e[1][1], 0x7632);
+          next.ab[1][0] = ops::mul_bf16x2(next.ab[1][0], gp0);
+          next.ab[1][1] = ops::mul_bf16x2(next.ab[1][1], gp0);
+          next.ab[1][2] = ops::mul_bf16x2(next.ab[1][2], gp1);
+          next.ab[1][3] = ops::mul_bf16x2(next.ab[1][3], gp1);
+        }
+        if constexpr (k == 6) {
+          //: the transposed outer tile's pairs to the lanes of each dealt box
+          const uint32_t sp0 = rola::burst::after(next.ab[1][0], res(0, 4));
+          rola::static_for<BP::kDealt>([&](auto Bc) {
+            constexpr int b2 = decltype(Bc)::value;
+            const int b = dealt_box(warp, b2, BP::kWarps);
+            const int src = ((b & 7) << 2) | q;
+            //: the pair by a branch-free select (a uniform `?:` became a uniform branch, which a burst
+            //: forbids)
+            const uint32_t hi = 0u - (uint32_t)(b >= 8);
+            const uint32_t p0 = sp0 ^ ((sp0 ^ next.ab[1][1]) & hi);
+            const uint32_t p1 = next.ab[1][2] ^ ((next.ab[1][2] ^ next.ab[1][3]) & hi);
+            s[b2][0] = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)p0, src);
+            s[b2][1] = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)p1, src);
+          });
+        }
+        if constexpr (k == 7) {
+          uint32_t loads = next.ab[0][3];
+          rola::static_for<BP::kNT / 2>(
+              [&](auto Ic) { loads ^= next.v[4 * decltype(Ic)::value + 3]; });
+          f.v[2 * j] = rola::burst::after(f.v[2 * j], rola::burst::after(loads, res(0, 5)));
+        }
+        if constexpr (k == BP::kNT + 1) {
+          f.v[2 * j] = rola::burst::after(
+              f.v[2 * j], rola::burst::after(s[0][0] ^ s[0][1] ^ s[1][0] ^ s[1][1], res(0, 7)));
+        }
+
+        if constexpr (k == BP::kNT + 3) {
+          //: the products: box 1's into the outer pairs' registers (dead after the shuffles),
+          //: then box 0's over A
+          const uint32_t a0 = rola::burst::after(next.ab[0][0], res(1, 1));
+          next.ab[1][0] = ops::mul_bf16x2(a0, s[1][0]);
+          next.ab[1][1] = ops::mul_bf16x2(next.ab[0][1], s[1][0]);
+          next.ab[1][2] = ops::mul_bf16x2(next.ab[0][2], s[1][1]);
+          next.ab[1][3] = ops::mul_bf16x2(next.ab[0][3], s[1][1]);
+          next.ab[0][0] = ops::mul_bf16x2(a0, s[0][0]);
+          next.ab[0][1] = ops::mul_bf16x2(next.ab[0][1], s[0][0]);
+          next.ab[0][2] = ops::mul_bf16x2(next.ab[0][2], s[0][1]);
+          next.ab[0][3] = ops::mul_bf16x2(next.ab[0][3], s[0][1]);
+        }
+        if constexpr (k == BP::kNT + 6) {
+          f.v[2 * j] = rola::burst::after(
+              f.v[2 * j], rola::burst::after(next.ab[0][3] ^ next.ab[1][3], res(1, 3)));
+        }
+      }
       ops::mma(st.c[bi][j], f.ab[bi], f.v + 2 * j);
     });
     ops::mma(st.m[bi], f.ab[bi], bm);
   });
+  if constexpr (Gather && !kFoldLoads) {
+    (void)slot;
+    (void)ring;
+    (void)n;
+    (void)warp;
+    rola::static_for<BP::kDealt>([&](auto Bi) {
+      rola::static_for<4>(
+          [&](auto Ec) { next.ab[decltype(Bi)::value][decltype(Ec)::value] = kStubPair; });
+    });
+    rola::static_for<2 * BP::kNT>([&](auto Ic) { next.v[decltype(Ic)::value] = kStubPair; });
+  }
+  if constexpr (!Gather) {
+    (void)next;
+    (void)slot;
+    (void)ring;
+    (void)n;
+    (void)warp;
+    (void)q;
+  }
 }
 
 //: THE FOLD STREAM (component `fold`): the write side over the pool as a step function. A
@@ -1276,13 +1380,16 @@ struct FoldStream {
     const auto gather = [&](int n, FragOperands<BP>& f) {
       frag_load<BP, D, BC>(slot, ring, n, warp, lane, f);
     };
-    const auto mma = [&](FragOperands<BP>& f, const FragOperands<BP>& next) {
-      frag_mma<BP>(f, next, lane, st);
+    const auto mma = [&](FragOperands<BP>& f, FragOperands<BP>& next, int n) {
+      frag_mma<BP, D, BC, true>(f, next, slot, ring, n, warp, lane, st);
+    };
+    const auto last = [&](FragOperands<BP>& f, FragOperands<BP>& next) {
+      frag_mma<BP, D, BC, false>(f, next, slot, ring, 0, warp, lane, st);
     };
     const int half = (nfrag + 1) / 2;
-    rola::burst::Burst<FragOperands<BP>>::run(0, half, gather, mma);
+    rola::burst::Burst<FragOperands<BP>>::run(0, half, gather, mma, last);
     if (fill_c >= 0 && slot_empty(fill_c % BP::kPoolSlots)) fill_now();
-    rola::burst::Burst<FragOperands<BP>>::run(half, nfrag - half, gather, mma);
+    rola::burst::Burst<FragOperands<BP>>::run(half, nfrag - half, gather, mma, last);
     release();
     return true;
   }

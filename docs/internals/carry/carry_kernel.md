@@ -220,16 +220,22 @@ n-tiles); the outer pairs scaled by the gains; then a box: its pairs by shuffle 
 lanes holding boxes `b & 7`, A scaled by them (four packed multiplies). The result is one
 operand set (`FragOperands`: `ab` a box, the V tiles), 24 registers.
 
-**The burst** (`frag_mma`): a box's `kNT` HMMAs into its state and one against a ones column
-into its mass. `Burst::run` alternates two operand sets and INTERLEAVES the next gather with
-this burst: box 0's fifth HMMA is ordered after the next set's V loads and box 1's first
-after its whole gather (`rola::burst::after`, a `prmt` that selects the operand whole but
-depends on the other set), so ptxas issues the loads inside the first half of the burst and
-the multiplies and shuffles inside the second, in the pipe time this burst would have idled
-through. Why it is
-needed: a warp issues one or two HMMAs ahead of the pipe and in order, so any chain longer
-than a slot placed after a burst is exposed whole on a warp whose partner is not issuing
-(calibration.md, the fragment rows); ptxas at 213 registers sinks loads to their uses and
+**The burst** (`frag_mma<Gather>`): a box's `kNT` HMMAs into its state and one against a ones
+column into its mass, and THE NEXT FRAGMENT'S GATHER IN PIECES between them -- the granular
+fork (2026-09-19, `common/burst.md#fork`): the rows' bytes and the gain words at the top; the
+operand loads after HMMA 0's result (the bytes landed); the gains and the outer pairs' scaling
+after HMMA 2; the pairs' shuffles after HMMA 4; the loads hooked into HMMA 7 and the shuffles
+into HMMA 9; the products after HMMA 10, hooked into HMMA 14. Each piece is pinned at both
+ends with `rola::burst::after` (a `prmt` that selects a value whole but depends on another):
+its input after an HMMA's accumulator, so it cannot issue before that HMMA completes, its
+result into a later HMMA's B, so it must issue before that one -- pinned by the hook alone,
+ptxas computed the hook's value right behind the loads it waits on. The outer pairs are loaded
+into the next set's second box slot and the products overwrite in place, so no register is
+added (219 allocated, from 244). `Burst::run` alternates two sets and tells the last unit
+(`Gather` false: no gather). Why it is
+needed: a warp holds one HMMA in the unit and issues in order, so any chain longer than a
+shadow placed after a burst is exposed whole on a warp whose partner is not issuing
+(calibration.md, the fragment rows: 38.5 an HMMA unpinned, 33.0 pinned); ptxas at 213 registers sinks loads to their uses and
 regroups the bursts unless a dependency forbids it. Measured at nl64k-dense: a fragment 1,325
 -> 1,128 cycles paired as hand-written pairs and the fold 51.4K -> 47.0K a warp a window
 (alt-k4 7.8K -> 7.5K); on the primitive, with the first gather out of the walk and the poll

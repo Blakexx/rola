@@ -27,7 +27,7 @@
   }
  },
  "source": {
-  "csrc_sha256": "d03861d19f64b2fc10b9b44e5e074368d205fc9511ed83d35bc4e74b308c3e6d",
+  "csrc_sha256": "012aa3512c335b5a1258fffebdb5b3390f9fe9045e038e913b01bec22a545d8d",
   "date": "2026-09-18",
   "image_digest": ""
  },
@@ -39,12 +39,12 @@
  },
  "entries": {
   "sm_86:_ZN4rola5carry12carry_kernelILi2ELi64ELi8EEEvNS0_11CarryParamsE": {
-   "regs": 244,
+   "regs": 219,
    "spill_stores": 0,
    "spill_loads": 0,
    "hot_locals": 0,
    "local_ops": 0,
-   "sass_sha256": "cd446ff20e07ed7965619eeb7ea8003ad8634db8c97d2ee0ee4a4a430603ad9e"
+   "sass_sha256": "8d4728ecf54537866e2309381fbbe4a18d9d125244d2aa2931931bc89dca1f3d"
   },
   "sm_86:_ZN4rola5intra6detail12intra_kernelILi2ELi256ELi384EEEvNS1_11IntraParamsE": {
    "regs": 190,
@@ -2796,7 +2796,7 @@
    "spill_loads": 0,
    "hot_locals": 0,
    "local_ops": 0,
-   "sass_sha256": "2db46d228e480fe2eb7f9a6f084af5d149de4bc7669be57f742d678692ccc987"
+   "sass_sha256": "f20e3f0cca1b91ba1538655e8c97ff0a9059ce1c5b4c7c503bcfe23984744eb8"
   }
  }
 }

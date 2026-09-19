@@ -59,6 +59,13 @@ THE BURST WITH ALU WORK BESIDE IT (`hmma_alu`, eighteen HMMAs and 32 / 64 fp32 a
 38.0 / 43.6 (3 cycles an add exposed), two warps 71.3 / 78.9 -- the partner covers none of it, where it covers
 the gather chain's exposure (`hmma_frag_chain_2w` 65.3): a warp's ALU stretch beside its burst is paid in full
 by the pair, the number behind the mass-on-FMA form's loss.
+THE FORK ROWS (2026-09-19): `hmma_frag_chain_hooked` (the chain row's gather in four pieces, each hooked into a
+later HMMA's B) 36.3 alone; `hooked2` (each piece's input ALSO pinned after an earlier HMMA's accumulator, so
+ptxas can neither hoist it nor compute its hook while its loads fly) 33.0 alone, 66.1 paired -- a lone warp at the
+pipe's rate through its own gather, the pair paying the pins' instructions. `hmma_latency` (eighteen HMMAs into one
+accumulator, each dependent on the last) 33.3: the completion latency is the issue interval. `hmma_operands` (the
+fragment's burst with a fresh B register pair every HMMA, two A sets, no loads) 32.6 / 64.9: operand reuse does not
+move the rate.
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this

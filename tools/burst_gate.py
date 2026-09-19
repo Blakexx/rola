@@ -59,19 +59,36 @@ def purity(cubin: Path, functions) -> tuple[bool, list[str], dict]:
     frames = sass.frames(sass.disassemble(cubin, "--print-line-info-inline", "-gi"))
     enc = sc.encoded(cubin)
     rows = {name: collections.Counter() for _, name, _, _ in functions}
-    for off, (ins, _c) in enc.items():
+    owner: dict[int, str] = {}
+    for off in enc:
         chain = frames.get(off, [])
         for file, name, lo, hi in functions:
             if any(f == file and lo <= ln <= hi for f, ln in chain):
-                c = rows[name]
-                c["instr"] += 1
-                op = sc.opcode(ins)
-                c["hmma"] += op.startswith("HMMA")
-                c["shfl"] += op.startswith("SHFL")
-                if FORBIDDEN.match(ins):
-                    c["forbidden"] += 1
-                    c[f"op:{op}"] += 1
+                owner[off] = name
                 break
+
+    for off, (ins, _c) in enc.items():
+        name = owner.get(off)
+        if name is None:
+            continue
+        c = rows[name]
+        c["instr"] += 1
+        op = sc.opcode(ins)
+        c["hmma"] += op.startswith("HMMA")
+        c["shfl"] += op.startswith("SHFL")
+        if FORBIDDEN.match(ins):
+            #: a branch out of the function is the enclosing loop's own control (a burst's exit or latch
+            #: inlined under the burst's frames), not a branch in the burst; a vote on the constant
+            #: predicate is the uniform datapath materializing a warp-uniform value, not a data vote
+            #: (a branch's own frame, the innermost, says whose it is: a burst function's frames sit
+            #: under the primitive's when its branch is the primitive's)
+            inner = (frames.get(off) or [("", 0)])[0]
+            span = next((lo, hi, file) for file, n, lo, hi in functions if n == name)
+            loop_control = op == "BRA" and not (inner[0] == span[2] and span[0] <= inner[1] <= span[1])
+            uniform_fact = op.startswith("VOTEU") and ins.rstrip(" ;").endswith("PT")
+            if not loop_control and not uniform_fact:
+                c["forbidden"] += 1
+                c[f"op:{op}"] += 1
     lines, red = [], False
     for _, name, lo, hi in functions:
         c = rows[name]
