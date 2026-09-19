@@ -78,9 +78,6 @@ CALIBRATIONS = (
     ("icache_8192_1w", 4, 38, 8192, 8192, "8192 (128 KB), one warp a scheduler"),
     ("async_copy_latency_1w", 4, 39, 1, 1, "one 16-byte cp.async.cg a lane from L2, committed and waited on: the landing latency, one warp a scheduler"),
     ("async_copy_latency_2w", 8, 39, 1, 1, "the same, two warps a scheduler"),
-    ("pair_phase_36_2w", 8, 40, 36, 1, "36 HMMAs then 48 dependent IMADs, two warps a scheduler: fair keeps the pair in step (two bursts + a stretch), greedy staggers it (two bursts)"),
-    ("pair_phase_18_2w", 8, 40, 18, 1, "the same with 18 HMMAs"),
-    ("pair_phase_36_1w", 4, 40, 36, 1, "36 HMMAs then the stretch, one warp a scheduler: a burst plus a stretch"),
     ("global_reduce", 8, 5, 1, 1, "a global f32 reduction into the output's pages"),
     ("cta_barrier", 8, 6, 1, 1, "a CTA barrier over every lane"),
     ("shm_barrier", 8, 7, 1, 1, "a shared-memory barrier: arrive and wait"),
@@ -117,6 +114,37 @@ CALIBRATIONS = (
     ("hmma_operands_1w", 4, 26, 18, 18, "the fragment's burst with its operand pattern: a different B register pair every HMMA, two A sets, no loads, one warp"),
     ("hmma_operands_2w", 8, 26, 18, 18, "the same, two warps"),
 )
+
+
+#: STAMPED rows: read off the SM's own clock (lane 0 stamps each iteration's start into `out`, 64 a warp), each row the
+#: median over the launch's warps and iterations, so a foreign consumer's time slice drops out. name -> (warps, mode,
+#: burst, ops an iteration, what); a two-warps-a-scheduler row also reports its partners' median offset
+STAMPED = (
+    ("pair_phase_36_2w", 8, 40, 36, 1, "36 HMMAs then 48 dependent multiply-adds, two warps a scheduler: the arbitration"),
+    ("pair_phase_18_2w", 8, 40, 18, 1, "the same with 18 HMMAs"),
+    ("pair_phase_36_1w", 4, 40, 36, 1, "36 HMMAs then the stretch, one warp a scheduler"),
+    ("redux_chain_1w", 4, 41, 16, 16, "dependent warp-wide ORs (REDUX, a move back, an add), one warp a scheduler"),
+)
+
+
+def stamped(mod, name: str, warps: int, mode: int, burst: int, ops: int, owners: int, src) -> dict:
+    import torch
+
+    out = torch.zeros((owners, 128, 256), dtype=torch.float32, device="cuda")
+    mod.calibrate(warps, mode, burst, 64, owners, out, src)
+    torch.cuda.synchronize()
+    flat = out.view(torch.int32).reshape(-1)
+    st = torch.stack([flat[o * 4096:o * 4096 + warps * 64] for o in range(owners)]).reshape(owners, warps, 64)
+    st = st.to(torch.int64) & 0xFFFFFFFF
+    steps = sorted(((st[:, :, 9:] - st[:, :, 8:-1]) & 0xFFFFFFFF).reshape(-1).tolist())
+    row = {"name": name, "warps": warps, "mode": mode, "burst": burst, "stamped": True,
+           "cycles_an_op_a_warp": steps[len(steps) // 2] / ops, "iteration_p10_p90": [steps[len(steps) // 10],
+                                                                                   steps[len(steps) * 9 // 10]]}
+    if warps == 8:
+        d = (st[:, :4, 8:] - st[:, 4:, 8:]) & 0xFFFFFFFF
+        offs = sorted(torch.minimum(d, (-d) & 0xFFFFFFFF).reshape(-1).tolist())
+        row["partners_offset_p10_p50_p90"] = [offs[len(offs) // 10], offs[len(offs) // 2], offs[len(offs) * 9 // 10]]
+    return row
 
 
 def main() -> int:
@@ -169,6 +197,14 @@ def main() -> int:
             rows.append(row)
             print(f"{name:20s} {cyc:9.2f} cycles an op a warp   ({iters} units, median {med:.3f} s)  {what}",
                   flush=True)
+        for name, w, m, b, ops_a_iteration, what in STAMPED:
+            if only and name not in only:
+                continue
+            row = stamped(mod, name, w, m, b, ops_a_iteration, a.owners, src)
+            row["what"] = what
+            rows.append(row)
+            extra = f", partners {row['partners_offset_p10_p50_p90']} apart (p10/50/90)" if "partners_offset_p10_p50_p90" in row else ""
+            print(f"{name:20s} {row['cycles_an_op_a_warp']:9.2f} cycles an op a warp, off the SM clock{extra}  {what}", flush=True)
         read = carry_ops.sm_clock_ghz()
     from rola_results import Store, checkout, digest
 

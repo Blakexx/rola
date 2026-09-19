@@ -96,7 +96,7 @@ where it proves a value warp-uniform).
 THE ARBITRATION ROWS (`pair_phase_*`, 2026-09-19): each warp loops a burst of 36 or 18 HMMAs then 48 dependent
 multiply-adds, lane 0 stamping every iteration's start, so the rows are read off the SM's own clock (a foreign GPU
 consumer was running at 39%; a time slice pauses a CTA's warps together and the medians over 80 CTAs drop it -- the
-rows' wall-clock times, taken under it, are to be retaken on an idle card). 36 HMMAs, one warp a scheduler: a period of
+rows are read off the stamps by `bench_carry_calib.py`'s STAMPED rows). 36 HMMAs, one warp a scheduler: a period of
 1,193 cycles (ptxas interleaves the multiply-adds among the HMMAs, so the stretch hides). Two warps a scheduler: a
 period of 2,326 with the partners 1,154 apart (p10 328, p90 1,206) -- the pair settles ONE BURST APART, the pipe full
 and handed over at the burst's end; with 18-HMMA bursts, a period of 1,169 with the partners 2,953 apart (p90 4,182):
@@ -104,6 +104,13 @@ the leader keeps the pipe across bursts and the pair drifts whole iterations. A 
 step (the replay's fair rule reads 195 apart); the rule that reproduces the 36-HMMA row is that the tensor pipe goes to
 the warp whose HMMA it took last while that warp has one ready (`tools/replay.py`, `ARBITRATION = "pipe"`). The
 kernel's own stamps agree: the fold's partners start each chunk's walk a median 1,172 cycles apart.
+THE UNIFORM-DATAPATH AND RECONVERGENCE COSTS (2026-09-19). `redux_chain_1w` (stamped): a chain of `REDUX.OR` into a
+uniform register, the move back (`IMAD.U32`, stall 5, waiting on the reduction's scoreboard) and an add (stall 4) --
+48.6 cycles a link, so the reduction's result arrives ~40 cycles after it issues; `R2UR`, measured in place, is 39:
+a write into the uniform datapath from the vector side costs ~40 either way. A RECONVERGENCE (`BSYNC`) costs the next
+instruction a median 13.2 / 13.9 cycles of branch resolution an execution on two cells, measured in place at ~50
+sites (the kernel's phase-clock stamps are such blocks: ~1% of a window, inside the A/B's noise). Block probes meant
+to isolate it were predicated by ptxas and measured nothing; they were removed.
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this

@@ -57,7 +57,8 @@ enum CalibMode : int {
   kBranchDivergent = 37,
   kIcache = 38,
   kAsyncCopyLatency = 39,
-  kPairPhase = 40
+  kPairPhase = 40,
+  kReduxChain = 41
 };
 
 //: A LINE REPEATED, for the instruction-cache rows: `ROLA_REP<n>(x)` is `n` copies of the string `x`.
@@ -847,6 +848,19 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink) ^ x);
   }
 
+  if constexpr (Mode == kReduxChain) {
+    //: DEPENDENT WARP-WIDE ORS (`REDUX` into a uniform register, moved back and incremented), `Burst` a unit; lane 0
+    //: stamps each iteration's start into `c.out` (64 a warp) so the row is read off the SM's clock.
+    unsigned int* const stamps = reinterpret_cast<unsigned int*>(c.out + (long)owner * 16 * 256);
+    uint32_t v = (uint32_t)lane;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      if (lane == 0 && i < 64) stamps[warp * 64 + i] = (unsigned int)clock64();
+      rola::static_for<Burst>([&](auto) { v = __reduce_or_sync(0xFFFFFFFFu, v) + 1u; });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), v);
+  }
+
   if constexpr (Mode == kGlobalReduce) {
     float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
 #pragma unroll 1
@@ -971,6 +985,7 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kPairPhase, 36)               \
   F(8, kPairPhase, 18)               \
   F(4, kPairPhase, 36)               \
+  F(4, kReduxChain, 16)              \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \

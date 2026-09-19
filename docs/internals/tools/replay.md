@@ -40,7 +40,9 @@ instruction reading its registers when the memory pipe takes it, the stall count
 pipe per scheduler (`HMMA_PIPE`), one memory pipe per SM costed from the census's measured wavefronts per execution (a
 shared access) or `COPY_BASE + COPY_LINE` a distinct global line the live lanes read (an asynchronous copy), a copy
 landing `COPY_LATENCY` (the L2 round-trip row) after it issues, a copy's arrive counting when the warp's prior copies
-land, a taken branch's target issuing `TAKEN_BRANCH` after it and holding the scheduler's branch path `BRANCH_PORT`, a global reduction's issue cost (12) holding the issuing warp, not the scheduler's port (a drain's partner is blocked
+land, a taken branch's target issuing `TAKEN_BRANCH` after it and holding the scheduler's branch path `BRANCH_PORT`, a reconvergence (`BSYNC`) delaying the next instruction 13 cycles (calibration.md), a predicated-off memory instruction
+still waiting for room in the memory queue (the census's `mio` at `@!PT LDS RZ, [RZ]`), a global reduction's issue
+cost (12) holding the issuing warp, not the scheduler's port (a drain's partner is blocked
 2% of the time in the census; on the port the drain read 15% long), a CTA barrier releasing at its last arrival, `BAR.SYNC.DEFER_BLOCKING` blocking at the first convergence, control or
 memory instruction after it (every barrier site's census wait sits on the first `BSSY`; the kernel's `edges` stamp
 after the fold's rendezvous is read BEFORE the barrier releases, so the timeline's `snapshot` holds the fold-end
@@ -63,13 +65,15 @@ THE CORE AGAINST THE CALIBRATION ROWS: the replay's event loop on every probe lo
 hides it), divergent reductions (`hmma_reduce_div_*` -45 and -71%: a reduction's sectors are not yet costed from its
 lane addresses), and a lone warp's matrix loads (+10%).
 
-THE KERNEL, real order, one CTA, pipe-owner arbitration, reductions on the warp:
+THE KERNEL, real order, one CTA (pipe-owner arbitration, reductions on the warp, reconvergence and `REDUX` costed):
 
 | cell | whole run, replay / real | windows | within 10% | outside |
 |---|---|---|---|---|
-| `nl16k-dense` | 0.99 | -2 to -4% after the first | fragment 1.04, drain 1.01, tile 0.95, walk 1.02, head words 1.07, head scans 0.92 | snapshot 1.22, fill 0.88, head 0.82, issue 0.82 |
-| `nl16k-alt-k4` | 0.98 | -9 to 0% | fragment 0.99, drain 1.08, walk 1.05, snapshot 1.05, head scans 0.92 | tile 0.89, fill 0.90, head words 1.20, head 0.82, issue 0.76 |
+| `nl16k-dense` | 1.00 | -2 to +1% after the first | fragment 1.05, drain 1.04, tile 0.95, walk 1.05, fill 0.91, head scans 0.96, wait 1.03 | snapshot 1.25, head words 1.13, head 0.88, issue 0.86 |
+| `nl16k-alt-k4` | 1.00 | -6 to +3% | fragment 1.01, walk 1.06, snapshot 1.09, fill 0.91, head scans 0.96, wait 0.99 | tile 0.90, drain 1.10, head words 1.20, head 0.88, issue 0.82 |
 
+THE LARGEST ERRORS LEFT are barrier waits at phase ends (the snapshot holds the fold-end wait, the head's words the
+readout-end wait): the replay's warps finish a phase further apart than the real ones.
 THE PAIR: a fold run's partner is in an HMMA activity 78% of the run in the replay against 74% on the hardware (dense),
 57% against 56% (sparse), and the fold's partners start each walk a median 1,181 cycles apart against 1,172. What
 remains to model, each from a row: work beside a partner's HMMAs slowing the tensor pipe (the floating-point rows

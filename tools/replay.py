@@ -250,6 +250,14 @@ ARBITRATION = "pipe"
 GLOBAL_ISSUE = "warp"
 BRANCH_PORT = 7.0
 CONTROL = frozenset({"BRA", "JMP", "JMX", "BRX", "CALL", "RET", "BSYNC"})
+#: a reconvergence: the instruction after a `BSYNC` issues `RECONVERGE` cycles after it (measured in place: the
+#: census's branch-resolution wait at the instruction after ~50 `BSYNC` sites, a median 13.2 and 13.9 cycles an
+#: execution on two cells; ptxas predicates the probe rows' blocks, so no row isolates it yet)
+RECONVERGE = 13.0
+#: memory instructions: a predicated-off one still waits for room in the memory queue (the census's `mio` at
+#: `@!PT LDS RZ, [RZ]`)
+MEMORY_OPS = frozenset({"LDS", "STS", "LDSM", "LDG", "STG", "LDGSTS", "ATOMS", "ATOM", "ATOMG", "RED", "ARRIVES",
+                        "LD", "ST", "SHFL"})
 POLL_LATENCY = 30.0
 
 
@@ -516,7 +524,7 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         if op == "HMMA":
             if pipe_done[w % nsched] > r:
                 r, why = pipe_done[w % nsched], "pipe"
-        if _cost and live and mem_free - mach["mem_queue"] > r:
+        if (_cost or op in MEMORY_OPS) and mem_free - mach["mem_queue"] > r:
             r, why = mem_free - mach["mem_queue"], "memq"
         if kind == "depbar":
             n = extra
@@ -633,6 +641,8 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         if taken:
             branch_free[k] = t + BRANCH_PORT
             s["t"] = max(s["t"], t + TAKEN_BRANCH)
+        elif op == "BSYNC":
+            s["t"] = max(s["t"], t + RECONVERGE)
         s["i"] += 1
     return {"stamps": [x["stamps"] for x in st], "end": [x["t"] for x in st], "delay": [x["delay"] for x in st],
             "unfinished": {f"warp {w} pc {pc} {kind} gate {g}": n for (w, pc, kind, g), n in blocked_report.items()}}
