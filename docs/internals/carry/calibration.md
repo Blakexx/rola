@@ -111,6 +111,12 @@ a write into the uniform datapath from the vector side costs ~40 either way. A R
 instruction a median 13.2 / 13.9 cycles of branch resolution an execution on two cells, measured in place at ~50
 sites (the kernel's phase-clock stamps are such blocks: ~1% of a window, inside the A/B's noise). Block probes meant
 to isolate it were predicated by ptxas and measured nothing; they were removed.
+THE DRAIN'S REDUCTIONS (`reduce_spread_*`, stamped, 2026-09-19): global f32 reductions, each a coalesced 128-byte
+line that is not reduced into again (the drain's pattern: 1,536 of 34,816 traced reductions touch a line twice). With
+1, 8 or 32 CTAs: 41.9 cycles a reduction a warp with eight warps, 20.9 with four -- one reduction every 5.2 cycles of
+the SM's; with all 80 SMs reducing, 119.6 and 56.2 (one every ~14.8 of an SM's): the L2 saturates across the device.
+The older `global_reduce` row (85.6) cycles each warp's reductions through sixteen lines at 80 CTAs, the L2's
+same-address serialization, not the drain's cost.
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this

@@ -61,11 +61,12 @@ def summaries(warps: list[dict]) -> list[dict]:
     return out
 
 
-def take(cell: str, cta: int, keep: bool, addrs: bool, census: Path | None = None) -> dict:
+def take(cell: str, cta: int, keep: bool, addrs: bool, census: Path | None = None, trace_dir: Path | None = None) -> dict:
     import sass
 
     arch = sass.device_arch()
-    work = dev_config.scratch("warp_timeline")
+    work = trace_dir or dev_config.scratch("warp_timeline")
+    work.mkdir(parents=True, exist_ok=True)
     stem = work / f"{cell}-cta{cta}"
     records, listing, child_stamps = stem.with_suffix(".bin"), stem.with_suffix(".tsv"), stem.with_suffix(".child.pt")
     real, warps, _ctas = take_stamps(cell, cta + 1, 32768)
@@ -98,11 +99,12 @@ def main() -> int:
     ap.add_argument("--also", type=Path, action="append", default=[], help="other timeline JSONs drawn on the page")
     ap.add_argument("--keep-trace", action="store_true", help="keep the raw records (tens of MB) in the scratch")
     ap.add_argument("--addrs", action="store_true", help="record every memory operand's lane addresses")
+    ap.add_argument("--trace-dir", type=Path, default=None, help="where the kept trace goes (default the tool's scratch)")
     ap.add_argument("--census", type=Path, default=None,
                     help="a `stall_census.py` export of this cell, its samples joined into the activities; `auto` takes "
                          "the export the census keeps in its scratch")
     a = ap.parse_args()
-    tl = take(a.cell, a.cta, a.keep_trace, a.addrs, census=a.census)
+    tl = take(a.cell, a.cta, a.keep_trace, a.addrs, census=a.census, trace_dir=a.trace_dir)
     a.json.write_text(json.dumps(tl))
     w = tl["windows"]
     fed = statistics.mean(statistics.mean(x["pipe_fed"]) for x in w)

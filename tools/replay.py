@@ -236,6 +236,11 @@ BLOCKS_AT = frozenset({"BSSY", "BSYNC", "BRA", "WARPSYNC", "EXIT", "BAR", "LDS",
                        "ATOMS", "ATOM", "ATOMG", "RED", "ARRIVES", "LD", "ST"})
 COPY_BASE = 5.4
 COPY_LINE = 0.29
+#: a global reduction (a coalesced line, the drain's) holds the SM's memory pipe `REDUCTION` cycles: calibration row
+#: `reduce_spread` with 1 to 32 CTAs, 41.9 cycles a reduction a warp with eight warps (5.2 of the SM's); with all 80
+#: SMs reducing the L2 saturates and it reads 14.8, a device-level limit a one-CTA replay does not model (the kernel's
+#: drains stay far below it). On the sector cost of 2 the drain's trivial form, 34 back to back, read 0.69
+REDUCTION = 5.2
 BAR_RELEASE = 20.0
 #: a taken branch: its target issues `TAKEN_BRANCH` cycles after it (calibration row `branch_taken_1w`, 10.9: a loop of
 #: taken uniform branches, branch to branch), and it holds the scheduler's branch path `BRANCH_PORT` cycles
@@ -294,6 +299,8 @@ def static_table(sass: dict, enc: dict, wavefronts: dict) -> dict:
         cost = sc.mem_cost(op, text, ps.MACHINE)
         if pc in wavefronts and op != "LDGSTS":
             cost = wavefronts[pc] * ps.MACHINE["mem_wavefront"]
+        if op == "RED":
+            cost = REDUCTION
         out[pc] = (op, kind, ctl, ps.LATENCY.get(op, ps.LATENCY["DEFAULT"]), cost, extra)
     return out
 
@@ -567,12 +574,15 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         t0 = s["t"]
         why = bwhy
         t = bt
+        #: the wait until the warp was ready is booked to what made it ready late (`why`); a collision after that --
+        #: the scheduler's branch path, its issue port -- is booked apart (`late`, `late_why`)
         nxt = seqs[w][s["i"] + 1][0] if s["i"] + 1 < len(seqs[w]) else None
         taken = op in CONTROL and nxt is not None and nxt != pc + 16
+        late_why = ""
         if taken and branch_free[k] > t:
-            t, why = branch_free[k], "branch"
+            t, late_why = branch_free[k], "branch"
         if port_free[k] > t:
-            t, why = port_free[k], "port"
+            t, late_why = port_free[k], "port"
             s["port_by"] = f"{'partner' if port_owner[k][0] != w else 'self'}:{port_owner[k][1]}"
         pend = s["bar_pending"]
         if pend is not None and (not pend[2] or op in BLOCKS_AT):
@@ -631,7 +641,7 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         #: the cycles since the warp's last issue: the stall count's share is `wait` (the profiler's fixed-latency
         #: stall), the rest is what `why` names
         gap_stall = s["stall_gap"]
-        s["delay"].append((s["i"], t - t0, why, t, gap_stall, s["port_by"]))
+        s["delay"].append((s["i"], max(0.0, bt - t0), why, t, gap_stall, s["port_by"], t - bt, late_why))
         s["stall_gap"] = max(1, ctl["stall"]) - 1
         s["port_by"] = ""
         port_owner[k] = (w, op)
@@ -750,11 +760,13 @@ def per_instruction(csv_path: Path, seqs: list, labels: list, delays: list, tabl
     model_why = collections.defaultdict(collections.Counter)
     where = collections.defaultdict(collections.Counter)
     for w, dl in enumerate(delays):
-        for i, d, why, _t, stall_gap, _port in dl:
+        for i, d, why, _t, stall_gap, _port, late, late_why in dl:
             pc = seqs[w][i][0]
-            model[pc] += (d + stall_gap + 1) / len(seqs)
+            model[pc] += (d + late + stall_gap + 1) / len(seqs)
             if d > 0:
                 model_why[pc][model_reason(why)] += d / len(seqs)
+            if late > 0:
+                model_why[pc][model_reason(late_why)] += late / len(seqs)
             if stall_gap:
                 model_why[pc]["wait"] += stall_gap / len(seqs)
             where[pc][labels[w][i]] += 1
@@ -843,13 +855,87 @@ def as_timeline(cell: str, sim_stamps: list, keys: list, seqs: list, table: dict
     return {"cell": f"{cell} replay", "warps": warps, "windows": summaries(warps), "unmatched_intervals": 0}
 
 
+def pipe_idle(res: dict, seqs: list, labels: list, table: dict) -> dict:
+    """Each scheduler's tensor pipe over the run: busy while an HMMA it took is executing (`HMMA_PIPE` from its issue),
+    idle otherwise; every idle cycle is booked to what the scheduler's two warps were doing (the activity of the
+    instruction each was waiting to issue). Returns cycles a scheduler by (activity, activity), the pair sorted, and
+    the busy and idle totals."""
+    import bisect
+
+    import pipe_sim as ps
+
+    nsched = ps.MACHINE["schedulers"]
+    nw = len(seqs)
+    issue_t = []
+    issue_lab = []
+    for w in range(nw):
+        ts = [d[3] for d in res["delay"][w]]
+        issue_t.append(ts)
+        issue_lab.append([labels[w][d[0]] for d in res["delay"][w]])
+
+    def doing(w: int, t: float) -> str:
+        k = bisect.bisect_right(issue_t[w], t)
+        return issue_lab[w][k] if k < len(issue_lab[w]) else "done"
+
+    out = collections.Counter()
+    busy_total = idle_total = 0.0
+    for k in range(nsched):
+        hm = sorted(d[3] for w in range(k, nw, nsched) for d in res["delay"][w] if table[seqs[w][d[0]][0]][0] == "HMMA")
+        start = min(issue_t[w][0] for w in range(k, nw, nsched))
+        end = max(issue_t[w][-1] for w in range(k, nw, nsched))
+        t = start
+        for h in hm + [end]:
+            if h > t:
+                #: an idle stretch [t, h): sample it every 8 cycles for the pair's activities
+                step = 8.0
+                x = t
+                while x < h:
+                    seg = min(step, h - x)
+                    pair = tuple(sorted(doing(w, x) for w in range(k, nw, nsched)))
+                    out[pair] += seg
+                    x += seg
+                idle_total += h - t
+            t = max(t, h + ps.HMMA_PIPE)
+            busy_total += ps.HMMA_PIPE if h < end else 0.0
+    return {"by_pair": out, "busy": busy_total / nsched, "idle": idle_total / nsched}
+
+
+def drop_activities(seqs: list, keys: list, table: dict, drop: set) -> list:
+    """What-if: the named activities' instructions removed except what keeps the protocol whole -- clock reads (the
+    stamps), arrives, barriers, copy commits and gated polls. `activity/OP+OP` keeps those opcodes too (the drain's
+    reductions alone: `readout.drain/RED`)."""
+    keep_kinds = {"clock", "arrive", "copy_arrive", "bar", "commit", "depbar"}
+    rules = {}
+    for d in drop:
+        act, _, ops = d.partition("/")
+        rules[act] = set(ops.split("+")) if ops else set()
+    out = []
+    for w, seq in enumerate(seqs):
+        new, k = [], -1
+        for item in seq:
+            kind = table[item[0]][1]
+            if kind == "clock":
+                k += 1
+            key = keys[w][k] if 0 <= k < len(keys[w]) else None
+            if (key is not None and key[1] in rules and kind not in keep_kinds and item[2] is None and item[3] is None
+                    and table[item[0]][0] not in rules[key[1]]):
+                continue
+            new.append(item)
+        out.append(new)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
     ap.add_argument("--cta", type=int, default=0)
     ap.add_argument("--learn-only", action="store_true")
     ap.add_argument("--census", type=Path, default=None, help="`auto` or a stall_census export: measured wavefronts")
+    ap.add_argument("--trace-dir", type=Path, default=None, help="the kept trace's directory (default the timeline's scratch)")
     ap.add_argument("--json", type=Path, default=None, help="write the replay as a timeline record (real order only)")
+    ap.add_argument("--idle", action="store_true", help="print each scheduler's tensor-pipe idle cycles by what its warps did")
+    ap.add_argument("--drop", default="", help="what-if: comma list of activities whose work is removed (arrives, "
+                                               "barriers, copies' commits and clock reads are kept)")
     ap.add_argument("--order", choices=("real", "traced"), default="real",
                     help="issue each warp's activities in the real run's order (validation) or the traced run's")
     ap.add_argument("--per-instruction", type=int, default=0, metavar="N",
@@ -859,7 +945,7 @@ def main() -> int:
     import toolchains
     import torch
 
-    stem = dev_config.scratch("warp_timeline") / f"{a.cell}-cta{a.cta}"
+    stem = (a.trace_dir or dev_config.scratch("warp_timeline")) / f"{a.cell}-cta{a.cta}"
     recs, mrefs, sass, value_of = load_all(stem.with_suffix(".bin"), stem.with_suffix(".tsv"))
     value_sites = {int(l.split()[2]): int(l.split()[3]) for l in stem.with_suffix(".tsv").read_text().splitlines()
                    if l.startswith("# value")}
@@ -898,11 +984,15 @@ def main() -> int:
     if a.order == "real":
         seqs, keys, report = real_order(seqs, table, child, real)
         print(f"issued in the real run's order: {report}")
+    if a.drop and keys is not None:
+        seqs = drop_activities(seqs, keys, table, set(a.drop.split(",")))
     print(f"replay streams: {[len(x) for x in seqs]} instructions a warp (traced {len(recs)} in all)")
     res = simulate(seqs, table, learned["counts"], len(seqs))
     if res["unfinished"]:
         print("UNFINISHED (deadlock or an unresolved wait):", list(res["unfinished"].items())[:8])
     cmp_ = compare_keyed(res["stamps"], keys, real) if keys is not None else compare(res["stamps"], child, real)
+    ends = res["end"]
+    print(f"the CTA's run: {max(ends):.0f} cycles (last warp's end)")
     if keys is not None:
         pair_overlap(res["stamps"], keys, real, len(seqs))
         if a.json is not None:
@@ -932,14 +1022,16 @@ def main() -> int:
     model = collections.defaultdict(collections.Counter)
     port_ops = collections.defaultdict(collections.Counter)
     for w, dl in enumerate(res["delay"]):
-        for i, d, why, _t, stall_gap, port_by in dl:
+        for i, d, why, _t, stall_gap, port_by, late, late_why in dl:
             lab = labels[w][i]
             model[lab]["selected"] += 1
             model[lab]["wait"] += stall_gap
             if d > 0:
                 model[lab][model_reason(why)] += d
-            if why == "port":
-                port_ops[lab][(table[seqs[w][i][0]][0], port_by)] += d
+            if late > 0:
+                model[lab][model_reason(late_why)] += late
+            if late_why == "port":
+                port_ops[lab][(table[seqs[w][i][0]][0], port_by)] += late
     mix = census_mix(census, seqs, labels) if census is not None else {}
     reasons = ("selected", "math", "wait", "short_sb", "long_sb", "mio", "not_selected", "barrier/poll", "lg", "branch_resolving", "no_inst")
     print("\nWHY, per activity: the model's cycles by reason beside the census's samples by reason (each as % of its row)")
@@ -951,6 +1043,13 @@ def main() -> int:
             cc["barrier/poll" if k == "barrier" else k] += v
         print(f"  {lab:18s} model " + " ".join(f"{r.split('/')[0][:8]}={100 * m[r] / mt:3.0f}" for r in reasons if m[r] / mt >= 0.02))
         print(f"  {'':18s} census" + " ".join(f" {r.split('/')[0][:8]}={100 * cc[r] / ct:3.0f}" for r in reasons if cc[r] / ct >= 0.02))
+    if a.idle:
+        idle = pipe_idle(res, seqs, labels, table)
+        nwin = max(1, len(cmp_["windows"]))
+        print(f"\nTENSOR PIPE a scheduler: busy {idle['busy'] / nwin:.0f}, idle {idle['idle'] / nwin:.0f} cycles a window; idle by what "
+              f"its two warps were doing (cycles a scheduler a window):")
+        for pair, v in idle["by_pair"].most_common(14):
+            print(f"   {v / 4 / nwin:7.0f}  {' + '.join(pair)}")
     if census is not None and a.per_instruction:
         per_instruction(census, seqs, labels, res["delay"], table, sass, arch, tot_r / len(seqs), a.per_instruction)
     print("\nthe model's issue-port waits by (the waiting instruction, who held the port), cycles a warp:")

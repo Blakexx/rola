@@ -53,9 +53,50 @@ kept the replay's pairs in step, 87% overlapped in the fold against 74%, and a l
 `--json out.json` writes the replay in the timeline's record format; the page (`timeline_page.render` of the real
 record and the replay's) draws the replay beneath each warp under "beneath each warp", same window, same scale.
 
+A delay is booked in two parts: the wait until the warp was ready, to what held it (a scoreboard, the pipe, a gate,
+a barrier), and a collision after it (the scheduler's branch path, its issue port) apart; the first form booked a
+1-cycle port collision's whole pipe wait to the port and read the tile 13-33% "partner issuing" where the census has
+~0.
+
 `--per-instruction N` prints the N instructions whose modelled cycles a warp differ most from the census's (a sample is
 a warp-cycle waiting at an instruction, which is what the replay books at each instruction), with both sides' reasons:
 the instrument that found the uniform move's latency, the counting scoreboards and the taken branches.
+
+## The idle ledger and the what-ifs
+
+`--idle` books every cycle a scheduler's tensor pipe is empty (no HMMA it took executing) to what its two warps were
+doing then. `nl16k-dense`: busy 70.7K and idle 28.8K cycles a scheduler a window; the largest idle entry is both warps
+in their drains (7.2K), then both in fragments (2.3K: between bursts), both in the snapshot (2.2K), a drain beside a
+tile (2.0K), the head (1.8K), the head's words (1.75K), the fills (1.5K + 1.3K beside a fragment).
+
+`--drop ACTIVITY[,...]` removes an activity's instructions while keeping what holds the protocol (clock reads, arrives,
+barriers, copy commits, gated polls); `ACTIVITY/OP+OP` keeps those opcodes too. A removal is an UPPER BOUND on what
+restructuring the activity could recover, not a prediction of a design: the whole CTA run, replayed, without --
+
+| activity removed | `nl16k-dense` | `nl16k-alt-k4` |
+|---|---|---|
+| the drain | -9.5% | -14.4% |
+| the walk | -5.5% | -13.0% |
+| the head's three passes | -4.0% | -12.1% |
+| the fills | -3.4% | -8.6% |
+| the tile issue | -1.8% | -2.7% |
+| the snapshot | -1.1% | -3.4% |
+
+The drain keeping only its reductions (`readout.drain/RED`) reads -8.1K cycles a window dense and -4.0K sparse, where
+the composer measured -5.1K and -2.0K for the drain's trivial form (reductions from the accumulators, no stage, no
+sync, its address arithmetic kept) at `nl64k`: the edit removes more than the form did. A design is judged by building
+it and replaying its own trace; the what-if ranks where to look.
+
+THE SECOND FORM (the rule: a model of the kernel is trusted after it reproduces two measured forms). The drain's
+trivial form (`ROLA_CARRY_PARTS=...,readout.drain=trivial,...`: reductions straight from the accumulators, no stage),
+built, traced and replayed on an idle card: the replay reads it at 0.95 on `nl16k-dense` and 0.95 on `nl16k-alt-k4`
+(the kernel's own form: 1.01 and 1.00). The CHANGE between the forms is where it fails: the real run gains 4.1% at
+dense, the replays 9.0% -- the drain's stage round trip is 168K cycles a warp over the run on the hardware (5.25K a
+window, the composer's 5.1K) and 223K in the model, and on the hardware the same tile-issue code takes 20% longer once
+the drains shrink (the global-memory queue the drain's reductions and the issue's copies share: the census's `lg` at
+the trivial drain, a queue the model folds into one memory pipe). So the replay locates where time goes in a measured
+binary; it does not yet size a change. Its drain reductions cost `REDUCTION` (5.2, the SM's rate from
+`reduce_spread`); on the sector cost of 2 the trivial drain read 0.69.
 
 ## Validation, 2026-09-19
 

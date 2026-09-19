@@ -58,7 +58,8 @@ enum CalibMode : int {
   kIcache = 38,
   kAsyncCopyLatency = 39,
   kPairPhase = 40,
-  kReduxChain = 41
+  kReduxChain = 41,
+  kReduceSpread = 42
 };
 
 //: A LINE REPEATED, for the instruction-cache rows: `ROLA_REP<n>(x)` is `n` copies of the string `x`.
@@ -861,6 +862,22 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     ops::store_shared_u32(lines + (uint32_t)(lane * 4), v);
   }
 
+  if constexpr (Mode == kReduceSpread) {
+    //: GLOBAL REDUCTIONS TO LINES THAT DO NOT REPEAT (the drain's pattern: a warp's reduction one coalesced 128-byte
+    //: line, a line almost never reduced into again): `Burst` a unit, each warp walking its CTA's 512 lines past the
+    //: stamps' region, lane 0 stamping each iteration's start (read off the SM's clock).
+    unsigned int* const stamps = reinterpret_cast<unsigned int*>(c.out + (long)owner * 16 * 256);
+    float* const region = c.out + (long)gridDim.x * 16 * 256 + (long)owner * 512 * 32;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      if (lane == 0 && i < 64) stamps[warp * 64 + i] = (unsigned int)clock64();
+      rola::static_for<Burst>([&](auto Kc) {
+        const int line = ((i * Burst + decltype(Kc)::value) * Warps + warp) & 511;
+        ops::red_global_add_f32(region + (long)line * 32 + lane, 1.0f);
+      });
+    }
+  }
+
   if constexpr (Mode == kGlobalReduce) {
     float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
 #pragma unroll 1
@@ -986,6 +1003,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kPairPhase, 18)               \
   F(4, kPairPhase, 36)               \
   F(4, kReduxChain, 16)              \
+  F(8, kReduceSpread, 16)            \
+  F(4, kReduceSpread, 16)            \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \

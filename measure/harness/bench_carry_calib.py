@@ -124,6 +124,8 @@ STAMPED = (
     ("pair_phase_18_2w", 8, 40, 18, 1, "the same with 18 HMMAs"),
     ("pair_phase_36_1w", 4, 40, 36, 1, "36 HMMAs then the stretch, one warp a scheduler"),
     ("redux_chain_1w", 4, 41, 16, 16, "dependent warp-wide ORs (REDUX, a move back, an add), one warp a scheduler"),
+    ("reduce_spread_2w", 8, 42, 16, 16, "global f32 reductions, each a coalesced line not reduced into again, eight warps"),
+    ("reduce_spread_1w", 4, 42, 16, 16, "the same, four warps"),
 )
 
 
