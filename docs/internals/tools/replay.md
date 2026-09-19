@@ -26,27 +26,46 @@ copy's arrive is its own opcode (`ARRIVES.LDGSTSBAR.64`). `learn` finds the prot
 
 ## The replay
 
-Each warp's traced path is issued in order: a spin collapses to its successful poll, which issues once the word's
-completions reach what that poll observed; a test that failed stays as traced. The machine is `sass_control.MACHINES`
-plus: scoreboards from the control bits, the stall count as the fixed-latency wait, the tensor pipe per scheduler
-(`HMMA_PIPE`), one memory pipe per SM costed from the census's measured wavefronts per execution (a shared access) or
-`COPY_BASE + COPY_LINE` a distinct global line the live lanes read (an asynchronous copy: calibration.md's
-sixteen-a-group copy rows, so a dead lane's zero fill is free), a copy landing `COPY_LATENCY` after it issues (a
-choice, not yet a probe row), a copy's arrive counting when the warp's prior copies land, a CTA barrier releasing at
-its last arrival, `BAR.SYNC.DEFER_BLOCKING` blocking one instruction late (the census samples its wait there: the
-kernel's `edges` stamp after the fold's rendezvous is taken BEFORE the barrier releases, so the timeline's `snapshot`
-holds the fold-end wait), and the earliest ready warp issuing with ties to the warp that issued least recently (the
-first form always favoured the lower warp and put warps 4-7 11.6K behind at the head's barrier).
+Each warp's path is issued in order. In the default mode (`--order real`) the stream is cut at its clock reads into
+activities, keyed by (window, event, ordinal), and issued in the REAL run's order: an activity's content does not depend
+on timing (the k-th walk is chunk k's), its place does -- the traced run is ~1000x slower, so its fills fire at other
+polls and it waits where the real run did not (253 of 256 warp-windows differ at `nl16k-dense`). A successful poll
+licenses the activity after it, so its gate travels with that activity; a wait the real run had and the traced run did
+not is issued as its own clock read. A spin collapses to its successful poll; a word ONE warp arrives on (a warp's own
+ring) gates on that warp's own arrivals so far, whatever tiles it took.
+
+The machine is `sass_control.MACHINES` (latencies from the dependent-chain rows) plus: scoreboards from the control bits
+that COUNT their producers (the fill's copy and an `R2UR` share scoreboard 1, and the consumer waits for both), a memory
+instruction reading its registers when the memory pipe takes it, the stall count as the fixed-latency wait, the tensor
+pipe per scheduler (`HMMA_PIPE`), one memory pipe per SM costed from the census's measured wavefronts per execution (a
+shared access) or `COPY_BASE + COPY_LINE` a distinct global line the live lanes read (an asynchronous copy), a copy
+landing `COPY_LATENCY` (the L2 round-trip row) after it issues, a copy's arrive counting when the warp's prior copies
+land, a taken branch's target issuing `TAKEN_BRANCH` after it and holding the scheduler's branch path `BRANCH_PORT`, a
+CTA barrier releasing at its last arrival, `BAR.SYNC.DEFER_BLOCKING` blocking at the first convergence, control or
+memory instruction after it (every barrier site's census wait sits on the first `BSSY`; the kernel's `edges` stamp
+after the fold's rendezvous is read BEFORE the barrier releases, so the timeline's `snapshot` holds the fold-end
+wait), and fair arbitration between a scheduler's warps.
+
+`--per-instruction N` prints the N instructions whose modelled cycles a warp differ most from the census's (a sample is
+a warp-cycle waiting at an instruction, which is what the replay books at each instruction), with both sides' reasons:
+the instrument that found the uniform move's latency, the counting scoreboards and the taken branches.
 
 ## Validation, 2026-09-19
 
-| cell | whole run, replay / real | windows | within 20% | outside |
-|---|---|---|---|---|
-| `nl16k-dense` | 0.99 | within 0.5% after the first | tile 0.94, drain 0.94, fill 0.84, head words 0.85 | fragment 1.20, walk 0.81, head 0.71, issue 0.76, snapshot 0.44 |
-| `nl16k-alt-k4` | 0.93 | 4-12% fast | tile 0.92, drain 1.00, head words 0.93, snapshot 0.80 | fragment 1.14, walk 0.83, fill 0.82, head 0.71, issue 0.79 |
+THE CORE AGAINST THE CALIBRATION ROWS: the replay's event loop on every probe loop the loop simulator knows, 35 rows:
+27 within 3%. The misses are named: floating-point work beside a partner's HMMAs (`hmma_alu_*_2w` -8 and -16%,
+`hmma_queue_40_2w` -6%: on the hardware one warp's arithmetic stretch is NOT hidden by its partner's HMMAs, the model
+hides it), divergent reductions (`hmma_reduce_div_*` -45 and -71%: a reduction's sectors are not yet costed from its
+lane addresses), and a lone warp's matrix loads (+10%).
 
-What the model lacks, named by the census beside it: BRANCH RESOLUTION and INSTRUCTION FETCH (`branch_resolving`
-4-13% and `no_inst` 2-6% of the decide tier's samples: the walk, the head, the issue and the fill are 15-30% fast in
-the model on both cells), and the pair's overlap in the fold (the fragment is 14-20% slow: the model puts both warps
-of a scheduler in their fragments at once more than the real run does). Each is closed by a probe row, not a fitted
-constant, and a closing is read off both cells.
+THE KERNEL, real order, one CTA:
+
+| cell | whole run, replay / real | windows | within 10% | outside |
+|---|---|---|---|---|
+| `nl16k-dense` | 1.05 | +1 to +5% | tile 0.96, walk 1.03, head scans 0.92 | fragment 1.21, drain 1.15, head words 1.12, fill 0.88, head 0.82, issue 0.82, snapshot 0.69 |
+| `nl16k-alt-k4` | 1.01 | -6 to +4% | tile 0.93, walk 1.05, snapshot 0.96, head scans 0.92, fill 0.90, wait 1.00 | fragment 1.08, drain 1.16, head words 1.19, head 0.82, issue 0.76 |
+
+THE FRAGMENT'S EXCESS is the pair: a fold run's partner is in an HMMA activity 87% of the run in the replay against 74%
+on the hardware (dense; 67% against 56% sparse), and the replay loses ~6 cycles between consecutive HMMAs of the pair.
+What remains to model, each from a row: the paired floating-point interference above, a reduction's sectors, and the
+instruction cache (the census's `no_inst` at branch targets).

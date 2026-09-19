@@ -25,19 +25,21 @@ import sass  # noqa: E402
 
 #: THE MACHINE, an architecture: the cycles an HMMA holds the tensor pipe a scheduler (sm_86: bf16 with
 #: fp32 accumulate at half rate, calibration `hmma_1w` 32.4; sm_80 full rate) and the issue-to-result
-#: latency of the scoreboard classes (calibration.md's rows where one exists, else the microbenchmark
+#: latency of the scoreboard classes (calibration.md's rows where one exists -- the dependent-chain rows put a
+#: shared load, a matrix load and a shuffle at 25, 25 and 24 on sm_86, 2026-09-19; `R2UR` 39 is measured in place,
+#: the census's scoreboard wait at its consumer on two cells, and owes a probe row -- else the microbenchmark
 #: literature, bounded above), and the HMMAs the pipe queues past the one it executes (`hmma_queue`: the
 #: calibration row with four loads after each burst hid 35 of their 42 cycles, one slot's worth, so two in
 #: flight). A cubin of an architecture without a row is refused.
 MACHINES = {
-    "sm_86": {"hmma_pipe": 32.5, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
+    "sm_86": {"hmma_pipe": 32.5, "latency": {"LDSM": 25, "LDS": 25, "LDG": 400, "SHFL": 24, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
+                                              "HFMA2": 6, "FFMA": 5, "R2UR": 39, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
               "schedulers": 4, "mem_wavefront": 1.0, "mem_sector": 2.0, "mem_queue": 4.0, "issue": {"RED": 12, "ATOM": 12, "ATOMG": 12,
                                                                                     "STG": 4, "LDG": 4}},
-    "sm_80": {"hmma_pipe": 16.0, "latency": {"LDSM": 32, "LDS": 26, "LDG": 400, "SHFL": 26, "STS": 20, "S2R": 20,
+    "sm_80": {"hmma_pipe": 16.0, "latency": {"LDSM": 25, "LDS": 25, "LDG": 400, "SHFL": 24, "STS": 20, "S2R": 20,
                                               "VOTE": 20, "HMMA": 35, "MUFU": 20, "I2F": 12, "F2I": 12, "F2F": 12,
-                                              "HFMA2": 6, "FFMA": 5, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
+                                              "HFMA2": 6, "FFMA": 5, "R2UR": 39, "DEFAULT": 6}, "read": 6, "hmma_queue": 0,
               "schedulers": 4, "mem_wavefront": 1.0, "mem_sector": 2.0, "mem_queue": 4.0, "issue": {"RED": 12, "ATOM": 12, "ATOMG": 12,
                                                                                     "STG": 4, "LDG": 4}},
 }

@@ -49,8 +49,28 @@ enum CalibMode : int {
   kAsyncCopyMixedSink = 29,
   kAsyncCopy4ZfillSink = 30,
   kAsyncCopyLanes = 31,
-  kAsyncCopy4Lanes = 32
+  kAsyncCopy4Lanes = 32,
+  kLdsChain = 33,
+  kShflChain = 34,
+  kLdsmChain = 35,
+  kBranchTaken = 36,
+  kBranchDivergent = 37,
+  kIcache = 38,
+  kAsyncCopyLatency = 39
 };
+
+//: A LINE REPEATED, for the instruction-cache rows: `ROLA_REP<n>(x)` is `n` copies of the string `x`.
+#define ROLA_REP2(x) x x
+#define ROLA_REP4(x) ROLA_REP2(x) ROLA_REP2(x)
+#define ROLA_REP8(x) ROLA_REP4(x) ROLA_REP4(x)
+#define ROLA_REP16(x) ROLA_REP8(x) ROLA_REP8(x)
+#define ROLA_REP32(x) ROLA_REP16(x) ROLA_REP16(x)
+#define ROLA_REP64(x) ROLA_REP32(x) ROLA_REP32(x)
+#define ROLA_REP128(x) ROLA_REP64(x) ROLA_REP64(x)
+#define ROLA_REP256(x) ROLA_REP128(x) ROLA_REP128(x)
+#define ROLA_REP512(x) ROLA_REP256(x) ROLA_REP256(x)
+#define ROLA_REP1024(x) ROLA_REP512(x) ROLA_REP512(x)
+#define ROLA_REP2048(x) ROLA_REP1024(x) ROLA_REP1024(x)
 
 constexpr int kCalibSmemBytes = 96416;
 
@@ -123,7 +143,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
 #pragma unroll 1
     for (int i = 0; i < c.iters; ++i) {
       //: piece 1: the next entry's rows -- a shuffle, two loads (issued at the top: loads first)
-      const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+      const uint32_t re =
+          (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
       uint32_t a[4], sp[4];
       ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
       ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
@@ -178,13 +199,19 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
     uint32_t ab[2][4], v[16], bm[2] = {w, w};
     rola::static_for<2>([&](auto Bc) {
-      rola::static_for<4>([&](auto Ec) { ab[decltype(Bc)::value][decltype(Ec)::value] = w ^ (uint32_t)(decltype(Bc)::value * 4 + decltype(Ec)::value); });
+      rola::static_for<4>([&](auto Ec) {
+        ab[decltype(Bc)::value][decltype(Ec)::value] =
+            w ^ (uint32_t)(decltype(Bc)::value * 4 + decltype(Ec)::value);
+      });
     });
-    rola::static_for<16>([&](auto Ic) { v[decltype(Ic)::value] = w ^ (uint32_t)(16 + decltype(Ic)::value); });
+    rola::static_for<16>(
+        [&](auto Ic) { v[decltype(Ic)::value] = w ^ (uint32_t)(16 + decltype(Ic)::value); });
     float y[2][9][4];
     rola::static_for<2>([&](auto Bc) {
       rola::static_for<9>([&](auto Jc) {
-        rola::static_for<4>([&](auto Ec) { y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+        rola::static_for<4>([&](auto Ec) {
+          y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value] = 0.0f;
+        });
       });
     });
 #pragma unroll 1
@@ -201,7 +228,9 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     float sink = 0.0f;
     rola::static_for<2>([&](auto Bc) {
       rola::static_for<9>([&](auto Jc) {
-        rola::static_for<4>([&](auto Ec) { sink += y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value]; });
+        rola::static_for<4>([&](auto Ec) {
+          sink += y[decltype(Bc)::value][decltype(Jc)::value][decltype(Ec)::value];
+        });
       });
     });
     ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink));
@@ -246,7 +275,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     const auto res = [&](int j) { return __float_as_uint(y[j][0]); };
 #pragma unroll 1
     for (int i = 0; i < c.iters; ++i) {
-      const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+      const uint32_t re =
+          (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
       uint32_t a[4], sp[4];
       ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
       ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
@@ -313,7 +343,9 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
       //: the chain as volatile asm: ptxas keeps it AFTER the burst's HMMAs (which are volatile asm too), so
       //: what is hidden is hidden by HMMAs already posted, never by interleaving
       rola::static_for<Burst>([&](auto Kc) {
-        asm volatile("fma.rn.f32 %0, %0, %1, %2;" : "+f"(m) : "f"(d), "f"(__int_as_float((int)i + decltype(Kc)::value)));
+        asm volatile("fma.rn.f32 %0, %0, %1, %2;"
+                     : "+f"(m)
+                     : "f"(d), "f"(__int_as_float((int)i + decltype(Kc)::value)));
       });
     }
     float sink = m;
@@ -375,7 +407,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
 #pragma unroll 1
     for (int i = 0; i < c.iters; ++i) {
       if constexpr (Mode == kHmmaWideChain) {
-        const uint32_t re = (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
+        const uint32_t re =
+            (uint32_t)__shfl_sync(0xFFFFFFFFu, (int)entry, (lane & 7) + 8 * (lane >> 4));
         uint32_t a[4], sp[4];
         ops::load_frag_t(a, lines + (uint32_t)((re & 1u) * 128));
         ops::load_frag_t(sp, lines + (uint32_t)(256 + (re & 1u) * 128));
@@ -428,7 +461,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     //: 128-byte-row tile, the chunk swizzled by the row, so each of the four matrices reads eight
     //: distinct bank groups -- four wavefronts a load (the broadcast row below is one).
     rola::static_for<8>([&](auto Rc) {
-      ops::store_shared_u32(lines + (uint32_t)(decltype(Rc)::value * 128 + lane * 4), (uint32_t)tid);
+      ops::store_shared_u32(lines + (uint32_t)(decltype(Rc)::value * 128 + lane * 4),
+                            (uint32_t)tid);
     });
     __syncwarp();
     const uint32_t at = (uint32_t)((lane & 7) * 128 + (((lane >> 3) ^ (lane & 7)) & 7) * 16);
@@ -567,8 +601,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     }
   }
 
-  if constexpr (Mode == kAsyncCopyStrided || Mode == kAsyncCopy4 || Mode == kAsyncCopyRows ||
-                Mode == kAsyncCopyLines) {
+  if constexpr (Mode == kAsyncCopyStrided || Mode == kAsyncCopy4 || Mode == kAsyncCopyRows
+                || Mode == kAsyncCopyLines) {
     //: the source side of a landing, `[owners][256 lanes][128]` bytes, a lane a 128-byte line:
     //: STRIDED, the bank-free destination fed from a line a lane (sixteen-byte runs); FOUR, four-byte
     //: runs a lane, one contiguous line in and out; ROWS, the pool fill's V pattern (a lane a token row
@@ -585,7 +619,8 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
           ops::stage_run<16>(lines + off, block + (long)tid * 128 + k * 16);
         }
         if constexpr (Mode == kAsyncCopy4) {
-          ops::stage_run<4>(lines + (uint32_t)(k * 128 + lane * 4), block + (long)k * 128 + lane * 4);
+          ops::stage_run<4>(lines + (uint32_t)(k * 128 + lane * 4),
+                            block + (long)k * 128 + lane * 4);
         }
         if constexpr (Mode == kAsyncCopyRows) {
           const int chunk = 2 * k + h;
@@ -603,9 +638,9 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     }
   }
 
-  if constexpr (Mode == kAsyncCopyZfillSink || Mode == kAsyncCopyZfillSpread ||
-                Mode == kAsyncCopyMixedSink || Mode == kAsyncCopy4ZfillSink ||
-                Mode == kAsyncCopyLanes || Mode == kAsyncCopy4Lanes) {
+  if constexpr (Mode == kAsyncCopyZfillSink || Mode == kAsyncCopyZfillSpread
+                || Mode == kAsyncCopyMixedSink || Mode == kAsyncCopy4ZfillSink
+                || Mode == kAsyncCopyLanes || Mode == kAsyncCopy4Lanes) {
     //: the fill's DEAD LANES: a zero-size copy lands sixteen zero bytes and reads nothing. SINK,
     //: every lane's landing one slot (the pool's zero row, as the fill lands them); SPREAD, a slot
     //: a lane; MIXED, four lanes live from their own rows and twenty-eight dead to the one slot (a
@@ -642,10 +677,135 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
         }
         if constexpr (Mode == kAsyncCopy4Lanes) {
           if (h == 0)
-            ops::stage_run_lanes<4>(lines + (uint32_t)(k * 128 + lane * 4), block + (long)k * 128 + lane * 4,
-                                    lane < 2);
+            ops::stage_run_lanes<4>(lines + (uint32_t)(k * 128 + lane * 4),
+                                    block + (long)k * 128 + lane * 4, lane < 2);
         }
       });
+      ops::stage_commit();
+      ops::stage_wait<0>();
+    }
+  }
+
+  if constexpr (Mode == kLdsChain || Mode == kLdsmChain) {
+    //: DEPENDENT SHARED LOADS: each load's address is the last load's result plus the lane's own offset; the
+    //: words read are zero, so the address never moves and every load waits on the one before (the latency).
+    //: LDS a lane its own word; LDSM a lane its own sixteen-byte row, one matrix a load.
+    for (int i = lane; i < 64 * 32; i += 32) ops::store_shared_u32(lines + (uint32_t)(i * 4), 0u);
+    __syncwarp();
+    uint32_t v = 0u;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto) {
+        if constexpr (Mode == kLdsChain) {
+          v = ops::load_shared_u32(lines + (uint32_t)(lane * 4) + v);
+        } else {
+          uint32_t r;
+          asm volatile("ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%0}, [%1];\n"
+                       : "=r"(r)
+                       : "r"(lines + (uint32_t)((lane & 7) * 16) + v));
+          v = r;
+        }
+      });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(64 * 32 * 4 + lane * 4), v);
+  }
+
+  if constexpr (Mode == kShflChain) {
+    //: DEPENDENT SHUFFLES: each shuffle's value is the last one's result.
+    uint32_t v = (uint32_t)lane;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto) { v = (uint32_t)__shfl_xor_sync(0xFFFFFFFFu, (int)v, 1); });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), v);
+  }
+
+  if constexpr (Mode == kBranchTaken) {
+    //: A TAKEN UNIFORM BRANCH: `Burst` a unit, each over a block of sixteen dependent adds it skips (too large for
+    //: ptxas to predicate); the predicate is a runtime value the compiler cannot know.
+    const uint32_t one = c.iters > 0 ? 1u : 0u;
+    uint32_t acc = (uint32_t)lane;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto) {
+        asm volatile("{\n.reg .pred p;\nsetp.ne.u32 p, %1, 0;\n@p bra.uni SKIP%=;\n" ROLA_REP16(
+                         "add.u32 %0, %0, %1;\n") "SKIP%=:\n}\n"
+                     : "+r"(acc)
+                     : "r"(one));
+      });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), acc);
+  }
+
+  if constexpr (Mode == kBranchDivergent) {
+    //: A DIVERGENT BRANCH AND ITS RECONVERGENCE: odd and even lanes take different blocks of eight dependent adds,
+    //: `Burst` a unit; the cost over two blocks' adds is the divergence's.
+    uint32_t acc = (uint32_t)lane;
+    const uint32_t odd = (uint32_t)lane & 1u;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto) {
+        if (odd) {
+          asm volatile(ROLA_REP8("add.u32 %0, %0, %1;\n") : "+r"(acc) : "r"(odd));
+        } else {
+          asm volatile(ROLA_REP8("xor.b32 %0, %0, %1;\n") : "+r"(acc) : "r"(odd + 3u));
+        }
+      });
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), acc);
+  }
+
+  if constexpr (Mode == kIcache) {
+    //: THE INSTRUCTION CACHE: a loop body of `Burst` multiply-adds over four independent accumulators (issue-bound:
+    //: IMAD's latency is covered), so the body's code is `Burst` x 16 bytes; cycles an instruction rise where the
+    //: body outgrows a cache level.
+    uint32_t a0 = (uint32_t)lane, a1 = a0 + 1u, a2 = a0 + 2u, a3 = a0 + 3u;
+    const uint32_t m = (uint32_t)c.iters | 1u;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      if constexpr (Burst == 256) {
+        asm volatile(
+            ROLA_REP64(
+                "mad.lo.u32 %0, %0, %4, %4;\nmad.lo.u32 %1, %1, %4, %4;\nmad.lo.u32 %2, %2, %4, %4;\nmad.lo.u32 %3, %3, %4, %4;\n")
+            : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+            : "r"(m));
+      } else if constexpr (Burst == 1024) {
+        asm volatile(
+            ROLA_REP256(
+                "mad.lo.u32 %0, %0, %4, %4;\nmad.lo.u32 %1, %1, %4, %4;\nmad.lo.u32 %2, %2, %4, %4;\nmad.lo.u32 %3, %3, %4, %4;\n")
+            : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+            : "r"(m));
+      } else if constexpr (Burst == 2048) {
+        asm volatile(
+            ROLA_REP512(
+                "mad.lo.u32 %0, %0, %4, %4;\nmad.lo.u32 %1, %1, %4, %4;\nmad.lo.u32 %2, %2, %4, %4;\nmad.lo.u32 %3, %3, %4, %4;\n")
+            : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+            : "r"(m));
+      } else if constexpr (Burst == 4096) {
+        asm volatile(
+            ROLA_REP1024(
+                "mad.lo.u32 %0, %0, %4, %4;\nmad.lo.u32 %1, %1, %4, %4;\nmad.lo.u32 %2, %2, %4, %4;\nmad.lo.u32 %3, %3, %4, %4;\n")
+            : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+            : "r"(m));
+      } else if constexpr (Burst == 8192) {
+        asm volatile(
+            ROLA_REP2048(
+                "mad.lo.u32 %0, %0, %4, %4;\nmad.lo.u32 %1, %1, %4, %4;\nmad.lo.u32 %2, %2, %4, %4;\nmad.lo.u32 %3, %3, %4, %4;\n")
+            : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+            : "r"(m));
+      }
+    }
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), a0 ^ a1 ^ a2 ^ a3);
+  }
+
+  if constexpr (Mode == kAsyncCopyLatency) {
+    //: A COPY GROUP'S ROUND TRIP: one sixteen-byte `cp.async.cg` a lane (the warp's 512 bytes, four lines, from L2:
+    //: the source is 2.6 MB), committed and waited on before the next -- cycles a group is the landing latency.
+    const char* const block = c.src + (long)owner * 256 * 128;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      ops::stage_run<16>(lines + (uint32_t)(lane * 16),
+                         block + (long)((i * 8 + warp) & 255) * 128 + (lane & 7) * 16);
       ops::stage_commit();
       ops::stage_wait<0>();
     }
@@ -756,6 +916,22 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kAsyncCopy4, 16)              \
   F(8, kAsyncCopy4ZfillSink, 16)     \
   F(8, kAsyncCopy4Lanes, 16)         \
+  F(4, kLdsChain, 16)                \
+  F(8, kLdsChain, 16)                \
+  F(4, kShflChain, 16)               \
+  F(4, kLdsmChain, 16)               \
+  F(4, kBranchTaken, 16)             \
+  F(8, kBranchTaken, 16)             \
+  F(4, kBranchDivergent, 16)         \
+  F(8, kIcache, 256)                 \
+  F(8, kIcache, 1024)                \
+  F(8, kIcache, 2048)                \
+  F(8, kIcache, 4096)                \
+  F(8, kIcache, 8192)                \
+  F(4, kIcache, 1024)                \
+  F(4, kIcache, 8192)                \
+  F(4, kAsyncCopyLatency, 1)         \
+  F(8, kAsyncCopyLatency, 1)         \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \

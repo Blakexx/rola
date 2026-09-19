@@ -79,6 +79,20 @@ word (`async_copy4_zfill_sink_16`, a round's dead gain pairs) 137.3, two lanes l
 lockstep (twelve sixteen-byte and two four-byte copies a round for four live tokens: ~930 cycles a round on this
 ledger against the trace's 1,320 a fill), not its dead lanes; predicating them would save ~120 cycles a round
 (the gain copies), under the A/B's drift, so the fill stays on `stage_run_if`.
+THE LATENCY, BRANCH AND CODE-SIZE ROWS (2026-09-19, read with their SASS). DEPENDENT CHAINS, one warp a scheduler:
+a shared load whose address is the last load's result (`lds_chain_1w`) 29.0 cycles, a one-matrix `ldmatrix` the same
+way (`ldsm_chain_1w`) 29.1, both with an address add in the chain, so the loads' own latency is ~25; a shuffle chain
+(`shfl_chain_1w`, sixteen dependent `SHFL.BFLY`) 24.4. A COPY GROUP'S ROUND TRIP, one 16-byte `cp.async.cg` a lane
+from L2, committed and waited on (`async_copy_latency_1w` / `_2w`): 324.9 / 358.6. A TAKEN UNIFORM BRANCH
+(`branch_taken_1w` / `_2w`; ptxas hoisted the compare, so the row is a bare `@P0 BRA` over a skipped block): 10.9
+cycles branch to branch, 14.0 a warp with two warps a scheduler -- the scheduler's branch path is busy ~7 a branch.
+A divergent branch and its reconvergence (`branch_divergent_1w`) 20.3 a unit. THE INSTRUCTION CACHE
+(`icache_*`, a loop body of independent `IMAD`s, 16 bytes an instruction): 4 KB to 64 KB bodies 4.04-4.07 cycles an
+instruction with two warps a scheduler (IMAD issues every 2 cycles a scheduler: the FMA pipe's rate), 128 KB 4.55;
+one warp 2.04 at 16 KB and 3.06 at 128 KB -- the cache holds 64 KB and a loop past it pays up to a cycle an
+instruction. In place, not a row: the census's scoreboard wait at the uniform instruction after an `R2UR` is 36.6
+and 39.4 cycles an execution on two cells, so `R2UR`'s result latency is ~39 (a probe row is owed: ptxas emits it only
+where it proves a value warp-uniform).
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this
