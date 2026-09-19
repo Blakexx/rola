@@ -43,7 +43,13 @@ enum CalibMode : int {
   kHmmaWideChainHooked = 23,
   kHmmaWideChainHooked2 = 24,
   kHmmaLatency = 25,
-  kHmmaWideOperands = 26
+  kHmmaWideOperands = 26,
+  kAsyncCopyZfillSink = 27,
+  kAsyncCopyZfillSpread = 28,
+  kAsyncCopyMixedSink = 29,
+  kAsyncCopy4ZfillSink = 30,
+  kAsyncCopyLanes = 31,
+  kAsyncCopy4Lanes = 32
 };
 
 constexpr int kCalibSmemBytes = 96416;
@@ -597,6 +603,54 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     }
   }
 
+  if constexpr (Mode == kAsyncCopyZfillSink || Mode == kAsyncCopyZfillSpread ||
+                Mode == kAsyncCopyMixedSink || Mode == kAsyncCopy4ZfillSink ||
+                Mode == kAsyncCopyLanes || Mode == kAsyncCopy4Lanes) {
+    //: the fill's DEAD LANES: a zero-size copy lands sixteen zero bytes and reads nothing. SINK,
+    //: every lane's landing one slot (the pool's zero row, as the fill lands them); SPREAD, a slot
+    //: a lane; MIXED, four lanes live from their own rows and twenty-eight dead to the one slot (a
+    //: sparse round); FOUR, sixteen lanes' zero-size four-byte copies to one word (a dead gain pair).
+    const char* const block = c.src + (long)owner * 256 * 128;
+    const int j = lane & 15, h = lane >> 4;
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      rola::static_for<Burst>([&](auto Kc) {
+        constexpr int k = decltype(Kc)::value;
+        if constexpr (Mode == kAsyncCopyZfillSink) {
+          ops::stage_run_if<16>(lines + (uint32_t)(k * 16), block + k * 16, false);
+        }
+        if constexpr (Mode == kAsyncCopyZfillSpread) {
+          ops::stage_run_if<16>(lines + (uint32_t)(k * 512 + lane * 16), block + k * 16, false);
+        }
+        if constexpr (Mode == kAsyncCopyMixedSink) {
+          const bool in = lane < 4;
+          const int chunk = 2 * k + h, row = in ? j : 16;
+          ops::stage_run_if<16>(lines + (uint32_t)(row * 128 + ((chunk ^ (row & 7)) * 16)),
+                                block + (long)(warp * 16 + (in ? j : 0)) * 128 + chunk * 16, in);
+        }
+        if constexpr (Mode == kAsyncCopy4ZfillSink) {
+          if (h == 0) ops::stage_run_if<4>(lines + (uint32_t)(k * 4), block + k * 4, false);
+        }
+        //: LANES: the MIXED round with its dead lanes predicated off instead of zero-size (the
+        //: fill's dead lanes land on a zero row that is zero already); FOUR LANES, two of sixteen
+        //: lanes' four-byte copies live, the rest off.
+        if constexpr (Mode == kAsyncCopyLanes) {
+          const bool in = lane < 4;
+          const int chunk = 2 * k + h, row = in ? j : 16;
+          ops::stage_run_lanes<16>(lines + (uint32_t)(row * 128 + ((chunk ^ (row & 7)) * 16)),
+                                   block + (long)(warp * 16 + (in ? j : 0)) * 128 + chunk * 16, in);
+        }
+        if constexpr (Mode == kAsyncCopy4Lanes) {
+          if (h == 0)
+            ops::stage_run_lanes<4>(lines + (uint32_t)(k * 128 + lane * 4), block + (long)k * 128 + lane * 4,
+                                    lane < 2);
+        }
+      });
+      ops::stage_commit();
+      ops::stage_wait<0>();
+    }
+  }
+
   if constexpr (Mode == kGlobalReduce) {
     float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
 #pragma unroll 1
@@ -690,6 +744,18 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(8, kAsyncCopy4, 4)               \
   F(8, kAsyncCopyRows, 4)            \
   F(8, kAsyncCopyLines, 4)           \
+  F(8, kAsyncCopyZfillSink, 4)       \
+  F(8, kAsyncCopyZfillSpread, 4)     \
+  F(8, kAsyncCopyMixedSink, 4)       \
+  F(8, kAsyncCopy4ZfillSink, 4)      \
+  F(8, kAsyncCopyLanes, 4)           \
+  F(8, kAsyncCopy4Lanes, 4)          \
+  F(8, kAsyncCopyRows, 16)           \
+  F(8, kAsyncCopyMixedSink, 16)      \
+  F(8, kAsyncCopyLanes, 16)          \
+  F(8, kAsyncCopy4, 16)              \
+  F(8, kAsyncCopy4ZfillSink, 16)     \
+  F(8, kAsyncCopy4Lanes, 16)         \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \

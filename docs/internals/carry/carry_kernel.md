@@ -361,7 +361,11 @@ The ledger says how long a warp spent in each phase; the trace says WHEN. Bound 
 the first `ctas` CTAs' warps and every step of their streams stamps `%clock64 << 8 | event`
 into the warp's row, lane 0, one 64-bit store an event: a lap stamps the phase that ended
 (`CarryPhase`), a stream stamps the activity that begins (`CarryTraceEvent`: the fold's walk,
-fragment, wait and fill; the readout's tile, issue, wait and drain). A row that fills stops
+fragment, wait and fill; the readout's tile, issue, wait and drain). An activity lasts until the
+next stamp, so whatever follows a stamped activity unstamped is charged to it: the fold's second
+run is stamped as its own fragment event (a fragment event is one RUN, half a chunk) because
+unstamped it was read as the mid-chunk fill's, and the fill's stretch reported 15K a window
+against the composer's 1.2K (2026-09-19). A row that fills stops
 recording. Unbound, the stamps are a predicated branch each and the kernel holds four more
 registers (209 against 205 at flagship); one CTA's clock is one SM's, so a CTA's warps are on
 one time base and CTAs are not.

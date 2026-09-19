@@ -66,6 +66,19 @@ pipe's rate through its own gather, the pair paying the pins' instructions. `hmm
 accumulator, each dependent on the last) 33.3: the completion latency is the issue interval. `hmma_operands` (the
 fragment's burst with a fresh B register pair every HMMA, two A sets, no loads) 32.6 / 64.9: operand reuse does not
 move the rate.
+THE DEAD-LANE ROWS (2026-09-19; `async_copy_*`, eight warps). At FOUR copies a group a row is the group's landing
+latency over four (a zero-size copy 70, a live sixteen-row copy 263, a sixteen-lane dead four-byte copy 213): read
+the SIXTEEN-a-group rows for a copy's own cost. There, with eight warps issuing: a live sixteen-row copy
+(`async_copy_rows_16`) 80.9; a sparse round's copy, four lanes live and twenty-eight zero-size to the one zero-row
+slot (`mixed_sink_16`) 55.3, the same with the dead lanes predicated OFF (`lanes_16`, `ops::stage_run_lanes`) 56.9
+-- the census counts 36 wavefronts a copy against 5, and the time does not move: a sixteen-byte copy is ~55 cycles
+of the shared pipe by its instruction and its live lines, and a dead lane's zero fill is free. The four-byte
+`.ca` copies differ: sixteen lanes live and contiguous (`async_copy_4_16`) 36.5, sixteen lanes zero-size to one
+word (`async_copy4_zfill_sink_16`, a round's dead gain pairs) 137.3, two lanes live and fourteen off
+(`async_copy4_lanes_16`) 76.3. The fill's cost at sparse is therefore its instruction count under the pair's
+lockstep (twelve sixteen-byte and two four-byte copies a round for four live tokens: ~930 cycles a round on this
+ledger against the trace's 1,320 a fill), not its dead lanes; predicating them would save ~120 cycles a round
+(the gain copies), under the A/B's drift, so the fill stays on `stage_run_if`.
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this

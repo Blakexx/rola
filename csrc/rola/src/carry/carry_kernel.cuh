@@ -1374,7 +1374,8 @@ struct FoldStream {
     }
     //: THE BURST TIER: the chunk's fragments, two counted loops with nothing data-dependent
     //: in them (`common/burst.cuh`), the fill poll between them so a freed slot's fill
-    //: issues mid-chunk.
+    //: issues mid-chunk. Each run is stamped as a fragment event: unstamped, the second run
+    //: was read as the mid-chunk fill's (2026-09-19, the fill's stretch reported 15K a window).
     pc.stamp(kTraceFoldFragment);
     const ops::SmemAddr slot = sm.pool(s), ring = sm.ring(warp);
     const auto gather = [&](int n, FragOperands<BP>& f) {
@@ -1389,6 +1390,7 @@ struct FoldStream {
     const int half = (nfrag + 1) / 2;
     rola::burst::Burst<FragOperands<BP>>::run(0, half, gather, mma, last);
     if (fill_c >= 0 && slot_empty(fill_c % BP::kPoolSlots)) fill_now();
+    pc.stamp(kTraceFoldFragment);
     rola::burst::Burst<FragOperands<BP>>::run(half, nfrag - half, gather, mma, last);
     release();
     return true;

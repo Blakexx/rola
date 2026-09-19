@@ -453,6 +453,7 @@
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "9ca0ed1e83f364e5", "target": "csrc/rola/src/common/ops.cuh::splat_bf16x2_bits"},
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "07ffa784823f2a9a", "target": "csrc/rola/src/common/ops.cuh::stage_run"},
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "b7c8df7cb86d2fd6", "target": "csrc/rola/src/common/ops.cuh::stage_run_if"},
+  {"doc": "docs/internals/common/ops.md", "pinned_at": "7e9b9083df1e", "reviewed": true, "sha256": "6f209721f1418c65", "target": "csrc/rola/src/common/ops.cuh::stage_run_lanes"},
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "610214433627ac30", "target": "csrc/rola/src/common/ops.cuh::stage_tile"},
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "329e3183a6c210ec", "target": "csrc/rola/src/common/ops.cuh::stage_tile_if"},
   {"doc": "docs/internals/common/ops.md", "pinned_at": "d3d24b1ea3ba", "reviewed": true, "sha256": "2df928880d920fc0", "target": "csrc/rola/src/common/ops.cuh::store_bf16"},

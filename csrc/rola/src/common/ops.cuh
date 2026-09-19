@@ -116,6 +116,25 @@ __device__ __forceinline__ void stage_run_if(SmemAddr dst, const void* src, bool
   }
 }
 
+//: THE SAME COPY ISSUED BY THE LIVE LANES ALONE (the calibration rows' form). -- see
+//: docs/internals/common/ops.md#stage-run-lanes
+template <int Bytes>
+__device__ __forceinline__ void stage_run_lanes(SmemAddr dst, const void* src, bool live) {
+  static_assert(Bytes == 4 || Bytes == 8 || Bytes == kStageBytes,
+                "an asynchronous run is 4, 8 or `kStageBytes` bytes");
+  if constexpr (Bytes == kStageBytes) {
+    asm volatile(
+        "{\n.reg .pred p;\nsetp.ne.b32 p, %2, 0;\n@p cp.async.cg.shared.global [%0], [%1], 16;\n}\n" ::
+            "r"(dst),
+        "l"(src), "r"((int)live));
+  } else {
+    asm volatile(
+        "{\n.reg .pred p;\nsetp.ne.b32 p, %3, 0;\n@p cp.async.ca.shared.global [%0], [%1], %2;\n}\n" ::
+            "r"(dst),
+        "l"(src), "n"(Bytes), "r"((int)live));
+  }
+}
+
 __device__ __forceinline__ void stage_commit() { asm volatile("cp.async.commit_group;\n"); }
 
 //: A SHARED-MEMORY BARRIER OBJECT (`mbarrier`, sm_80+): `count` arrivals complete a phase;

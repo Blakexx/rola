@@ -690,6 +690,17 @@ and only the flagship's is sixteen — and the zero fill is what makes a partial
 arithmetic rather than a tail case: a token past the window's end lands zero amplitudes, and
 a zero amplitude is a zero coefficient.
 
+<a id="stage-run-lanes"></a>
+## `stage_run_lanes`
+
+`stage_run`'s LANE-predicated form: the copy is issued by the live lanes and a dead lane issues
+nothing, so its destination keeps what it holds. It exists for the calibration rows that asked
+whether the fill's dead lanes -- landed zero-size on the pool's zero row, which is zero already --
+cost the memory pipe: they do not on the sixteen-byte copies (calibration.md, the dead-lane rows:
+36 wavefronts a copy against 5, 55.3 against 56.9 cycles), and ~60 cycles a copy on the four-byte
+`.ca` ones, under the A/B's drift for the fill. The kernel's copies stay on `stage_run_if`, whose
+zero fill the readout's ring rows past the live count rely on.
+
 <a id="uniform-warp"></a>
 ## `uniform_warp`
 
