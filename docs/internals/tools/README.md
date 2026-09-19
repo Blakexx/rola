@@ -44,6 +44,9 @@ run of `pipe_timeline` writes the plateau it reads back as every later run's sca
 | [`pipe_counters.py`](pipe_counters.md) | the profiler's pipe and resource counters for one launch | the `counters` target | `--json` |
 | [`stall_census.py`](stall_census.md) | every warp-stall sample of one launch, by source line | the `census` target | `--json` |
 | [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target | `--json`; a `pipe_timeline.scale` record under `--calibrate`, which it reads back as later runs' scale |
+| [`warp_timeline.py`](warp_timeline.md) | one CTA's warps window by window: the stamps' real cycles with the warp trace's instructions per activity, and the page | the `warp-timeline` target; a person, reading a build | `--json`; `--html` the page |
+| [`warp_trace.py`](warp_timeline.md) | the NVBit warp tracer's build, injected launch, reader and matcher (`tools/nvbit/warp_trace`, `tools/nvbit_pin.json`) | `warp_timeline.py` | the raw records, deleted after matching |
+| [`timeline_page.py`](warp_timeline.md) | the timeline page: schedulers, warps, pipe strips, one HTML file | `warp_timeline.py --html` | the page |
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
 | `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |
 | [`compose_ledger.py`](compose_ledger.md) | a phase's time attributed to its parts by composition — a DRIVER: it builds each part | a person, after a component lands | its own `compose_ledger` record |

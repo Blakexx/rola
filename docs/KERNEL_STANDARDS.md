@@ -534,7 +534,16 @@ HMMA's 32 cycles was one such constant for eight days); (11) THE PIPE TIMELINE (
 tensor pipe's true utilization over a launch, measured on silicon by the profiler's PM sampling (1 us samples), on a
 scale taken from the MMA-only composition's plateau -- the one instrument that says when the pipe idled rather
 than how much in total; validated against the HMMA-count utilization at three points (66.8 / 21.0 / 33.9%
-against 65-66 / 20-21 / 33.7%).
+against 65-66 / 20-21 / 33.7%); (12) THE WARP TIMELINE (`tools/warp_timeline.py`, `docs/internals/tools/warp_timeline.md`):
+one CTA's warps window by window, each activity's REAL cycles from the kernel's stamps beside the instructions it
+executed, from an instrumented launch of the same binary (NVBit, pinned) matched by window, event and ordinal;
+the page draws the four schedulers, their warps and a pipe strip each. Its rules: content from the trace, cycles
+from the stamps, never timing from the trace (the instrumented launch is ~1000x slower); a stamp site is named by
+the event the same run recorded; a phase lasts until the NEXT stamp, so every stretch that follows a stamped
+activity is stamped (the fold's second run ran unstamped under the fill's stamp for two days); the page is read
+before any form is judged, and a change is read as two pages side by side. What it cannot say is the timing inside
+an interval: that is the replay model's (`pipe_sim.md`), validated against these stamps interval by interval, and
+the census's per-instruction samples joined by address.
 HOW IT IS READ: a component's THEORY -- what the form must do to the ledger, and why -- is written as
 its budget line before the build; the measurement is read against that theory. A miss is explained
 by a measurement that ISOLATES the mechanism (a line, a counter, a life range, a variant that removes

@@ -59,6 +59,8 @@ INSTRUMENTS = {
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
                ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"], 900),
     "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, [], 900),
+    "warp-timeline": ("tools/warp_timeline.py", ["{cell}"], True, {"gpu": "all"},
+                      ["csrc/rola/src/carry/carry_kernel.cuh", "tools/nvbit", "tools/nvbit_pin.json"], 1800),
     "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, [], 120),
 }
 CARRY_ARMS = ("carry_forward", "carry_intra")

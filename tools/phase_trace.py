@@ -113,6 +113,35 @@ def dump_window(cta_rows, warps: int, win: int) -> None:
         print(f"  w{w}  {s:7d}  {d:6d}  {lab}")
 
 
+def take_stamps(cell: str, ctas: int, cap: int, warmup: int = 1, state_arm: str = "fresh"):
+    """One launch of `cell` with the phase trace bound over its first `ctas` CTAs: the stamp tensor on the host,
+    `[ctas][warps][cap]` of `clock << 8 | event`, with the warps a CTA and the CTAs traced."""
+    import torch
+    from rola_devtools.locks.gpu import gpu_lock
+
+    from measure.cells import WARPS_PER_CTA, by_name, carry_call
+    from rola.ops import carry as c
+
+    spec = by_name(cell)
+    _drawn, kw = carry_call(spec, 1)
+    routes, v = kw.pop("routes"), kw.pop("v")
+    owners = math.prod(spec.widths) // 256
+    warps = WARPS_PER_CTA
+    ctas = min(ctas, owners)
+    with gpu_lock(mode="exclusive"):
+        trace = torch.zeros((ctas, warps, cap), dtype=torch.int64, device="cuda")
+        plane = c.state_plane(kw["descriptor"], 1) if state_arm == "fresh" else None
+        ext = c.extension()
+        for _ in range(warmup):
+            c.carry_forward(routes, v, state_out=plane, **kw)
+        torch.cuda.synchronize()
+        ext.carry_trace_bind(trace, warps)
+        c.carry_forward(routes, v, state_out=plane, **kw)
+        torch.cuda.synchronize()
+        ext.carry_trace_bind(None, warps)
+    return trace.cpu(), warps, ctas
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
@@ -128,31 +157,10 @@ def main() -> int:
     a = ap.parse_args()
 
     import torch
-    from rola_devtools.locks.gpu import gpu_lock
 
-    from measure.cells import WARPS_PER_CTA, by_name, carry_call
-    from rola.ops import carry as c
-
-    spec = by_name(a.cell)
-    _drawn, kw = carry_call(spec, 1)
-    routes, v = kw.pop("routes"), kw.pop("v")
-    owners = math.prod(spec.widths) // 256
-    warps = WARPS_PER_CTA
-    ctas = min(a.ctas, owners)
-    with gpu_lock(mode="exclusive"):
-        trace = torch.zeros((ctas, warps, a.cap), dtype=torch.int64, device="cuda")
-        plane = c.state_plane(kw["descriptor"], 1) if a.state_arm == "fresh" else None
-        ext = c.extension()
-        for _ in range(a.warmup):
-            c.carry_forward(routes, v, state_out=plane, **kw)
-        torch.cuda.synchronize()
-        ext.carry_trace_bind(trace, warps)
-        c.carry_forward(routes, v, state_out=plane, **kw)
-        torch.cuda.synchronize()
-        ext.carry_trace_bind(None, warps)
+    rows, warps, ctas = take_stamps(a.cell, a.ctas, a.cap, warmup=a.warmup, state_arm=a.state_arm)
     if a.raw:
-        torch.save(trace.cpu(), a.raw)
-    rows = trace.cpu()
+        torch.save(rows, a.raw)
 
     by_label = defaultdict(list)     #: label -> cycles a warp a window
     counts = defaultdict(list)       #: label -> events a warp a window

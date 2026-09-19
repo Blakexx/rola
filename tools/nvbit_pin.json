@@ -1,0 +1,11 @@
+{
+    "name": "nvbit",
+    "role": "NVIDIA's binary instrumentation library, the runtime the warp tracer (tools/nvbit/warp_trace) is built against and injected with; it records every dynamic instruction of one CTA's warps from the installed binary, unmodified",
+    "upstream": "https://github.com/NVlabs/NVBit",
+    "version": "1.8",
+    "release_asset": "nvbit-Linux-x86_64-1.8.tar.bz2",
+    "release_url": "https://github.com/NVlabs/NVBit/releases/download/v1.8/nvbit-Linux-x86_64-1.8.tar.bz2",
+    "tarball_sha256": "72a2b827f9531dcb86b6be13844f267640fb440929d92944177029da6da2b9e1",
+    "injection": "CUDA_INJECTION64_PATH, the driver's injection variable: LD_PRELOAD loads the tool into a torch process and sees none of its launches (measured 2026-09-19)",
+    "why_not_gated_like_ptxas": "the tracer never changes what the kernel computes or which binary runs; it reads the instruction stream of the ratified binary. What it must never be read for is TIME: an instrumented launch is ~1000x slower, so its polls, waits and fill timing are its own. Cycles come from the kernel's stamps (tools/phase_trace.py), instruction content from the trace."
+}
