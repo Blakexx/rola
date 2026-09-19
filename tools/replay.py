@@ -241,6 +241,9 @@ BAR_RELEASE = 20.0
 #: taken uniform branches, branch to branch), and it holds the scheduler's branch path `BRANCH_PORT` cycles
 #: (`branch_taken_2w`, 14.0 a warp with two warps a scheduler: 7.0 a branch)
 TAKEN_BRANCH = 10.9
+#: how a scheduler breaks a tie: `pipe` (an HMMA tie to the tensor pipe's owner, else least recently issued), `greedy`
+#: (the scheduler's last issuer), `fair` (least recently issued); set by the arbitration rows
+ARBITRATION = "pipe"
 BRANCH_PORT = 7.0
 CONTROL = frozenset({"BRA", "JMP", "JMX", "BRX", "CALL", "RET", "BSYNC"})
 POLL_LATENCY = 30.0
@@ -454,6 +457,8 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
     port_free = [0.0] * nsched
     port_owner = [(-1, "")] * nsched
     branch_free = [0.0] * nsched
+    greedy = [-1] * nsched  #: the warp that issued each scheduler's last instruction
+    pipe_owner = [-1] * nsched  #: the warp whose HMMA each scheduler's tensor pipe took last
     mem_free = 0.0
     landed: dict[int, list[tuple[float, int]]] = collections.defaultdict(list)  #: word -> [(time, lanes)]
     bars: dict[int, list[float]] = collections.defaultdict(list)  #: barrier id -> arrival times this generation
@@ -519,13 +524,21 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
 
     blocked_report = collections.Counter()
     while True:
-        #: the earliest ready warp issues; a tie goes to the warp that issued least recently (the scheduler's
-        #: arbitration is fair between its warps: the real stamps have both halves of the CTA in step)
-        best, bt, bwhy, blast = None, inf, "", inf
+        #: the earliest ready warp issues. A tie between HMMAs goes to the TENSOR PIPE'S OWNER, the warp whose HMMA the
+        #: pipe took last (calibration rows `pair_phase_*`: a pair settles a burst apart, the pipe handed over where a
+        #: burst leaves a tail and kept where it does not); any other tie goes to the warp that issued least recently
+        best, bt, bwhy, bkey = None, inf, "", None
         for w in range(len(seqs)):
             t, why = ready_of(w)
-            if t < bt or (t == bt and t < inf and st[w]["last"] < blast):
-                best, bt, bwhy, blast = w, t, why, st[w]["last"]
+            if t == inf:
+                continue
+            k_w = w % nsched
+            is_hmma = table[seqs[w][st[w]["i"]][0]][0] == "HMMA"
+            owner = ARBITRATION == "pipe" and is_hmma and pipe_owner[k_w] == w
+            last_issuer = ARBITRATION == "greedy" and greedy[k_w] == w
+            key = (t, 0 if (owner or last_issuer) else 1, st[w]["last"])
+            if bkey is None or key < bkey:
+                best, bt, bwhy, bkey = w, t, why, key
         if best is None:
             live = [w for w in range(len(seqs)) if st[w]["i"] < len(seqs[w])]
             for w in live:
@@ -565,6 +578,7 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
             s["bar_pending"] = (bid, gen, defer)
         if op == "HMMA":
             pipe_done[k] = t + ps.HMMA_PIPE
+            pipe_owner[k] = w
         done = t + lat
         taken_at = None
         if cost and live:
@@ -609,6 +623,7 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         s["port_by"] = ""
         port_owner[k] = (w, op)
         s["last"] = t
+        greedy[k] = w
         s["t"] = t + max(1, ctl["stall"])
         if taken:
             branch_free[k] = t + BRANCH_PORT

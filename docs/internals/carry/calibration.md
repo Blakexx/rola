@@ -93,6 +93,17 @@ one warp 2.04 at 16 KB and 3.06 at 128 KB -- the cache holds 64 KB and a loop pa
 instruction. In place, not a row: the census's scoreboard wait at the uniform instruction after an `R2UR` is 36.6
 and 39.4 cycles an execution on two cells, so `R2UR`'s result latency is ~39 (a probe row is owed: ptxas emits it only
 where it proves a value warp-uniform).
+THE ARBITRATION ROWS (`pair_phase_*`, 2026-09-19): each warp loops a burst of 36 or 18 HMMAs then 48 dependent
+multiply-adds, lane 0 stamping every iteration's start, so the rows are read off the SM's own clock (a foreign GPU
+consumer was running at 39%; a time slice pauses a CTA's warps together and the medians over 80 CTAs drop it -- the
+rows' wall-clock times, taken under it, are to be retaken on an idle card). 36 HMMAs, one warp a scheduler: a period of
+1,193 cycles (ptxas interleaves the multiply-adds among the HMMAs, so the stretch hides). Two warps a scheduler: a
+period of 2,326 with the partners 1,154 apart (p10 328, p90 1,206) -- the pair settles ONE BURST APART, the pipe full
+and handed over at the burst's end; with 18-HMMA bursts, a period of 1,169 with the partners 2,953 apart (p90 4,182):
+the leader keeps the pipe across bursts and the pair drifts whole iterations. A fair scheduler would keep the pair in
+step (the replay's fair rule reads 195 apart); the rule that reproduces the 36-HMMA row is that the tensor pipe goes to
+the warp whose HMMA it took last while that warp has one ready (`tools/replay.py`, `ARBITRATION = "pipe"`). The
+kernel's own stamps agree: the fold's partners start each chunk's walk a median 1,172 cycles apart.
 THE QUEUE ROWS (`hmma_queue`, eighteen HMMAs and one dependent fma chain of 16 / 40 / 80 links, one warp):
 34.7 / 35.5 / 43.5; the chain of forty with two warps 69.4. Read with the SASS (ptxas interleaves part of the
 chain among the HMMAs, `asm volatile` notwithstanding) they put the tensor pipe's queue at zero to one on this

@@ -44,7 +44,9 @@ land, a taken branch's target issuing `TAKEN_BRANCH` after it and holding the sc
 CTA barrier releasing at its last arrival, `BAR.SYNC.DEFER_BLOCKING` blocking at the first convergence, control or
 memory instruction after it (every barrier site's census wait sits on the first `BSSY`; the kernel's `edges` stamp
 after the fold's rendezvous is read BEFORE the barrier releases, so the timeline's `snapshot` holds the fold-end
-wait), and fair arbitration between a scheduler's warps.
+wait), and the tensor pipe's arbitration: an HMMA tie goes to the warp whose HMMA the pipe took last, any other tie to
+the warp that issued least recently (calibration.md, the arbitration rows: a pair settles one burst apart; a fair rule
+kept the replay's pairs in step, 87% overlapped in the fold against 74%, and a last-issuer rule starved the partner).
 
 `--json out.json` writes the replay in the timeline's record format; the page (`timeline_page.render` of the real
 record and the replay's) draws the replay beneath each warp under "beneath each warp", same window, same scale.
@@ -61,14 +63,15 @@ THE CORE AGAINST THE CALIBRATION ROWS: the replay's event loop on every probe lo
 hides it), divergent reductions (`hmma_reduce_div_*` -45 and -71%: a reduction's sectors are not yet costed from its
 lane addresses), and a lone warp's matrix loads (+10%).
 
-THE KERNEL, real order, one CTA:
+THE KERNEL, real order, one CTA, pipe-owner arbitration:
 
 | cell | whole run, replay / real | windows | within 10% | outside |
 |---|---|---|---|---|
-| `nl16k-dense` | 1.05 | +1 to +5% | tile 0.96, walk 1.03, head scans 0.92 | fragment 1.21, drain 1.15, head words 1.12, fill 0.88, head 0.82, issue 0.82, snapshot 0.69 |
-| `nl16k-alt-k4` | 1.01 | -6 to +4% | tile 0.93, walk 1.05, snapshot 0.96, head scans 0.92, fill 0.90, wait 1.00 | fragment 1.08, drain 1.16, head words 1.19, head 0.82, issue 0.76 |
+| `nl16k-dense` | 1.00 | within ~1% after the first | fragment 1.04, tile 0.95, walk 1.02, head words 1.07, head scans 0.92, wait 1.00 | drain 1.15, snapshot 1.22, fill 0.88, head 0.82, issue 0.82 |
+| `nl16k-alt-k4` | 0.99 | -8 to +3% | fragment 0.99, tile 0.92, walk 1.05, snapshot 1.05, head scans 0.92, fill 0.90, wait 0.97 | drain 1.16, head words 1.20, head 0.82, issue 0.76 |
 
-THE FRAGMENT'S EXCESS is the pair: a fold run's partner is in an HMMA activity 87% of the run in the replay against 74%
-on the hardware (dense; 67% against 56% sparse), and the replay loses ~6 cycles between consecutive HMMAs of the pair.
-What remains to model, each from a row: the paired floating-point interference above, a reduction's sectors, and the
-instruction cache (the census's `no_inst` at branch targets).
+THE PAIR: a fold run's partner is in an HMMA activity 78% of the run in the replay against 74% on the hardware (dense),
+57% against 56% (sparse), and the fold's partners start each walk a median 1,181 cycles apart against 1,172. What
+remains to model, each from a row: the drain (15% long on both cells), the paired floating-point interference above, a
+reduction's sectors, the instruction cache (the census's `no_inst` at branch targets), and the 18-HMMA arbitration row's
+drift, which the pipe-owner rule does not reproduce.

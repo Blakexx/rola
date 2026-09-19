@@ -56,7 +56,8 @@ enum CalibMode : int {
   kBranchTaken = 36,
   kBranchDivergent = 37,
   kIcache = 38,
-  kAsyncCopyLatency = 39
+  kAsyncCopyLatency = 39,
+  kPairPhase = 40
 };
 
 //: A LINE REPEATED, for the instruction-cache rows: `ROLA_REP<n>(x)` is `n` copies of the string `x`.
@@ -811,6 +812,41 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
     }
   }
 
+  if constexpr (Mode == kPairPhase) {
+    //: THE SCHEDULER'S ARBITRATION: each warp loops a burst of `Burst` HMMAs into distinct accumulators, then 48
+    //: dependent multiply-adds (its own latency, no pipe). A fair scheduler keeps a pair in step and idles the pipe
+    //: through both stretches (a period of two bursts plus one stretch); a greedy one gives a warp its whole burst and
+    //: hides the partner's stretch under it (two bursts, the partner a burst behind). Lane 0 stamps each iteration's
+    //: start into `c.out` (64 a warp) so the host reads each pair's settled offset.
+    const uint32_t w = 0x3F003E80u ^ ((uint32_t)lane & 1u);
+    const uint32_t bf[4] = {w, w, w, w};
+    const uint32_t ab[4] = {w, w, w, w};
+    float y[Burst][4];
+    rola::static_for<Burst>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { y[decltype(Jc)::value][decltype(Ec)::value] = 0.0f; });
+    });
+    uint32_t x = (uint32_t)lane;
+    const uint32_t m = (uint32_t)lane | 1u;
+    unsigned int* const stamps = reinterpret_cast<unsigned int*>(c.out + (long)owner * 16 * 256);
+#pragma unroll 1
+    for (int i = 0; i < c.iters; ++i) {
+      if (lane == 0 && i < 64) stamps[warp * 64 + i] = (unsigned int)clock64();
+      rola::static_for<Burst>([&](auto Jc) {
+        constexpr int j = decltype(Jc)::value;
+        ops::mma(y[j], ab, bf + 2 * (j & 1));
+      });
+      asm volatile(ROLA_REP32("mad.lo.u32 %0, %0, %1, %1;\n")
+                       ROLA_REP16("mad.lo.u32 %0, %0, %1, %1;\n")
+                   : "+r"(x)
+                   : "r"(m));
+    }
+    float sink = 0.0f;
+    rola::static_for<Burst>([&](auto Jc) {
+      rola::static_for<4>([&](auto Ec) { sink += y[decltype(Jc)::value][decltype(Ec)::value]; });
+    });
+    ops::store_shared_u32(lines + (uint32_t)(lane * 4), __float_as_uint(sink) ^ x);
+  }
+
   if constexpr (Mode == kGlobalReduce) {
     float* const at = ops::pin_address(c.out + (long)owner * 16 * 256 + tid);
 #pragma unroll 1
@@ -932,6 +968,9 @@ __global__ __launch_bounds__(Warps * 32, 1) void calib_kernel(
   F(4, kIcache, 8192)                \
   F(4, kAsyncCopyLatency, 1)         \
   F(8, kAsyncCopyLatency, 1)         \
+  F(8, kPairPhase, 36)               \
+  F(8, kPairPhase, 18)               \
+  F(4, kPairPhase, 36)               \
   F(8, kGlobalReduce, 1)             \
   F(8, kCtaBarrier, 1)               \
   F(8, kShmBarrier, 1)               \
