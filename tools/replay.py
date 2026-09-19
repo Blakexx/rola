@@ -244,6 +244,10 @@ TAKEN_BRANCH = 10.9
 #: how a scheduler breaks a tie: `pipe` (an HMMA tie to the tensor pipe's owner, else least recently issued), `greedy`
 #: (the scheduler's last issuer), `fair` (least recently issued); set by the arbitration rows
 ARBITRATION = "pipe"
+#: where a global access's issue cost (`sass_control.MACHINES` `issue`: a reduction 12, a global load or store 4) is
+#: paid: `warp` (the issuing warp alone: the kernel's census shows a drain's partner blocked 2% of the time, and the
+#: drain reads 1.01 / 1.08 this way against 1.15 / 1.16 on the port) or `port` (the scheduler's issue port)
+GLOBAL_ISSUE = "warp"
 BRANCH_PORT = 7.0
 CONTROL = frozenset({"BRA", "JMP", "JMX", "BRX", "CALL", "RET", "BSYNC"})
 POLL_LATENCY = 30.0
@@ -586,7 +590,8 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
             taken_at = taken
             mem_free = taken + cost
             done = taken + lat
-        port_free[k] = t + mach["issue"].get(op, 1)
+        hold = mach["issue"].get(op, 1)
+        port_free[k] = t + (hold if GLOBAL_ISSUE == "port" else 1)
         if kind == "copy" and live:
             land = t + COPY_LATENCY
             s["open"] = max(s["open"], land)
@@ -624,7 +629,7 @@ def simulate(seqs: list[list[tuple]], table: dict, counts: dict, warps_per_cta: 
         port_owner[k] = (w, op)
         s["last"] = t
         greedy[k] = w
-        s["t"] = t + max(1, ctl["stall"])
+        s["t"] = t + max(1, ctl["stall"], hold if GLOBAL_ISSUE == "warp" else 1)
         if taken:
             branch_free[k] = t + BRANCH_PORT
             s["t"] = max(s["t"], t + TAKEN_BRANCH)
