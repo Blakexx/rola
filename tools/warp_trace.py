@@ -32,9 +32,12 @@ from phase_trace import intervals, windows  # noqa: E402
 HERE = Path(__file__).resolve().parent
 PIN = HERE / "nvbit_pin.json"
 TOOL_SRC = HERE / "nvbit" / "warp_trace"
-HEADER = np.dtype([("pc", "<u4"), ("active", "<u4"), ("pred", "<u4"), ("op", "<u2"), ("warp", "<u2"), ("clock", "<u8")])
+HEADER = np.dtype([("pc", "<u4"), ("active", "<u4"), ("pred", "<u4"), ("op", "<u2"), ("warp", "<u2"), ("clock", "<u8"),
+                   ("preds", "<u4"), ("reserved", "<u4")])
 MREF_TAG = 0xFFFF0000
 MREF_BYTES = 264
+VALUE_TAG = 0xFFFE0000
+VALUE_BYTES = 16
 #: instruction classes the intervals are summed by: opcode -> class; anything else is `alu`
 CLASSES = {"HMMA": "hmma", "LDSM": "ldsm", "LDGSTS": "copy", "LDGDEPBAR": "copy", "DEPBAR": "copy", "LDG": "ldg",
            "STG": "stg", "LDS": "lds", "STS": "sts", "SHFL": "shfl", "BAR": "bar", "RED": "red", "ATOM": "red",
@@ -118,8 +121,11 @@ def load(records: Path, listing: Path):
     i, n = 0, len(buf)
     while i + HEADER.itemsize <= n:
         tag = int.from_bytes(buf[i:i + 4].tobytes(), "little")
-        if (tag & MREF_TAG) == MREF_TAG:
+        if (tag & 0xFFFF0000) == MREF_TAG:
             i += MREF_BYTES
+            continue
+        if (tag & 0xFFFF0000) == VALUE_TAG:
+            i += VALUE_BYTES
             continue
         starts.append(i)
         i += HEADER.itemsize

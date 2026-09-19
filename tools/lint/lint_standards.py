@@ -785,7 +785,8 @@ _NOT_A_WORK_CODE = re.compile(
     r"|L1|L2|L1TEX"                      # a cache level
     r"|A100|A30|A40|A16|A10|A2|H100|H200|V100|L4|L40|T4|RTX\d+|WSL2|CUDA\d+|PTX\d+"   # a machine or a toolkit
     r"|[A-Z]{1,4}\d{3,4}"                # a linter's own code: E402, BLE001, PLC0415
-    r"|R\d{1,3}|UR\d{1,2}|P\d"           # a SASS register or predicate
+    r"|R\d{1,3}|UR\d{1,2}|P\d|UP\d|SB\d"  # a SASS register, predicate, uniform predicate or scoreboard
+    r"|LOP3"                             # a SASS mnemonic of that shape
     r"|Q\d"                             # a quartile
     r"|SXM\d|PCIE\d|HBM\d|GDDR\d|DDR\d"  # a package or memory generation
     r"|BC\d+|BT\d+|DV\d+|BH\d+"       # a shape, written into a cell id

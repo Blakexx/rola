@@ -79,7 +79,9 @@ def take(cell: str, cta: int, keep: bool, addrs: bool, census: Path | None = Non
         if not census.exists():
             raise SystemExit(f"no census export for {cell} at {census}: run tools/stall_census.py {cell} first")
     joined = warp_trace.census_join(census, sasslist, by_event, total, arch) if census else None
-    if not keep:
+    if keep:
+        torch.save(real, stem.with_suffix(".real.pt"))
+    else:
         for f in (records, listing, child_stamps):
             f.unlink(missing_ok=True)
     unmatched = sum(1 for w in matched for win in w["windows"] for iv in win["ivs"] if iv["mix"] is None)

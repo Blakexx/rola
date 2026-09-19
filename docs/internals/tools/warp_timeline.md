@@ -10,7 +10,9 @@ launches of the same binary joined:
 - **the warp trace** (`tools/warp_trace.py` and the NVBit tool `tools/nvbit/warp_trace`): a second launch in a child
   process with NVIDIA's binary instrumentation injected (`CUDA_INJECTION64_PATH`; a preload loads the tool into a
   torch process and sees none of its launches). Every dynamic instruction of one CTA's warps -- offset, active mask,
-  predicate ballot, opcode, logical warp, and with `--addrs` the 32 lane addresses of each memory operand -- goes
+  predicate ballot, opcode, logical warp, the first active lane's predicate and uniform-predicate registers, the value
+  each shared load's first predicate-writing consumer read (a barrier poll's word), and with `--addrs` the 32 lane
+  addresses of each memory operand -- goes
   through NVBit's channel to a file, with a SASS listing keyed by offset. The child also binds the stamps, so its
   instruction stream and its stamps are one run.
 
@@ -65,8 +67,8 @@ toolkit's nvcc for the device's arch, keyed by the sources' and the pin's hash. 
 hardware warp slot, not the CTA's warp: the tracer records `threadIdx.x >> 5`. The raw records (tens of MB a cell for
 one CTA) are deleted after matching unless `--keep-trace`; large traces belong on the E drive, not the WSL disk.
 
-What the instrument cannot say: the timing INSIDE an interval. That is the replay model's (`pipe_sim.md`), which
-replays a traced interval's stream through the calibrated machine and is validated interval by interval against these
-stamps; and the profiler's stall census (`stall_census.md`), whose per-instruction samples join these intervals by
+What the instrument cannot say: the timing INSIDE an interval. That is the whole-CTA replay's (`replay.md`), which
+issues the traced streams through the calibrated machine with the synchronization learned from the trace and is
+validated interval by interval against these stamps; and the profiler's stall census (`stall_census.md`), whose per-instruction samples join these intervals by
 address. Accel-Sim was evaluated for the same purpose (2026-09-19) and does not model this card's synchronization: its
 mbarrier model is Hopper's, and sm_86 compiles mbarrier init, arrive and test to plain shared-memory instructions.

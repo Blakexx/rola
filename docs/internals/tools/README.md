@@ -46,6 +46,7 @@ run of `pipe_timeline` writes the plateau it reads back as every later run's sca
 | [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target | `--json`; a `pipe_timeline.scale` record under `--calibrate`, which it reads back as later runs' scale |
 | [`warp_timeline.py`](warp_timeline.md) | one CTA's warps window by window: the stamps' real cycles with the warp trace's instructions per activity, and the page | the `warp-timeline` target; a person, reading a build | `--json`; `--html` the page |
 | [`warp_trace.py`](warp_timeline.md) | the NVBit warp tracer's build, injected launch, reader and matcher (`tools/nvbit/warp_trace`, `tools/nvbit_pin.json`) | `warp_timeline.py` | the raw records, deleted after matching |
+| [`replay.py`](replay.md) | one CTA's traced streams through the calibrated machine, the synchronization learned from the trace; its stamps and delay reasons against the real run's and the census's | a person, explaining a timeline | stdout |
 | [`timeline_page.py`](warp_timeline.md) | the timeline page: schedulers, warps, pipe strips, one HTML file | `warp_timeline.py --html` | the page |
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
 | `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |

@@ -224,6 +224,34 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
             nvbit_add_call_arg_const_val64(instr, (uint64_t)ctx_state->channel_dev);
             nvbit_add_call_arg_const_val32(instr, target_cta);
             nvbit_add_call_arg_const_val32(instr, with_addrs);
+            nvbit_add_call_arg_pred_reg(instr);
+            nvbit_add_call_arg_upred_reg(instr);
+        }
+        //: a shared load's value where a compare consumes it: the first instruction within twelve after an LDS that
+        //: writes a predicate and reads the load's destination register (a barrier poll's phase test)
+        for (size_t k = 0; k < instrs.size(); ++k) {
+            Instr* ld = instrs[k];
+            if (std::string(ld->getOpcode()).rfind("LDS", 0) != 0 || ld->getNumOperands() < 1 ||
+                ld->getOperand(0)->type != InstrType::OperandType::REG)
+                continue;
+            const int dst = ld->getOperand(0)->u.reg.num;
+            for (size_t m = k + 1; m < instrs.size() && m <= k + 12; ++m) {
+                Instr* cmp = instrs[m];
+                if (cmp->getNumOperands() < 2 || cmp->getOperand(0)->type != InstrType::OperandType::PRED) continue;
+                bool reads = false;
+                for (int o = 1; o < cmp->getNumOperands(); ++o)
+                    if (cmp->getOperand(o)->type == InstrType::OperandType::REG && cmp->getOperand(o)->u.reg.num == dst)
+                        reads = true;
+                if (!reads) continue;
+                nvbit_insert_call(cmp, "instrument_value", IPOINT_BEFORE);
+                nvbit_add_call_arg_guard_pred_val(cmp);
+                nvbit_add_call_arg_const_val32(cmp, cmp->getOffset());
+                nvbit_add_call_arg_reg_val(cmp, dst);
+                nvbit_add_call_arg_const_val64(cmp, (uint64_t)ctx_state->channel_dev);
+                nvbit_add_call_arg_const_val32(cmp, target_cta);
+                fprintf(sass_out, "# value %u %u %d\n", cmp->getOffset(), ld->getOffset(), dst);
+                break;
+            }
         }
         fflush(sass_out);
     }
