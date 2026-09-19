@@ -141,12 +141,15 @@ def keyed(cyc: list[int], ev: list[int]) -> tuple[dict, list]:
     return out, wins
 
 
-def match(recs, sass: dict, child_stamps, real_stamps, warps: int) -> list[dict]:
+def match(recs, sass: dict, child_stamps, real_stamps, warps: int) -> tuple[list[dict], dict, collections.Counter]:
     """Per warp, the real run's windows of intervals, each with the instrumented run's instruction mix for the same
-    (window, event, ordinal); `mix` is None where the real run had an activity the instrumented one did not."""
+    (window, event, ordinal); `mix` is None where the real run had an activity the instrumented one did not. Also
+    the traced run's instruction histograms: event -> (pc -> executions inside that event), and pc -> executions."""
     clock_sites = sorted(pc for pc, (_c, text, _l, _op) in sass.items() if "CLOCK" in text)[1:]
     cls_of = {pc: c for pc, (c, _t, _l, _op) in sass.items()}
     out = []
+    by_event: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    total: collections.Counter = collections.Counter()
     for w in range(warps):
         raw = child_stamps[w]
         raw = raw[raw != 0]
@@ -158,11 +161,15 @@ def match(recs, sass: dict, child_stamps, real_stamps, warps: int) -> list[dict]
             raise SystemExit(f"warp {w}: {len(at)} clock reads traced against {len(iev)} stamps recorded; "
                              "the trace and the stamps are not the same run")
         mixes = []
+        labels = [lab for (_s, _e, lab) in intervals(icyc, iev)]
         for i in range(len(at) - 1):
-            seg = pcs[at[i] + 1:at[i + 1]]
-            counts = collections.Counter(cls_of[int(pc)] for pc in seg.tolist())
+            seg = pcs[at[i] + 1:at[i + 1]].tolist()
+            counts = collections.Counter(cls_of[pc] for pc in seg)
             back = int(np.sum(pcs[at[i] + 1:at[i + 1] + 1] < pcs[at[i]:at[i + 1]]))
-            mixes.append({"n": int(len(seg)), "back": back, **{k: int(v) for k, v in counts.items()}})
+            mixes.append({"n": len(seg), "back": back, **{k: int(v) for k, v in counts.items()}})
+            hist = collections.Counter(seg)
+            by_event[labels[i]].update(hist)
+            total.update(hist)
         ikey, _ = keyed(icyc, iev)
         rr = real_stamps[w]
         rr = rr[rr != 0]
@@ -172,7 +179,41 @@ def match(recs, sass: dict, child_stamps, real_stamps, warps: int) -> list[dict]
             hit = ikey.get((wi, lab, k))
             wins[wi]["ivs"].append({"ev": lab, "k": k, "t0": s, "t1": e, "mix": mixes[hit[0]] if hit else None})
         out.append({"warp": w, "windows": wins})
-    return out
+    return out, by_event, total
+
+
+def source_lines(arch: str) -> dict[int, tuple[str, str]]:
+    """pc -> (innermost frame, outermost frame) as `file:line`, off the installed extension's cubin: the tracer's own
+    line info is empty for inlined code, the disassembler's inline chain is not."""
+    import sass as sassmod
+    import toolchains
+
+    cubin = sassmod.cubin(toolchains.built_extension(), "carry_arm_0", arch)
+    chains = sassmod.frames(sassmod.disassemble(cubin, "--print-line-info-inline", "-gi"))
+    return {pc: (f"{c[0][0]}:{c[0][1]}", f"{c[-1][0]}:{c[-1][1]}") for pc, c in chains.items() if c}
+
+
+def census_join(csv_path: Path, sass: dict, by_event: dict, total: collections.Counter, arch: str) -> dict:
+    """The profiler's per-instruction stall samples (`stall_census.py --csv`, the whole launch) joined to the traced
+    instructions by offset: `instructions` = [pc, text, innermost line, outermost line, class, executions traced,
+    samples, [reason samples]], `reasons` the reason names, `by_event` = event -> [[pc, executions inside the event]].
+    An instruction's samples are the launch's; the page attributes them to an event by the traced executions' share."""
+    from region_ledger import read_source_counters
+
+    rows = read_source_counters(csv_path)
+    base = min(a for a, _e, _s, _r in rows)
+    reasons = sorted(rows[0][3]) if rows else []
+    at = {a - base: (e, smp, r) for a, e, smp, r in rows}
+    lines = source_lines(arch)
+    instructions = []
+    for pc, n in sorted(total.items()):
+        cls, text, _loc, _op = sass[pc]
+        inner, outer = lines.get(pc, ("?", "?"))
+        e, smp, r = at.get(pc, (0, 0, {}))
+        instructions.append([pc, text, inner, outer, cls, n, smp, [r.get(k, 0) for k in reasons]])
+    return {"reasons": reasons, "instructions": instructions,
+            "by_event": {lab: [[pc, n] for pc, n in sorted(c.items())] for lab, c in by_event.items()},
+            "unjoined": sorted(pc for pc in total if pc not in at)}
 
 
 def main() -> int:

@@ -70,9 +70,10 @@ def main() -> int:
     ap.add_argument("--schedule", default="first", help="the carry family's order policy the launch runs")
     ap.add_argument("--json", type=Path, required=True)
     ap.add_argument("--csv", type=Path, default=None,
-                    help="also keep ncu's per-SASS-line export here (a reader's line-level view)")
+                    help="keep ncu's per-SASS-line export here (the warp timeline joins it); "
+                         "default the tool's scratch, `<scratch>/stall_census/<cell>.csv`")
     a = ap.parse_args()
-    measure(a.cell, a.schedule, a.json, a.csv)
+    measure(a.cell, a.schedule, a.json, a.csv or dev_config.scratch("stall_census") / f"{a.cell}.csv")
     doc = json.loads(a.json.read_text())
     print(f"{a.cell}: {doc['samples']} stall samples over {len(doc['components'])} components")
     return 0

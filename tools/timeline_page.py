@@ -32,8 +32,8 @@ def compact(timeline: dict) -> list:
 
 
 def render(timelines: dict[str, dict]) -> str:
-    data = json.dumps({"evs": EVENTS, "keys": list(KEYS), "cells": {k: compact(v) for k, v in timelines.items()}},
-                      separators=(",", ":"))
+    data = json.dumps({"evs": EVENTS, "keys": list(KEYS), "cells": {k: compact(v) for k, v in timelines.items()},
+                       "census": {k: v.get("census") for k, v in timelines.items()}}, separators=(",", ":"))
     return PAGE.replace("DATA_JSON", data)
 
 
@@ -65,8 +65,9 @@ table{border-collapse:collapse;margin-top:14px;font-variant-numeric:tabular-nums
 <div class="wrap"><canvas id="cv" width="1400" height="520"></canvas>
 <div class="legend"><span><i class="sw" style="background:var(--burst)"></i>fold fragment run</span><span><i class="sw" style="background:var(--burst2)"></i>readout tile</span><span><i class="sw" style="background:var(--decide)"></i>walk / fill</span><span><i class="sw" style="background:var(--decide2)"></i>readout issue / drain</span><span><i class="sw" style="background:var(--wait)"></i>wait</span><span><i class="sw" style="background:var(--lap)"></i>head, words, scans</span><span><i class="sw" style="background:var(--lap2)"></i>snapshot, edges, sweep</span><span><i class="sw" style="background:var(--pipe)"></i>pipe strip: dark = fed</span></div></div>
 <div id="tip"></div>
+<div id="panel" class="wrap" style="display:none;margin-top:12px"><div class="bar"><b id="ptitle"></b><label><input type="checkbox" id="byline"> roll up by source line</label><span id="preasons" style="color:var(--ink2);font-size:13px"></span></div><div id="ptable" style="max-height:480px;overflow:auto"></div></div>
 <div id="summary"></div>
-<p class="note">Drag on the canvas to zoom, hover an interval for its cycles and instruction mix. Pipe strip: for each interval its HMMAs times 32.5 cycles spread evenly over the interval, summed over the scheduler's two warps and capped at one; an estimate, not a measurement. Cycles are the SM's counter; the stamps cost one store each.</p>
+<p class="note">Drag on the canvas to zoom, hover an interval for its cycles and instruction mix, click one for its activity's instructions with the profiler's stall samples (a whole launch's samples at each instruction, attributed to the activity by the traced run's share of its executions). Pipe strip: for each interval its HMMAs times 32.5 cycles spread evenly over the interval, summed over the scheduler's two warps and capped at one; an estimate, not a measurement. Cycles are the SM's counter; the stamps cost one store each.</p>
 <script>
 const D = DATA_JSON;
 const EV=D.evs, K=D.keys; const ki=Object.fromEntries(K.map((k,i)=>[k,i+3]));
@@ -104,6 +105,20 @@ cv.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect(),sx=cv.wid
  tip.innerHTML=`<b>${n}</b> warp ${b.w}<br>${cyc} cycles, ${iv[ki.n]} instructions${iv[3+K.length]?' (mix unmatched)':''}<br>HMMA ${h}${h?' → floor '+Math.round(h*32.5)+' alone, '+Math.round(h*65)+' paired ('+(cyc/(h*32.5)).toFixed(2)+'x alone)':''}<br>ldmatrix ${iv[ki.ldsm]} · copies ${iv[ki.copy]} · lds ${iv[ki.lds]} · sts ${iv[ki.sts]} · shfl ${iv[ki.shfl]}<br>bar ${iv[ki.bar]} · mbarrier ${iv[ki.mbar]} · red ${iv[ki.red]} · back branches ${iv[ki.back]}`;
  tip.style.display='block';tip.style.left=Math.min(window.innerWidth-380,e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px'});
 cv.addEventListener('mouseleave',()=>tip.style.display='none');
+let picked=null;
+function panel(){const C=D.census[selC.value];const p=document.getElementById('panel');if(!C||picked===null){p.style.display='none';return}
+ const lab=EV[picked]||'?';const rows=C.by_event[lab]||[];const ins=Object.fromEntries(C.instructions.map(r=>[r[0],r]));const R=C.reasons;
+ let tot=0,byR=new Array(R.length).fill(0);const items=[];
+ for(const [pc,n] of rows){const r=ins[pc];if(!r)continue;const share=r[5]?n/r[5]:0;const smp=r[6]*share;tot+=smp;const rs=r[7].map(x=>x*share);rs.forEach((x,i)=>byR[i]+=x);items.push({pc,line:r[2],top:r[3],text:r[1],cls:r[4],n,smp,rs})}
+ const top=byR.map((x,i)=>[R[i],x]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,x])=>k+' '+(100*x/tot).toFixed(0)+'%').join(' · ');
+ document.getElementById('ptitle').textContent=lab+': '+items.length+' instructions, '+Math.round(tot)+' stall samples attributed';document.getElementById('preasons').textContent=top;
+ let list=items;if(document.getElementById('byline').checked){const g={};for(const it of items){const k=it.line;const a=g[k]||(g[k]={pc:'',line:k,top:it.top,text:'',cls:'',n:0,smp:0,rs:new Array(R.length).fill(0),cnt:0});a.n+=it.n;a.smp+=it.smp;it.rs.forEach((x,i)=>a.rs[i]+=x);a.cnt++;a.text=a.cnt+' instructions'}list=Object.values(g)}
+ list.sort((a,b)=>b.smp-a.smp);
+ const h=['<table><thead><tr><th>source (innermost)</th><th>from</th><th>SASS</th><th>class</th><th>executed in this activity</th><th>samples</th><th>share</th><th>top reason</th></tr></thead><tbody>'];
+ for(const it of list.slice(0,300)){const i=it.rs.indexOf(Math.max(...it.rs));h.push(`<tr><td>${it.line}</td><td>${it.top}</td><td style="font:12px IBM Plex Mono,monospace;text-align:left;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.text.replace(/</g,'&lt;')}</td><td>${it.cls}</td><td>${it.n}</td><td>${it.smp.toFixed(0)}</td><td>${tot?(100*it.smp/tot).toFixed(1):0}%</td><td>${it.smp>0?R[i]+' '+(100*it.rs[i]/it.smp).toFixed(0)+'%':''}</td></tr>`)}
+ h.push('</tbody></table>');document.getElementById('ptable').innerHTML=h.join('');p.style.display='block'}
+cv.addEventListener('click',e=>{const r=cv.getBoundingClientRect(),sx=cv.width/r.width,sy=cv.height/r.height,x=(e.clientX-r.left)*sx,y=(e.clientY-r.top)*sy;const b=boxes.find(b=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1);if(b&&Math.abs(x-(drag??x))<8){picked=b.iv[0];panel()}});
+document.getElementById('byline').onchange=panel;
 let drag=null;cv.addEventListener('mousedown',e=>{const r=cv.getBoundingClientRect();drag=(e.clientX-r.left)*cv.width/r.width});
 cv.addEventListener('mouseup',e=>{if(drag===null)return;const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*cv.width/r.width;const a=Math.min(drag,x),b=Math.max(drag,x);drag=null;if(b-a<8)return;const f=t=>view.x0+(t-90)/(cv.width-100)*(view.x1-view.x0);view={x0:Math.max(0,f(a)),x1:Math.min(1,f(b))};draw()});
 document.getElementById('reset').onclick=()=>{view={x0:0,x1:1};draw()};

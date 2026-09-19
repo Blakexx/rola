@@ -21,7 +21,7 @@ the instruction), and `warp_trace.match` gives each real interval the mix of the
 k + 2's, the k-th tile tile k's. An interval the real run had and the traced run did not (a wait, a tile another warp
 took there) carries no mix and is drawn hatched.
 
-    python tools/warp_timeline.py nl16k-dense --json timeline.json --html timeline.html [--also other.json] [--cta 0]
+    python tools/warp_timeline.py nl16k-dense --json timeline.json --html timeline.html [--census auto] [--also other.json]
 
 The JSON is the record the `warp-timeline` target stores: per warp, per window, every interval's event, cycles and
 instruction counts by class (`warp_trace.KEYS`: instructions, HMMA, ldmatrix, copies, global loads and stores, shared
@@ -29,6 +29,17 @@ loads and stores, shuffles, barriers, mbarrier arrives, reductions, backward bra
 scheduler's PIPE-FED share and the cycles, events and instructions by activity. The pipe-fed share is an estimate: an
 interval's HMMAs times the pipe's cycles (`calibration.md`) spread evenly over it, the scheduler's two warps summed,
 capped at one -- it says where the pipe had nothing, not exactly when.
+
+**The census joined** (`--census auto`, or a `stall_census.py` export): the profiler's per-instruction stall samples of
+a whole launch, joined to the traced instructions by offset (the profiler's addresses are the function's base plus the
+same 16-byte offsets; every traced instruction found its row on both cells, 2026-09-19). An instruction's samples are
+attributed to an activity by the traced run's share of its executions inside that activity, so a helper both the walk
+and the fill execute splits by count. Clicking an interval opens its activity's instructions, each with its innermost
+source line off the cubin's inline frames (the tracer's own line info is empty for inlined code), the line it was
+inlined from, its executions in the activity, its attributed samples and their top reason, sortable and rolled up by
+line. The census keeps its export in its scratch (`<scratch>/stall_census/<cell>.csv`) and the `warp-timeline` target
+runs after the `census` target to read it. Samples are counts of a whole launch's warps; their share within an
+activity is what is read, and a stall reason is read the way §22 (7) reads it.
 
 The page (`tools/timeline_page.py`): four schedulers, each its two warps and its pipe strip; a window selector; drag
 to zoom; hover an interval for its cycles, instructions, HMMAs against the pipe floor (alone and paired), loads,

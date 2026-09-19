@@ -61,7 +61,7 @@ def summaries(warps: list[dict]) -> list[dict]:
     return out
 
 
-def take(cell: str, cta: int, keep: bool, addrs: bool) -> dict:
+def take(cell: str, cta: int, keep: bool, addrs: bool, census: Path | None = None) -> dict:
     import sass
 
     arch = sass.device_arch()
@@ -73,13 +73,18 @@ def take(cell: str, cta: int, keep: bool, addrs: bool) -> dict:
     import torch
 
     recs, sasslist = warp_trace.load(records, listing)
-    matched = warp_trace.match(recs, sasslist, torch.load(child_stamps)[cta], real[cta], warps)
+    matched, by_event, total = warp_trace.match(recs, sasslist, torch.load(child_stamps)[cta], real[cta], warps)
+    if census is not None and str(census) == "auto":
+        census = dev_config.scratch("stall_census") / f"{cell}.csv"
+        if not census.exists():
+            raise SystemExit(f"no census export for {cell} at {census}: run tools/stall_census.py {cell} first")
+    joined = warp_trace.census_join(census, sasslist, by_event, total, arch) if census else None
     if not keep:
         for f in (records, listing, child_stamps):
             f.unlink(missing_ok=True)
     unmatched = sum(1 for w in matched for win in w["windows"] for iv in win["ivs"] if iv["mix"] is None)
     return {"cell": cell, "cta": cta, "arch": arch, "warps": matched, "windows": summaries(matched),
-            "unmatched_intervals": unmatched, "nvbit": warp_trace.pin()["version"]}
+            "unmatched_intervals": unmatched, "nvbit": warp_trace.pin()["version"], "census": joined}
 
 
 def main() -> int:
@@ -91,13 +96,19 @@ def main() -> int:
     ap.add_argument("--also", type=Path, action="append", default=[], help="other timeline JSONs drawn on the page")
     ap.add_argument("--keep-trace", action="store_true", help="keep the raw records (tens of MB) in the scratch")
     ap.add_argument("--addrs", action="store_true", help="record every memory operand's lane addresses")
+    ap.add_argument("--census", type=Path, default=None,
+                    help="a `stall_census.py` export of this cell, its samples joined into the activities; `auto` takes "
+                         "the export the census keeps in its scratch")
     a = ap.parse_args()
-    tl = take(a.cell, a.cta, a.keep_trace, a.addrs)
+    tl = take(a.cell, a.cta, a.keep_trace, a.addrs, census=a.census)
     a.json.write_text(json.dumps(tl))
     w = tl["windows"]
     fed = statistics.mean(statistics.mean(x["pipe_fed"]) for x in w)
     print(f"{a.cell}: CTA {a.cta}, {len(w)} windows, {statistics.median(x['cycles'] for x in w):.0f} cycles a window "
           f"(median), pipe fed {100 * fed:.0f}% (HMMA estimate), {tl['unmatched_intervals']} intervals without a mix")
+    if tl["census"]:
+        c = tl["census"]
+        print(f"census joined: {len(c['instructions'])} traced instructions, {len(c['unjoined'])} without a profiler row")
     if a.html:
         import timeline_page
 

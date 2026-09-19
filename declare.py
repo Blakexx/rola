@@ -59,10 +59,12 @@ INSTRUMENTS = {
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
                ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"], 900),
     "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, [], 900),
-    "warp-timeline": ("tools/warp_timeline.py", ["{cell}"], True, {"gpu": "all"},
+    "warp-timeline": ("tools/warp_timeline.py", ["{cell}", "--census", "auto"], True, {"gpu": "all"},
                       ["csrc/rola/src/carry/carry_kernel.cuh", "tools/nvbit", "tools/nvbit_pin.json"], 1800),
     "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, [], 120),
 }
+#: instruments that read another instrument's scratch export
+AFTER_CENSUS = ("warp-timeline",)
 CARRY_ARMS = ("carry_forward", "carry_intra")
 LAYER_ARMS = ("entmax_solve", "decode_step")
 #: seconds an instrument may run on one cell
@@ -116,8 +118,10 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
         tool, args, per_cell, holds, data, timeout = INSTRUMENTS[name]
         if per_cell and not carry:
             continue
+        #: the warp timeline joins the census's per-instruction export, so it runs after the census
+        deps = {**facts, **({"census": out["instruments"]["census"]} if name in AFTER_CENSUS and "census" in out["instruments"] else {})}
         out["instruments"][name] = g.node(
-            name, executor=EXECUTORS + "run_tool", env=env, deps=facts,
+            name, executor=EXECUTORS + "run_tool", env=env, deps=deps,
             inputs=cell_nodes(g, carry) if per_cell else (), holds=holds,
             params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": timeout},
             cache=not per_cell, code=_code(tool, data))

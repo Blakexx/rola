@@ -537,7 +537,7 @@ than how much in total; validated against the HMMA-count utilization at three po
 against 65-66 / 20-21 / 33.7%); (12) THE WARP TIMELINE (`tools/warp_timeline.py`, `docs/internals/tools/warp_timeline.md`):
 one CTA's warps window by window, each activity's REAL cycles from the kernel's stamps beside the instructions it
 executed, from an instrumented launch of the same binary (NVBit, pinned) matched by window, event and ordinal;
-the page draws the four schedulers, their warps and a pipe strip each. Its rules: content from the trace, cycles
+the page draws the four schedulers, their warps and a pipe strip each, and an activity opens into its instructions with the census's stall samples at each (joined by address, attributed by the traced executions' share). Its rules: content from the trace, cycles
 from the stamps, never timing from the trace (the instrumented launch is ~1000x slower); a stamp site is named by
 the event the same run recorded; a phase lasts until the NEXT stamp, so every stretch that follows a stamped
 activity is stamped (the fold's second run ran unstamped under the fill's stamp for two days); the page is read
