@@ -9,7 +9,7 @@ line. Four spellings of one format is the drift shape this repository has been b
 says it for the arm list, `tools/build_flags.py` for the nvcc flags), so the INVOCATION and the LINE GRAMMAR are here
 and the analysis stays with the instrument that owns it.
 
-    cubins(path)                  every ELF cubin of a built extension, extracted once into a temporary directory
+    cubins(path)                  every ELF cubin of a built extension, extracted once a build into the scratch cache
     cubin(path, member)           the one image a ledger reads, by the name it carries
     sass_lines(obj)               `cuobjdump -sass`, streamed (the ratification reads a whole binary this way)
     disassemble(cubin, *flags)    `nvdisasm`, as text
@@ -20,9 +20,13 @@ the encoding lines too (a body hash covers them) matches `ENCODING`.
 """
 from __future__ import annotations
 
+import hashlib
+import os
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -40,18 +44,53 @@ FUNCTION = re.compile(r"^\s*Function : (\S+)")
 ARCH = re.compile(r"^\s*arch = sm_(\d+)\s*$")
 
 
+#: the extracted builds the cache keeps, the one just used among them, by last use
+KEEP_BUILDS = 4
+#: a build (or a crashed extraction's staging) unused this long may be pruned: a reader of it has finished
+PRUNE_AFTER_S = 3600
+
+
 def cubins(path: Path) -> list[Path]:
-    """The cubins of `path`: itself when it is one, else every ELF image `cuobjdump -xelf` writes out of the extension.
-    The directory is temporary and the caller may read it for its lifetime."""
+    """The cubins of `path`: itself when it is one, else every ELF image `cuobjdump -xelf` writes out of the extension,
+    in the scratch cache under the binary's content hash -- extracted once a build, so the directory names the binary
+    it came from and the cache holds a few builds, not one copy a run."""
     path = Path(path)
     if path.suffix == ".cubin":
         return [path]
-    out = Path(tempfile.mkdtemp(prefix="rola_sass_"))
-    cuobjdump = dev_config.cuda_bin("cuobjdump")
-    names = subprocess.run([cuobjdump, "-lelf", str(path)], capture_output=True, text=True, check=True).stdout
-    picked = [m.group(1) for line in names.splitlines() if (m := re.search(r"ELF file\s+\d+:\s+(\S+)", line))]
-    subprocess.run([cuobjdump, "-xelf", "all", str(path.resolve())], cwd=out, capture_output=True, check=True)
-    return [out / name for name in picked]
+    root = dev_config.scratch("cubins")
+    with path.open("rb") as f:
+        out = root / hashlib.file_digest(f, "sha256").hexdigest()[:16]
+    if not out.is_dir():
+        staging = Path(tempfile.mkdtemp(prefix=f".{out.name}.", dir=root))
+        subprocess.run([dev_config.cuda_bin("cuobjdump"), "-xelf", "all", str(path.resolve())], cwd=staging,
+                       capture_output=True, check=True)
+        try:
+            staging.rename(out)
+        except OSError:
+            if not out.is_dir():
+                raise
+            shutil.rmtree(staging)
+    os.utime(out)
+    _prune(root, out)
+    return sorted(out.iterdir())
+
+
+def _prune(root: Path, used: Path) -> None:
+    """Every build past the newest `KEEP_BUILDS` and every staging directory, once unused for `PRUNE_AFTER_S`."""
+    idle = time.time() - PRUNE_AFTER_S
+    seen = []
+    for d in root.iterdir():
+        try:
+            if d.is_dir() and d != used:
+                seen.append((d.stat().st_mtime, d))
+        except FileNotFoundError:
+            continue
+    kept = 0
+    for mtime, d in sorted(seen, reverse=True):
+        if not d.name.startswith(".") and kept < KEEP_BUILDS - 1:
+            kept += 1
+        elif mtime < idle:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 def device_arch() -> str:
