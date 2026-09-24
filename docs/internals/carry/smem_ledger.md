@@ -23,19 +23,21 @@ of the bytes is before it) and the wait that lands it.
 | live counts (`kLiveOffset`) | 16 | |
 | snapshot (`kSnapshotOffset`) | 32,768 | written at the window start, read by the readout |
 | mass row (`kMassRowOffset`), row map (`kRowMapOffset`) | ~1,500 | |
-| page slots, phase ledger, counter, take words, fold words, pool and ring barriers, walk rings (`kSlotOffset`..`kWalkOffset`) | ~2,800 | a walk ring is 64 words a warp: a chunk's kept rows, the pool row in the low byte and the gain in the high half, fragment `n` at entry `16 n` |
-| THE REGION (`kRegionOffset`) | 50,080 | below |
+| page slots, phase ledger, counter, take words, fold words, pool and ring barriers, walk rings (`kSlotOffset`..`kWalkOffset`) | 4,992 | a walk ring is allocated `kPoolTokMax` words a warp (512 B) where a chunk can queue at most `kPoolTok` (64): a chunk's kept rows, the pool row in the low byte and the gain in the high half, fragment `n` at entry `16 n` |
+| THE REGION (`kRegionOffset`) | 51,104 | below |
 
-Total `kSmemBytes` = 96,416 B, 94.2 KB of the 99 KB maximum (the 4 KB mass table of the union
-readout, unread since that body's deletion, was removed 2026-09-12; the pool's slot size is
-unchanged by it).
+Total `kSmemBytes` = 99,616 B, 97.3 KB of the 99 KB maximum: 1,760 B free, and the pool's slot
+takes what the remainder holds in whole sixteens of tokens, so the free bytes are its quantization
+tail. (The 4 KB mass table of the union readout, unread since that body's deletion, was removed
+2026-09-12; the pool's slot size is unchanged by it. Every number in this file is the value
+`BoxPlan<2, 64, 8>`'s constants compile to, re-read 2026-09-19.)
 
 <a id="pool"></a>
 ## The region: the readout's blocks, then the pool
 
-The region opens with the readout's private blocks (`kReadOffset`, `kReadBytes` = 24,576): a
-warp's `kRRSlots` (2) ring slots of a tile's inner and outer runs (1 KB each) and its drain
-stage (`kDrainRows` = 4 rows of y, fp32). Then the pool (`kPoolOffset`): `kPoolSlots` (2)
+The region opens with the readout's private blocks (`kReadOffset`, `kReadBytes` = 25,600, 3,200 a
+warp): a warp's `kRRSlots` (2) ring slots of a tile's inner and outer runs (1,024 B each) and its
+1,152 B drain stage (`kDrainRows` = 4 rows of y, fp32, each padded past the V row). Then the pool (`kPoolOffset`): `kPoolSlots` (2)
 slots of `kPoolSlotBytes` (12,752) each: `kPoolRows` (65) rows — `kPoolTok` tokens and the
 ZERO ROW — laid out as arrays: V rows
 (`kPoolVOffset`, 128 B a row, the 16-byte chunk XORed with the row), inner run tiles

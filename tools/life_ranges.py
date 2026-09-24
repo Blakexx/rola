@@ -33,7 +33,7 @@ INSTR_RE = re.compile(r"^\s*/\*([0-9a-f]{4,5})\*/\s+(\S.*?)\s*;?\s*// \|\s*(\d+)
 
 def compile_arm(arm: int, arch: str) -> Path:
     """The carry arm's translation unit compiled alone with line info, against the build's generated headers."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "measure"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import dev_config
 
     from measure.hw_profile import current
