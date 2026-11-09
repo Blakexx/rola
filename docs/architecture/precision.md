@@ -32,10 +32,6 @@ The image's 2^10 top keeps a 32-list sum of image times read row under 2^15, ins
 placement serves both readout accumulations (`docs/internals/carry/ampere/handoff.md#maxima`). The fp16 readout accumulation is
 not a state accumulator: it sums one tile's 32 lists, and the panel takes its result at the token's scale.
 
-MEASURED ([`tools/quality.py`](../internals/tools/quality.md), sm_86, 2026-11-09): the listed readout's fp16
-accumulation costs nothing measurable in the output (the median a token 0.032-0.045% at three listed cells, fp16 as
-fp32); the intra's fp16 doubles it (0.057-0.088%; the dense cell 0.054% -> 0.111%).
-
 The readout's partials are an output's, not a state's: each token's num into the panel and across CTAs as f16 pairs at each token's scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`),
 the scale pass's byte bounding the token's whole num so the f16 sum stays in range (Blake, 2026-11-06: the readout's
 exits straight to HBM by f16x2 REDs, no integer panel; the dtype declared 2026-10-19,
@@ -48,6 +44,12 @@ exact s16 pairs: a departure its text owes.
 Measured per token as `|dy| / |y|` against fp64 on continuous values, median (`docs/testing.md`): the fp16 family
 0.018-0.029% on the flagship cells, bf16 0.16-0.20%; fp16 accumulation of the readout 0.018-0.035%. The f16 image at a
 power of two a digit matches a block prescale and beats a bf16 image 2.6x at alt-k4 and ~8x under a heavy history.
+Those are the October tables' (2026-10-03, 2026-10-12: the carry's own output on their draws). The op's whole output
+by each MMA leg's accumulation ([`tools/quality.py`](../internals/tools/quality.md), sm_86, 2026-11-09), the median a
+token -- both fp32 / the carry's readout fp16 / the intra fp16: flagship-alt-k4 0.032 / 0.032 / 0.057%,
+flagship-alt-k16 0.044 / 0.045 / 0.087%, flagship-cohort-k16 0.045 / 0.045 / 0.088%, flagship-dense 0.054 / (its
+readout fp32 alone) / 0.111%. The listed readout's fp16 accumulation costs nothing measurable; the intra's doubles the
+error.
 
 <a id="why"></a>
 ## Why accumulation stays fp32

@@ -4,8 +4,7 @@
 defaults (capabilities and rates) and every product's overrides, each rate with its source. This module generates
 `common/hardware.cuh` from it (the capability rows, read at compile time), resolves a product's rates (its overrides
 over its architecture's defaults, for run time), checks that the header is current and that every source holds -- a
-measured rate matches the lab record it names, on the product it names -- and prices a form's load as `common/cost.cuh`
-does. Stdlib only (no `rola`, no GPU), so the lint runs it. docs/internals/common/hardware.md.
+measured rate matches the lab record it names, on the product it names. Stdlib only (no `rola`, no GPU), so the lint runs it. docs/internals/common/hardware.md.
 
     python -m measure.hardware [--product rtx3080ti | --arch sm_80]   # the resolved rates
     python -m measure.hardware --write                                # regenerate the header
@@ -26,7 +25,8 @@ CONFIG = COMMON / "hardware.json"
 HEADER = COMMON / "hardware.cuh"
 RESULTS = ROOT / "measure" / "lab" / "results"
 MANIFESTS = ROOT / "tools" / "manifests"
-#: the rates a built architecture must resolve: what the choice among a sparse side's forms prices
+#: the rates a built architecture must resolve: its pipes' (the schedulers, the issue, a shared wavefront and the
+#: shared atomics), which the phase floors (`tools/overlap_gate.py`), the pipe model and the budgets' forms read
 CHOICE = ("schedulers", "issue", "wavefront", "atomic", "atomic_wavefront")
 SOURCES = ("measured", "documented", "announced")
 #: a measured rate may differ from its record's median by its own rounding and no more
@@ -92,7 +92,7 @@ def header(cfg: dict | None = None) -> str:
     kinds = cfg["schema"]["mma"]
     out += ["  return Caps{};", "}", ""]
     out += _build_lines(cfg)
-    out += ["//: the MMA kinds, in the order a product's quanta carry their rates (`common/cost.cuh`)",
+    out += ["//: the MMA kinds, in the order a product's quanta carry their rates (`kMmaRows`' columns)",
             "enum Mma : int { " + ", ".join(_camel(k) for k in kinds) + ", kMmaKinds };", "",
             "//: THE MMA RATES a scheduler in quanta, read at run time -- see docs/internals/common/hardware.md#consumers",
             "struct MmaRow {", "  int cc;", "  const char* product;  // its product row's slug; nullptr, the architecture's",
@@ -226,28 +226,6 @@ def product_of(device: str) -> str | None:
 
 def quantum(cycles: float) -> int:
     return int(cycles * 256.0 + 0.5)
-
-
-@dataclass(frozen=True)
-class Quanta:
-    mma: tuple[int, ...]
-    wavefront: int
-    atomic: int
-    atomic_wavefront: int
-
-
-def quanta(rates: dict[str, Rate]) -> Quanta:
-    kinds = load()["schema"]["mma"]
-    return Quanta(tuple(quantum(rates[f"mma.{k}"].cycles) for k in kinds), quantum(rates["wavefront"].cycles),
-                  quantum(rates["atomic"].cycles), quantum(rates["atomic_wavefront"].cycles))
-
-
-def cost(q: Quanta, mma: list[int], wavefronts: int, atomics: int, atomic_wavefronts: int) -> int:
-    """`common/cost.cuh`'s `cost`, in quanta: the larger of the MMAs on the busiest scheduler and the shared-memory
-    traffic on the SM (load wavefronts, then the larger of the atomics at their least and their wavefronts)."""
-    tensor = sum(n * c for n, c in zip(mma, q.mma))
-    smem = wavefronts * q.wavefront + max(atomics * q.atomic, atomic_wavefronts * q.atomic_wavefront)
-    return max(tensor, smem)
 
 
 def _source_findings(where: str, arch: str, rate: Rate) -> list[str]:

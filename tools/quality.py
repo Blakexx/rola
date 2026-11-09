@@ -66,6 +66,7 @@ def measure(name: str) -> dict:
     out = {"cell": name, "arm": list(key), "read_side": "dense" if key[3] == 2 else "listed",
            "device_form": carry_ops.readout_accumulate(), "forms": {}}
     for carry_form, intra_form in PAIRS:
+        #: the entry refuses an fp16 readout on a dense read side, which accumulates fp32 alone
         if out["read_side"] == "dense" and carry_form == "fp16":
             continue
         num, den = prefill_ops.prefill(routes, values, facts, carve, layout, *statics, accumulate=carry_form,

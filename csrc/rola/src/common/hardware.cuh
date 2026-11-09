@@ -101,7 +101,7 @@ inline constexpr ProductRow kProducts[] = {
   {860, "rtx3080ti", 0},
 };
 
-//: the MMA kinds, in the order a product's quanta carry their rates (`common/cost.cuh`)
+//: the MMA kinds, in the order a product's quanta carry their rates (`kMmaRows`' columns)
 enum Mma : int { kHmmaF16F32, kHmmaF16F16, kHmmaBf16F32, kImmaU8S8K32, kMmaKinds };
 
 //: THE MMA RATES a scheduler in quanta, read at run time -- see docs/internals/common/hardware.md#consumers

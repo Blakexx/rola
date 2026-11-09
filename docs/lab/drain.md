@@ -4,10 +4,10 @@ Mirrors `measure/lab/experiments/drain.cu`, an experiment of the lab
 ([`docs/internals/tools/lab.md`](../internals/tools/lab.md)).
 
 What does the readout's drain -- a pass's panel words added into the head's `num` by `red.global.add` at each slot's
-token, the panel cleared for the next pass's adds -- cost a CTA-window, in today's form and in forms that pair
+token, the panel cleared for the next pass's adds -- cost a CTA-window, in the s16 panel's form and in forms that pair
 conflict-free slots, clear by exchange or by a 16-byte sweep, skip the requests past the union, and beside a stream's
 copies? And what does a wider or floating `num` cost: each slot's 32 channels as fp32 or s32 (a full line a slot), or
-f16 pairs (today's bytes)?
+f16 pairs (the s16 panel's bytes)?
 
 80 CTAs, box b of one head (the carry's order); the inputs (`drain.inputs.py`) are `read_stream`'s three cells, each
 box-window's union in rank order (the facts pass's rank slots). Each pass every thread fills its slot's 16 panel words
@@ -16,7 +16,7 @@ box-window's union in rank order (the facts pass's rank slots). Each pass every 
 128-byte row, two channel tiles), so the 8 slice groups' boxes and every read group holding the token add into the
 same words. Every draining form's `num` is checked word for word.
 
-The forms: today's (slots (s, s + 1) at the panel's 20-word pitch: 4 banks shared, 2 wavefronts an access; a load and
+The forms: the s16 panel's (slots (s, s + 1) at the panel's 20-word pitch: 4 banks shared, 2 wavefronts an access; a load and
 a 4-byte clearing store); slots (s, s + 4) (16 banks apart: 1 wavefront); an `atom.shared.exch` reading and clearing
 in one; no clear in the drain and a 16-byte sweep after its barrier; the sweep with a warp's groups of 4 requests past
 the union not issued (a warp-uniform count); copies of 512 bytes a warp beside it every 4 adds or every add; bounds:
@@ -45,7 +45,7 @@ What it settles:
 - THE DRAIN'S FLOOR IS THE SM'S GLOBAL REQUEST PATH: ~5 SM cycles a line request with every SM draining (the
   skipping form's row: 4.85 / 5.54 / 5.34 at the three cells (5.10 / 5.56 / 5.40 first recorded); alt-k4's is the global path's atomic price in
   `common/hardware.json`) -- the per-SM rate on record (2026-09-27), L2's atomic unit about half busy. The requests are
-  the union's slots: one half line a slot at d_v 64. The drain is no shared-pipe or issue question on sm_86: today's
+  the union's slots: one half line a slot at d_v 64. The drain is no shared-pipe or issue question on sm_86: the s16 panel's
   slot pairing and the conflict-free one run alike.
 - SKIP WHAT THE UNION DOES NOT HOLD: a pass's slots past the union issued as zero adds cost 16% more requests and 31%
   more time at alt-k4 (38% at cohort-k16, whose second pass is mostly empty). Never point dead lanes at one shared
@@ -64,7 +64,7 @@ What it settles:
 
 THE OUTPUT'S FORMAT (2026-10-19): the skipping form with `num` in another format, the drain's cycles a CTA-window less
 the fill. fp32 and s32 put a slot's 32 channels in one request (lane `l` channel `l`, from its pair word's half,
-converted exactly through the magic offset and scaled by the slot's power of two); f16 pairs keep today's two slots a
+converted exactly through the magic offset and scaled by the slot's power of two); f16 pairs keep the s16 panel's two slots a
 request, each word's halves converted, scaled by the slot's (scale, bias) pair and packed by one `F2FP`, added by
 `red.global.add.noftz.f16x2` (its panel filled with 5-bit halves so every f16 sum is an exact integer). Every slot
 checked:
