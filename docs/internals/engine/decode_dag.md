@@ -13,10 +13,9 @@ Symbols used below: `B` batch, `H` heads, `BH = B*H`, `D` level count, `N` leaf 
 
 `Mask.M3` is decode-dense and `Mask.M4` is decode-paged. After the step absorbed its own
 residency question, the node SET is one tuple for both — a dense call simply never finds
-an atom the table does not map, because it has no table. What the mask still separates is
-the host-visible verdict READ: a dense step has no residency fact to read back, so
-`read_verdict` carries `Mask.M4` alone and `DECODE_STEP` itself carries none of the
-band-specific work either mask would drop.
+an atom the table does not map, because it has no table. The host-visible verdict READ is
+not a node: `growth_pending` makes it at the caller's synchronization, and answers `False`
+for a dense state without reading, since a dense step has no residency fact to read back.
 
 **A GROWTH STEP IS NOT A THIRD MASK.** It is `DECODE_STEP` walked twice around an
 admission the host performs between the two walks. A mask selects a subgraph; growth
@@ -45,7 +44,7 @@ walk needs answered is asked off the write map that same kernel builds for itsel
 same launch ([`decode.md#absorbed-verdict`](../decode/decode.md#absorbed-verdict)). So a
 decode step is ALWAYS one launch, dense or paged, growing or steady, and neither backing
 has a stage whose only output is a widened copy of an input or a residency answer for a
-launch still to come. The detached clock is the write allocation itself
+launch still to come. The detached clock is the write rows' own shares
 ([`decode.md#detached-clock`](../decode/decode.md#detached-clock)), so it is not a stream
 of its own either.
 
@@ -60,20 +59,19 @@ the plane's extent against the backing, the page table's against `[BH, N/16]`. T
 checked per step and not at plan build because that is where the plane the step actually
 indexes is known.
 
-## <a id="the-verdict"></a>3. The verdict is ONE node, appended, and it is the step's own output
+## <a id="the-verdict"></a>3. The verdict is the step's own output, read by its caller
 
-`DECODE_VERDICT` is `DECODE_STEP + (read_verdict,)` — the captured recipe with the
-host-visible read spliced on the end, never a different walk. `read_verdict` is a single
-`copy_(non_blocking)` of the step's own `growth_any` output into a pinned mirror, and it
-CANNOT be enqueued ahead of the step any more: the verdict the step publishes is its own
-last-arriving CTA's write, so the read is behind it by data dependence, not by host
-policy. It is the family's ONE `host_sync` node, and it is the last node in the tuple —
-`DECODE_VERDICT[:len(DECODE_STEP)] == DECODE_STEP` is asserted directly
-(`tests/unit/test_facts_memo.py`).
-
-`decode_step_gated` runs `DECODE_STEP` alone — the caller owns the verdict, at whatever
-synchronization it already has, through `growth_pending` and `admit_growth`
-([`decode.md#capture`](../decode/decode.md#capture)).
+`decode_step_gated` runs `DECODE_STEP` — the whole tuple, the step its last node — and the
+caller owns the verdict, at whatever synchronization it already has, through
+`growth_pending` and `admit_growth` ([`decode.md#capture`](../decode/decode.md#capture)).
+`growth_pending` is a single copy of the step's own `growth_any` output into a pinned
+mirror, and it cannot be enqueued ahead of the step: the verdict the step publishes is its
+own last finisher's write, so the read is behind it by data dependence. The layer's
+one-token `forward` is that caller (`RoLA._step`, then the verdict, the admission and the
+step again), and a serving loop that captures `_step` reads it at the sync that samples
+its token. The verdict was a DAG node appended to the step (`DECODE_VERDICT`) until the
+layer composed it itself (2026-09-30); `DECODE_STEP` ending at the step with no host read
+is asserted directly (`tests/unit/test_facts_memo.py`).
 
 ## <a id="capturable"></a>4. `capturable` is a declaration, not a hope
 
@@ -81,8 +79,8 @@ Every node of `DECODE_STEP` declares `capturable=True`, and
 `rola.engine.runner.validate_capturable` refuses the tuple at import if one does not. A
 node cannot declare both `capturable` and `host_sync`: reading a device value on the host
 is precisely what a capture forbids, and the two attributes are one claim written from
-two ends — which is exactly why `read_verdict` lives only in `DECODE_VERDICT`, appended
-after the captured tuple, and never inside `DECODE_STEP` itself.
+two ends — which is exactly why the verdict read lives in `growth_pending`, outside the
+captured tuple, and never inside `DECODE_STEP` itself.
 
 The declaration is what makes the property survive editing. A node added to the step that
 reads a device value, or allocates per step, fails at import rather than at some caller's
@@ -94,7 +92,7 @@ the declaration is TRUE of a real capture.
 `DecodeGeometry` (`rola/engine/plan.py`) answers "what shape is the launch?" — widths,
 per-level dial row offsets, the `(k, m)` lattice the state plane is written in
 (`lattice_k`, `lattice_m`, [`decode_lattice.md`](../decode/decode_lattice.md)), `d_v`, the
-decay arm, `eps`, `n_split`. None of that is a derived axis. `BC` is deliberately NOT a
+decay arm, `eps`, `ctas`, `write_dense`. None of that is a derived axis. `BC` is deliberately NOT a
 field: owner-blocked AMORTIZATION is a property of how a tiled consumer shares a
 `[BC, cols]` block's cost across many tokens, and with one token there is nothing to
 amortize, so the decode kernels are BC-blind by construction in that sense — the
@@ -103,16 +101,17 @@ carry instead, never a launch-shape one
 ([`decode.md#bc-absent`](../decode/decode.md#bc-absent)).
 
 It is `DecodePlan`'s CONFIG HALF rather than a field of it, because the memo key is over
-this alone: `geometry` is declared `pure_of` `(widths, d_v, has_decay, BH, device)` and
+this alone: `geometry` is declared `pure_of` `(widths, d_v, has_decay, write_dense)` (`write_dense` off the
+bundle's `sparse` flag, `docs/api.md` §2.1) and
 the terminal facts beside it — the folded amplitudes, the plane, the verdict buffers —
 are per-call and never cached.
 
 `scratch` is declared `per_state`, which makes its table a `WeakKeyDictionary` keyed on
 the sequence's state object. The weakness is REQUIRED and not incidental: a dropped
 sequence must drop its buffers, and two live sequences must never share one. Being
-memoized is also what hoists the allocation, and the once-only zeroing of `ctr`,
-`growth_ctr` and `done`, above any captured region — the last-arriving CTA of every step
-resets each of them, so no `memset` ever stands between two decode steps
+memoized is also what hoists the allocation, and the once-only initialization of `yacc`,
+`queue`, `growth_ctr` and `done`, above any captured region — the step's own finishers and
+last CTA out reset each of them, so no `memset` ever stands between two decode steps
 ([`decode.md#capture`](../decode/decode.md#capture)).
 
 Because the launch config is FROZEN for the sequence, a state has exactly one live
@@ -135,8 +134,8 @@ warning the function's docstring used to carry alone.
 
 A step admits into its state's slack pool INSIDE the kernel, from the pool buffers
 `backing` hands the plan — there is no node for it, because it is not a fact the host
-finds: the claim and the fold-back are the kernel's own, elected from the split-K
-arrival counter it already keeps ([`decode.md#the-claim`](../decode/decode.md#the-claim)).
+finds: the claim is the kernel's own, made by the batch-head's owner and written into the
+page table ([`decode.md#the-claim`](../decode/decode.md#the-claim)).
 `pool_headroom` and `refill_pool` (`rola/engine/dags/decode_dag.py`) are HOST reads and
 writes off the step's path entirely — a serving loop polls the first at leisure and calls
 the second on its own schedule, never as a precondition of a step. Pool-covered growth

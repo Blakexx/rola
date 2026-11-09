@@ -1,0 +1,17 @@
+{
+    "name": "bazelisk",
+    "role": "Bazel's launcher, the graph's one bootstrapped tool (docs/build-graph.md#environment): it downloads the Bazel release .bazelversion names, verifies it against .bazeliskrc's digest, and runs the graph's front door (bazel/bazel) in its place. Every other tool the graph runs is declared in the graph.",
+    "upstream": "https://github.com/bazelbuild/bazelisk",
+    "version": "1.30.0",
+    "version_string": "bazelisk 1.30.0",
+    "release_asset": "bazelisk-linux-amd64",
+    "asset_kind": "binary",
+    "release_url": "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-linux-amd64",
+    "mirror_urls": [
+        "https://api.github.com/repos/bazelbuild/bazelisk/releases/assets/660754143"
+    ],
+    "asset_sha256": "a248ae2b2b62b5baebb748f6fba7203bff1a27e5d01b55399a8406744cb539e8",
+    "why_not_gated_like_ptxas": "bazelisk only launches Bazel; it touches neither codegen nor an action. Its version is pinned by digest, not ranged, because a launcher that differs by host is a graph that differs by host: the digest is the identity (the release prints no version without downloading a Bazel).",
+    "archive_root": "bazelisk-1.30.0",
+    "binary_path": "bazelisk"
+}

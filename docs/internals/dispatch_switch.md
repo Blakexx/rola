@@ -5,24 +5,16 @@ from runtime values. This header is the mechanism for that selection in a hand-w
 launcher: `entmax.cu`'s forward and backward launchers (`factor.cu`'s four launchers use
 it the same way).
 
-`decode.cu`'s `launch_decode_step` no longer uses it: decode moved to the same
-GENERATED-ARM-LIST shape the carry family uses (`ROLA_DECODE_ARMS`, an X-macro over the
-declared `(DV, D, decay)` rows, tried in order and refused by name if none matches).
-Both generated-list families and this file's function-template dispatch are answers to
-the same problem — a launch selected at runtime from a closed compile-time set — and a
-family picks whichever fits its axis count and instantiation shape: this file when the
-axes compose as a nested nest of nearly-independent nested nests; a generated list when
-the shipped set is itself the thing worth declaring as one table (carry's `(D, DV,
-warps_per_cta)`, decode's `(DV, D, decay)`).
-
-The carry family does not use it either, and never did. Its dispatch walks a GENERATED
-ARM LIST: `tools/gen_shards.py` defines `CARRY_ARMS` (the closed-world `(D, DV,
-warps_per_cta)` table) and emits `carry_selection.inc`, one X-macro over every SHIPPED
-arm, and `carry/carry.cu` expands that same macro four times via `ROLA_CARRY_ARM_SET_X`
-— the arm declarations, the launch dispatch, the census and the per-arm row listing —
-so the enumeration exists once and is single-sourced with the per-arm translation units
-it partitions into (`carry_arm_0.cu`, [`carry/carry_kernel.md`](carry/carry_kernel.md),
-`instantiations/README.md`).
+The carry and decode families select from a GENERATED ARM LIST instead. The carry's is
+the declared shipped set (`tools/manifests/shipped_set.json`, keyed on the carve's plan
+pair): `tools/gen_shards.py` emits `carry_selection.inc`, one X-macro over every built
+arm, and `carry/carry.cu` expands `ROLA_CARRY_ARM_SET_X` four times — the arm
+declarations, the launch dispatch through `arm_switch` ([`common/arm_switch.md`](common/arm_switch.md)),
+the census and the per-arm row listing — so the enumeration exists once and is
+single-sourced with the per-arm translation units it partitions into
+(`instantiations/README.md`). Decode's is `ROLA_DECODE_ARM_SET_X`, generated the same way
+(`decode_selection.inc` from `tools/manifests/decode_set.json`), an X-macro over the declared
+`(DV, D, decay)` rows, tried in order and refused by name if none matches.
 
 THE RULE BETWEEN THE TWO IS WHERE THE ENUMERATION LIVES. A launcher with a handful of
 axes and one kernel writes its selection here, in the one place its `<<<...>>>`
@@ -32,6 +24,11 @@ is the cheaper form than a nested switch, because the axis order then exists exa
 once instead of once per nesting level.
 
 ## <a id="one-launch"></a>1. The launch is written ONCE
+
+<a id="note-l3"></a>The form this file refuses is the MACRO LADDER: a `#define` per axis whose body restates the
+launch, so an `N`-axis dispatch spells the launch `2^N` times inside a preprocessor expansion the compiler cannot
+type-check, the debugger cannot step and a reader cannot see -- exactly the place a `<<<...>>>` argument drifts
+between arms. The form here is flash-attention's `BOOL_SWITCH` idiom with the macro removed.
 
 The axis walkers are function templates. The launch is a generic lambda. Each axis
 arrives as an `integral_constant` whose `::value` is a compile-time constant at the
@@ -45,14 +42,15 @@ int_switch<2, 4, 8, 16, 32, 64, 128, 256>(
       constexpr int kLaneWidth = kWPad < 32 ? kWPad : 32;
       constexpr int kItemsPerThread = kWPad / kLaneWidth;
       bool_switch(alpha_is_1p5, [&](auto ALPHA) {
-        union_forward_kernel<kLaneWidth, kItemsPerThread, decltype(ALPHA)::value, LogitT, OutT>
+        union_forward_kernel<Bt, kLaneWidth, kItemsPerThread, decltype(ALPHA)::value, LogitT, OutT>
             <<<grid, BLOCK_THREADS, 0, stream>>>(/* ... */);
       });
     });
 ```
 
-(`entmax.cu`'s `launch_forward`; `launch_backward` and `factor.cu`'s four launchers
-follow the same shape.)
+(`entmax.cu`'s `launch_forward_at<Bt, ...>`, the kernel at the build tag `Bt`; `launch_backward_at` and `factor.cu`'s
+four launchers follow the same shape. Each `launch_*` above them is the one branch to the card's build,
+`build_switch`, outside every launch: [`common/select.md#build-switch`](common/select.md#build-switch).)
 
 **Uniqueness of the launch text is the property this file exists to hold.**
 `entmax.cu`'s forward launch takes FIFTEEN arguments across thirty-two selectable
@@ -67,6 +65,8 @@ line has a source location a debugger and a profiler can name.
 
 ## <a id="axes"></a>2. The two primitives, and why only two
 
+<a id="near-line-14"></a><a id="near-line-25"></a>
+
 | | axis | unmatched value |
 |---|---|---|
 | `bool_switch(value, body)` | one boolean | impossible — both arms exist |
@@ -76,7 +76,8 @@ line has a source location a debugger and a profiler can name.
 arms are declared, so a runtime value outside it is a NAMED REFUSAL and never a
 silently missing arm; `what` is the axis's name in that message.
 
-The one `int_switch` set still live in this engine is eight values wide (entmax/factor's
+<a id="near-line-31"></a>The candidates are tried left to right and exactly one arm runs. The one
+`int_switch` set live in this engine is eight values wide (entmax/factor's
 padded width, `{2, 4, 8, 16, 32, 64, 128, 256}`) and its `bool_switch` axes are all
 two-way, so the expansion is a comparison chain rather than a jump table, which is the
 right shape at that width.
@@ -102,7 +103,7 @@ do not have.
 
 | half | what it is | what covers it |
 |---|---|---|
-| the instantiation SET | which `(template arguments)` tuples exist in the binary | `tools/ratify.py` (345 entries per arch: 320 entmax + 17 decode + 6 intra + 1 carry + 1 build stamp), reading the built `.so`. A tuple that stops being instantiated fails it. |
+| the instantiation SET | which `(template arguments)` tuples exist in the binary | `tools/ratify.py`, reading the built `.so`. A tuple that stops being instantiated fails it. |
 | the SELECTION | which tuple a given set of runtime values reaches | the CUDA suites, which exercise every arm |
 
 `tools/sass_bodies.py` hashes DEVICE entry points. Host `.text` is not in that hash, so
@@ -110,58 +111,3 @@ a SASS comparison is evidence about kernels and never about the host code that c
 between them: it cannot tell a correct selection from one that reaches the wrong
 instantiated arm. Only the suites can, which is why a dispatch is not verified without
 running them.
-
-## Comments moved from source
-
-Verbatim `//:` prose blocks from `csrc/rola/src/dispatch_switch.cuh`, in source order, one heading per declaration. Source keeps only a short decl block pointing here.
-
-## More comments moved from source
-
-Verbatim trailing/banner `//` comments from `csrc/rola/src/dispatch_switch.cuh` condensed at their call site into a short pointer.
-
-<a id="note-l3"></a>
-### near line 3
-
-HOST-SIDE COMPILE-TIME DISPATCH, AS FUNCTION TEMPLATES TAKING A GENERIC LAMBDA.
-
-A kernel with `N` structural template axes has to be selected at runtime from `N`
-runtime values, and the shape that selection takes is a real engineering choice.
-The form this project refuses is the MACRO LADDER: a `#define` per axis whose body
-restates the launch, so an `N`-axis dispatch spells the launch `2^N` times inside a
-preprocessor expansion the compiler cannot type-check, the debugger cannot step and
-a reader cannot see. It was measured to be exactly the place a `<<<...>>>` argument
-drifts between arms.
-
-The form here is flash-attention's `BOOL_SWITCH` idiom with the macro removed: the
-axis walker is a function template, the launch is written ONCE as a generic lambda,
-and each axis arrives as an `integral_constant` whose `::value` is a compile-time
-constant at the point of use.
-
-WHAT THIS DOES AND DOES NOT CHANGE. The set of DEVICE instantiations is identical --
-the same template arguments are named, so the fatbin carries the same entry points
-and the ratification manifest is unmoved, which is a gate and not a hope. The HOST
-selection code is genuinely different (a comparison chain over the candidate set
-rather than a `switch` statement), it is not device code, and no SASS comparison can
-speak for it; what covers it is the CUDA suites, which exercise every arm.
-
-The idiom, what it replaced, and the axis-order rule: docs/internals/dispatch_switch.md
-
-<a id="near-line-14"></a>
-### near line 14
-
-ONE BOOLEAN AXIS. `body` is called with `std::true_type` or `std::false_type`, so
-`decltype(FLAG)::value` is a template argument at the call site.
-
-<a id="near-line-25"></a>
-### near line 25
-
-ONE INTEGER AXIS OVER A CLOSED SET. The candidate values are template arguments,
-so the set is part of the call and an unmatched runtime value is a REFUSAL rather
-than a silently missing arm -- `what` names the axis in the message.
-
-<a id="near-line-31"></a>
-### near line 31
-
-An expansion over the candidate set, evaluated left to right: exactly one arm
-runs. The one `int_switch` set live today is eight values wide, so the chain is not a
-jump table and does not need to be.

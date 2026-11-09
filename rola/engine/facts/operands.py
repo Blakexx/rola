@@ -13,17 +13,19 @@ import torch
 
 if TYPE_CHECKING:
     from rola.routing.factors import RouteFactors
+    from rola.values import Values
 
 
-def operands_of(routes: RouteFactors, v: torch.Tensor, decay: Any = None) -> tuple:
-    """Every tensor the OPERATION consumes, flat -- the predicate's argument list."""
-    return (v, *routes.tensors(), *(() if decay is None else tuple(decay.dials)))
+def operands_of(routes: RouteFactors, values: Values, decay: Any = None) -> tuple:
+    """Every tensor the OPERATION consumes, flat -- the predicate's argument list. A bundle's differentiable
+    tensors are its gradient anchors (``source``), present only when the producer's inputs require a gradient."""
+    return (*values.tensors(), *routes.tensors(), *(() if decay is None else tuple(decay.dials)))
 
 
 def requires_backward(*tensors: Any) -> bool:
     """Whether a call over these operands must produce a differentiable result.
 
-    Evaluated on the tensors the OPERATION consumes -- ``v``, the routing factors, the
+    Evaluated on the tensors the OPERATION consumes -- the values, the routing factors, the
     side gains, the decay dials -- and never on a module's parameters. A
     frozen-parameter forward under ``torch.no_grad()`` has no graph to sever and
     correctly takes the kernel; a dial-only unfrozen finetune has exactly one

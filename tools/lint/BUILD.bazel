@@ -1,0 +1,151 @@
+"""THE LINTERS (docs/internals/tools/lint.md): the tree's lint scripts and configuration, which the packages' own lint
+targets run over their sources, the modes a person runs by hand, and each linter's self-test on its fixtures. The lints
+themselves live beside what they check: csrc/rola's own, and the repo-wide checks in the root package."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:cuda.bzl", "cuda_unit")
+load("//bazel:defs.bzl", "tool_run", "tree_part", "tree_test", "unit_lint_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(glob([
+    "*.py",
+    "*.sh",
+    "*.yaml",
+]))
+
+#: the lints' Python, which the gates import
+filegroup(
+    name = "python_sources",
+    srcs = glob(["*.py"]),
+)
+
+#: this package's part of the tree the checks read
+tree_part()
+
+#: THE LINTERS' SELF-TESTS (docs/internals/tools/lint.md#fixtures): each lint fires on its own fixture's must-fire case
+#: and stays quiet on the rest -- the Python lints' own self-tests, and the unit lints' fixtures linted as units
+
+tree_test(
+    name = "ast_grep_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/ast_grep_gate.py", "--test-fixtures"],
+    data = [
+        ":tracked",
+        "//:sgconfig.yml",
+    ],
+)
+
+tree_test(
+    name = "constant_parameters_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/constant_parameters.py", "--test-fixtures"],
+    #: its self-test runs the real scan too: no fixture leaks into it
+    data = [
+        ":tracked",
+        "//:tree_python",
+    ],
+)
+
+tree_test(
+    name = "drift_guards_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/drift_guards.py", "--test-fixtures"],
+    data = [":tracked"],
+)
+
+tree_test(
+    name = "r9_enforcement_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/r9_enforcement.py", "--test-fixtures"],
+    data = [":tracked"],
+)
+
+tree_test(
+    name = "readability_spacing_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/readability_spacing.py", "--test-fixtures"],
+    data = [":tracked"],
+)
+
+tree_test(
+    name = "unused_instantiations_fixtures",
+    size = "small",
+    cmd = ["python3", "tools/lint/unused_instantiations.py", "--test-fixtures"],
+    data = [":tracked"],
+)
+
+tree_test(
+    name = "vulture_fixtures",
+    size = "small",
+    cmd = ["tools/lint/run_vulture.sh", "--test-fixtures"],
+    data = [":tracked"],
+)
+
+#: compiled as the extension's units are (bazel/cuda.bzl), so the lint reads the same kind of compile
+cuda_unit(
+    name = "fixture_device_unit",
+    srcs = ["fixtures/device_lint_unused_param.cu"],
+    host_cc = "@host_cc//:identity.txt",
+)
+
+cc_library(
+    name = "fixture_host_unit",
+    srcs = ["fixtures/host_warnings_unused_param.cpp"],
+    additional_compiler_inputs = ["@host_cc//:identity.txt"],
+)
+
+unit_lint_test(
+    name = "clang_tidy_device_fixtures",
+    size = "small",
+    expect = [
+        "'unused_param' is unused \\[misc-unused-parameters\\]",
+        "Value stored to 'twice' is never read \\[clang-analyzer-deadcode.DeadStores\\]",
+    ],
+    lint = "device",
+    units = [":fixture_device_unit"],
+)
+
+unit_lint_test(
+    name = "host_warnings_fixtures",
+    size = "small",
+    expect = ["unused parameter .unused_param. \\[-Wunused-parameter\\]"],
+    lint = "warnings",
+    units = [":fixture_host_unit"],
+)
+
+test_suite(
+    name = "lint_fixtures",
+    tests = [
+        ":ast_grep_fixtures",
+        ":clang_tidy_device_fixtures",
+        ":constant_parameters_fixtures",
+        ":drift_guards_fixtures",
+        ":host_warnings_fixtures",
+        ":r9_enforcement_fixtures",
+        ":readability_spacing_fixtures",
+        ":unused_instantiations_fixtures",
+        ":vulture_fixtures",
+    ],
+)
+
+#: each lint as a person runs it: its inventory, and the modes the graph's checks do not run (a ratchet's `--shrink`,
+#: one drift guard's rule, the primitives census's report)
+[tool_run(
+    name = name,
+    tool = "tools/lint/%s.py" % name,
+) for name in [
+    "ast_grep_gate",
+    "burst_tier",
+    "constant_parameters",
+    "coverage",
+    "drift_guards",
+    "lint_standards",
+    "portable_claude",
+    "primitives_census",
+    "r9_enforcement",
+    "ratchet",
+    "readability_spacing",
+    "unused_instantiations",
+    "work_codes",
+]]

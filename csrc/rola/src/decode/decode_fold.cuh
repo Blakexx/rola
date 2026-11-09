@@ -1,86 +1,122 @@
 #pragma once
 
-// THE DECODE FOLD -- every per-token operand widened, normalized and staged in
+// THE DECODE FOLD -- every per-token operand, read from the internal format as stored and staged in
 // SHARED MEMORY by the CTA that is about to consume it.
 // see docs/internals/decode/decode_fold.md#note-l3
 
 #include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
+#include <cstdint>
+
+#include "facts/liveness_contract.cuh"
 #include "decode.cuh"
 
 namespace rola {
 namespace decode {
-
-__device__ __forceinline__ float widen(float x) { return x; }
-
-__device__ __forceinline__ float widen(const __nv_bfloat16& x) { return __bfloat162float(x); }
 
 template <typename T>
 __device__ __forceinline__ const T* row_of(const Span& s, int b, int h) {
   return static_cast<const T*>(s.base) + b * s.sb + h * s.sh;
 }
 
-//: THE DECLARED SUM. Lane `j` accumulates `row[j], row[j + 32], ...` in -- see docs/internals/decode/decode_fold.md#row-sum
-template <typename T>
-__device__ __forceinline__ float row_sum(const T* row, int64_t sw, int width, int lane) {
-  float acc = 0.0f;
-#pragma unroll 1
-  for (int k = lane; k < width; k += 32) acc += widen(row[k * sw]);
-#pragma unroll
-  for (int off = 16; off > 0; off >>= 1) acc += __shfl_down_sync(0xffffffffu, acc, off);
-  return acc;
+__device__ __forceinline__ float scale_of(const Span& s, int b, int h) {
+  return *row_of<float>(s, b, h);
 }
 
-//: THE ROW SUMS, for a side that carries its own mass. Warp `l < D` owns level -- see docs/internals/decode/decode_fold.md#fold-row-sums
-template <typename T>
-__device__ __forceinline__ void fold_row_sums(const DecodeParams& p, int b, int h,
-                                              const Span* spans, const int* normalize,
-                                              float* s_sum) {
+//: THE DIGIT PASS: every digit of both sides, a thread's slots' loads issued before any is used, staged and -- see docs/internals/decode/decode_fold.md#fold-digits
+template <class Dp, int D>
+__device__ __forceinline__ void fold_digits(const DecodeParams& p, int b, int h, float* sa_r,
+                                            float* sa_w, uint32_t* mask_r, uint32_t* mask_w) {
+  //: a side is at most `kMaxLevels` levels of `kDecodeMaxLevelWidth` digits, so a thread holds at most this many slots.
+  constexpr int kSlots = (2 * kMaxLevels * kDecodeMaxLevelWidth) / Dp::kThreads;
   const int lane = threadIdx.x & 31;
-  const int warp = threadIdx.x >> 5;
-  if (warp < p.D && normalize[warp] != 0) {
-    const Span& s = spans[warp];
-    const float total = row_sum(row_of<T>(s, b, h), s.sw, p.level_width[warp], lane);
-    if (lane == 0) s_sum[warp] = total;
-  }
-}
-
-//: ONE SIDE'S `D` LEVELS into the flat `[sum_l b_l]` shared staging the walk indexes by -- see docs/internals/decode/decode_fold.md#near-line-53
-template <typename T>
-__device__ __forceinline__ void fold_rows(const DecodeParams& p, int b, int h, const Span* spans,
-                                          const int* normalize, const float* s_sum, float* out) {
-  const int tid = threadIdx.x;
-#pragma unroll 1
-  for (int l = 0; l < p.D; ++l) {
-    const int width = p.level_width[l];
-    const T* in = row_of<T>(spans[l], b, h);
-    const int64_t sw = spans[l].sw;
-    float* dst = out + p.level_amp_offset[l];
-    if (normalize != nullptr && normalize[l] != 0) {
-      const float total = s_sum[l];
-#pragma unroll 1
-      for (int g = tid; g < width; g += kDecodeThreads) dst[g] = widen(in[g * sw]) / total;
-    } else {
-#pragma unroll 1
-      for (int g = tid; g < width; g += kDecodeThreads) dst[g] = widen(in[g * sw]);
+  const int slots = p.mask_total << 5;
+  float x[kSlots];
+  float scale[kSlots];
+#pragma unroll
+  for (int j = 0; j < kSlots; ++j) {
+    const int s = threadIdx.x + j * Dp::kThreads;
+    const bool write_side = s >= slots;
+    const int word = (write_side ? s - slots : s) >> 5;
+    int l = 0;
+#pragma unroll
+    for (int q = 1; q < D; ++q) {
+      if (word >= p.mask_off[q]) l = q;
     }
+    const int digit = ((word - p.mask_off[l]) << 5) + lane;
+    const bool valid = s < 2 * slots && digit < p.level_width[l];
+    const Span& rows = write_side ? p.write[l] : p.read[l];
+    //: on the byte scale: a u8 digit, or a dense level's f16 coefficient (its floor stored) times 255, exact
+    const bool half = (((write_side ? p.floor_write : p.floor_read) >> l) & 1u) != 0u;
+    x[j] = !valid ? 0.0f
+           : half ? facts::kRowMaxDigit * __half2float(row_of<__half>(rows, b, h)[digit * rows.sw])
+                  : static_cast<float>(row_of<uint8_t>(rows, b, h)[digit * rows.sw]);
+    scale[j] = valid ? scale_of(write_side ? p.write_scale[l] : p.read_scale[l], b, h) : 0.0f;
+  }
+
+#pragma unroll
+  for (int j = 0; j < kSlots; ++j) {
+    const int s = threadIdx.x + j * Dp::kThreads;
+    if (s >= 2 * slots) break;
+    const bool write_side = s >= slots;
+    const int word = (write_side ? s - slots : s) >> 5;
+    int l = 0;
+#pragma unroll
+    for (int q = 1; q < D; ++q) {
+      if (word >= p.mask_off[q]) l = q;
+    }
+    const int digit = ((word - p.mask_off[l]) << 5) + lane;
+    const bool floored =
+        ((write_side ? p.floor_write : p.floor_read) >> l & 1u) != 0u && scale[j] > 0.0f;
+    const float raw = floored ? fmaxf(x[j], facts::kDenseFloorDigit) : x[j];
+    const uint32_t live = __ballot_sync(0xffffffffu, raw != 0.0f);
+    if (lane == 0) (write_side ? mask_w : mask_r)[word] = live;
+    if (digit < p.level_width[l])
+      (write_side ? sa_w : sa_r)[p.level_amp_offset[l] + digit] =
+          raw * (scale[j] / facts::kRowMaxDigit);
   }
 }
 
-//: The token's value row, resident for the whole walk.
-template <typename T>
-__device__ __forceinline__ void fold_value(const DecodeParams& p, int b, int h, int d_v,
-                                           float* out) {
-  const T* in = row_of<T>(p.v, b, h);
-  const int64_t sw = p.v.sw;
+//: A WRITE LEVEL'S ROW SUM, from its staging: the decay's share divides by their product. Warp `first + l` owns level
+//: `l`. -- see docs/internals/decode/decode_fold.md#row-sum
+__device__ __forceinline__ void sum_staged_rows(const DecodeParams& p, const float* sa_w,
+                                                float* s_sum, int first) {
+  const int lane = threadIdx.x & 31;
+  const int l = (threadIdx.x >> 5) - first;
+  if (l >= 0 && l < p.D) {
+    const float* row = sa_w + p.level_amp_offset[l];
+    float acc = 0.0f;
 #pragma unroll 1
-  for (int c = threadIdx.x; c < d_v; c += kDecodeThreads) out[c] = widen(in[c * sw]);
+    for (int k = lane; k < p.level_width[l]; k += 32) acc += row[k];
+#pragma unroll
+    for (int off = 16; off > 0; off >>= 1) acc += __shfl_down_sync(0xffffffffu, acc, off);
+    if (lane == 0) s_sum[l] = acc;
+  }
 }
 
-//: The write gain, a per-token scalar every thread of the CTA reads.
-template <typename T>
-__device__ __forceinline__ float fold_gain(const DecodeParams& p, int b, int h) {
-  return widen(*row_of<T>(p.g_write, b, h));
+//: THE DECAY'S SHARE SCALE: `1 / prod_l sum_l` over the write levels' row sums, 0 for a token that writes nothing (its
+//: clock still). -- see docs/internals/decode/decode_fold.md#row-sum
+__device__ __forceinline__ float share_scale(const DecodeParams& p, const float* s_sum) {
+  float total = 1.0f;
+#pragma unroll 1
+  for (int l = 0; l < p.D; ++l) total *= s_sum[l];
+  return total > 0.0f ? 1.0f / total : 0.0f;
+}
+
+//: Channel `c` of the token's value, LOADED: its f16 unit and the token's scale, the product left for after the digit pass. -- see docs/internals/decode/decode_fold.md#fold-value
+struct ValueUnit {
+  __half unit;
+  float scale;
+};
+
+__device__ __forceinline__ ValueUnit load_value(const DecodeParams& p, int b, int h, int c) {
+  return ValueUnit{row_of<__half>(p.v, b, h)[c * p.v.sw], scale_of(p.v_scale, b, h)};
+}
+
+//: The channel's value, `unit * scale`.
+__device__ __forceinline__ float value_of(const ValueUnit& d) {
+  return __half2float(d.unit) * d.scale;
 }
 
 }  // namespace decode

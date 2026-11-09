@@ -11,19 +11,18 @@ A user who knows linear attention should find one unfamiliar thing on this page.
 ```python
 import rola
 
-routes   = rola.RouteProducer(rola.uniform(2, rola.union_routing(64, alpha=1.5)),
-                              hidden_size=1024, num_heads=8)
-decay    = rola.LearnedDecay(2 ** -8, widths=routes.widths, num_heads=8)
+routing = rola.Routing(rola.uniform(2, rola.union_routing(64, alpha=1.5)))
+decay   = rola.LearnedDecay(2 ** -8, widths=routing.widths, num_heads=8)
 
-layer = rola.RoLA(routes, d_v=64, decay=decay, layer_idx=0).cuda().eval()
+layer = rola.RoLA(routing, hidden_size=1024, num_heads=8, d_v=64, decay=decay, layer_idx=0).cuda().eval()
 y, _ = layer(hidden_states)                     # stateless: (y, None)
 ```
 
-or, without the layer:
+or, without the layer, from levels you computed yourself -- the format's own utilities build the bundles:
 
 ```python
-factors = routes(hidden_states)          # the (q, k) pair, after the feature map
-y, _ = rola.rola_op(factors, v, decay())
+factors = rola.RouteFactors.from_levels(topology, read_levels, write_levels)
+y, _ = rola.rola_op(factors, rola.Values.from_projection(v), decay())
 ```
 
 ---
@@ -31,12 +30,13 @@ y, _ = rola.rola_op(factors, v, decay())
 ## 1. The op
 
 ```python
-rola_op(routes: RouteFactors, v: Tensor, decay: LeafMassDecay | None = None, *,
+rola_op(routes: RouteFactors, values: Values, decay: LeafMassDecay | None = None, *,
         state=None, expert=None) -> (y, state)
 ```
 
-`routes` is the `(q, k)` pair after the feature map. `v` is `[B, T, H, d_v]`. `decay` is
-the recurrence dial. `y` is `[B, T, H, d_v]`.
+`routes` is the `(q, k)` pair after the feature map. `values` is the value stream in the
+internal format, `Values.from_projection(v)` over a `[B, T, H, d_v]` projection (§4.1).
+`decay` is the recurrence dial. `y` is `[B, T, H, d_v]`.
 
 `state` is `None` (a stateless call, returning `(y, None)`) or a `rola.state()` object,
 which is mutated in place and handed back. THE PREDICATE IS `state is not None` — there
@@ -49,7 +49,7 @@ capacity; that is a bridge for the oracle and for a test, never a measured path.
 `rola.state(pool_slack=0.0)` is the paged backing's other storage-mechanics knob:
 a fraction of full residency, reserved per batch-head as physical slots a `T = 1` decode
 step can admit into itself, with no host round trip. `0.0` — the default — is exact
-commitment, unchanged from before the knob existed. Two calls read and refill it off the
+commitment. Two calls read and refill it off the
 step's own path: `rola.engine.dags.decode_dag.pool_headroom(state)` (the slack slots the
 thinnest batch-head still has) and `refill_pool(state)` (restock what the device spent).
 See [`internals/state.md`](internals/state.md#the-slack-pool) and
@@ -60,18 +60,17 @@ are not model facts — they are how the op RUNS, and the op decides how it runs
 call, from the routing it was actually given. They live behind
 [`rola.expert`](#5-the-expert-surface).
 
-**Any level width, any `d_v`.** A `RouteProducer` level's width and a layer's `d_v` are
+**Any level width, any `d_v`.** A `Routing` level's width and a layer's `d_v` are
 never required to be a power of two or a shipped value — host-side padding at the op's
 own call surface serves the rest, with no kernel change
-([`docs/internals/padding.md`](internals/padding.md)). `rola.rola_op`'s CUDA arm is
-currently deleted pending K31 R2, so this is not yet reachable end to end through the
-layer; the padding seam is built and tested at `rola.ops.carry`/`rola.ops.decode`/
-`rola.ops.intra` ahead of the pipelined kernel body that will consume it.
+([`docs/internals/padding.md`](internals/padding.md)): the prefill's carry leg and the
+decode step pad below the op, and the intra reads the rows at their own widths.
 
 ### 1.1 The built envelope IS the surface
 
-The arm is the chunk consumer, and the chunk consumer is a BUILT MATRIX. **Everything
-outside it raises.** There is no second arm behind this surface: the fp64 oracle
+The prefill is the facts pass, the carry and the intra over a BUILT MATRIX
+(`rola.engine.dags.prefill_dag`). **Everything outside it raises.** There is no second arm behind this surface: the
+fp64 oracle
 (`rola.ops.naive.naive_rola`) is the executable spec — what tests and ratification
 call directly — and it is not reachable by dispatch, because a dispatch to it at
 inference is a silent ~1000x-slower route shipping unnoticed, which is the exact thing
@@ -82,29 +81,25 @@ the no-fallback rule forbids.
 | a gradient anywhere in the operands | none | `BackwardNotImplemented` |
 | the module's mode (layer only) | `eval()` | `BackwardNotImplemented` |
 | device | CUDA | refused |
-| `d_v` | `64` | refused |
-| widths | uniform (`len(set(widths)) == 1`) | refused (a jagged topology) |
-| `(D, B)` | the manifest's combinations (`rola.engine.facts.manifest`'s `chunk_arms()`) | refused |
-| `T` | any length | — |
-| `decay` | not implemented in the chunk arm (decode has it) | refused |
+| `d_v` | the intra's value width (`rola.ops.intra.VALUE_WIDTH`), which the binary's carry arms at the depth must reach | refused |
+| widths | one or two levels, each a whole number of 16-digit granules up to 256, any mix (`rola.ops.intra.admits`) | refused |
+| `T` | any (a partial last window runs inside the kernels; the layer's segments are whole windows, §4.2) | — |
+| `decay` | not implemented in the prefill (decode has it) | refused |
 | an unratified activation | — | refused |
 
 Ask before calling: `rola.expert.envelope_refusal(routes, v, decay)` returns the
 sentence the refusal will carry, or `None`. `rola.expert.require_envelope(...)` is the
 raising form the op itself uses.
 
-**This is a real capability narrowing, and it is stated rather than softened.** Shapes
-outside the matrix — including the flagship `widths = (8, 16)`, which is refused for
-being non-uniform — had a kernel before the tiled consumer's retirement, and there is
-NO TRAINING PATH through this surface at all until the native backward lands. The cards
-that widen the matrix and bring the backward are in
-[`docs/open-work.md`](open-work.md).
+**The envelope is narrow, and that is stated rather than softened.** Shapes outside the
+matrix are refused, and there is NO TRAINING PATH through this surface until the native
+backward lands; what widens it is in [`docs/open-work.md`](open-work.md).
 
 `rola_op` is the **single autograd boundary**, and it is a refusal rather than a
 branch: the failure it prevents — a forward-only kernel reached from a gradient
 context returns a tensor with no `grad_fn` and severs the graph silently — is
-structural, not a bug in any one call site. The deleted consumer's autograd node was the last
-line, loud if the first is ever bypassed.
+structural, not a bug in any one call site. The prefill's autograd node, whose backward
+raises `BackwardNotImplemented`, is the last line, loud if the first is ever bypassed.
 
 ### 1.2 Continuation is LAYERED
 
@@ -118,13 +113,10 @@ OWN thin bundle, and the rule is a membership test:
 So `RoLA.forward` returns `(y, LayerContinuation)` — always the container — and takes
 one back. `LayerContinuation.state` is the op's paged tensor; it is the container's
 only field today, and any future layer-level recurrence is a field ON IT, never on the
-op's state. The container is the contract in both directions: a bare `RoLAState` or the
-retired `(state, conv_rings)` tuple is refused by name, because accepting a lookalike
-would make the layer's own fields silently optional to carry.
-
-This is not the old pooled state object recreated. That object's defect was LAYER
-LUGGAGE INSIDE THE OP's state; keeping each level's object pure is what leaves
-accretion nowhere to land.
+op's state. The container is the contract in both directions: a bare `RoLAState` or a
+`(state, conv_rings)` tuple is refused by name, because accepting a lookalike would make
+the layer's own fields silently optional to carry. Keeping each level's object pure is
+what leaves layer luggage nowhere to land inside the op's state.
 
 ### 1.3 TWO CONTRACTS, ONE TRANSLATOR
 
@@ -135,7 +127,7 @@ are stated apart.
 | | what it accepts | what it does with the rest |
 |---|---|---|
 | **the API** (this page: `rola_op`, `RoLA`, `rola.state()`) | any level width `b_l >= 2`, any `d_v`, any length `L` | **pads** — level logits to the next power of two at or above 16 with `-inf`, `v` to the next shipped `DV` with zero columns |
-| **the kernel** (`rola.ops.carry`, `rola.ops.decode`) | only the state descriptor's strict shape: `B_l` a power of two at or above 16, a shipped `DV`, `N` a multiple of 16, bf16 operands | **refuses**, by name — it never pads and never masks |
+| **the kernel** (`rola.ops.carry`, `rola.ops.decode`) | only the state descriptor's strict shape: `B_l` a power of two at or above 16, a shipped `DV`, `N` a multiple of 16, the internal format's rows and values (§2.1, §4.1) | **refuses**, by name — it never pads and never masks |
 
 **The seam is the only translator.** A padded digit gets amplitude *exactly* zero
 (`-inf` before the entmax or softmax solve), so it is never live, never read, never
@@ -148,65 +140,85 @@ sees a width other than its own.
 **Both boundaries are tested.** API tests prove a padded run is bit-identical to the
 same shape declared natively; kernel-boundary tests call the launch surface directly
 with unpadded shapes and assert the refusal
-(`tests/unit/test_carry_surface.py`). A logical-width field in a kernel entry
+(`tests/oracle/test_padding_seam.py`). A logical-width field in a kernel entry
 signature is a lint finding, because a kernel that could read one could pad.
 
 **What the descriptor fixes.** A state binds its format at its first call — `D`, the
 per-level `B_l`, the canonical leaf order, the page rectangle, `DV`, and the stored form
-(split bf16 planes) — and every later call is *checked* against it rather than assumed
+(`rola._state.STATE_DTYPE`, [`internals/common/state_page.md`](internals/common/state_page.md)) — and every later call
+is *checked* against it rather than assumed
 to fit. A call that disagrees is refused at the seam, naming the field, instead of
 addressing somebody else's bytes inside a kernel. Re-laying out a state is an explicit
 op, never a side effect of a call. See
 [`internals/state.md`](internals/state.md#format).
 
-**Status.** The kernel half of this contract is live at the OP level: `rola.ops.carry`'s
-launch surface, its three refusals, and now the pipelined box-native body behind it
-(`docs/internals/carry/carry_kernel.md`) are all built and tested — a call into
-`extension().carry_forward` reaches a real, shipped launch, at the one arm the carry
-family's shipped set currently declares (`[D=2, DV=64, warps_per_cta=8]`). What is not
-yet built is the LAYER wiring: `rola.interface.rola_op` (and therefore `rola.RoLA`'s
-prefill path through it) still raises `NotImplementedError` unconditionally, so the op
-is not yet reachable end to end through the public surface this page otherwise
-documents. The envelope table in [1.1](#11-the-built-envelope-is-the-surface) is what
-`rola_op` is built against once that wiring lands, not a description of what runs today.
+**Status.** `rola_op` validates the call against the envelope and walks the prefill DAG.
+The DAG's carry leg (`rola.ops.prefill`) is not yet re-pointed at the rebuilt carry's
+launch surface (`rola.ops.carry.carry`), so a prefill does not yet run end to end
+([`docs/open-work.md`](open-work.md)).
 
 ## 2. The feature map
 
-### 2.1 The bundle IS the contract
+### 2.1 The bundle IS the contract, and it is THE INTERNAL FORMAT
 
 ```python
-RouteFactors(topology, read, write, g_write, read_mass=None)
+RouteFactors(topology, amp_read, amp_write, scale_read, scale_write, source=None, sparse=None)
+RouteFactors.from_levels(topology, read, write, *, sparse=None)        # the framework's epilogue
+RouteFactors.from_rows(topology, amp_read, amp_write, scale_read, scale_write, source=None, *,
+                       sparse=None)                                    # rows already in the format
 ```
 
-**The stored form is bf16.** The routing sides have one consumer, and it reads bf16, so
-that is what the shipped producer's solve WRITES -- there is no fp32 plane between the
-solve and the operator, and no narrowing pass. `read_simplex()` divides in at least
-fp32 whatever the levels are stored in, because a bf16 quotient of a bf16 sum is three
-roundings where one is forced. The bundle's own invariant is only that every level
-shares ONE dtype, so a bundle in any dtype is legal; bf16 is what the shipped producer
-emits and what every kernel-vs-oracle tolerance in the tree is derived against
-(`tests/oracle/tolerances.py`).
+**The stored form is the internal quantized format** (ruled 2026-09-26). Each level's rows are
+UNIT-MAX -- u8 with the row's largest digit at 255, except a DENSE level's rows, f16 at 1 (the write side ruled
+2026-10-04, the read side 2026-10-07); a sparse level's zero digit is dead; a dense level is never zero -- its rows are
+stored with the floor taken, 2^-13 of the row's max (the dense floor, ruled 2026-10-03/04;
+`docs/internals/facts/liveness_contract.md#floor`); an all-zero row is a dead token at that level -- with the row's maximum
+carried beside them as its fp32 scale (`amp_read`/`scale_read`, `amp_write`/`scale_write`, one
+tensor per level, `[B, T, H, width]` read and `[B, T, H_w, width]` write, starting on and stepping by 32 bytes: the
+row alignment law, `docs/internals/facts/liveness_contract.md#alignment`). Every level is stored as rows, once (ruled 2026-10-01: the
+intra and decode read rows, and the carry reads rows through the facts pass's words). `sparse` is
+`(read, write)`, a bool a level: the levels whose support the facts pass words because they may hold
+exact zeros worth skipping. It is set at production -- the producer flags a side whose activation
+has exact zeros, and `from_levels`/`from_rows` default to that rule -- and read by every consumer;
+no consumer derives it from the activations. A flag cannot disagree with the rows: a sparse-flagged
+level with no zeros costs its words, and a dense-flagged level with zeros is read whole.
+EVERY SIDE HAS A DENSE LEVEL: a `sparse` that flags every level of a side is refused -- a side's dense levels are
+the carry's operand on that side and carry the floor (`docs/internals/engine/rules.md#carve`).
+<a id="grouped-queries"></a>
+GROUPED QUERIES: the read side is the `H` query heads' (`heads`), the write side the `H_w` write heads' (`write_heads`):
+its rows and scales (`[B, T, H_w]`), and with it the values, the decay dials and the state. `H_w` divides
+`H`, and query head `h` reads write head `h // group` (`group = H / H_w`, consecutive: PyTorch SDPA's `enable_gqa`
+order); `H_w = H` is the ungrouped layer. The oracle reads grouped bundles (`tests/oracle/test_oracle_grouped.py`: a
+grouped run is the ungrouped run with each write head's side repeated for its query heads). The facts pass reads them,
+a write head's read side one union a window over its query heads' rows (`docs/internals/facts/facts.md#lists-out`), and
+the carry reads them: a CTA a write head, its query heads' rows with it (`docs/internals/carry/carry.md#sides`), as do
+the scale pass and the intra, so the prefill reads them. The decode step and the carried state read one head count
+today, and each refuses a grouped bundle by name (`RouteFactors.refuse_grouped`).
+`RouteFactors.rows(level, side)` is a level's rows, and its scale the row's max: the level as its producer handed it
+over, whatever its sum ([§2.2](#22-the-scaled-block-and-the-gain)). This is what
+the int carry, the intra and the decode kernels read, and it is written by the framework's producer
+alone: the fused kernel's epilogue, and the reference's (`rola/routing/quant.py`, `RouteFactors.from_levels`),
+gated against each other (`tests/integration/test_produce_kernel.py`). The fp64
+statement of the arithmetic is `tests/oracle/int_reference.py`, and the op's oracle takes the
+bundle itself as its input.
 
-`RouteFactors` is the op's first operand and the whole producer contract: **any callable
-returning a well-formed one is a producer.** There is no producer base class, no
-per-level tier and no assembly gateway — none of them was a boundary anything checked.
-What is checked is the bundle's own invariants, and they are STRUCTURAL rather than
-provenance-based.
+**Nothing floating is stored.** `RouteFactors.dequantized()` computes the levels, `rows x scale`
+in fp32, at the call: a consumer that still computes on floating levels calls it at its seam, so
+it computes on the quantized VALUES and nothing in the tree sees a number the kernel would not;
+the call goes when that consumer reads the rows. `source` is the producer's floating levels, held
+ONLY when they require a gradient -- the anchor `dequantized()` steps the gradient straight
+through the rounding to (`quant.straight_through`); an inference bundle holds the rows and nothing
+else.
 
 **The bundle is a record of tensors, and it is constructible.** Its fields are the
-stored levels, the side gains, the read mass and the topology they are shaped by —
-nothing else, and in particular no declaration a caller could pair with tensors that do
-not describe it. `RouteFactors.__post_init__` therefore checks the STRUCTURE rather than
-the provenance: one level per topology level at that level's width, one shared
-`[B, T, H]` prefix, one device, one dtype,
-`g_write` and (when present) `read_mass` shaped `[B, T, H]`. There is no `g_read`
-field at all — the ratio readout fixes the read-side gain to 1 identically, so there
-is nothing for a column to override. A test that plants a
-specific routing pattern builds one directly and is held to exactly those invariants.
-Unit-sum-ness is deliberately not among them: it is a device reduction per level per
-call, it is the shipped producer's own output guarantee, and conformance fixtures plant
-non-canonical amplitudes on purpose. The op still type-gates on the class, so handing it
-bare tensors is still a clean refusal.
+stored levels, their scales and the topology they are shaped by — nothing else, and in
+particular no declaration a caller could pair with tensors that do not describe it.
+`RouteFactors.__post_init__` therefore checks the STRUCTURE rather than the provenance: one
+level per topology level at that level's width, one `sparse` flag a level a side, one shared
+prefix a side, one device, one dtype, each scale fp32 at its side's prefix. A test that plants
+a specific routing pattern builds one directly and is held to exactly those invariants.
+Unit-sum-ness is not among them: no level need sum to 1 ([§2.2](#22-the-scaled-block-and-the-gain)).
+The op still type-gates on the class, so handing it bare tensors is still a clean refusal.
 
 A producer also owns the topology (`routes.topology`, `routes.widths`), because that is
 a fact about the map rather than about the layer
@@ -220,81 +232,73 @@ first, the gain's span last. One parameter, one cast of the source stream, one
 projection. `gain=False` removes the column rather than pinning it, so a disabled gain
 is a narrower parameter and not a parameter with an identically zero gradient.
 
-**The side gain is routing's, and it rides the bundle.** Two things put it there
-rather than on the layer. There is no read-side gain at all — the ratio readout fixes
-it to 1 identically — so the write side carries the only gain column there is, and
-a layer-owned gain producer would have to be told that in order to know its own
-columns, which is the coupling running backwards. And the gain is where the
-per-level mass product lands: the producer folds
-each level's mass into it, so the gain and the routing mass are the same number by the
-time any consumer sees either. It rides the bundle rather than arriving as a third op
-argument because `RouteFactors.tensors()` is the autograd-reachability enumeration, and
-an operand outside that flat list is invisible to autograd — the exact failure the
-single autograd boundary exists to make impossible.
+**The write gain is the producer's, and it rides write level 0's scale.** There is no
+read-side gain at all — the ratio readout cancels a per-token read factor but in the floor —
+so the write side carries the only gain column there is, and a layer-owned gain producer would
+have to be told that in order to know its own columns, which is the coupling running
+backwards. The producer folds the gain into write level 0's scale, in the job that writes that
+level, so the format has no gain field and no consumer reads one; it rides the bundle's own
+tensors, which `RouteFactors.tensors()` enumerates for autograd.
 
-### 2.2 The mass fold, and what each duty does with it
+### 2.2 The scaled block, and the gain
 
-Levels need not be unit-sum: each is factored into `(mass, simplex)`. The two sides then
-take the mass differently, because the two duties use their levels differently. The
-WRITE side APPLIES it — the stored level is the simplex and the magnitude folds into
-`g_write`, which is where a per-level magnitude belongs, and the decay clock is defined
-on the stored level. The READ side CARRIES it — the readout is a ratio, so a per-token
-scale common to every leaf is homogeneous of degree zero through it, and
-`RouteFactors.read` is stored with the mass still on it while `RouteFactors.read_mass`
-holds the per-token product (`None` when there is none). `RouteFactors.read_simplex()`
-divides it back out for every consumer defined on the simplex instead: the fp64 oracle
-and its input contract, the reference recurrence. The decode arm is defined on the
-simplex too, and divides INSIDE its operand fold off the same predicate --
-`RouteFactors.read_needs_normalization()`, which `read_simplex` reads as well -- because
-a decode step's whole budget is launches
-([`internals/decode/decode_fold.md`](internals/decode/decode_fold.md)).
+A level is numbers in a representation, not a distribution (ruled 2026-11-07,
+[`CONSTITUTION.md` R23](CONSTITUTION.md#r23)). `q` (read), `k` (write) and `v` are each a
+SCALED BLOCK: unit-max rows in a FORM that states its storage type, its signedness and its
+floor -- u8 nonnegative at 255 (a sparse routing level, a zero dead), f16 nonnegative at 1
+with the dense floor taken (a dense routing level), f16 signed in `[-1, 1]` (the values) --
+with the row's max as its fp32 scale. The forms are `rola.routing.quant`'s `Form` (`SPARSE`, `DENSE`, `SIGNED`),
+quantizing into and dequantizing out of each written once on it, and the factory refuses an entry its form does not
+hold -- a negative or non-finite routing level, a non-finite value -- with one host read a call. A side's shared scale is the product of its levels'
+scales, STORED FACTORED: each level's scale is written by the producer job that quantizes that
+level and multiplied by the reader as it loads them, so no job waits on another. The op every
+consumer computes, and the fp64 oracle with them:
 
-**The read mass reaches the readout as a scaled floor.** The one term that does not
-scale with a ratio is its floor, so it is handed over pre-scaled: the consumer computes
-`m·num / (m·den + READOUT_EPS·m)`, which is `num / (den + READOUT_EPS)` exactly — the
-same function, not a differently conditioned one. The alternative — dropping the mass
-and leaving the floor alone — is an *effective* floor of `READOUT_EPS / m`, and the
-union read mass runs as low as 7e-4 across the gain sweep, so it is a change to the
-definition rather than to its conditioning. `READOUT_EPS` is a DEFINITION constant
-(`rola/ops/constants.py`); the scaled floor is what keeps it one.
+    W(t, s) = prod_l k_l(t, d_l(s))          R(t, s) = prod_l q_l(t, d_l(s))
+    S_t(s)  = S_{t-1}(s) + W(t, s) v(t)      den_t(s) likewise with v = 1
+    y(t)    = sum_s R(t, s) S_t(s) / (sum_s R(t, s) den_t(s) + eps)
 
-**The mass is only COMPUTED where it is not declared to be 1, and only there.** Each
-`(level, duty)` cell answers `simplex_output` — "does this cell's own output already
-land on the simplex?" — and where it answers yes, the mass is 1, so its `sum` is
-omitted, it contributes nothing to the product, and the write side's `div` goes with it.
-The answer is a declaration read off the activation registry
-(`rola/routing/activations.py`) through the level's routing form, never a runtime test
-of the tensor: a `sum(...) == 1` check is the very reduction the skip exists to delete,
-and it would make the bundle's arithmetic depend on its data rather than on its
-configuration. It is asked per *duty* and not per *activation*, because a routing form
-may hand one duty a share of a solve rather than the whole of it — union routing's read
-half is exactly that, so it answers `False` while the entmax it names answers `True`.
-A FOREIGN producer folds its own mass, because it returns the finished bundle: the
-opaque row's `simplex_output = False` is what keeps `normalized` from being read
-circularly for a cell nobody vouched for, and it reaches the shipped fold only through
-a topology a foreign producer declared. Measured across the shipped census (`D` in 1..4, fp32 and fp64), every cell answering
-`True` has `max |sum − 1| ≤ 2.4e-7` in fp32 and `≤ 4.4e-16` in fp64.
+No level is required to sum to 1, on either side, and no flag says whether one does. A
+producer's magnitude is its own: ours, the write gain `softplus(gain logit + bias)`, is folded
+into write level 0's scale (§2.1); a caller's own levels carry whatever magnitude they have into
+their scales, `RouteFactors.from_levels` quantizing each against its own max and nothing else.
+
+**The read scales are kept, for the floor.** A per-token read factor common to every leaf
+cancels in the ratio everywhere but the floor, so the read scales' product `r` is read only
+there: the prefill readout is `num' / (den' + eps / r)` (`rola/ops/prefill.py`'s `readout`),
+which is the formula above exactly, and it is what makes `eps` mean the same thing on every
+routing. `READOUT_EPS` is a DEFINITION constant (`rola/ops/constants.py`). Decode computes the
+same `y`: neither normalizes a read level.
+
+**The decay computes its own shares** ([§3](#3-the-decay-source-slot)): its clock is each leaf's
+SHARE of the token's write, `c = prod_l k_l(d_l(s)) / sum_d k_l(d)`, a row sum a level and
+scale-free, so no stored level need be a simplex and a gain folded into a scale is invisible to
+it.
 
 **The producer owns packing.** The solve emits `[BH, T, width]`, which is already what
 the kernel's view wants, and the public `[B, T, H, width_l]` layout is a permute of it —
 so exactly one of the two can be the materialized tensor, and it is the kernel's. The
 public tensors are views. Materializing the public layout instead and folding it back is
-an inverse copy pair. It was priced at 2.82 % of the whole step at `L = 4096`
-(`workflows/refactor/p12_lane3.md`), and the same harness measures it directly against
-the production call it rides: 3.085 ms vs 2.732 ms at `L = 4096` and 0.942 ms vs
+an inverse copy pair. A harness measures it directly against the production call it
+rides: 3.085 ms vs 2.732 ms at `L = 4096` and 0.942 ms vs
 0.835 ms at `L = 1024` — 12.9 % and 12.7 % of production-plus-fold, at both lengths.
 
-### 2.3 The shipped producer
+### 2.3 The declared routing, and the producer
 
 ```python
-RouteProducer(levels, *, hidden_size, num_heads,
-              bias=False, gain=True, gain_bias_init=None, gain_config=None)
+Routing(levels, *, gain=True, gain_bias_init=None, gain_config=None, bias=False)
+RoLA(routing, *, hidden_size, num_heads, d_v=64, decay=None, layer_idx=None, ...)
 ```
 
-A learned packed per-head router projection, solved with the exact production
-entmax/softmax closed form, folded, gained, and returned as one bundle. Construction
-validates the whole assembly — widths in range, a buildable topology, a gain layout —
-so an unbuildable model fails on the line that built it.
+RULED 2026-09-29: the producer is a DECLARED CONFIGURATION. A `Routing` is data -- the levels, the write gain and
+the projection bias -- and the layer compiles it once into its producer plan and owns every weight it implies: the
+packed per-head routing projection `route_W`, its bias, the write gain's bias, `v_proj` and `o_proj`. One producer
+call (`rola.ops.produce.produce`) turns a stretch of tokens into the bundle -- the projection, the exact
+entmax/softmax solves, the write gain, the unit-max rows and the f16 values -- and on CUDA with no gradient
+that call is ONE LAUNCH of the fused producer kernel (`docs/internals/produce/produce.md`), the bundle's rows and
+scales views of the planes it writes. The torch composition behind the same call is the reference: fp64, the host,
+and -- until the native backward -- the path a gradient takes. Construction validates the whole declaration --
+widths in range, a buildable topology, a gain layout -- so an unbuildable model fails on the line that built it.
 
 **`levels` is the configuration, and it is a LIST.** One entry per routing level,
 outermost first, each carrying that level's WHOLE spec:
@@ -325,16 +329,25 @@ tied_routing(width, activation=entmax(1.5))  # one activation, one solve, shared
 uniform(depth, level)                     # `depth` levels spelled the same way
 ```
 
-`uniform` is a list builder, not a broadcast: a producer takes a list and nothing else,
+`uniform` is a list builder, not a broadcast: a routing takes a list and nothing else,
 because a broadcast is a rule the reader has to know before they can read the widths off
 the call.
 
-**Every level is one launch group, not one launch each.** The levels share a packed
-`route_W` and are dispatched per level inside the solve kernel with no privileged level,
-so a model pays one GEMM and one solve group for the whole topology. Levels sharing an
-operator, an alpha, a width class and an operand set share a single launch; levels that
-do not are genuinely different `(operator, source, destination)` triples and issue
-separately.
+**Every level, every head and the values are one launch.** The plan compiles into the
+kernel's job table -- a job per head's solve and per group of value heads -- so a model pays
+one launch for the whole topology, whatever its levels' operators, alphas and widths.
+
+<a id="projection-weight"></a>**The projection reads a laid-out copy of `route_W` when no gradient flows.** The GEMM's
+operands are bf16 and the kernel reads each column's hidden run contiguous (`hidden_contiguous`), so an inference
+step would otherwise cast the whole fp32 parameter and re-lay it out on every call -- measured at
+~55 us of GPU a decode step at `H = 16`, `(256, 256)`, more than the decode kernel. The copy
+is made once and reused while the parameter's version counter, storage, device and the
+projection dtype are unchanged; an in-place update (an optimizer step, `load_state_dict`)
+moves the version and so the copy. A step that trains casts inside the graph, since its
+gradient must reach the parameter and the parameter changes every step anyway. (Writing
+through `route_W.data` bypasses the version counter, as it does for every autograd cache.)
+The layer's value and output projections read their bf16 weights the same way (another ~6 us
+a step and two launches at `H = 16`); the one mechanism is `rola/_inference_copy.py`.
 
 Activation *properties* are never supplied by a caller — they come from the closed
 registry in `rola/routing/activations.py`, keyed on the tag. Metadata a caller could
@@ -343,28 +356,29 @@ checking a claim instead of a fact. Activations stay width-free: an activation i
 function on a row of any length, so a width on one would be a second place the same
 number lives.
 
-### 2.4 Foreign producers
+### 2.4 Production lives in the framework
 
-Any callable returning a well-formed bundle works, with no registration and no tier.
-This is sound because no producer-specific execution path exists: the consumer eats
-tensors and cannot tell what produced them — no producer identity reaches the kernel's
-parameters at all. Support bits are computed FROM the tensors, so a foreign producer
-changes nothing about correctness. Its only cost is inside its own module. The layer's
-`routes` slot checks STRUCTURE for the same reason: callable, plus the three facts the
-layer reads (`hidden_size`, `num_heads`, `topology`).
+RULED 2026-09-26, and 2026-09-29: there is no duck-typed producer, and the layer takes no callable feature map. A
+new kind of production is added to the framework -- its activation to the closed registry, its solve to the
+producer, its reference and its oracle -- and what it returns is the internal format. A caller of the ops with its
+own levels builds the bundles through the format's own utilities (`RouteFactors.from_levels`,
+`Values.from_projection`), which are the same epilogue the producer applies; nothing else constructs a bundle the op
+admits: the format's fields are required, checked structurally, and a bundle assembled from bare floating levels is
+refused by name. Correctness is still producer-blind -- every support bit is derived from the rows (a zero digit is
+dead) and nothing about a producer's identity reaches a kernel -- but the FORMAT is ours, because it is what every
+kernel reads and what the oracle gates against.
 
-A level filled by a producer that does not name one of our activations is *opaque*: it
-declares `OpaqueRouting(width)` and reads the `("opaque", None)` registry row, whose
-columns are argued in `rola/routing/activations.py`. What that costs it is the
-activation questions the topology can answer about it — ratification, in particular —
-and nothing else.
+A level filled by a production that names none of our activations is *opaque*: it declares
+`OpaqueRouting(width)` and reads the `("opaque", None)` registry row. What that costs it is the
+activation questions the topology can answer about it -- ratification, in particular -- and
+nothing else.
 
 ### 2.5 The one modelling consequence to know
 
-The decay clock is defined on the STORED (normalized) level. A level whose write-side
-mass differs from 1 has therefore moved magnitude out of the clock and into `g_write`.
-That is the defined semantics rather than a defect, but it is a choice a level's author
-is making, so it is stated here rather than buried.
+The decay clock is each leaf's SHARE of the token's write ([§2.2](#22-the-scaled-block-and-the-gain)),
+scale-free: a magnitude a write level carries -- a producer's gain, a level summing past one --
+scales the deposit and not the clock. That is the defined semantics rather than a defect, but it
+is a choice a level's author is making, so it is stated here rather than buried.
 
 ## 3. The decay-source slot
 
@@ -376,20 +390,21 @@ rola.ConstantDecay(rate, widths=..., num_heads=...)                    # user-fi
 rola.LearnedDecay(rate, widths=..., num_heads=..., scope='state')      # 'state' | 'global'
 ```
 
-Both emit a `LeafMassDecay` whose `dials[l]` is `[H, width_l]` in `[0, 1)`. A source is
+Both emit a `LeafMassDecay` whose `dials[l]` is `[H, width_l]` in `[0, 1)`, `H` the write heads (the decay is the
+state's: [grouped queries](#grouped-queries)). A source is
 validated against the topology at layer construction. Duck-typed like a producer:
 declare `widths` and `num_heads`, return a `LeafMassDecay`.
 
 `state` and `global` are the two IDENTIFIABLE resolutions: under `keep = (1 - prod_l
-delta_l)**c` (one write-conditioned clock per leaf), a rate only ever enters the
+delta_l)**c` (one write-conditioned clock per leaf, `c` the leaf's share of the token's write:
+[§2.2](#22-the-scaled-block-and-the-gain)), a rate only ever enters the
 recurrence through that per-leaf product, so per-digit and per-head are the two degrees
 of freedom the product structure lets the recurrence actually distinguish.
 
 `ConstantDecay` set high is a legitimate performance lever: the state forgets fast and
 the realized routing shows it, through exactly the same door a learned source uses.
-Nothing about it is a special case. (Today the chunk arm has no decay and refuses it
-— §1.1 — so the lever reaches production only through the decode arm, which does have
-it, until the kernel-side decay retirement is reopened.)
+Nothing about it is a special case. The prefill refuses a decay today (§1.1), so the
+lever reaches production through the decode step.
 
 The decay is **write-conditioned** (mass decay), never time decay. A leaf whose write
 amplitude is exactly zero ticks its clock by zero, so `keep = (1 - rate) ** 0 = 1`
@@ -399,7 +414,7 @@ rest on that property.
 ## 4. The layer
 
 ```python
-RoLA(routes, *, d_v=64, decay=None, layer_idx=None, expert=None)
+RoLA(routing, *, hidden_size, num_heads, d_v=64, decay=None, layer_idx=None, expert=None, memory_budget=None)
 
 y, continuation = layer(hidden_states, continuation=LayerContinuation(state=rola.state()))
 y, continuation = layer(next_tokens, continuation=continuation)
@@ -407,18 +422,22 @@ y, _ = layer(hidden_states)                            # stateless -> (y, LayerC
 ```
 
 `forward(x, attention_mask=None, continuation=None) -> (y, LayerContinuation)` — ALWAYS
-the container. See §1.2; a bare `RoLAState` or the retired `(state, conv_rings)` tuple
-is refused by name rather than adopted.
+the container (§1.2).
 
-`routes` is the only positional argument, and it is the only declaration of
-`hidden_size`/`num_heads`: the layer reads both off the producer rather than taking a
-second copy to check against. `d_v` is the per-head value width — the layer's, because
-it sizes `v_proj`/`o_proj`; the default is the width the chunk matrix is built at.
+`routing` is the declared `Routing` (§2.3), and the layer owns every weight it implies.
+`d_v` is the per-head value width — the layer's, because it sizes `v_proj`/`o_proj`; the
+default, 64, is the intra's value width.
 
-`value_conv`/`route_conv` (a causal short convolution over the value/routing-source
-stream) were DELETED at K45 (docs/internals/DELETIONS.md): they were never reviewed as
-a mechanism and are not paper-1 scope. Re-adding a convolution hook is a field on
-`LayerContinuation`, not a return to the old ad hoc ring tuple.
+<a id="one-token-step"></a>**One token of a carried sequence is `_step`, then the verdict.** `RoLA._step(x, state)`
+is the whole token with no host read inside it -- the producer's one launch, the gated decode
+step, the output projection -- so a caller can capture it in a CUDA graph and replay it a
+token. A batch-head whose write atoms the state can neither address nor admit skips itself;
+`forward` then asks `growth_pending(state)`, admits and steps again, which advances every
+sequence exactly once (`docs/internals/decode/decode.md#capture`). Reading the verdict is a
+4-byte copy and a sync, which a serving loop pays at the sync that samples its token.
+
+A convolution over the value or routing-source stream, if one is added, is a field on
+`LayerContinuation`.
 
 The layer adds exactly one clause the op cannot know: `self.training` REFUSES,
 independently of gradient reachability, because reentrant gradient checkpointing runs
@@ -431,10 +450,16 @@ inference from a timing, and it is published for exactly that: a benchmark proce
 cannot spy on the call it is timing, and wall-clock cannot tell two arms apart. It is a
 SCALAR, not a tally — a caller that needs how many times an arm ran spies on the arm.
 
-### 4.1 The bf16 projection arm
+### 4.1 The projections and the value format
 
-`v_proj` and `o_proj` run as bf16 GEMMs
-with weights cast per call, and `v` FLOWS bf16 straight into the op. The arm is
+`v_proj` and `o_proj` run as bf16 GEMMs (their weights read through the inference copy when no
+gradient flows, §2.3), and the projection
+is written to the value format at the layer: `Values.from_projection(v)` (`rola/values.py`)
+holds each token's values `v` in f16 against its largest channel (at 1); that magnitude is
+the token's fp32 `scale`. The op takes the bundle, not the tensor. The plane and the scale are
+what the kernels read; `Values.dequantized()` is
+the fp32 view a consumer still computing on floating values takes at its seam, with the
+projection's gradient stepped straight through when the projection requires one. The arm is
 UNCONDITIONAL because the op's envelope makes it so: there is no CPU lowering, so a
 non-CUDA forward refuses at `rola_op` and no call off CUDA ever observes a projected
 value. Round-tripping
@@ -445,10 +470,23 @@ fp32 compute type (the accumulate-in-fp32 ruling); the global
 reduced-precision-reduction knob is deliberately left alone, so this is the same
 environment the FlashAttention comparison arm runs in.
 
-There is no dtype exception left on this arm: `value_conv` — the one case that used to
-round-trip `v` back to the module dtype ahead of a convolution — was DELETED at K45
-(docs/internals/DELETIONS.md). `o_proj`'s operand cast is exact regardless: `y` leaves
-the kernel already bf16-rounded.
+`o_proj` rounds the op's fp32 `y` to its bf16 operand, the one rounding on the output side.
+
+### 4.2 Segments: the layer bounds its own working set
+
+A prefill runs as SEGMENTS of `T` tokens (ruled 2026-09-29): per segment the layer projects that
+stretch's routes and values, runs `rola_op` on it and carries the state to the next, so the projections
+are bounded along with the op -- which an op-level split cannot do once the whole call's bundle exists.
+The op runs one segment and knows nothing of segmentation.
+
+`T` is DERIVED, never a knob: the caller declares `memory_budget` (bytes); the layer takes the largest
+whole number of the device's windows whose working set (`RoLA.segment_bytes_per_token`, an upper bound on
+every per-token tensor a segment allocates, gated against the measured peak) fits beside the state
+(`RoLA.state_bytes`, full residency), and REFUSES a budget below one window beside the state.
+`memory_budget=None` is one segment. The window grid is global, so a boundary on a window boundary moves
+no pair: a segmented call is the whole call (the op's readout to fp32 ULPs,
+`tests/integration/test_layer_segments.py`). A stateless call that spans segments carries an internal
+state and hands none back.
 
 ## 5. The expert surface
 
@@ -463,7 +501,7 @@ layer = rola.RoLA(routes, expert=PlanOverrides())
 
 | name | what it is |
 |---|---|
-| `PlanOverrides` | the pins: `paging` |
+| `PlanOverrides` | the pins: `paging`, `carve` |
 | `envelope_refusal(routes, v, decay=None)` / `require_envelope(...)` | whether a call has an arm, asked before making it — the refusing clause in its own words, or `None`. `v` is named rather than assumed: the `d_v` clause is a fact about the value stream, so the answer is a property of the configuration AND of `v.shape[-1]` |
 | `requires_backward` | the gradient-reachability predicate the envelope's first clause is built from |
 | `GainConfig` | the two-boolean gain layout behind the public `gain` flag |
@@ -475,24 +513,18 @@ machine and with the built matrix. The model facts it carries are the exception,
 because they are not decisions.
 
 **Every pin is a declared restriction rather than a dial, and each refuses by name
-rather than being ignored.** `PlanOverrides` carries exactly one field today, `paging`
-— the state's BACKING, never a launch shape: `None` is the paged
-default, `False` pins the dense plane the bit-identity gate compares against, and
-`True` is refused because paging is on by default and bitwise invisible. A `BC`-style
-launch-shape pin (`state_block`, on the tiled consumer's `Plan`) went with that
-consumer's deletion (`internals/DELETIONS.md`) and has no successor here: the carry
-family's arm — and therefore its `BC` — is a property of the built matrix a topology
-resolves to, not a per-call override.
+rather than being ignored.** `PlanOverrides` carries two fields. `paging` is the state's
+BACKING, never a launch shape: `None` is the paged default, `False` pins the dense plane
+the bit-identity gate compares against, and `True` is refused because paging is on by
+default and bitwise invisible. `carve` pins the carry's box and operation plans; the rule
+checks a pinned carve against the declaration exactly as it checks its own
+([`internals/engine/rules.md#carve`](internals/engine/rules.md#carve)).
 
-**There is no plan object and no derive/execute seam.** `Plan`, `Schedule`,
-`derive_plan` and `execute` were the tiled consumer's, and went with it in P67 D2
-([`internals/DELETIONS.md`](internals/DELETIONS.md)). The geometry they carried is
-now a property of the built arm rather than of a per-launch derivation, so there is
-no launch-shaping object for a caller to hold, synthesize or staleness-test. What
-replaces the adversarial use they enabled: a conformance family drives
-the envelope's own rule (`rola.engine.rules.envelope`) directly and declares the refusal
-clause it expects, and
-`envelope_refusal` answers the same question a synthetic plan used to be built to probe.
+**There is no plan object and no derive/execute seam.** The carry's launch geometry is
+the carve — the rule's, or a pinned one checked the same way — so there is no
+launch-shaping object for a caller to hold or synthesize. A conformance family drives the
+envelope's own rule (`rola.engine.rules.envelope`) directly and declares the refusal
+clause it expects, and `envelope_refusal` answers the same question before a call.
 
 ## 6. What is deliberately not here
 
@@ -504,26 +536,3 @@ clause it expects, and
 - **No silent second path.** Every arm is chosen from a property of the configuration or
   of the operands, before the call, and named in the exception when a configuration
   cannot run. Nothing degrades into anything after a failure.
-
-## Gradients are not bitwise reproducible
-
-`rola_op` trains, and its gradients are **not** run-to-run deterministic. Both scans
-assemble their outputs through fp32 `atomicAdd` fan-ins whose order is the
-scheduler's, and the two scans walk DIFFERENT partitions of the token axis by
-construction — each closes its chunks by its own walk — so nothing about the reverse
-pass is bit-reproducible even on identical inputs on identical hardware. The forward
-already had this property through the same fan-ins; the backward inherits it in a
-worse regime (more contributors, narrower destinations).
-
-Two consequences, stated rather than discovered:
-
-* a training run cannot be reproduced bit-for-bit by re-running it, only
-  statistically;
-* a gate on a gradient must be a tolerance, never an equality.
-
-**Training is STATELESS.** A call carrying both a gradient and a `state=` plane is
-refused by name: the state is caller-owned and mutated in place, and the reverse
-pass has no `d initial_state` — it rebuilds from zero. **Decode has no reverse pass
-at all**, so a grad-bearing single-token continuation is refused too. And the
-reverse pass carries a NARROWER arm matrix than the forward: a grad-bearing call on
-an arm it does not carry is refused at the boundary rather than three launches later.

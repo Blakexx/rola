@@ -23,7 +23,7 @@ sub-cases (carried state present / absent) because that is the second half of th
 predicate: a one-token call with NO carried state is a degenerate prefill, not a decode
 step, and a one-token prefill is outside the chunk matrix — a refusal, not a step.
 
-Run: ``pytest tests/integration/test_decode_dispatch.py``
+Run: ``bazel test //tests:integration --test_filter=test_decode_dispatch``
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ import rola
 from rola import LayerContinuation
 from rola.expert import PlanOverrides
 from rola.interface import BackwardNotImplemented
+from tests.oracle.fixtures import with_gain
 
 #: `[16, 16]` at `d_v = 64`: a BUILT chunk arm, so the rows that must reach the
 #: PREFILL kernel can. Decode itself is indifferent (it is BC-blind and general in the
@@ -74,7 +75,7 @@ def _prime(layer, device, *, prefill=32, paged=True):
     x = torch.randn(1, prefill, _HIDDEN, device=device)
     state = rola.state()
     with torch.no_grad():
-        routes = layer.routes(x)
+        routes, _values = layer._produce(x)
         if paged:
             bits = torch.ones(x.shape[0] * _H,
                               routes.topology.N // MMA_K_QUANTUM,
@@ -109,9 +110,11 @@ _REFUSALS = {
     #: PREFILL trains, but statelessly: a carried state and a gradient are
     #: mutually exclusive, and that is what a grad-bearing one-token PREFILL now hits.
     "refuses-stateless": (BackwardNotImplemented, "STATELESS ONLY"),
-    #: every PREFILL-shaped row: the prefill arm is DELETED and the op
-    #: names the ruling before it reads the call.
-    "refuses-deleted": (NotImplementedError, "the prefill arm is deleted"),
+    #: every PREFILL-shaped row at this fixture's (16, 16): no prefill kernel is built at that width, and the
+    #: envelope names the clause before any kernel runs.
+    "refuses-envelope": (NotImplementedError, "no kernel for this call"),
+    #: a grad-bearing PREFILL: the prefill has no reverse pass until the native backward is rebuilt.
+    "refuses-prefill-grad": (BackwardNotImplemented, "PREFILL carrying a gradient"),
 }
 
 
@@ -125,22 +128,21 @@ _REFUSALS = {
         # that is its own row. It reaches decode only when a state is CARRIED.
         (True, True, True, 1, True, "refuses-training"),
         (True, False, True, 1, True, "refuses-training"),
-        # an UNCARRIED one-token call is a degenerate PREFILL, and the prefill
-        # arm is deleted: the K31 sentence speaks. A different sentence from
-        # decode's, which is the point.
-        (True, True, True, 1, False, "refuses-deleted"),
+        # an UNCARRIED one-token call is a degenerate PREFILL, and a grad-bearing prefill
+        # is refused by its own sentence -- a different one from decode's, which is the point.
+        (True, True, True, 1, False, "refuses-prefill-grad"),
         # eval, but a gradient reaches the operation: decode has no node to attach.
         (False, True, True, 1, True, "refuses-grad"),
         (False, True, False, 1, True, "refuses-grad"),
         # eval mode, no grad: the fork's own predicate decides
         (False, False, False, 1, True, "decode"),
         # ... and the PREFILL rows it is being distinguished from: every one of
-        # them is the deletion refusal now, and what separates the first from
-        # the `decode` row above it is STILL the carried state alone -- the
+        # them is the envelope's refusal at this width, and what separates the first
+        # from the `decode` row above it is STILL the carried state alone -- the
         # dispatch reads the predicate before either arm speaks.
-        (False, False, False, 1, False, "refuses-deleted"),
-        (False, False, False, 32, True, "refuses-deleted"),
-        (False, False, False, 64, True, "refuses-deleted"),
+        (False, False, False, 1, False, "refuses-envelope"),
+        (False, False, False, 32, True, "refuses-envelope"),
+        (False, False, False, 64, True, "refuses-envelope"),
     ],
 )
 def test_dispatch_table(training, grad_enabled, requires_grad, L, carried, expected):
@@ -204,12 +206,11 @@ def test_a_continuation_round_trips_across_two_decode_steps():
 @pytest.mark.cuda
 @_CUDA
 def test_a_cpu_decode_shaped_call_is_refused_at_the_prefill():
-    """A CPU sequence cannot be primed: the prefill dispatch is the deletion
-    refusal (the sentence is the same on every device)."""
+    """A CPU sequence cannot be primed: the prefill dispatch refuses by the envelope's device clause."""
     layer = _layer("cpu")
     layer.eval()
     x = torch.randn(1, 32, _HIDDEN)
-    with torch.no_grad(), pytest.raises(NotImplementedError, match="the prefill arm is deleted"):
+    with torch.no_grad(), pytest.raises(NotImplementedError, match="CUDA kernel"):
         layer(x, continuation=LayerContinuation(state=rola.state()))
 
 
@@ -223,20 +224,23 @@ def test_the_op_level_guard_raises_rather_than_redirecting():
     exists to prevent, pointed the other way.
     """
     from rola.ops.decode import _decode_step, derive_decode_geometry
+    from rola.ops.paging import page_layout
     from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
+    from tests.oracle.fixtures import step_bundles
 
     device = "cuda"
     widths, d_v = (16, 32), 64
     routing = IndependentRouting(width=1, read=SoftmaxActivation(),
                                  write=SoftmaxActivation())
     topology = Topology(levels=tuple(routing.at(w) for w in widths))
-    config = derive_decode_geometry(topology, d_v=d_v, decay=False, BH=1, device=device)
+    config = derive_decode_geometry(topology, d_v=d_v, decay=False)
     levels = tuple(torch.rand(1, 1, 1, w, device=device, requires_grad=True) for w in widths)
     g_write = torch.rand(1, 1, 1, device=device)
     v = torch.randn(1, 1, 1, d_v, device=device)
-    state = torch.zeros(1, 1, config.N, config.cols, device=device)
+    routes, values = step_bundles(v, levels, with_gain(levels, g_write), topology)
+    state = torch.zeros(1, config.N // 16, page_layout(config.d_v).bytes, dtype=torch.uint8, device=device)
     with pytest.raises(RuntimeError, match="forward-only"):
-        _decode_step(v, levels, levels, g_write, config, state)
+        _decode_step(routes, values, config, state)
 
 
 @pytest.mark.cuda
@@ -292,15 +296,14 @@ def test_a_decay_step_runs_on_decode_which_has_the_arm():
 @pytest.mark.cuda
 @_CUDA
 @pytest.mark.parametrize("L,carried", [(1, False), (2, True), (16, True)])
-def test_every_decay_prefill_row_refuses_with_the_deletion_sentence(L, carried):
-    """Until the K31 deletion these rows refused by naming DECAY (the decay
-    retirement); the deletion refusal now speaks first on every prefill-shaped
-    row, decay-configured or not, and it must still speak BEFORE a kernel."""
+def test_every_decay_prefill_row_refuses_by_naming_decay(L, carried):
+    """Every decay-configured prefill-shaped row refuses by naming DECAY (the decay
+    retirement), the envelope's first clause, and it must speak BEFORE a kernel."""
     device = "cuda"
     plain = _layer(device).eval()
     cache = _prime(plain, device) if carried else rola.state()
     layer = _layer(device, decay="leaf_mass").eval()
-    with pytest.raises(NotImplementedError, match="the prefill arm is deleted"):
+    with pytest.raises(NotImplementedError, match="decay is not implemented"):
         _step(layer, cache, device, L=L, grad_enabled=False)
     assert layer.last_execution_backend is None, (
         "the refusal must happen BEFORE a kernel runs; a recorded arm means some "

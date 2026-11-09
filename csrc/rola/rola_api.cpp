@@ -19,38 +19,23 @@
 
 #include "common/arch_runtime.cuh"
 #include "common/build_stamp.cuh"
+#include "common/select.cuh"
 #include "common/torch_seam.cuh"
 #include "src/carry/carry_api.cuh"
 #include "src/common/geom_api.cuh"
 #include "src/decode/decode_api.cuh"
 #include "src/entmax/entmax.cuh"
 #include "src/entmax/factor.cuh"
-#include "src/facts/liveness_api.cuh"
-#include "src/intra/intra.cuh"
+#include "src/scale/scale_api.cuh"
+#include "src/facts/facts_api.cuh"
+#include "src/intra/intra_api.cuh"
 #include "src/paging/vmm_owner.cuh"
+#include "src/produce/produce_api.cuh"
 
 using rola::check_arch_table;
 using rola::Tensor;
 
 namespace {
-
-// THE ONE REASON the reverse entry can fail on this line, spelled once so a test can
-// assert it and a caller cannot mistake it for a shape refusal.
-constexpr const char* kCarryBackwardUnimplemented =
-    "the carry reverse pass has no implementation on this line: this binary carries the "
-    "forward body and the reverse LAUNCH SURFACE with its refusals only (see "
-    "docs/ARCHITECTURE.md for the pass the surface is waiting for)";
-
-// THE REVERSE SURFACE'S STUB, named so the closed-world arch refusal can be its first statement like every other
-// entry's: the refusal that a device was never measured on outranks the refusal that the pass behind it does not exist.
-void carry_backward_unimplemented(const Tensor&, const Tensor&, const Tensor&, const Tensor&,
-                                  const Tensor&, const Tensor&, const std::vector<int64_t>&,
-                                  int64_t, int64_t, int64_t, const std::vector<int64_t>&,
-                                  const Tensor&, const Tensor&, const std::optional<Tensor>&,
-                                  const std::optional<Tensor>&, const std::optional<Tensor>&) {
-  check_arch_table();
-  STD_TORCH_CHECK(false, kCarryBackwardUnimplemented, " (entry: carry_backward)");
-}
 
 // THE VMM OWNERS, by handle: an operator cannot return a native object, so the owner lives here and the caller holds
 // an integer. A tensor view of an owner keeps the owner alive past its release (VmmOwner::base).
@@ -109,39 +94,70 @@ std::tuple<int64_t, bool, int64_t, std::string> vmm_probe(int64_t device) {
   return {probe.device, probe.supported, (int64_t)probe.allocation_granularity, probe.reason};
 }
 
+//: A DEVICE'S CARD (`common/select.cuh`): its compute capability, product row (-1: none), build variant, family and W
+std::vector<int64_t> device_card_op(int64_t device) {
+  const rola::Card& c = rola::card_of(static_cast<int>(device));
+  return {c.cc, c.product, c.build.variant, static_cast<int64_t>(c.traits.family), c.traits.window};
+}
+
 }  // namespace
 
 STABLE_TORCH_LIBRARY(rola, m) {
-  // ---- the standalone intra kernel ----------------------------------------
+  // ---- the intra: the within-window pairs over the bundle -------------------
   m.def(
-      "intra_forward(Tensor pread, Tensor pwrite, Tensor gwrite, Tensor v, Tensor sread, Tensor swrite, "
-      "Tensor(a!) o, Tensor(b!) den, int levels, int level_width, int level_modes, int window) -> ()");
+      "rola_intra_forward(Tensor[] read, Tensor[] write, Tensor values, Tensor fm, Tensor unions, Tensor(a!) num, "
+      "Tensor(b!) den, int[] widths, int dense_read, int dense_write, int accumulate) -> ()");
+  m.def("rola_intra_ledger_bind(Tensor? ledger) -> ()");
   m.def("intra_build_stamp() -> int");
-  m.def("intra_arms() -> int[][]");
+  m.def("intra_footprint(int[] widths, int[] forms, int device) -> int");
+  m.def("intra_block_rows(int device) -> int");
 
   // ---- the CARRY LAUNCH SURFACE --------------------------------------------
   m.def(
-      "carry_forward(Tensor read, Tensor write, Tensor gain, Tensor v, Tensor(a!) num, Tensor(b!) den, int[] widths, "
-      "int dv, int page_bits, int warps_per_cta, int[] carve_order, int[] schedule, Tensor liveness, "
-      "Tensor activity, Tensor? state_in, Tensor(c!)? state_out, Tensor? page_table) -> ()");
+      "carry_forward(Tensor[] read_rows, Tensor[] write_rows, Tensor values, Tensor[] write_lists, Tensor write_exp, "
+      "Tensor factors, Tensor factor_shift, Tensor[] read_lists, "
+      "Tensor scale, Tensor(a!) num, Tensor(d!) den, Tensor(b!) check, int[] widths, int[] extents, int channels, "
+      "int write_list, int[] write_operand, int read_list, int[] read_operand, int[] key, int accumulate, int reduce, "
+      "int forced) -> Tensor");
+  m.def("carry_readout_accumulate(int device) -> int");
+  m.def("device_card(int device) -> int[]");
   m.def(
-      "carry_backward(Tensor read, Tensor write, Tensor gain, Tensor v, Tensor d_num, Tensor d_den, int[] widths, "
-      "int dv, int page_bits, int warps_per_cta, int[] carve_order, Tensor liveness, Tensor activity, "
-      "Tensor? state_in, Tensor? d_state_out, Tensor? page_table) -> ()");
+      "segment_tokens(int budget, int state, int per_token, int batch, int length, int device) -> int");
   m.def("carry_ledger_bind(Tensor? ledger) -> ()");
-  m.def("carry_trace_bind(Tensor? trace, int warps_per_cta) -> ()");
+  m.def("carry_probe_bind(Tensor? probe, Tensor? den) -> ()");
+  m.def("carry_capture_bind(Tensor? out) -> ()");
+  m.def("carry_capture_bytes() -> int");
   m.def("carry_build_stamp() -> int");
   m.def("carry_census() -> int[][]");
   m.def("carry_arms() -> int[][]");
   m.def("csrc_build_stamp() -> int");
   m.def("sm_clock_ghz(int spin_cycles=20000000) -> float");
 
-  // ---- the addressing block and the ONE liveness pass ----------------------
-  m.def("carry_geometry(int[] widths, int level_modes, int bc, int nsr, int nsw, int dv) -> int[]");
-  m.def("carry_sub_boxes(int depth, int box_leaves, int workers) -> int[][]");
+  // ---- the addressing block ------------------------------------------------
   m.def(
-      "liveness_words(Tensor read_plane, Tensor write_plane, int[] widths, int dense_read, int[] mask_read, "
-      "int dense_write, int[] mask_write) -> Tensor");
+      "carry_geometry(int[] widths, int level_modes, int bc, int nsr, int nsw, int dv, int interleave, int atom_floor) -> int[]");
+  m.def("carry_sub_boxes(int depth, int box_leaves, int workers, int atom_floor) -> int[][]");
+
+  // ---- the facts pass: the bundle's rows to the class-1 words and the lists --
+  m.def(
+      "rola_facts_forward(Tensor[] read, Tensor[] write, Tensor[] scale_write, Tensor v_scale, "
+      "int[] widths, int dense_read, int[] mask_read, int dense_write, int[] mask_write, int write_list_level, "
+      "int read_list_level, int read_row, int read_list_group, int write_list_group) -> Tensor[]");
+  m.def("rola_facts_ledger_bind(Tensor? ledger) -> ()");
+
+  // ---- the scale pass: each token's scale byte for the carry's f16 sum, the write-aligned bound --
+  m.def(
+      "scale_forward(Tensor[] read_rows, Tensor[] write_rows, Tensor fm, int[] widths, int level_s, int heads, "
+      "float inv_factor) -> Tensor");
+
+  // ---- the producer: one launch from the tokens to the bundle -------------
+  m.def(
+      "rola_produce_forward(Tensor x, Tensor route_W, Tensor? route_bias, Tensor gain_bias, Tensor v_W, Tensor jobs, "
+      "Tensor(a!) amp_read, Tensor(b!) amp_write, Tensor(o!)? dense_read, Tensor(n!)? dense_write, Tensor(c!) scale_read, "
+      "Tensor(d!) scale_write, Tensor(i!) v, Tensor(j!) v_scale, Tensor(l!)? logit_probe, Tensor(m!)? level_probe, "
+      "Tensor shapes, int levels, int dense_read_mask, int dense_write_mask) -> ()");
+
+  m.def("rola_produce_ledger_bind(Tensor? ledger) -> ()");
 
   // ---- the producer's solves -----------------------------------------------
   m.def(
@@ -171,14 +187,16 @@ STABLE_TORCH_LIBRARY(rola, m) {
 
   // ---- the T=1 decode path -------------------------------------------------
   m.def(
-      "rola_decode_forward(Tensor[] read, Tensor[] write, int[] normalize, Tensor? dials, Tensor g_write, Tensor v, "
-      "Tensor(a!) state, Tensor(b!) ws, Tensor(c!) ctr, Tensor(d!) growth, Tensor(e!) growth_any, "
-      "Tensor(f!) growth_ctr, Tensor(g!) done, Tensor atom_bits, int[] level_widths, int[] level_row_offsets, "
-      "int lattice_k, int lattice_m, int n_split, float eps, Tensor? page_table=None, Tensor(h!)? pool_slots=None, "
-      "Tensor(i!)? pool_cursor=None, Tensor(j!)? pool_map=None) -> Tensor");
-  m.def("rola_decode_residency(bool decay, int levels) -> int");
+      "rola_decode_forward(Tensor[] read, Tensor[] write, Tensor[] read_scale, Tensor[] write_scale, "
+      "int floor_read, int floor_write, Tensor? dials, Tensor v, Tensor v_scale, "
+      "Tensor(a!) state, Tensor(b!) yacc, Tensor(c!) queue, Tensor(d!) growth, Tensor(e!) growth_any, "
+      "Tensor(f!) growth_ctr, Tensor(g!) done, Tensor(h!) atom_bits, int[] level_widths, int[] level_row_offsets, "
+      "int lattice_k, int lattice_m, bool write_dense, int ctas, float eps, Tensor(i!)? page_table=None, "
+      "Tensor? pool_slots=None, Tensor(j!)? pool_cursor=None) -> Tensor");
   m.def("rola_decode_build_stamp() -> int");
   m.def("rola_decode_arms() -> int[][]");
+  m.def("rola_decode_ledger_bind(Tensor? ledger) -> ()");
+  m.def("rola_decode_ledger_warps() -> int");
   m.def("rola_decode_capacity() -> int");
   m.def("rola_decode_producer_width_mirror() -> int");
 
@@ -197,13 +215,21 @@ STABLE_TORCH_LIBRARY(rola, m) {
 }
 
 STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
-  m.impl("intra_forward", TORCH_BOX(&rola::intra::intra_forward));
+  m.impl("rola_intra_forward", TORCH_BOX(&rola::intra::rola_intra_forward));
+  m.impl("rola_intra_ledger_bind", TORCH_BOX(&rola::intra::rola_intra_ledger_bind));
   m.impl("intra_build_stamp", TORCH_BOX(&rola::intra::intra_build_stamp));
-  m.impl("intra_arms", TORCH_BOX(&rola::intra::intra_arms));
+  m.impl("intra_footprint", TORCH_BOX(&rola::intra::intra_footprint));
+  m.impl("intra_block_rows", TORCH_BOX(&rola::intra::intra_block_rows));
   m.impl("carry_forward", TORCH_BOX(&rola::carry::carry_forward));
-  m.impl("carry_backward", TORCH_BOX(&carry_backward_unimplemented));
+  m.impl("scale_forward", TORCH_BOX(&rola::scale::scale_forward));
+  m.impl("carry_readout_accumulate", TORCH_BOX(&rola::carry::carry_readout_accumulate));
+  m.impl("device_card", TORCH_BOX(&device_card_op));
+  m.impl("segment_tokens", TORCH_BOX(&rola::segment_tokens));
+
   m.impl("carry_ledger_bind", TORCH_BOX(&rola::carry::carry_ledger_bind));
-  m.impl("carry_trace_bind", TORCH_BOX(&rola::carry::carry_trace_bind));
+  m.impl("carry_probe_bind", TORCH_BOX(&rola::carry::carry_probe_bind));
+  m.impl("carry_capture_bind", TORCH_BOX(&rola::carry::carry_capture_bind));
+  m.impl("carry_capture_bytes", TORCH_BOX(&rola::carry::carry_capture_bytes));
   m.impl("carry_build_stamp", TORCH_BOX(&rola::carry::carry_build_stamp));
   m.impl("carry_census", TORCH_BOX(&rola::carry::carry_census));
   m.impl("carry_arms", TORCH_BOX(&rola::carry::carry_arms));
@@ -211,7 +237,10 @@ STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
   m.impl("sm_clock_ghz", TORCH_BOX(&rola::sm_clock_ghz));
   m.impl("carry_geometry", TORCH_BOX(&rola::carry::geometry));
   m.impl("carry_sub_boxes", TORCH_BOX(&rola::carry::sub_box_set));
-  m.impl("liveness_words", TORCH_BOX(&rola::facts::liveness_words));
+  m.impl("rola_facts_forward", TORCH_BOX(&rola::facts::rola_facts_forward));
+  m.impl("rola_facts_ledger_bind", TORCH_BOX(&rola::facts::rola_facts_ledger_bind));
+  m.impl("rola_produce_forward", TORCH_BOX(&rola::produce::rola_produce_forward));
+  m.impl("rola_produce_ledger_bind", TORCH_BOX(&rola::produce::rola_produce_ledger_bind));
   m.impl("entmax_union_forward", TORCH_BOX(&rola::entmax::union_forward));
   m.impl("entmax_union_backward", TORCH_BOX(&rola::entmax::union_backward));
   m.impl("entmax_factor_forward", TORCH_BOX(&rola::entmax::factor_forward));
@@ -219,7 +248,8 @@ STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
   m.impl("routing_softmax_forward", TORCH_BOX(&rola::entmax::softmax_forward));
   m.impl("routing_softmax_backward", TORCH_BOX(&rola::entmax::softmax_backward));
   m.impl("rola_decode_forward", TORCH_BOX(&rola::decode::rola_decode_forward));
-  m.impl("rola_decode_residency", TORCH_BOX(&rola::decode::rola_decode_residency));
+  m.impl("rola_decode_ledger_bind", TORCH_BOX(&rola::decode::rola_decode_ledger_bind));
+  m.impl("rola_decode_ledger_warps", TORCH_BOX(&rola::decode::rola_decode_ledger_warps));
   m.impl("rola_decode_build_stamp", TORCH_BOX(&rola::decode::rola_decode_build_stamp));
   m.impl("rola_decode_arms", TORCH_BOX(&rola::decode::rola_decode_arms));
   m.impl("rola_decode_capacity", TORCH_BOX(&rola::decode::rola_decode_capacity));

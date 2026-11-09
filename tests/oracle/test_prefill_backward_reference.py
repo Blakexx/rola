@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """R4's decomposition gate: the reverse pass splits on the forward's window edge.
 
-The mirror of ``test_carry_vs_oracle.py::test_m2_decomposition_is_exact``. The
-CARRY half plus the INTRA half of every cotangent equals ``torch.autograd``
+The CARRY half plus the INTRA half of every cotangent equals ``torch.autograd``
 through the whole operator, in fp64 -- so a window-grid disagreement, a
 double-counted diagonal or a dropped tile pair in the GRADIENT has nowhere to hide
 either.
@@ -19,7 +18,7 @@ from tests.oracle.backward_reference import (
     intra_backward_reference,
     readout_seeds,
 )
-from tests.oracle.fixtures import simplex
+from tests.oracle.fixtures import simplex, with_gain
 from tests.oracle.reference import inter_reference, intra_reference
 
 #: `L % W == 0` is the combined operator's own refusal, so the cells honor it.
@@ -46,9 +45,9 @@ def _draw(widths, T, d_v, k_tok, gain_is_one, seed, device):
     return read, write, gw, v, gen
 
 
-def _combined(read, write, gw, v, widths, window, state_in):
-    num, den, state = inter_reference(read, write, gw, v, widths, window, state_in)
-    n_i, d_i = intra_reference(read, write, gw, v, widths, window)
+def _combined(read, write, v, widths, window, state_in):
+    num, den, state = inter_reference(read, write, v, widths, window, state_in)
+    n_i, d_i = intra_reference(read, write, v, widths, window)
     return num + n_i, den + d_i, state
 
 
@@ -57,6 +56,8 @@ def _combined(read, write, gw, v, widths, window, state_in):
 def test_backward_decomposition_is_exact(widths, T, window, d_v, k_tok, gain_is_one, chained):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     read, write, gw, v, gen = _draw(widths, T, d_v, k_tok, gain_is_one, 7, device)
+    #: the drawn gain a producer's, folded into write level 0: its gradient is that level's
+    write = with_gain(write, gw)
     N = 1
     for w in widths:
         N *= w
@@ -64,29 +65,26 @@ def test_backward_decomposition_is_exact(widths, T, window, d_v, k_tok, gain_is_
                                  generator=gen)) if chained else None
 
     leaves = [t.clone().requires_grad_(True) for t in read + write]
-    gwv = gw.clone().requires_grad_(True)
     vv = v.clone().requires_grad_(True)
     sv = None if state_in is None else state_in.clone().requires_grad_(True)
     D = len(widths)
-    num, den, state = _combined(tuple(leaves[:D]), tuple(leaves[D:]), gwv, vv, widths,
-                                window, sv)
+    num, den, state = _combined(tuple(leaves[:D]), tuple(leaves[D:]), vv, widths, window, sv)
 
     d_num = torch.randn_like(num)
     d_den = torch.randn_like(den)
     d_state_out = torch.randn_like(state)
-    inputs = leaves + [gwv, vv] + ([sv] if sv is not None else [])
+    inputs = leaves + [vv] + ([sv] if sv is not None else [])
     got = torch.autograd.grad((num, den, state), inputs, (d_num, d_den, d_state_out))
 
-    c_read, c_write, c_gw, c_v, c_sin = carry_backward_reference(
-        read, write, gw, v, widths, window, d_num, d_den, state_in, d_state_out)
-    i_read, i_write, i_gw, i_v = intra_backward_reference(
-        read, write, gw, v, widths, window, d_num, d_den)
+    c_read, c_write, c_v, c_sin = carry_backward_reference(
+        read, write, v, widths, window, d_num, d_den, state_in, d_state_out)
+    i_read, i_write, i_v = intra_backward_reference(read, write, v, widths, window, d_num, d_den)
 
     want = ([c_read[l] + i_read[l] for l in range(D)]
             + [c_write[l] + i_write[l] for l in range(D)]
-            + [c_gw + i_gw, c_v + i_v] + ([c_sin] if sv is not None else []))
+            + [c_v + i_v] + ([c_sin] if sv is not None else []))
     names = ([f"d_read[{l}]" for l in range(D)] + [f"d_write[{l}]" for l in range(D)]
-             + ["d_gw", "d_v"] + (["d_state_in"] if sv is not None else []))
+             + ["d_v"] + (["d_state_in"] if sv is not None else []))
     for name, a, b in zip(names, got, want):
         scale = max(1e-30, float(b.abs().max()))
         err = float((a - b).abs().max()) / scale

@@ -14,50 +14,6 @@ from dataclasses import dataclass
 
 import torch
 
-from rola.engine.types import Arm, CallClass
-
-
-@dataclass(frozen=True, slots=True)
-class ChunkPlan:
-    """Everything one chunk launch reads, and nothing it does not.
-
-    NO FIELD IS `O(N * L)`. The two-pass reverse pass replays the schedule from the
-    union table rather than from per-chunk snapshots, and that claim is a property of
-    this object's field list (docs/internals/chunk/backward.md).
-    """
-
-    call_class: CallClass
-    arm: Arm
-    widths: tuple[int, ...]
-    d_v: int
-    v_row_bytes: int
-    eps: float
-    #: the block-skip truth table over the liveness byte's three bits, one `uint32`
-    #: per call class -- RunTableRule's verdict, and a launch argument like every
-    #: other one (`rola/engine/rules/run_table.py`).
-    run_table: int
-    #: the OPERAND's dtype, which the divide narrows `y` back to. `v` below is the
-    #: kernel's own bf16-contiguous copy and cannot answer for it.
-    y_dtype: torch.dtype
-    #: the bundle, for its LAYOUTS alone: the autograd node passes the routing
-    #: tensors flat so the graph attaches to them, and the reverse pass needs each
-    #: level's width and dtype to un-pack the digit gradients.
-    routes: object
-    read_plane: torch.Tensor
-    write_plane: torch.Tensor
-    g_write: torch.Tensor
-    read_mass: torch.Tensor | None
-    v: torch.Tensor
-    union_table: torch.Tensor
-    block_bits: torch.Tensor
-    page_table: torch.Tensor | None
-    #: the facts pass' `[BH, N/16]` uint8 ACTIVITY byte per atom -- bit 0 WRITTEN,
-    #: bit 1 READ. The launch gates its state sweeps on it identically under both
-    #: backings; `None` on a stateless call, which has no sweep to gate.
-    atom_bits: torch.Tensor | None
-    state_in: torch.Tensor | None
-    state_out: torch.Tensor | None
-
 
 @dataclass(frozen=True, slots=True)
 class DecodeGeometry:
@@ -84,7 +40,13 @@ class DecodeGeometry:
     d_v: int
     has_decay: bool
     eps: float
-    n_split: int
+    #: THE RESIDENT GRID: ``None`` for the step's own (the binary sizes it from the card,
+    #: docs/internals/decode/decode.md#the-split-policy), or a gate's forced CTA count; the CTAs claim work from every
+    #: batch-head's queue (docs/internals/decode/decode.md#queue).
+    ctas: int | None
+    #: THE INNERMOST LEVEL'S WRITE SIDE IS DENSE BY DECLARATION (its activation has no exact zeros), so every write
+    #: unit is a whole atom and the step walks it as one (docs/internals/decode/decode.md#whole-atoms).
+    write_dense: bool
 
     @property
     def N(self) -> int:
@@ -107,18 +69,20 @@ class DecodePlan:
 
     config: DecodeGeometry
     heads: int
-    #: The producer's own `[B, 1, H, width_l]` views, per side. The step kernel folds them
-    #: itself, so no `[BH, width_l]` plane stands between the two
+    #: The bundle's own `[B, 1, H, width_l]` unit-max coefficient rows (u8) and their fp32 `[B, 1, H]`
+    #: maxima, per side. The step kernel folds them itself, so no `[BH, width_l]` plane stands between the two
     #: (docs/internals/decode/decode_fold.md).
     read: tuple[torch.Tensor, ...]
     write: tuple[torch.Tensor, ...]
-    #: Per READ level: does it still carry its own mass, so the fold divides it by its row
-    #: sum? The write side is never normalized, and the DETACHED clock IS the write
-    #: allocation (docs/internals/decode/decode.md#detached-clock).
-    normalize: tuple[bool, ...]
+    read_scale: tuple[torch.Tensor, ...]
+    write_scale: tuple[torch.Tensor, ...]
+    #: Per side, the dense levels as a bitmask: their zero digits, in a live row, read as the floor
+    #: (docs/internals/facts/liveness_contract.md#floor).
+    floor: tuple[int, int]
     dials: torch.Tensor | None
-    g_write: torch.Tensor
+    #: The value, `[B, 1, H, d_v]` f16 against the token's largest channel, and its fp32 `[B, 1, H]` scale.
     v: torch.Tensor
+    v_scale: torch.Tensor
     state_plane: torch.Tensor
     page_table: torch.Tensor | None
     scratch: object

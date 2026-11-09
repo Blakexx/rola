@@ -1,0 +1,14 @@
+{
+    "name": "clang-tidy",
+    "role": "the analyzer of both clang-tidy profiles: the build graph fetches it (`@clang_tidy`) for the unit lints (tools/lint/unit_lints.py) on every unit the library links. Pinned because the analysis is only as good as the parse: clang 14 (the distro's) cannot parse a torch-bearing CUDA unit against this toolkit's headers, and the failed parse reported used parameters as unused (measured 2026-09-29); this release parses every unit with zero errors and finds a planted unused parameter and dead store at the end of decode.cu.",
+    "upstream": "https://github.com/ssciwr/clang-tidy-wheel (LLVM's clang-tidy, built as a wheel with its resource headers, including the CUDA wrappers)",
+    "version": "22.1.8",
+    "version_string": "LLVM version 22.1.8",
+    "release_asset": "clang_tidy-22.1.8-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "release_url": "https://files.pythonhosted.org/packages/82/19/0f2668f8f5e2452b096a2b898f2b6bcecbceb6dd0c7f75d1755ce1f18d8b/clang_tidy-22.1.8-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "asset_sha256": "1a3de07ba82d4403d8b692ae63a5520d4db5c606014c92c24bbcef9259057bf1",
+    "binary_sha256": "d77c4ac9c08b71a1e2b9a2950f91d2b398754237a23b3f60acb4601033461483",
+    "why_not_gated_like_ptxas": "clang-tidy reads the source; it never touches codegen, so it is not recorded in the ratified manifest. Its version is still pinned, not ranged: a lint whose findings depend on which clang a host happened to have is two lints.",
+    "archive_root": "",
+    "binary_path": "clang_tidy/data/bin/clang-tidy"
+}

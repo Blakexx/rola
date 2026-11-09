@@ -102,7 +102,9 @@ Because the result depends on the order, and the order comes from the MODE WORD,
 not one shape but a SET: `sub_boxes(D, box_leaves, warps)` runs the carve over EVERY
 level order and de-duplicates. It is a generated constexpr table, never hand-written, and
 `sb_index` is the question "is this carved shape a member" asked of the generator itself.
-At `D = 2` the set has two members, at `D = 3` four, at `D = 4` seven.
+At `D = 2` the set has two members, at `D = 3` four, at `D = 4` seven. The tall owner set
+generates its own set at runtime from its mode-dependent spans, the same carves plus the read
+side's block carve (`## tall-owner-set`), which is why the bound is one more than `D (D - 1)`.
 
 Each side selects its member at launch from its own order; the two sides therefore no
 longer share a slot layout, which is what restores the two-sided carve's liveness
@@ -125,6 +127,15 @@ count, and the kernel knows `D` and `BC` as template arguments, so the untemplat
 a standards violation as well as a cost. The runtime `geom_canon_leaf` stays for the host
 seam, which genuinely does not know `D` at compile time.
 
+<a id="read-order"></a>
+## The read-order index
+
+`geom_read_index(g, r, local)` is the owner-local canonical row `local` re-read in the READ side's carve order. Level
+`l` contributes its `span[l]` digits, `(local >> run_shift[l]) & (span[l] - 1)`, at the bit offset of the spans of the
+levels that rank below it on the read side (`r.rank`, rank 0 innermost): the digits of the innermost-ranked level are the
+index's low bits. It is a permutation of `[0, BC)`, a fixed bit permutation of the row, and the transit region's row is
+this index under the swizzle (`geom_xch_row`; the next section).
+
 <a id="row-swizzle"></a>
 ## The region's swizzle, and why it is free
 
@@ -143,8 +154,7 @@ rows apart, four-way conflicted, 16 wavefronts a load where 4 are ideal, measure
 as 16% of every shared wavefront in the kernel). No GF(2)-linear swizzle of the physical
 row clears every order the mode words reach — the deep-4 orders force four row bits into
 one coset of the bank group, and any three of them then collide with the bit-0 pull — and
-neither does any `row ^ f(row >> 3)` with `f` free (both exhaustive searches, journal
-section 38). In the read order the pull is `{0, 1, 2}` always, and the write side's
+neither does any `row ^ f(row >> 3)` with `f` free (both searched exhaustively). In the read order the pull is `{0, 1, 2}` always, and the write side's
 accesses — a member's scatter of eight consecutive innermost digits — are a contiguous
 bit triple wherever the rank order puts that level, which the folded swizzle clears.
 The exchange-law model test (tests/unit) walks every access at every reachable (read order, write member).
@@ -171,11 +181,10 @@ asserted where the set can be reached from, which on this branch is the geometry
 consumes the block.
 
 **`(1, 8)` DOES NOT FIT sm_86, and the number is the panel ring.** The readout law ties
-the batch tile to the warps (`kWarps * kMmaN == C`), so eight warps means `C = 64`, and
+the batch tile to the warps (`kWarps` times the MMA's N, 8, is `C`), so eight warps means `C = 64`, and
 `panel_bytes = 2 * kWarps * C * LdS * 2` is therefore QUADRATIC in the warp count:
 81,920 B at `(1, 8)` against 20,480 B at `(2, 4)`. With the readout block and two V slots
-the arm asks **117,760 B against sm_86's 99,328 B per-CTA maximum** and the body's own
-`static_assert(design::smem_fits(bytes))` refuses it at compile time. It fits sm_90's
+the arm asks **117,760 B against sm_86's 99,328 B per-CTA maximum**, which no plan of the card admits. It fits sm_90's
 227 KB, so `(1, 8)` is the design target the panel law has to be re-shaped for, not a row
 that can simply be added to the arm table.
 
@@ -326,31 +335,103 @@ always; the tied case is a transit whose row map is the identity, same code, sam
 plan" — so `identity_map` is a reported FACT that makes a wasted transit visible in the
 ledger, and never a second code path.
 
+<a id="tall-owner-set"></a>
+## The tall owner set (ruled 2026-09-26)
+
+The int8 carry's owner set is derived from two numbers the quarter-share law above did not
+have: the state takes **half** the register file (`kTallStateFileNumerator /
+kTallStateFileDenominator = 1/2`, 128 registers a lane of s32 state), and a CTA holds
+`kCtaChannels = 32` of `DV` — one CHANNEL GROUP, `channel_groups(dv) = dv / 32` CTAs per leaf
+set. So `tall_leaves_per_sm = 65536 / 2 / 32 = 1024` and `tall_leaves_per_warp = 128`.
+
+THE TALL OWNER LAW IS MODE-DEPENDENT (ruled 2026-09-27: the region is 8 × 128). Under the
+compile-time law above, the ten bits split by level index; under the tall law they split by
+the READ side's mode: every read-dense level takes the WIDE span, `kTallDenseSpanBitsMax = 7`
+bits (128 digits) or its whole width if narrower, and the read-sparse levels share what
+remains, one bit a round, innermost first. Too much dense trims the widest dense level,
+ties outermost, so a topology that is dense on every read level comes out a square. What a
+narrow level cannot hold returns to the dense levels with room, and a topology smaller than
+the set is one owner. `tall_owner_span_bits` is the law, `read_dense_mask_of_modes` reads
+the mode word for it, and `derive_carry_geom` takes the tall path whenever `bc` is the tall
+leaf count:
+
+| topology, read modes | owner spans | why |
+|---|---|---|
+| `[256, 256]`, level 1 sparse | `[128, 8]` | the dense level capped at 128, the sparse level the remaining 3 bits |
+| `[128, 128]`, both dense | `[32, 32]` | 7 + 7 trimmed to 5 + 5 |
+| `[16, 16, 16]`, all dense | `[8, 8, 16]` | 4, 4, 4 trimmed outermost-first to 3, 3, 4 |
+| `[16, 16, 16]`, level 0 sparse | `[4, 16, 16]` | the dense pair takes 4 + 4, the sparse level 2 |
+| `[16, 16, 16, 16]`, all dense | `[4, 4, 8, 8]` | 16 bits trimmed to 10, no page floor |
+| `[16, 16]` | `[16, 16]` | 256 leaves: one owner |
+
+WHY 128 AND NOT THE SQUARE: the drain. At `N = L` a token's readout leaves one line of
+partials in every CTA it touches, and the L2 charges those per request, `0.15` chip-clocks
+each with every SM draining (measured 2026-09-27). A token touches `k × 256 / d` CTAs,
+so the square's 32 lines a token sat six times above its tensor time at the sparse cell,
+while 128 dense digits a region give 8 lines against a fold whose tiles still fill. The wide
+span is capped rather than taken whole because the fold's per-list leaf count is the region's
+sparse span, and 4 × 256 halves it again for drain margin sm_86 does not need.
+
+THE TWO CARVES OF THE TALL SET. The FOLD warps carve top-down in the write side's order from
+the tall spans (`carve_from_bits`): the write-sparse level is outermost, so at `[128, 8]` the
+eight warps take three of its seven bits and a warp owns 16 write-sparse digits × the region's
+8 leaves, one list an MMA with the fold's leaves on the MMA's N axis. The READ warps take the
+BLOCK CARVE (`tall_read_sub_bits`): a warp holds one K block, `kBlockLeavesBits = 5` bits of
+dense leaves innermost dense level first, and as many read-sparse digits as its 128 leaves
+admit, 4 at `[128, 8]`, so its token-major tile draws from four reader lists rather than one
+list a quarter full at the sparse cell. The sub-box set for the tall spans is generated at
+runtime, `tall_sub_boxes`: the top-down carve in every level order plus the block carve, and
+both sides select their member from it exactly as the shipped body selects from the
+compile-time set.
+
+THE PAGE ATOM IS NOT HELD ON THE OWNER SPANS in the tall law. The lattice order is
+owner-major and then the owner-local mixed radix, so a page is sixteen consecutive local
+indices and always lies inside one owner whatever the innermost span is; what changes when
+the innermost span is 8 is that a page holds two digits of the next level out, a rectangle
+`atom_rectangle` already describes, and nothing in the tall form reads a page as sixteen
+consecutive canonical leaves. The warp-level atom floor stays off for the same reason as before:
+the shipped body's `## innermost-invariant` is its ldmatrix operand law, and the tall form's
+operands come through the transfer and the digit lists. ONE CONSEQUENCE IS OWED: the paged plane
+the decode family reads is laid out by `rola.ops.lattice` in the `(k, m)` form at
+`LATTICE_CAP_BC = 128`, and the two families write and read one plane, so the lattice
+module learns the tall owner law when the int8 carry ships.
+
+The shipped kernel keeps the quarter-share box until the int8 body ships; until then the
+tall set is reachable through the binding at `bc = TALL_BOX_LEAVES` and is what
+`tests/unit/test_carry_geometry.py`'s tall-set tests derive.
+
+<a id="interleaved-placement"></a>
+## The interleaved stream placement
+
+`SideGeom::interleave` chooses where a carved level's STREAM INDEX sits inside the level's
+digit. `0`, the run placement: the stream index is the digit's high bits, so stream `w` owns a
+RUN of `sv(l)` consecutive digits (`4w .. 4w+3` at the tall set). `1`, interleaved: the stream
+index is the digit's LOW bits, so stream `w` owns the digits congruent to it (`w, w+8, w+16,
+w+24`). `geom_level_digit(s, l, strm, dig)` is the one place the choice is spelled and both row
+maps (`geom_local_row`, `geom_xch_row`) read it; either form is GF(2)-linear in `(strm, P)`,
+so the transit's immediates survive.
+
+Why it exists: a cohort's live tokens write a contiguous run of sparse digits, and under the
+run placement a window's whole fold lands on one or two warps — measured max/mean warp load
+3.1× at cohort-k16 against 1.07× interleaved, and 1.03–1.18× at the alternating cells under
+either (the 2026-09-26 imbalance study). The tall carve therefore runs
+interleaved on both sides. It is a runtime field of the block (a launch-time law, like the
+carve order), not a template parameter, and the shipped kernel passes `false`.
+
 <a id="on-the-tip"></a>
 ## What consumes this block today
 
-The pipelined body (F-P, `carry_kernel.cuh`/`box.cuh`/`layout.cuh`/`carry_host.cuh`) landed
-and now consumes this block's PLAIN-arithmetic half directly: `kAtomLeaves`, `owner_span_bits`,
-`span_total`/`span_base`, `geom_digit`, `geom_canon_leaf_t`, and the runtime addressing
-(`derive_carry_geom`, `CarveOrder`, `CarryGeomRT`) are all called from the shipped kernel —
-`kAtomLeaves` now has exactly one definition (here), so the duplicate-copy risk this
-foundation block once worried about is resolved by construction rather than by convention.
+The decode step consumes this block's PLAIN-arithmetic half: `kAtomLeaves` (one definition, here) and `geom_ilog2`.
+The carry kernel does not include it. The GENERATED SUB-BOX SET machinery and the runtime addressing (`sub_boxes`,
+`SubBoxSet`, `sb_index`, `sb_shift`, `sb_matches_arch_law`, `derive_carry_geom`, `CarveOrder`, `CarryGeomRT`) are
+exercised only through the host entries (`rola.ops.geometry`) by `tests/unit/test_carry_geometry.py` and
+`tests/unit/test_exchange_law.py`. The geometry test still checks the derivation as a PARITY claim against
+`ARM_PARAMS`/`PARENT_CENSUS`, a table transcribed from the pre-K31 parent tip (335c2b9) rather than re-derived from a
+live binary (the A-side of a parity claim is a pinned tip).
 
-What is NOT yet consumed by any shipped body is the GENERATED SUB-BOX SET machinery for
-composed or multi-member layouts (`sub_boxes`, `SubBoxSet`, `sb_index`, `sb_shift`,
-`sb_matches_arch_law`): the shipped arm's layout is PLAIN, one inner level and one outer
-level (`carry_kernel.md#layout`), and a composed or straddling arm is refused at compile
-time rather than built. That machinery is exercised only by
-`tests/unit/test_carry_geometry.py`, which still checks it as a PARITY claim against
-`ARM_PARAMS`/`PARENT_CENSUS`, a table transcribed from the pre-K31 parent tip (335c2b9)
-rather than re-derived from a live binary (the A-side of a parity claim is a pinned tip) —
-a historical reference kept for when a composed arm lands, not a description of the arm
-shipping today.
-
-`sb_matches_arch_law` — at `warps_per_cta == warps_per_sm` the arm's set IS
-`sub_boxes(D, leaves_per_sm(DV), warps_per_sm)` — likewise has no shipped body to live in
-yet, so the arch law is asserted in the geometry test instead, over the generated set the
-binding exposes.
+`sb_matches_arch_law` — at `warps_per_cta == warps_per_sm` the set IS
+`sub_boxes(D, leaves_per_sm(DV), warps_per_sm)` — has no kernel to live in, so the arch law is asserted in the
+geometry test instead, over the generated set the binding exposes.
 
 <a id="c1a-member-sets"></a>
 **C1a PINS THE PER-SIDE MEMBER SET AT BOTH `warps_per_cta`.** The set is
@@ -397,3 +478,6 @@ The invariant is visible in the generated shape set: every member ends in the sa
 span, so the orders that differ only in how they would have split it collapse onto one
 member. At the flagship arm the set is one shape rather than two; at depth four it is three
 rather than eight.
+
+The invariant is the SHIPPED BODY'S: `carve_sub_bits`/`sub_boxes` take it as `atom_floor`, and
+the tall form derives with it off (`## tall-owner-set`).

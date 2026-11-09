@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """THE RATCHET: a lint the tree does not yet pass gates on what a commit ADDS, and its old findings can only go away.
 
-    python3 tools/lint/ratchet.py work_codes            # the gate: a new finding fails, and so does a fixed one
-    python3 tools/lint/ratchet.py work_codes --shrink   # drop the fixed entries from the baseline (it never adds one)
-    python3 tools/lint/ratchet.py work_codes --init     # record today's findings; refused when a baseline exists
+    bazel test //:ratchet_work_codes                        # the gate: a new finding fails, and so does a fixed one
+    bazel run //tools/lint:ratchet -- work_codes --shrink   # drop the fixed entries (it never adds one)
+    bazel run //tools/lint:ratchet -- work_codes --init     # record today's findings; refused when a baseline exists
+    bazel test //:ratchet_baselines                         # every baseline against HEAD's alone, in the checkout
 
 A lint's findings are its `path:line: message` lines. A finding is known by its path, its message's first sentence and
 a digest of the line it names, never by the line number, which any edit above it moves. `tools/lint/baselines/<lint>.json`
@@ -13,7 +14,9 @@ holds the findings the tree carried when the lint began gating, with their multi
   marker), with the reason;
 - a baseline entry the lint no longer finds: `--shrink` removes it in the commit that fixed it, so the backlog on disk
   is the backlog in the tree;
-- a baseline that holds more of an entry than HEAD's: a backlog only shrinks.
+- a baseline that holds more of an entry than HEAD's: a backlog only shrinks. `--grown` checks it, every baseline
+  at once, in the checkout -- the graph's check of the commit; a lint's run reads a copy of the tree, which has no
+  HEAD.
 
 A lint that cannot run (a missing tool, a crash) fails the gate; it never reads as zero findings.
 Docs: docs/internals/tools/lint.md#ratchets.
@@ -38,6 +41,7 @@ LINTS = {
     "drift_guards": [sys.executable, "tools/lint/drift_guards.py"],
     "r9_enforcement": [sys.executable, "tools/lint/r9_enforcement.py"],
     "burst_tier": [sys.executable, "tools/lint/burst_tier.py"],
+    "coverage": [sys.executable, "tools/lint/coverage.py"],
 }
 FINDING = re.compile(r"^\s*([^\s:]+):(\d+): (.+)$")
 
@@ -97,13 +101,44 @@ def _show(title: str, entries: Counter) -> None:
         print(f"  {path}: {message}" + (f"  (x{n})" if n > 1 else ""))
 
 
+def baselines_grown(lints: list[str]) -> int:
+    """No baseline holds an entry HEAD's lacks -- a backlog only shrinks, and a move is not growth (`verdict`). Run
+    against the checkout, which knows HEAD; the lints' own findings are the hermetic half. A HEAD git cannot read is
+    red: a comparison that compared nothing has not passed."""
+    readable = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "HEAD"], cwd=ROOT, capture_output=True)
+    if readable.returncode != 0:
+        print(f"ratchet baselines: FAILED -- git cannot read HEAD in {ROOT}, so no baseline was compared")
+        return 1
+    grown_any, compared = False, 0
+    for lint in lints:
+        path = BASELINES / f"{lint}.json"
+        #: a baseline HEAD lacks is new, and one the tree lacks is deleted: neither has grown
+        head = _head(path)
+        if head is None or not path.exists():
+            continue
+        compared += 1
+        grown = verdict(Counter(), _decode(path.read_text()), head)[2]
+        if grown:
+            _show(f"ratchet {lint}: the baseline GREW against HEAD's -- a backlog only shrinks:", grown)
+            grown_any = True
+    print(f"ratchet baselines: {'GROWN' if grown_any else 'none grown'} ({compared} of {len(lints)} compared against "
+          "HEAD's; the rest new or deleted)")
+    return 1 if grown_any else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("lint", choices=sorted(LINTS))
+    ap.add_argument("lint", nargs="?", choices=sorted(LINTS))
     mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--grown", action="store_true",
+                      help="every baseline against HEAD's, none grown (the commit's half; no lint runs)")
     mode.add_argument("--shrink", action="store_true", help="remove the entries the lint no longer finds")
     mode.add_argument("--init", action="store_true", help="record the current findings as a new lint's baseline")
     a = ap.parse_args()
+    if a.grown:
+        return baselines_grown(sorted(LINTS) if a.lint is None else [a.lint])
+    if a.lint is None:
+        ap.error("name a lint, or pass --grown")
     path = BASELINES / f"{a.lint}.json"
     found = findings(a.lint)
 
@@ -115,8 +150,8 @@ def main() -> int:
         print(f"ratchet {a.lint}: baseline recorded, {sum(found.values())} finding(s)")
         return 0
     if not path.exists():
-        raise SystemExit(f"ratchet {a.lint}: no baseline at {path.relative_to(ROOT)} (python3 tools/lint/ratchet.py "
-                         f"{a.lint} --init records one)")
+        raise SystemExit(f"ratchet {a.lint}: no baseline at {path.relative_to(ROOT)} ("
+                         f"bazel run //tools/lint:ratchet -- {a.lint} --init records one)")
     baseline = _decode(path.read_text())
 
     if a.shrink:
@@ -125,18 +160,15 @@ def main() -> int:
         print(f"ratchet {a.lint}: baseline {sum(baseline.values())} -> {sum(kept.values())}")
         return 0
 
-    new, fixed, grown = verdict(found, baseline, _head(path))
+    new, fixed, _ = verdict(found, baseline, None)
     if new:
         _show(f"ratchet {a.lint}: {sum(new.values())} NEW finding(s) -- fix each, or exempt it the lint's own way:", new)
     if fixed:
         _show(f"ratchet {a.lint}: {sum(fixed.values())} baseline entr(ies) no longer found -- run "
-              f"`python3 tools/lint/ratchet.py {a.lint} --shrink` and commit the smaller baseline:", fixed)
-    if grown:
-        _show(f"ratchet {a.lint}: the baseline gained {sum(grown.values())} entr(ies) over HEAD's -- a backlog only "
-              f"shrinks:", grown)
+              f"`bazel run //tools/lint:ratchet -- {a.lint} --shrink` and commit the smaller baseline:", fixed)
     total = sum(baseline.values())
-    print(f"ratchet {a.lint}: {'FAIL' if new or fixed or grown else 'OK'} ({total} in the backlog)")
-    return 1 if new or fixed or grown else 0
+    print(f"ratchet {a.lint}: {'FAIL' if new or fixed else 'OK'} ({total} in the backlog)")
+    return 1 if new or fixed else 0
 
 
 if __name__ == "__main__":

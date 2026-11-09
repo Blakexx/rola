@@ -37,6 +37,9 @@ def test_the_envelope_binds_where_it_is_tighter_and_a_derived_atol_moves_every_c
     assert (float(allowance), int(binding)) == (5e-3, 1)
     allowance, _ = allowances(reference, ONE_CLAUSE, derived_atol=0.25)
     assert float(allowance) == pytest.approx(0.25 + 1e-3)
+    #: and it adds to the envelope's budget too: a declared upstream error is owed whichever budget binds
+    allowance, binding = allowances(100 * reference, WITH_ENVELOPE, envelope, derived_atol=0.25)
+    assert (float(allowance), int(binding)) == (pytest.approx(0.25 + 5e-3), 1)
 
 
 def test_a_slot_outside_its_allowance_fails_and_the_message_names_what_bound_it():

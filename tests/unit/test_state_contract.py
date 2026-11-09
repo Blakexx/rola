@@ -30,6 +30,7 @@ from rola._state import (
     MIN_LEVEL_WIDTH,
     PAGE_RECTANGLE_BITS,
     SPLIT_PLANE_DTYPE,
+    STATE_DTYPE,
     RoLAState,
     StateFormat,
     _format_of,
@@ -38,7 +39,7 @@ from rola._state import (
 #: A LAWFUL DESCRIPTOR, D = 2, at the flagship's own widths -- the fixture every test below
 #: mutates one field of at a time.
 _FIELDS = dict(D=2, B=(256, 256), order=CANONICAL_ORDER, page_bits=PAGE_RECTANGLE_BITS,
-               DV=64, dtype=SPLIT_PLANE_DTYPE, ids=8 * (65536 >> PAGE_RECTANGLE_BITS))
+               DV=64, dtype=STATE_DTYPE, ids=8 * (65536 >> PAGE_RECTANGLE_BITS))
 
 
 def _format(**over):
@@ -70,8 +71,10 @@ def test_derived_properties_read_off_the_fields_and_nothing_else():
     assert fmt.N == 256 * 256, "N is the mixed-radix product, never configured directly"
     assert fmt.cols == 65, "cols = DV + 1, the mass column"
     assert fmt.atoms_per_bh == fmt.N >> PAGE_RECTANGLE_BITS
-    assert fmt.page_bytes == (1 << PAGE_RECTANGLE_BITS) * fmt.cols * 4, (
-        "[16 x DV hi][16 x DV lo][16 mass hi][16 mass lo] -- one page, in bytes")
+    assert fmt.page_bytes == 16 * 64 * 2 + 16 * 64 + 16 * 2 + 16 * 4 == 3168, (
+        "[16 x DV hi s16][16 x DV lo u8][16 x DV/32 exponent s8][16 mass fp32] -- one page, in bytes")
+    #: the unported carry's own descriptor keeps its split fp32 page
+    assert _format(dtype=SPLIT_PLANE_DTYPE).page_bytes == (1 << PAGE_RECTANGLE_BITS) * fmt.cols * 4
 
 
 # -- THE FIELDS' OWN LAWS, EACH A REFUSAL --------------------------------------------------
@@ -102,9 +105,13 @@ def test_page_bits_is_the_page_rectangle_and_nothing_else():
         _format(page_bits=PAGE_RECTANGLE_BITS + 1)
 
 
-def test_dv_is_even_for_the_split_planes_paired_access():
+def test_dv_is_whole_channel_groups():
+    """A channel group is 32 channels, each with its own exponent a leaf: DV is a multiple of 32 (the carry's split
+    page needs only an even DV)."""
+    with pytest.raises(ValueError, match="multiple of 32"):
+        _format(D=1, B=(65536,), DV=48, ids=8 * (65536 >> PAGE_RECTANGLE_BITS))
     with pytest.raises(ValueError, match="DV is even"):
-        _format(D=1, B=(65536,), DV=63, ids=8 * (65536 >> PAGE_RECTANGLE_BITS))
+        _format(D=1, B=(65536,), DV=63, dtype=SPLIT_PLANE_DTYPE, ids=8 * (65536 >> PAGE_RECTANGLE_BITS))
 
 
 def test_n_is_a_whole_number_of_pages_by_construction_not_by_padding():
@@ -115,10 +122,10 @@ def test_n_is_a_whole_number_of_pages_by_construction_not_by_padding():
     assert fmt.N % (1 << PAGE_RECTANGLE_BITS) == 0
 
 
-def test_dtype_names_the_split_bf16_planes():
-    """R17 (BF16 EVERYTHING): the logical element is fp32, stored as hi||lo bf16 planes --
-    `dtype` records the LAYOUT, not a narrowing of the logical word (`state.md#format`)."""
-    assert _FIELDS["dtype"] == "fp32 as split bf16 planes" == SPLIT_PLANE_DTYPE
+def test_dtype_names_the_int8_state_format():
+    """THE STATE FORMAT (ruled 2026-09-28): s24 hi/lo planes at an s8 group exponent, the mass fp32 -- `dtype`
+    records the layout the kernels read (`state_page.md#geometry`)."""
+    assert _FIELDS["dtype"] == STATE_DTYPE == "s24 hi/lo planes at an s8 group exponent, fp32 mass"
 
 
 # -- THE ONE ADMISSION LAW, PREFILL AND DECODE IDENTICAL -----------------------------------

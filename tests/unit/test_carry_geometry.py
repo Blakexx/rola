@@ -1,7 +1,7 @@
 """THE ONE DERIVATION, against the PARENT KERNEL'S OWN COMPILE-TIME CENSUS.
 
 `csrc/rola/src/common/geom.cuh` computes at runtime what the shipped carry bodies compute
-in their templates (`box.cuh`'s `BoxPlan`/`ModeOrder`/`StreamSpans`). No kernel on this
+in their templates (the parent's `BoxPlan`/`ModeOrder`/`StreamSpans`). No kernel on this
 branch consumes the runtime block -- the pipelined body is what will
 (`docs/internals/common/geom.md#on-the-tip`) -- so THIS FILE IS THE PROOF that the block is
 the same law: for every arm the parent builds, the derivation's own output is checked
@@ -39,9 +39,11 @@ grid; `sv(l)` a side's WARP SUB-BOX span; `NS` a side's stream count.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
-from rola.ops import carry as carry_ops
+from rola.ops import geometry as carry_ops
 
 #: THE ARM ROWS THE PARENT BUILT, transcribed from `gen_shards.CARRY_ARMS` at
 #: `k31/k35-final` 335c2b9 (the tip `PARENT_CENSUS` below was read off), in that commit's
@@ -102,7 +104,7 @@ RECARVED = {1: ([2, 16], [8, 4]), 3: ([2, 16], [8, 4]), 5: ([2, 16], [8, 4])}
 
 #: THE ARCH CONSTANTS, mirrored from `geom.cuh` -- three scalars, and the only thing in
 #: this file that is a mirror rather than a call. The SET they feed is the shipped
-#: generator's, read through `carry_ops.sub_boxes`. -- docs/internals/common/geom.md#arch-constants
+#: generator's, read through `geometry.sub_boxes`. -- docs/internals/common/geom.md#arch-constants
 WARPS_PER_SM = 8
 
 #: the page rectangle in leaves, the grain the innermost digits are never carved below.
@@ -285,7 +287,7 @@ def test_the_sub_box_set_is_generated_and_deduplicated(D, warps_per_cta):
         for s in shape:
             prod *= s
         assert prod * warps_per_cta == box, "a member times the worker count IS the box"
-        assert shape[-1] >= PAGE_RECTANGLE or shape[-1] == carry_ops.leaves_per_warp(dv), (
+        assert shape[-1] >= PAGE_RECTANGLE or shape[-1] == leaves_per_warp(dv), (
             "the innermost digits are the vector width: no member divides the canonical "
             "innermost level below the page rectangle")
 
@@ -324,3 +326,113 @@ def test_the_shape_set_is_the_arch_law_at_one_cta_per_sm():
 #: transcription that was supposed to let the claim survive that deletion (the SKILLS
 #: FEEDBACK 3); `PARENT_CENSUS`'s numbers are what the parity tests below check, is the
 #: whole of what remains, and it is intentionally NOT re-derived from a binary anymore.
+
+
+# --------------------------------------------------------------------------- the tall owner set
+#: THE TALL OWNER SET: the state takes half the register file and a CTA holds one channel group of 32,
+#: so an owner set is 1024 leaves, 128 a warp -- `geom.md#tall-owner-set`. Derived here through the
+#: same binding at `bc = TALL_BOX_LEAVES`; the shipped kernel keeps its own box until the int8 body ships.
+from rola.engine import constants as engine_constants  # noqa: E402
+
+TALL = engine_constants.TALL_BOX_LEAVES
+#: D = 2 alternating: level 0 write-sparse (bit 1), level 1 read-sparse (bit 2): `(2 << 0) | (1 << 2)`.
+ALT2 = 6
+
+
+def _unswizzle(row: int) -> int:
+    """`sb_swizzle` is an involution: the folded high bits are unchanged by the fold."""
+    return row ^ (((row >> 3) ^ (row >> 6) ^ (row >> 9)) & 7)
+
+
+def test_the_tall_owner_set_is_derived_from_the_half_share_and_the_channel_group():
+    assert engine_constants.tall_leaves_per_warp() == 128
+    assert TALL == 1024
+    assert engine_constants.channel_groups(64) == 2 and engine_constants.channel_groups(128) == 4
+
+
+@pytest.mark.parametrize("widths, modes, spans", [
+    ([128, 128], ALT2, [128, 8]),           # D = 2, alt: the read-dense level 0 takes 128, the read-sparse 8
+    ([256, 256], ALT2, [128, 8]),           # the dense span is capped at 128, never the width
+    ([128, 128], 0, [32, 32]),              # every level read-dense: the wide spans trim to a square
+    ([16, 16, 16], 0, [8, 8, 16]),          # D = 3 dense: 4, 4, 4 trimmed outermost-first to 3, 3, 4
+    ([16, 16, 16, 16], 0, [4, 4, 8, 8]),    # D = 4 dense: no page floor on the owner spans in the tall law
+    ([16, 16], ALT2, [16, 16]),             # a topology smaller than the set is ONE owner
+])
+def test_the_tall_owner_spans_give_the_read_dense_levels_the_wide_span(widths, modes, spans):
+    g = carry_ops.geometry(widths, level_modes=modes, bc=TALL, nsr=8, nsw=8, d_v=64, atom_floor=0)
+    assert g["span"] == spans
+    prod = 1
+    for s in g["span"]:
+        prod *= s
+    assert prod == min(TALL, math.prod(widths))
+
+
+def test_the_tall_set_carves_a_block_read_warp_and_a_list_fold_warp():
+    """The 8 x 128 region (ruled 2026-09-27): a READ warp holds one 32-leaf K block of dense leaves by 4 sparse
+    digits (its token-major tile draws from 4 reader lists); a FOLD warp holds 16 write-sparse digits by the
+    region's 8 leaves each (one list an MMA). Level 0 is read-dense = write-sparse under ALT2."""
+    g = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64, atom_floor=0)
+    assert g["span"] == [128, 8]
+    assert g["r"]["row_span"] == [32, 4], "the read warp: one K block of 32 dense leaves x 4 sparse digits"
+    assert g["w"]["row_span"] == [16, 8], "the fold warp: 16 write-sparse digits x the region's 8 leaves"
+    assert g["w"]["leaf"] == 128 and g["r"]["leaf"] == 128
+    assert g["r"]["grid"] == [4, 2] and g["w"]["grid"] == [8, 1]
+    assert not g["identity_map"], "the two carves differ, so the transfer is a real scatter"
+
+
+def test_the_tall_law_at_depth_three_keeps_the_block_and_the_lists():
+    """One read-sparse level of three: the dense pair takes 4 + 4 bits, the sparse level the remaining 2; the
+    read warp's K block is 2 x 16 dense leaves of its innermost two levels by 4 sparse digits."""
+    modes = 1 << (2 * 0)   # level 0 read-sparse (the read bit), levels 1 and 2 read-dense
+    g = carry_ops.geometry([16, 16, 16], level_modes=modes, bc=TALL, nsr=8, nsw=8, d_v=64, atom_floor=0)
+    assert g["span"] == [4, 16, 16]
+    assert g["r"]["row_span"] == [4, 2, 16] and g["r"]["leaf"] == 128
+    assert g["w"]["leaf"] == 128
+
+
+@pytest.mark.parametrize("interleave", [0, 1])
+def test_the_tall_sets_row_maps_are_bijections_under_either_placement(interleave):
+    g = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64,
+                           interleave=interleave, atom_floor=0)
+    for side in ("r", "w"):
+        assert g[side]["interleave"] == interleave
+        rows = [row for stream in g["xch"][side] for row in stream]
+        assert sorted(rows) == list(range(TALL)), f"the {side} map is not a bijection"
+
+
+def test_interleaved_placement_gives_a_stream_the_digits_congruent_to_it():
+    """`geom.md#interleaved-placement` at the 8 x 128 region: the FOLD warp carves the write-sparse level 0
+    (128 digits, 16 a warp) -- run placement gives stream w digits 16w..16w+15, interleaved w, w+8, ...,
+    w+120. The READ warp carves both levels: two groups of 4 sparse digits on level 1 (run 4p..4p+3,
+    interleaved p, p+2, p+4, p+6) by four 32-leaf dense sub-blocks on level 0 (run 32q..32q+31, interleaved
+    q, q+4, ..., q+124), the dense sub-block varying fastest in the stream index."""
+    run = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64, interleave=0,
+                             atom_floor=0)
+    ilv = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64, interleave=1,
+                             atom_floor=0)
+    assert run["xch"] != ilv["xch"]
+    # spans (128, 8); the read side ranks level 1 outermost, so BOTH sides' transit rows are in the read
+    # index d0 | d1 << 7, swizzled.
+    for g, ilv_on in ((run, False), (ilv, True)):
+        for w in range(8):
+            d0_w = {_unswizzle(r) & 127 for r in g["xch"]["w"][w]}    # the fold warp's write-sparse digits
+            assert {_unswizzle(r) >> 7 for r in g["xch"]["w"][w]} == set(range(8)), "a fold warp holds every leaf of its digits"
+            d0_r = {_unswizzle(r) & 127 for r in g["xch"]["r"][w]}    # the read warp's dense sub-block
+            d1_r = {_unswizzle(r) >> 7 for r in g["xch"]["r"][w]}     # the read warp's sparse digits
+            q, p = w & 3, w >> 2
+            want_w = {w + 8 * j for j in range(16)} if ilv_on else {16 * w + j for j in range(16)}
+            want_d0 = {q + 4 * j for j in range(32)} if ilv_on else {32 * q + j for j in range(32)}
+            want_d1 = {p + 2 * j for j in range(4)} if ilv_on else {4 * p + j for j in range(4)}
+            assert d0_w == want_w, f"fold stream {w} owns write-sparse digits {sorted(d0_w)}"
+            assert d0_r == want_d0, f"read stream {w} owns dense sub-block {sorted(d0_r)}"
+            assert d1_r == want_d1, f"read stream {w} owns sparse digits {sorted(d1_r)}"
+
+
+def test_the_tall_law_ignores_the_warp_level_atom_floor():
+    """The warp-level atom floor is the shipped body's ldmatrix law; the tall owner set carves from its own
+    mode-dependent spans and the flag does not enter it -- `geom.md#tall-owner-set`."""
+    floored = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64, atom_floor=1)
+    free = carry_ops.geometry([128, 128], level_modes=ALT2, bc=TALL, nsr=8, nsw=8, d_v=64, atom_floor=0)
+    assert floored["r"]["row_span"] == free["r"]["row_span"] == [32, 4]
+    assert floored["w"]["row_span"] == free["w"]["row_span"] == [16, 8]
+    assert len(carry_ops.sub_boxes(2, TALL, 8, atom_floor=0)) == 2, "the compile-time set: one member a level order"

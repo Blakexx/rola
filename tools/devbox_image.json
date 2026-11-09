@@ -1,0 +1,4 @@
+{
+    "digest": "sha256:a94bd4aa548e92bb91a3a160133d135f8963036830787e9edafed35c27379562",
+    "role": "the devbox image the tree names (`//:image`'s content digest), which `bazel run //:container_check` writes when green; the commit gate refuses a tree whose image is another, or a change to this digest without a passing check for it (KERNEL_STANDARDS 23 (3))"
+}

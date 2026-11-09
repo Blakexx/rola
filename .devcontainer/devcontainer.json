@@ -1,14 +1,15 @@
 {
-  // THE DEV CONTAINER (docs/setup.md, KERNEL_STANDARDS §23). The image is `Dockerfile`, built for the current
-  // environment key; the mounts -- this checkout, the host's lock directories, the measurements store and the
-  // worktrees folder -- come from the host's dev config through `python3 tools/dev.py container compose`, which
-  // writes `compose.local.yaml` (not committed). Every setting inside is the image's dev config
-  // (ROLA_DEV_CONFIG=/opt/rola/dev-config), written at image build by the same `tools/dev.py init` a bare host runs.
-  "name": "rola-dev",
-  "initializeCommand": "python3 tools/dev.py container compose",
+  // THE DEV CONTAINER (docs/setup.md#the-devbox-image, KERNEL_STANDARDS §23): the devbox image (`//:image`) on the
+  // devbox's own volumes -- its home (/root: the pinned tools, Bazel's caches, the environment store) and its
+  // workspace (/workspace: the checkouts, cloned inside) -- with the host's locks and, under WSL, the driver's
+  // libraries. `bazel run //:container_compose` hands the image to Docker and writes `compose.local.yaml` (not
+  // committed). Inside, the host's loop: clone the checkouts into /workspace, then `python3 tools/bootstrap.py`,
+  // `bazel run //:init` and `bazel run //:dev_env` in /workspace/rola.
+  "name": "rola-devbox",
+  "initializeCommand": "bazel run //:container_compose",
   "dockerComposeFile": ["compose.yaml", "compose.local.yaml"],
   "service": "rola",
-  "workspaceFolder": "/workspace/rola",
+  "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -18,10 +19,9 @@
         "nvidia.nsight-vscode-edition"
       ],
       "settings": {
-        "clangd.path": "/usr/local/bin/clangd",
-        "python.defaultInterpreterPath": "/opt/venv/bin/python3"
+        "clangd.path": "/workspace/venv-rola/bin/clangd",
+        "python.defaultInterpreterPath": "/workspace/venv-rola/bin/python"
       }
     }
-  },
-  "postCreateCommand": "python tools/dev.py check"
+  }
 }

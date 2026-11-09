@@ -1,0 +1,3198 @@
+{
+ "experiment": "sparse_pass",
+ "question": "in a sparse window each warp's fold has a different number of steps a pass (0-8: its lists' union in the pass, by 16), so a schedule tuned on dense passes may stall or couple the warps; which pass pipeline holds across densities -- the values restaged into a tile (two pool slots, fill two passes ahead), or read in place from the swizzled pool (two pool slots, or three so the fill still runs two ahead) -- and what do the fold side's entries cost derived in the step from the warp's union words (`base + popc`) against read from a list a window ahead?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "8e1b33d2df698b21be98d223dd6df1b99e2bd25a",
+  "dirty": false
+ },
+ "reps": 5,
+ "date": "2026-10-04T23:23:09+00:00",
+ "utilization_before": 1,
+ "results": [
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 1",
+   "unit": "steps",
+   "samples": [
+    16.0
+   ],
+   "median": 16.0,
+   "min": 16.0,
+   "max": 16.0,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    13977.169937,
+    19636.15,
+    19101.996563,
+    13976.807,
+    13982.145937
+   ],
+   "median": 13982.145937,
+   "min": 13976.807,
+   "max": 19636.15,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.654495,
+    2.324355,
+    2.261126,
+    1.654452,
+    1.655084
+   ],
+   "median": 1.655084,
+   "min": 1.654452,
+   "max": 2.324355,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    17384.110375,
+    17392.326688,
+    17391.072563,
+    17395.357125,
+    17389.095187
+   ],
+   "median": 17391.072563,
+   "min": 17384.110375,
+   "max": 17395.357125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.057778,
+    2.058751,
+    2.058602,
+    2.05911,
+    2.058368
+   ],
+   "median": 2.058602,
+   "min": 2.057778,
+   "max": 2.05911,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    17337.959312,
+    17336.368562,
+    17338.81625,
+    17339.979938,
+    17339.203375
+   ],
+   "median": 17338.81625,
+   "min": 17336.368562,
+   "max": 17339.979938,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.052315,
+    2.052127,
+    2.052417,
+    2.052554,
+    2.052463
+   ],
+   "median": 2.052417,
+   "min": 2.052127,
+   "max": 2.052554,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    17653.875813,
+    17654.992375,
+    17653.684875,
+    17655.30125,
+    17653.606875
+   ],
+   "median": 17653.875813,
+   "min": 17653.606875,
+   "max": 17655.30125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.089711,
+    2.089843,
+    2.089688,
+    2.089879,
+    2.089679
+   ],
+   "median": 2.089711,
+   "min": 2.089679,
+   "max": 2.089879,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    16632.179688,
+    16631.125875,
+    16630.945625,
+    16630.076125,
+    16631.253875
+   ],
+   "median": 16631.125875,
+   "min": 16630.076125,
+   "max": 16632.179688,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 1 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.968771,
+    1.968647,
+    1.968625,
+    1.968522,
+    1.968662
+   ],
+   "median": 1.968647,
+   "min": 1.968522,
+   "max": 1.968771,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 4",
+   "unit": "steps",
+   "samples": [
+    5.612813
+   ],
+   "median": 5.612813,
+   "min": 5.612813,
+   "max": 5.612813,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    7080.17825,
+    7077.391062,
+    7085.943938,
+    7079.063938,
+    7077.425688
+   ],
+   "median": 7079.063938,
+   "min": 7077.391062,
+   "max": 7085.943938,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    2.389075,
+    2.388134,
+    2.39102,
+    2.388699,
+    2.388146
+   ],
+   "median": 2.388699,
+   "min": 2.388134,
+   "max": 2.39102,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    8240.316937,
+    8242.970375,
+    8240.044,
+    8241.113125,
+    8243.255375
+   ],
+   "median": 8241.113125,
+   "min": 8240.044,
+   "max": 8243.255375,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.780542,
+    2.781437,
+    2.78045,
+    2.780811,
+    2.781534
+   ],
+   "median": 2.780811,
+   "min": 2.78045,
+   "max": 2.781534,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    9043.1445,
+    9014.251688,
+    9028.611375,
+    9016.20475,
+    9049.501125
+   ],
+   "median": 9028.611375,
+   "min": 9014.251688,
+   "max": 9049.501125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    3.051441,
+    3.041692,
+    3.046537,
+    3.042351,
+    3.053586
+   ],
+   "median": 3.046537,
+   "min": 3.041692,
+   "max": 3.053586,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    7982.876312,
+    7983.049125,
+    10919.981562,
+    13093.026938,
+    7982.9105
+   ],
+   "median": 7983.049125,
+   "min": 7982.876312,
+   "max": 13093.026938,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.693673,
+    2.693732,
+    3.684745,
+    4.417999,
+    2.693685
+   ],
+   "median": 2.693732,
+   "min": 2.693673,
+   "max": 4.417999,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    6956.445312,
+    6956.212812,
+    6955.842875,
+    6957.137125,
+    6956.819437
+   ],
+   "median": 6956.445312,
+   "min": 6955.842875,
+   "max": 6957.137125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 4 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    2.347323,
+    2.347245,
+    2.34712,
+    2.347557,
+    2.34745
+   ],
+   "median": 2.347323,
+   "min": 2.34712,
+   "max": 2.347557,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 16",
+   "unit": "steps",
+   "samples": [
+    2.024
+   ],
+   "median": 2.024,
+   "min": 2.024,
+   "max": 2.024,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    4584.675125,
+    4567.18325,
+    4568.818625,
+    4548.104125,
+    4550.71925
+   ],
+   "median": 4567.18325,
+   "min": 4548.104125,
+   "max": 4584.675125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    4.290068,
+    4.2737,
+    4.27523,
+    4.255847,
+    4.258294
+   ],
+   "median": 4.2737,
+   "min": 4.255847,
+   "max": 4.290068,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    4772.9975,
+    4774.087687,
+    4772.449625,
+    4771.84025,
+    4773.168
+   ],
+   "median": 4772.9975,
+   "min": 4771.84025,
+   "max": 4774.087687,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    4.466289,
+    4.467309,
+    4.465776,
+    4.465206,
+    4.466448
+   ],
+   "median": 4.466289,
+   "min": 4.465206,
+   "max": 4.467309,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    5443.191125,
+    5421.693562,
+    5424.059563,
+    5456.520188,
+    5446.816937
+   ],
+   "median": 5443.191125,
+   "min": 5421.693562,
+   "max": 5456.520188,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    5.093416,
+    5.0733,
+    5.075514,
+    5.105889,
+    5.096809
+   ],
+   "median": 5.093416,
+   "min": 5.0733,
+   "max": 5.105889,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    4410.64375,
+    4411.179187,
+    4411.31325,
+    4410.5045,
+    4409.313375
+   ],
+   "median": 4410.64375,
+   "min": 4409.313375,
+   "max": 4411.31325,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    4.127219,
+    4.12772,
+    4.127846,
+    4.127089,
+    4.125974
+   ],
+   "median": 4.127219,
+   "min": 4.125974,
+   "max": 4.127846,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    3768.514187,
+    3772.204688,
+    3771.748063,
+    3771.137625,
+    3772.349688
+   ],
+   "median": 3771.748063,
+   "min": 3768.514187,
+   "max": 3772.349688,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / 1 in 16 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    3.526353,
+    3.529806,
+    3.529379,
+    3.528807,
+    3.529942
+   ],
+   "median": 3.529379,
+   "min": 3.526353,
+   "max": 3.529942,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 1",
+   "unit": "steps",
+   "samples": [
+    16.0
+   ],
+   "median": 16.0,
+   "min": 16.0,
+   "max": 16.0,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    26279.116187,
+    21342.71575,
+    21347.717125,
+    21343.99025,
+    21345.207062
+   ],
+   "median": 21345.207062,
+   "min": 21342.71575,
+   "max": 26279.116187,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.555345,
+    1.263182,
+    1.263478,
+    1.263257,
+    1.263329
+   ],
+   "median": 1.263329,
+   "min": 1.263182,
+   "max": 1.555345,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    19089.94575,
+    19089.502938,
+    19090.388563,
+    19089.79775,
+    19090.052687
+   ],
+   "median": 19089.94575,
+   "min": 19089.502938,
+   "max": 19090.388563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.12985,
+    1.129824,
+    1.129876,
+    1.129841,
+    1.129856
+   ],
+   "median": 1.12985,
+   "min": 1.129824,
+   "max": 1.129876,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    22514.385125,
+    22523.1385,
+    22519.858437,
+    22529.774688,
+    22521.056313
+   ],
+   "median": 22521.056313,
+   "min": 22514.385125,
+   "max": 22529.774688,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.332528,
+    1.333046,
+    1.332851,
+    1.333438,
+    1.332922
+   ],
+   "median": 1.332922,
+   "min": 1.332528,
+   "max": 1.333438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    18475.724375,
+    18477.1285,
+    18476.463813,
+    18476.390875,
+    18476.167438
+   ],
+   "median": 18476.390875,
+   "min": 18475.724375,
+   "max": 18477.1285,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.093497,
+    1.09358,
+    1.093541,
+    1.093536,
+    1.093523
+   ],
+   "median": 1.093536,
+   "min": 1.093497,
+   "max": 1.09358,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    20507.170063,
+    20499.761813,
+    20467.534563,
+    20503.319812,
+    20516.185063
+   ],
+   "median": 20503.319812,
+   "min": 20467.534563,
+   "max": 20516.185063,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.213729,
+    1.213291,
+    1.211383,
+    1.213501,
+    1.214263
+   ],
+   "median": 1.213501,
+   "min": 1.211383,
+   "max": 1.214263,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    19121.520062,
+    19120.726875,
+    19028.715313,
+    19137.414312,
+    19046.954
+   ],
+   "median": 19120.726875,
+   "min": 19028.715313,
+   "max": 19137.414312,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.131719,
+    1.131672,
+    1.126226,
+    1.132659,
+    1.127306
+   ],
+   "median": 1.131672,
+   "min": 1.126226,
+   "max": 1.132659,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    19204.663688,
+    19223.098313,
+    19238.172188,
+    19209.781312,
+    19215.02475
+   ],
+   "median": 19215.02475,
+   "min": 19204.663688,
+   "max": 19238.172188,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.13664,
+    1.137731,
+    1.138623,
+    1.136943,
+    1.137253
+   ],
+   "median": 1.137253,
+   "min": 1.13664,
+   "max": 1.138623,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, derived, factor products precomputed",
+   "unit": "cycles a pass",
+   "samples": [
+    19054.327812,
+    19038.842688,
+    18937.6905,
+    19068.091062,
+    19074.01125
+   ],
+   "median": 19054.327812,
+   "min": 18937.6905,
+   "max": 19074.01125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, derived, factor products precomputed / floor",
+   "unit": "x",
+   "samples": [
+    1.127742,
+    1.126825,
+    1.120839,
+    1.128557,
+    1.128907
+   ],
+   "median": 1.127742,
+   "min": 1.120839,
+   "max": 1.128907,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage)",
+   "unit": "cycles a pass",
+   "samples": [
+    19170.855063,
+    19145.978312,
+    19172.153875,
+    19154.936687,
+    19165.605875
+   ],
+   "median": 19165.605875,
+   "min": 19145.978312,
+   "max": 19172.153875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / floor",
+   "unit": "x",
+   "samples": [
+    1.134639,
+    1.133166,
+    1.134716,
+    1.133697,
+    1.134328
+   ],
+   "median": 1.134328,
+   "min": 1.133166,
+   "max": 1.134716,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / no restage, rows built a pass at its start",
+   "unit": "cycles a pass",
+   "samples": [
+    19206.97775,
+    19184.490063,
+    19177.903937,
+    19274.917438,
+    19240.30875
+   ],
+   "median": 19206.97775,
+   "min": 19177.903937,
+   "max": 19274.917438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 1 / no restage, rows built a pass at its start / floor",
+   "unit": "x",
+   "samples": [
+    1.136777,
+    1.135446,
+    1.135056,
+    1.140798,
+    1.138749
+   ],
+   "median": 1.136777,
+   "min": 1.135056,
+   "max": 1.140798,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    251.484602,
+    254.737086,
+    250.866875,
+    249.900117,
+    252.194922
+   ],
+   "median": 251.484602,
+   "min": 249.900117,
+   "max": 254.737086,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4129.548383,
+    4131.60582,
+    4129.650805,
+    4129.176852,
+    4130.243875
+   ],
+   "median": 4129.650805,
+   "min": 4129.176852,
+   "max": 4131.60582,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    404.5915,
+    404.966937,
+    404.657883,
+    404.594945,
+    404.651266
+   ],
+   "median": 404.651266,
+   "min": 404.5915,
+   "max": 404.966937,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1019.729102,
+    1020.148922,
+    1019.974352,
+    1019.73982,
+    1019.851273
+   ],
+   "median": 1019.851273,
+   "min": 1019.729102,
+   "max": 1020.148922,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1034.452156,
+    1035.064375,
+    1034.869664,
+    1034.60968,
+    1034.765414
+   ],
+   "median": 1034.765414,
+   "min": 1034.452156,
+   "max": 1035.064375,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    12162.080094,
+    12216.497734,
+    12168.359914,
+    12147.620922,
+    12180.234719
+   ],
+   "median": 12168.359914,
+   "min": 12147.620922,
+   "max": 12216.497734,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, derived / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    45.768148,
+    45.721102,
+    45.753078,
+    45.733344,
+    45.727156
+   ],
+   "median": 45.733344,
+   "min": 45.721102,
+   "max": 45.768148,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    343.925016,
+    344.837453,
+    344.54032,
+    343.388633,
+    343.391555
+   ],
+   "median": 343.925016,
+   "min": 343.388633,
+   "max": 344.837453,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1623.195758,
+    1621.72507,
+    1622.349625,
+    1623.011648,
+    1621.243273
+   ],
+   "median": 1622.349625,
+   "min": 1621.243273,
+   "max": 1623.195758,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    501.706906,
+    501.304375,
+    501.143391,
+    501.609094,
+    500.517047
+   ],
+   "median": 501.304375,
+   "min": 500.517047,
+   "max": 501.706906,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1869.629734,
+    1868.57332,
+    1867.911625,
+    1869.096383,
+    1866.226906
+   ],
+   "median": 1868.57332,
+   "min": 1866.226906,
+   "max": 1869.629734,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1050.516742,
+    1045.571766,
+    1047.803422,
+    1047.571461,
+    1044.398602
+   ],
+   "median": 1047.571461,
+   "min": 1044.398602,
+   "max": 1050.516742,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    14070.609742,
+    14020.279953,
+    14046.942836,
+    14068.458867,
+    14007.366953
+   ],
+   "median": 14046.942836,
+   "min": 14007.366953,
+   "max": 14070.609742,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / no restage, rows built a pass at its start / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    54.078422,
+    54.06668,
+    54.109656,
+    54.032883,
+    54.13582
+   ],
+   "median": 54.078422,
+   "min": 54.032883,
+   "max": 54.13582,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    371.513969,
+    371.909633,
+    373.652562,
+    370.92157,
+    373.415047
+   ],
+   "median": 371.909633,
+   "min": 370.92157,
+   "max": 373.652562,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1955.929805,
+    1956.069359,
+    1956.642305,
+    1955.985406,
+    1956.207258
+   ],
+   "median": 1956.069359,
+   "min": 1955.929805,
+   "max": 1956.642305,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    404.125031,
+    404.204195,
+    404.439422,
+    404.132047,
+    404.253312
+   ],
+   "median": 404.204195,
+   "min": 404.125031,
+   "max": 404.439422,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    2245.766445,
+    2246.164227,
+    2246.76032,
+    2246.15218,
+    2246.467922
+   ],
+   "median": 2246.164227,
+   "min": 2245.766445,
+   "max": 2246.76032,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1262.129086,
+    1262.122953,
+    1262.392359,
+    1262.158242,
+    1262.2115
+   ],
+   "median": 1262.158242,
+   "min": 1262.122953,
+   "max": 1262.392359,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    12827.266375,
+    12839.259242,
+    12864.428203,
+    12838.436133,
+    12848.955234
+   ],
+   "median": 12839.259242,
+   "min": 12827.266375,
+   "max": 12864.428203,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, in place, 3 pool slots, listed / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    67.536586,
+    67.513055,
+    67.5395,
+    67.532273,
+    67.542469
+   ],
+   "median": 67.536586,
+   "min": 67.513055,
+   "max": 67.542469,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    262.742062,
+    263.285484,
+    262.243414,
+    262.641422,
+    263.380438
+   ],
+   "median": 262.742062,
+   "min": 262.243414,
+   "max": 263.380438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4116.851258,
+    4115.857414,
+    4115.762813,
+    4115.740984,
+    4115.748227
+   ],
+   "median": 4115.762813,
+   "min": 4115.740984,
+   "max": 4116.851258,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    439.358453,
+    439.17818,
+    439.226445,
+    439.162906,
+    439.234492
+   ],
+   "median": 439.226445,
+   "min": 439.162906,
+   "max": 439.358453,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1208.913672,
+    1208.561062,
+    1208.606555,
+    1208.487383,
+    1208.532266
+   ],
+   "median": 1208.561062,
+   "min": 1208.487383,
+   "max": 1208.913672,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    724.560547,
+    721.880469,
+    722.5535,
+    721.274789,
+    722.40643
+   ],
+   "median": 722.40643,
+   "min": 721.274789,
+   "max": 724.560547,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    12115.288352,
+    12093.419539,
+    12094.535875,
+    12087.275406,
+    12092.053461
+   ],
+   "median": 12093.419539,
+   "min": 12087.275406,
+   "max": 12115.288352,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 1 / load-ahead, derived, products and f16 dense precomputed (no restage) / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    46.099984,
+    46.077117,
+    46.040297,
+    46.021797,
+    46.097125
+   ],
+   "median": 46.077117,
+   "min": 46.021797,
+   "max": 46.099984,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 4",
+   "unit": "steps",
+   "samples": [
+    5.612813
+   ],
+   "median": 5.612813,
+   "min": 5.612813,
+   "max": 5.612813,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    9484.995687,
+    9478.703,
+    9473.292438,
+    9476.579125,
+    9475.103
+   ],
+   "median": 9476.579125,
+   "min": 9473.292438,
+   "max": 9484.995687,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.600268,
+    1.599206,
+    1.598293,
+    1.598848,
+    1.598599
+   ],
+   "median": 1.598848,
+   "min": 1.598293,
+   "max": 1.600268,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    9643.667312,
+    9645.766125,
+    9646.777313,
+    9642.300312,
+    9646.214
+   ],
+   "median": 9645.766125,
+   "min": 9642.300312,
+   "max": 9646.777313,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.627038,
+    1.627392,
+    1.627563,
+    1.626808,
+    1.627468
+   ],
+   "median": 1.627392,
+   "min": 1.626808,
+   "max": 1.627563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    10905.04075,
+    10971.145,
+    10941.977812,
+    10941.397937,
+    10932.387563
+   ],
+   "median": 10941.397937,
+   "min": 10905.04075,
+   "max": 10971.145,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.839852,
+    1.851005,
+    1.846084,
+    1.845986,
+    1.844466
+   ],
+   "median": 1.845986,
+   "min": 1.839852,
+   "max": 1.851005,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    9465.55325,
+    9464.096187,
+    9465.044875,
+    9463.699812,
+    9464.121875
+   ],
+   "median": 9464.121875,
+   "min": 9463.699812,
+   "max": 9465.55325,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.596988,
+    1.596742,
+    1.596902,
+    1.596675,
+    1.596746
+   ],
+   "median": 1.596746,
+   "min": 1.596675,
+   "max": 1.596988,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    9215.890125,
+    9215.52825,
+    9213.78525,
+    9213.102375,
+    9214.551812
+   ],
+   "median": 9214.551812,
+   "min": 9213.102375,
+   "max": 9215.890125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.554866,
+    1.554804,
+    1.55451,
+    1.554395,
+    1.55464
+   ],
+   "median": 1.55464,
+   "min": 1.554395,
+   "max": 1.554866,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    7731.472875,
+    7727.203438,
+    7724.381687,
+    7726.557063,
+    7726.369062
+   ],
+   "median": 7726.557063,
+   "min": 7724.381687,
+   "max": 7731.472875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    1.304421,
+    1.303701,
+    1.303225,
+    1.303592,
+    1.30356
+   ],
+   "median": 1.303592,
+   "min": 1.303225,
+   "max": 1.304421,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    7491.002312,
+    7491.67925,
+    7488.8715,
+    7496.095,
+    7499.328438
+   ],
+   "median": 7491.67925,
+   "min": 7488.8715,
+   "max": 7499.328438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.26385,
+    1.263964,
+    1.26349,
+    1.264709,
+    1.265255
+   ],
+   "median": 1.263964,
+   "min": 1.26349,
+   "max": 1.265255,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, derived, factor products precomputed",
+   "unit": "cycles a pass",
+   "samples": [
+    7576.754563,
+    7583.72775,
+    7579.482937,
+    7571.208625,
+    7576.150062
+   ],
+   "median": 7576.754563,
+   "min": 7571.208625,
+   "max": 7583.72775,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, derived, factor products precomputed / floor",
+   "unit": "x",
+   "samples": [
+    1.278318,
+    1.279494,
+    1.278778,
+    1.277382,
+    1.278216
+   ],
+   "median": 1.278318,
+   "min": 1.277382,
+   "max": 1.279494,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage)",
+   "unit": "cycles a pass",
+   "samples": [
+    7429.026937,
+    7427.058375,
+    7428.526563,
+    7425.184438,
+    7421.81275
+   ],
+   "median": 7427.058375,
+   "min": 7421.81275,
+   "max": 7429.026937,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / floor",
+   "unit": "x",
+   "samples": [
+    1.253394,
+    1.253061,
+    1.253309,
+    1.252745,
+    1.252176
+   ],
+   "median": 1.253061,
+   "min": 1.252176,
+   "max": 1.253394,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / no restage, rows built a pass at its start",
+   "unit": "cycles a pass",
+   "samples": [
+    7091.841188,
+    7090.385813,
+    7088.282125,
+    7089.815937,
+    7085.12325
+   ],
+   "median": 7089.815937,
+   "min": 7085.12325,
+   "max": 7091.841188,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 4 / no restage, rows built a pass at its start / floor",
+   "unit": "x",
+   "samples": [
+    1.196505,
+    1.19626,
+    1.195905,
+    1.196163,
+    1.195372
+   ],
+   "median": 1.196163,
+   "min": 1.195372,
+   "max": 1.196505,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    524.273086,
+    519.950305,
+    523.446234,
+    521.264219,
+    521.080969
+   ],
+   "median": 521.264219,
+   "min": 519.950305,
+   "max": 524.273086,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1884.603789,
+    1884.310219,
+    1884.406172,
+    1884.160875,
+    1884.352797
+   ],
+   "median": 1884.352797,
+   "min": 1884.160875,
+   "max": 1884.603789,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    129.09618,
+    129.035703,
+    129.019445,
+    128.966875,
+    129.004109
+   ],
+   "median": 129.019445,
+   "min": 128.966875,
+   "max": 129.09618,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    351.140742,
+    350.476953,
+    350.927367,
+    350.635438,
+    350.770711
+   ],
+   "median": 350.770711,
+   "min": 350.476953,
+   "max": 351.140742,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    892.696984,
+    892.27707,
+    892.366789,
+    892.316906,
+    892.198523
+   ],
+   "median": 892.316906,
+   "min": 892.198523,
+   "max": 892.696984,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4088.476359,
+    4071.570773,
+    4075.430977,
+    4073.444531,
+    4069.756828
+   ],
+   "median": 4073.444531,
+   "min": 4069.756828,
+   "max": 4088.476359,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, derived / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    44.468391,
+    44.462977,
+    44.508367,
+    44.502688,
+    44.511469
+   ],
+   "median": 44.502688,
+   "min": 44.462977,
+   "max": 44.511469,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    342.014031,
+    343.174836,
+    341.986102,
+    341.688734,
+    341.844219
+   ],
+   "median": 341.986102,
+   "min": 341.688734,
+   "max": 343.174836,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    958.603,
+    958.579289,
+    958.743375,
+    958.578727,
+    958.675617
+   ],
+   "median": 958.603,
+   "min": 958.578727,
+   "max": 958.743375,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    160.573727,
+    160.685914,
+    160.666453,
+    160.589695,
+    160.565414
+   ],
+   "median": 160.589695,
+   "min": 160.565414,
+   "max": 160.685914,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    621.930773,
+    622.293828,
+    622.299867,
+    622.131859,
+    622.092156
+   ],
+   "median": 622.131859,
+   "min": 621.930773,
+   "max": 622.299867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    908.415875,
+    914.307508,
+    913.860117,
+    915.652664,
+    914.222711
+   ],
+   "median": 914.222711,
+   "min": 908.415875,
+   "max": 915.652664,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4162.076531,
+    4164.98875,
+    4169.537914,
+    4164.09832,
+    4168.076305
+   ],
+   "median": 4164.98875,
+   "min": 4162.076531,
+   "max": 4169.537914,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / no restage, rows built a pass at its start / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    53.889141,
+    53.902086,
+    53.873266,
+    53.883117,
+    53.88393
+   ],
+   "median": 53.88393,
+   "min": 53.873266,
+   "max": 53.902086,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    598.789703,
+    602.234758,
+    603.436836,
+    601.671742,
+    602.930992
+   ],
+   "median": 602.234758,
+   "min": 598.789703,
+   "max": 603.436836,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    702.637914,
+    702.6955,
+    702.766398,
+    702.801055,
+    702.778789
+   ],
+   "median": 702.766398,
+   "min": 702.637914,
+   "max": 702.801055,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    128.431445,
+    128.455953,
+    128.472656,
+    128.489906,
+    128.438102
+   ],
+   "median": 128.455953,
+   "min": 128.431445,
+   "max": 128.489906,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    749.257031,
+    749.785,
+    749.604742,
+    749.50625,
+    749.57968
+   ],
+   "median": 749.57968,
+   "min": 749.257031,
+   "max": 749.785,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1031.570695,
+    1031.901219,
+    1031.769156,
+    1031.723508,
+    1031.590813
+   ],
+   "median": 1031.723508,
+   "min": 1031.570695,
+   "max": 1031.901219,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4130.216289,
+    4134.248578,
+    4134.490102,
+    4132.291008,
+    4132.176531
+   ],
+   "median": 4132.291008,
+   "min": 4130.216289,
+   "max": 4134.490102,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, in place, 3 pool slots, listed / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    67.215539,
+    67.220297,
+    67.217859,
+    67.244227,
+    67.248422
+   ],
+   "median": 67.220297,
+   "min": 67.215539,
+   "max": 67.248422,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    250.909461,
+    250.36943,
+    249.600156,
+    249.400609,
+    250.366516
+   ],
+   "median": 250.366516,
+   "min": 249.400609,
+   "max": 250.909461,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1874.520594,
+    1874.691836,
+    1874.627664,
+    1874.512219,
+    1874.746094
+   ],
+   "median": 1874.627664,
+   "min": 1874.512219,
+   "max": 1874.746094,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    139.076633,
+    139.031805,
+    139.126609,
+    139.15857,
+    139.102648
+   ],
+   "median": 139.102648,
+   "min": 139.031805,
+   "max": 139.15857,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    399.552516,
+    399.702742,
+    399.789008,
+    399.566492,
+    399.715453
+   ],
+   "median": 399.702742,
+   "min": 399.552516,
+   "max": 399.789008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    780.850883,
+    783.087953,
+    785.648742,
+    779.691883,
+    780.922445
+   ],
+   "median": 780.922445,
+   "min": 779.691883,
+   "max": 785.648742,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    4074.524508,
+    4070.574398,
+    4081.442094,
+    4072.338039,
+    4077.396773
+   ],
+   "median": 4074.524508,
+   "min": 4070.574398,
+   "max": 4081.442094,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 4 / load-ahead, derived, products and f16 dense precomputed (no restage) / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    45.788883,
+    45.791797,
+    45.775922,
+    45.802031,
+    45.810148
+   ],
+   "median": 45.791797,
+   "min": 45.775922,
+   "max": 45.810148,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "steps a pass, busiest scheduler / 1 in 16",
+   "unit": "steps",
+   "samples": [
+    2.024
+   ],
+   "median": 2.024,
+   "min": 2.024,
+   "max": 2.024,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / serial, value tile, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    5422.630938,
+    5395.622937,
+    8133.444,
+    5441.167937,
+    5411.4085
+   ],
+   "median": 5422.630938,
+   "min": 5395.622937,
+   "max": 8133.444,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / serial, value tile, listed / floor",
+   "unit": "x",
+   "samples": [
+    2.537089,
+    2.524452,
+    3.805398,
+    2.545761,
+    2.531838
+   ],
+   "median": 2.537089,
+   "min": 2.524452,
+   "max": 3.805398,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, value tile, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    5311.240937,
+    5312.059938,
+    5311.614187,
+    5310.670375,
+    5309.573688
+   ],
+   "median": 5311.240937,
+   "min": 5309.573688,
+   "max": 5312.059938,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, value tile, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.484972,
+    2.485356,
+    2.485147,
+    2.484705,
+    2.484192
+   ],
+   "median": 2.484972,
+   "min": 2.484192,
+   "max": 2.485356,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 2 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    6145.512375,
+    6215.742562,
+    6147.911813,
+    6150.301062,
+    6178.975687
+   ],
+   "median": 6150.301062,
+   "min": 6145.512375,
+   "max": 6215.742562,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 2 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.875303,
+    2.908162,
+    2.876426,
+    2.877544,
+    2.89096
+   ],
+   "median": 2.877544,
+   "min": 2.875303,
+   "max": 2.908162,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    4824.134687,
+    4824.955437,
+    4824.188375,
+    4825.40975,
+    4824.904312
+   ],
+   "median": 4824.904312,
+   "min": 4824.134687,
+   "max": 4825.40975,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.25707,
+    2.257454,
+    2.257095,
+    2.257666,
+    2.25743
+   ],
+   "median": 2.25743,
+   "min": 2.25707,
+   "max": 2.257666,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    4372.501562,
+    4371.84625,
+    4371.421312,
+    4371.34525,
+    4371.5005
+   ],
+   "median": 4371.5005,
+   "min": 4371.34525,
+   "max": 4372.501562,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / pipelined, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    2.045764,
+    2.045457,
+    2.045259,
+    2.045223,
+    2.045296
+   ],
+   "median": 2.045296,
+   "min": 2.045223,
+   "max": 2.045764,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived",
+   "unit": "cycles a pass",
+   "samples": [
+    4435.798563,
+    4394.943938,
+    4433.262438,
+    4407.526813,
+    4401.579875
+   ],
+   "median": 4407.526813,
+   "min": 4394.943938,
+   "max": 4435.798563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / floor",
+   "unit": "x",
+   "samples": [
+    2.075379,
+    2.056264,
+    2.074192,
+    2.062151,
+    2.059369
+   ],
+   "median": 2.062151,
+   "min": 2.056264,
+   "max": 2.075379,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed",
+   "unit": "cycles a pass",
+   "samples": [
+    4079.735125,
+    3990.313562,
+    4079.170625,
+    4009.9025,
+    4001.144313
+   ],
+   "median": 4009.9025,
+   "min": 3990.313562,
+   "max": 4079.735125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / floor",
+   "unit": "x",
+   "samples": [
+    1.908787,
+    1.86695,
+    1.908523,
+    1.876115,
+    1.872017
+   ],
+   "median": 1.876115,
+   "min": 1.86695,
+   "max": 1.908787,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, derived, factor products precomputed",
+   "unit": "cycles a pass",
+   "samples": [
+    4194.3425,
+    4191.72225,
+    4200.08425,
+    4191.13125,
+    4202.171125
+   ],
+   "median": 4194.3425,
+   "min": 4191.13125,
+   "max": 4202.171125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, derived, factor products precomputed / floor",
+   "unit": "x",
+   "samples": [
+    1.962409,
+    1.961183,
+    1.965095,
+    1.960906,
+    1.966072
+   ],
+   "median": 1.962409,
+   "min": 1.960906,
+   "max": 1.966072,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage)",
+   "unit": "cycles a pass",
+   "samples": [
+    4199.682687,
+    4128.737187,
+    4012.834313,
+    4239.691813,
+    4144.051438
+   ],
+   "median": 4144.051438,
+   "min": 4012.834313,
+   "max": 4239.691813,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / floor",
+   "unit": "x",
+   "samples": [
+    1.964907,
+    1.931714,
+    1.877486,
+    1.983626,
+    1.938879
+   ],
+   "median": 1.938879,
+   "min": 1.877486,
+   "max": 1.983626,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / no restage, rows built a pass at its start",
+   "unit": "cycles a pass",
+   "samples": [
+    4105.5695,
+    4093.8085,
+    4079.04425,
+    4010.329125,
+    4078.050875
+   ],
+   "median": 4079.04425,
+   "min": 4010.329125,
+   "max": 4105.5695,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / 1 in 16 / no restage, rows built a pass at its start / floor",
+   "unit": "x",
+   "samples": [
+    1.920874,
+    1.915372,
+    1.908464,
+    1.876314,
+    1.907999
+   ],
+   "median": 1.908464,
+   "min": 1.876314,
+   "max": 1.920874,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    262.508578,
+    262.972094,
+    262.08332,
+    263.748133,
+    261.41093
+   ],
+   "median": 262.508578,
+   "min": 261.41093,
+   "max": 263.748133,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1217.171055,
+    1218.065188,
+    1217.072195,
+    1216.674008,
+    1217.626984
+   ],
+   "median": 1217.171055,
+   "min": 1216.674008,
+   "max": 1218.065188,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    52.887781,
+    52.831867,
+    52.903484,
+    52.959305,
+    52.77043
+   ],
+   "median": 52.887781,
+   "min": 52.77043,
+   "max": 52.959305,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    136.321977,
+    136.044297,
+    136.19582,
+    136.291141,
+    136.012313
+   ],
+   "median": 136.19582,
+   "min": 136.012313,
+   "max": 136.321977,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    968.62293,
+    967.693773,
+    970.038031,
+    969.292359,
+    970.564813
+   ],
+   "median": 969.292359,
+   "min": 967.693773,
+   "max": 970.564813,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1688.492898,
+    1671.939055,
+    1694.586477,
+    1699.116828,
+    1684.225359
+   ],
+   "median": 1688.492898,
+   "min": 1671.939055,
+   "max": 1699.116828,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, derived / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    43.651102,
+    43.641234,
+    43.600969,
+    43.599078,
+    43.628133
+   ],
+   "median": 43.628133,
+   "min": 43.599078,
+   "max": 43.651102,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    509.851594,
+    489.589297,
+    436.204367,
+    476.183125,
+    490.979625
+   ],
+   "median": 489.589297,
+   "min": 436.204367,
+   "max": 509.851594,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    745.77157,
+    746.367094,
+    747.951391,
+    746.823375,
+    746.066977
+   ],
+   "median": 746.367094,
+   "min": 745.77157,
+   "max": 747.951391,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    79.783383,
+    79.101687,
+    77.79118,
+    78.572398,
+    79.364195
+   ],
+   "median": 79.101687,
+   "min": 77.79118,
+   "max": 79.783383,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    253.234328,
+    250.576867,
+    246.110234,
+    248.629336,
+    251.734219
+   ],
+   "median": 250.576867,
+   "min": 246.110234,
+   "max": 253.234328,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    795.932008,
+    790.905453,
+    785.091734,
+    787.991445,
+    793.073594
+   ],
+   "median": 790.905453,
+   "min": 785.091734,
+   "max": 795.932008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1778.355969,
+    1743.706664,
+    1648.675961,
+    1709.134141,
+    1758.094273
+   ],
+   "median": 1743.706664,
+   "min": 1648.675961,
+   "max": 1778.355969,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / no restage, rows built a pass at its start / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    53.589227,
+    53.695234,
+    54.079633,
+    53.80282,
+    53.686422
+   ],
+   "median": 53.695234,
+   "min": 53.589227,
+   "max": 54.079633,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    381.981641,
+    381.608617,
+    382.430344,
+    379.388836,
+    380.04282
+   ],
+   "median": 381.608617,
+   "min": 379.388836,
+   "max": 382.430344,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    400.871828,
+    400.943125,
+    400.952359,
+    400.868219,
+    401.050445
+   ],
+   "median": 400.943125,
+   "min": 400.868219,
+   "max": 401.050445,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    53.509367,
+    53.412133,
+    53.340313,
+    53.889719,
+    53.380133
+   ],
+   "median": 53.412133,
+   "min": 53.340313,
+   "max": 53.889719,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    311.336961,
+    311.195273,
+    311.018102,
+    311.922094,
+    311.100273
+   ],
+   "median": 311.195273,
+   "min": 311.018102,
+   "max": 311.922094,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1135.567648,
+    1134.039734,
+    1128.371102,
+    1160.754141,
+    1133.892383
+   ],
+   "median": 1134.039734,
+   "min": 1128.371102,
+   "max": 1160.754141,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1737.177672,
+    1719.722516,
+    1704.044469,
+    1805.445422,
+    1714.104742
+   ],
+   "median": 1719.722516,
+   "min": 1704.044469,
+   "max": 1805.445422,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, in place, 3 pool slots, listed / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    67.403023,
+    67.443602,
+    67.463516,
+    67.28493,
+    67.438031
+   ],
+   "median": 67.438031,
+   "min": 67.28493,
+   "max": 67.463516,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / start waits",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    361.736656,
+    332.414047,
+    351.743812,
+    381.732203,
+    371.021625
+   ],
+   "median": 361.736656,
+   "min": 332.414047,
+   "max": 381.732203,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / rows",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1209.906969,
+    1211.622742,
+    1210.51607,
+    1209.095695,
+    1209.060219
+   ],
+   "median": 1209.906969,
+   "min": 1209.060219,
+   "max": 1211.622742,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / operand ldmatrix",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    58.911742,
+    58.185133,
+    58.665266,
+    59.18025,
+    59.176711
+   ],
+   "median": 58.911742,
+   "min": 58.185133,
+   "max": 59.18025,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / coefficient (loads, math)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    160.697789,
+    158.660391,
+    159.679789,
+    161.728031,
+    161.706672
+   ],
+   "median": 160.697789,
+   "min": 158.660391,
+   "max": 161.728031,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / mid-pass (slot waits, fill, restage)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    639.828836,
+    636.602945,
+    638.709711,
+    641.594313,
+    641.708156
+   ],
+   "median": 639.828836,
+   "min": 636.602945,
+   "max": 641.708156,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / MMA issue",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    1781.167086,
+    1706.945047,
+    1753.910031,
+    1802.140992,
+    1802.929477
+   ],
+   "median": 1781.167086,
+   "min": 1706.945047,
+   "max": 1802.929477,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "ledger / fp32 arm / 1 in 16 / load-ahead, derived, products and f16 dense precomputed (no restage) / pass end (join, sums)",
+   "unit": "cycles a warp a pass",
+   "samples": [
+    45.080211,
+    45.219266,
+    45.111414,
+    45.078,
+    45.073523
+   ],
+   "median": 45.080211,
+   "min": 45.073523,
+   "max": 45.219266,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void sparse_pass::pass<(int)0, (int)8, (int)1>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 241,
+   "ops": {
+    "LOP3.LUT": 217,
+    "IMAD": 114,
+    "HMMA.16816.F32": 99,
+    "CS2R": 97,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 84,
+    "IADD3": 63,
+    "IMAD.IADD": 59,
+    "LDS": 52,
+    "FMUL": 48,
+    "SHFL.IDX": 48,
+    "IMAD.SHL.U32": 44
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)6, (int)1>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 251,
+   "ops": {
+    "LOP3.LUT": 199,
+    "CS2R": 152,
+    "IMAD": 134,
+    "IMAD.MOV.U32": 105,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "IADD3": 74,
+    "FMUL": 54,
+    "LDS": 52,
+    "SHFL.IDX": 49,
+    "BRA": 46,
+    "IMAD.SHL.U32": 45
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)9, (int)1>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 241,
+   "ops": {
+    "LOP3.LUT": 218,
+    "IMAD": 105,
+    "HMMA.16816.F32": 99,
+    "CS2R": 96,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 80,
+    "IADD3": 78,
+    "LDS": 50,
+    "SHFL.IDX": 49,
+    "IMAD.SHL.U32": 48,
+    "FMUL": 48,
+    "IMAD.IADD": 42
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)5, (int)1>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 242,
+   "ops": {
+    "LOP3.LUT": 210,
+    "CS2R": 155,
+    "IMAD": 126,
+    "HMMA.16816.F32": 99,
+    "IMAD.MOV.U32": 97,
+    "HMUL2": 96,
+    "LDS": 62,
+    "IADD3": 59,
+    "IMAD.IADD": 55,
+    "FMUL": 54,
+    "IMAD.SHL.U32": 51,
+    "BRA": 48
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)9, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 221,
+   "ops": {
+    "LOP3.LUT": 219,
+    "IMAD": 99,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "CS2R": 76,
+    "IMAD.MOV.U32": 65,
+    "IADD3": 53,
+    "LDS": 50,
+    "SHFL.IDX": 49,
+    "IMAD.SHL.U32": 48,
+    "FMUL": 48,
+    "IMAD.IADD": 40
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)8, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 228,
+   "ops": {
+    "LOP3.LUT": 219,
+    "IMAD": 111,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 85,
+    "CS2R": 67,
+    "IMAD.IADD": 60,
+    "LDS": 52,
+    "IADD3": 49,
+    "FMUL": 48,
+    "SHFL.IDX": 48,
+    "IMAD.SHL.U32": 44
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)7, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 234,
+   "ops": {
+    "LOP3.LUT": 226,
+    "IMAD": 113,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 87,
+    "CS2R": 68,
+    "IMAD.IADD": 64,
+    "LDS": 62,
+    "IMAD.SHL.U32": 48,
+    "FMUL": 48,
+    "SHFL.IDX": 48,
+    "BRA": 44
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)6, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 234,
+   "ops": {
+    "LOP3.LUT": 187,
+    "IMAD": 132,
+    "CS2R": 131,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 87,
+    "FMUL": 54,
+    "LDS": 52,
+    "IADD3": 51,
+    "SHFL.IDX": 49,
+    "BRA": 46,
+    "IMAD.SHL.U32": 45
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)5, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 234,
+   "ops": {
+    "LOP3.LUT": 210,
+    "CS2R": 132,
+    "IMAD": 124,
+    "HMMA.16816.F32": 99,
+    "HMUL2": 96,
+    "IMAD.MOV.U32": 87,
+    "LDS": 62,
+    "IMAD.IADD": 55,
+    "FMUL": 54,
+    "IMAD.SHL.U32": 51,
+    "BRA": 48,
+    "SHFL.IDX": 48
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)4, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 192,
+   "ops": {
+    "LOP3.LUT": 171,
+    "CS2R": 133,
+    "IMAD": 86,
+    "LDS": 65,
+    "IMAD.MOV.U32": 58,
+    "IADD3": 49,
+    "BRA": 45,
+    "IMAD.SHL.U32": 41,
+    "HMMA.16816.F32": 33,
+    "HMUL2": 32,
+    "SHF.R.U32.HI": 30,
+    "NOP": 30
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)3, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 197,
+   "ops": {
+    "LOP3.LUT": 173,
+    "CS2R": 132,
+    "IMAD": 80,
+    "LDS": 69,
+    "IMAD.MOV.U32": 59,
+    "IMAD.SHL.U32": 42,
+    "BRA": 42,
+    "IADD3": 42,
+    "NOP": 35,
+    "SHF.R.U32.HI": 34,
+    "HMMA.16816.F32": 33,
+    "HMUL2": 32
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)2, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 191,
+   "ops": {
+    "LOP3.LUT": 163,
+    "CS2R": 132,
+    "IMAD": 68,
+    "LDS": 57,
+    "IMAD.MOV.U32": 56,
+    "IADD3": 41,
+    "BRA": 39,
+    "IMAD.SHL.U32": 36,
+    "HMMA.16816.F32": 33,
+    "HMUL2": 32,
+    "SHF.R.U32.HI": 28,
+    "NOP": 26
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)1, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 194,
+   "ops": {
+    "LOP3.LUT": 206,
+    "IMAD": 83,
+    "CS2R": 68,
+    "LDS": 62,
+    "IMAD.MOV.U32": 59,
+    "IMAD.IADD": 52,
+    "IMAD.SHL.U32": 51,
+    "BRA": 45,
+    "IADD3": 35,
+    "HMMA.16816.F32": 33,
+    "NOP": 32,
+    "HMUL2": 32
+   }
+  },
+  "void sparse_pass::pass<(int)0, (int)0, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 185,
+   "ops": {
+    "LOP3.LUT": 135,
+    "CS2R": 67,
+    "IMAD.MOV.U32": 51,
+    "HMMA.16816.F32": 33,
+    "HMUL2": 32,
+    "IMAD": 30,
+    "IMAD.SHL.U32": 29,
+    "IADD3": 27,
+    "IMAD.IADD": 27,
+    "BRA": 23,
+    "FMUL": 19,
+    "LDS": 18
+   }
+  },
+  "void sparse_pass::pass<(int)1, (int)4, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 252,
+   "ops": {
+    "CS2R": 195,
+    "LOP3.LUT": 175,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "IMAD": 87,
+    "LDS": 65,
+    "IMAD.MOV.U32": 58,
+    "IADD3": 55,
+    "BRA": 45,
+    "IMAD.SHL.U32": 40,
+    "NOP": 34,
+    "HMUL2": 32
+   }
+  },
+  "void sparse_pass::pass<(int)1, (int)3, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 254,
+   "ops": {
+    "CS2R": 196,
+    "LOP3.LUT": 189,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "IMAD": 78,
+    "LDS": 69,
+    "IMAD.MOV.U32": 52,
+    "IMAD.SHL.U32": 49,
+    "BRA": 45,
+    "IADD3": 43,
+    "NOP": 36,
+    "SHF.R.U32.HI": 34
+   }
+  },
+  "void sparse_pass::pass<(int)1, (int)2, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 251,
+   "ops": {
+    "CS2R": 196,
+    "LOP3.LUT": 179,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "IMAD": 66,
+    "LDS": 57,
+    "IMAD.MOV.U32": 50,
+    "IMAD.SHL.U32": 42,
+    "BRA": 42,
+    "IADD3": 38,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32
+   }
+  },
+  "void sparse_pass::pass<(int)1, (int)1, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 252,
+   "ops": {
+    "LOP3.LUT": 221,
+    "CS2R": 193,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "IMAD": 81,
+    "LDS": 62,
+    "IMAD.MOV.U32": 56,
+    "IMAD.SHL.U32": 55,
+    "BRA": 48,
+    "IADD3": 46,
+    "IMAD.IADD": 44,
+    "NOP": 32
+   }
+  },
+  "void sparse_pass::pass<(int)1, (int)0, (int)0>(int, sparse_pass::Source, long long *, int *, long long *)": {
+   "regs": 244,
+   "ops": {
+    "CS2R": 195,
+    "LOP3.LUT": 136,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "IMAD.MOV.U32": 38,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "IADD3": 31,
+    "IMAD": 27,
+    "BRA": 24,
+    "IMAD.SHL.U32": 22,
+    "IMAD.IADD": 19
+   }
+  }
+ }
+}

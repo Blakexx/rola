@@ -6,17 +6,18 @@ cubin with line information, deterministically.
 
   PURITY   -- a `//: @burst` function's instructions hold no vote, barrier, convergence bracket,
               call or branch: the ones the compiler inserts, which the source lint cannot see.
-  COVERAGE -- a burst loop covers itself on ONE warp: its period alone, simulated from the control
-              words with the tensor pipe as a resource (`pipe_sim`), against its HMMAs' pipe time --
-              the occupancy -- held at a floor a loop (`tools/budgets/burst_floors.json`, a ratchet);
-              beside it the exposed latency the control words admit, each named dependence.
+  COVERAGE -- a named loop's period for ONE warp alone, simulated from the control words with the
+              tensor pipe as a resource (`pipe_sim`), against its HMMAs' pipe time -- the occupancy --
+              and the exposed latency the control words admit, each named dependence: a READING. The
+              gate on every MMA loop of every kernel is the SASS gate's step cover (KERNEL_STANDARDS §32).
   REGISTERS -- the arm's allocation against the thresholds a warp a scheduler costs: 248 buys two,
               168 three.
 
-    python tools/burst_gate.py --arm 0 --source csrc/rola/src/carry/carry_kernel.cuh [--loop FILE:FUNCTION ...]
+    bazel run //tools:burst_gate -- --arm 0 --source csrc/rola/src/carry/ampere/carry_kernel.cuh \
+        [--loop FILE:FUNCTION ...]
 
-The loops are named by their user functions (`--loop`), since every `Burst::run` user inlines the same lines; `--loop`
-adds a rolled loop for reading (the readout's `readout_tile`). Exit 1 on a purity or coverage red.
+The loops are named by their user functions (`--loop`), since every `Burst::run` user inlines the same lines; a name
+the source no longer defines is refused. Exit 1 on a purity red.
 Docs: docs/internals/tools/burst_gate.md.
 """
 from __future__ import annotations
@@ -29,8 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "lint"))
+sys.path.insert(0, str(Path(__file__).absolute().parent))
+sys.path.insert(0, str(Path(__file__).absolute().parents[1] / "tools" / "lint"))
 
 import burst_tier  # noqa: E402
 import life_ranges  # noqa: E402
@@ -39,7 +40,6 @@ import sass  # noqa: E402
 import sass_control as sc  # noqa: E402
 
 FORBIDDEN = re.compile(r"^(?:@!?U?P\w+\s+)?(VOTE\w*|BAR\w*|BSSY|BSYNC|CALL\w*|WARPSYNC|MEMBAR\w*|BRA\w*|EXIT|RET\w*)\b")
-FLOORS = Path(__file__).resolve().parents[1] / "tools" / "budgets" / "burst_floors.json"
 REGISTER_FILE = 16384       #: 32-bit registers a scheduler partition on this generation
 ALLOCATION_GRAIN = 8        #: registers a thread, the allocation unit
 
@@ -55,9 +55,9 @@ def burst_functions() -> list[tuple[str, str, int, int]]:
     return out
 
 
-def purity(cubin: Path, functions) -> tuple[bool, list[str], dict]:
-    frames = sass.frames(sass.disassemble(cubin, "--print-line-info-inline", "-gi"))
-    enc = sc.encoded(cubin)
+def purity(cubin: Path, functions, kernel: str | None = None) -> tuple[bool, list[str], dict]:
+    frames = sass.frames(sass.section(sass.disassemble(cubin, "--print-line-info-inline", "-gi"), kernel, cubin.name))
+    enc = sc.encoded(cubin, kernel)
     rows = {name: collections.Counter() for _, name, _, _ in functions}
     owner: dict[int, str] = {}
     for off in enc:
@@ -135,13 +135,14 @@ def coverage(body, mach: dict, arch: str) -> dict:
     exposed, worst = exposed_latency(body, mach)
     hmmas = alone["hmmas"]
     return {"instructions": alone["instructions"], "hmmas": hmmas, "period": round(alone["period"], 1),
-            "occupancy": round(100 * alone["occupancy"], 1), "pipe": hmmas * mach["hmma_pipe"],
+            "occupancy": round(100 * alone["occupancy"], 1),
+            "pipe": round(sum(sc.mma_cost(t, mach) for _, t, _ in body), 1),
             "exposed": exposed, "worst": worst}
 
 
 def registers(cubin: Path) -> dict:
     """The kernel's register allocation and the warps a scheduler it leaves room for."""
-    out = subprocess.run(["cuobjdump", "-res-usage", str(cubin)], capture_output=True, text=True).stdout
+    out = subprocess.run([sass.tool("cuobjdump"), "-res-usage", str(cubin)], capture_output=True, text=True).stdout
     m = re.search(r"REG:(\d+)", out)
     if not m:
         return {}
@@ -163,8 +164,8 @@ def main() -> int:
                          "instructions are attributed to (a `Burst::run` user, since every user inlines the "
                          "same lines of `common/burst.cuh`)")
     ap.add_argument("--json", type=Path, default=None)
-    ap.add_argument("--write-floors", action="store_true",
-                    help="record every loop's occupancy as its floor (a ratchet: a later build may not read lower)")
+    ap.add_argument("--kernel", default=None,
+                    help="the function to read, a regex over the cubin's (needed where it holds several)")
     a = ap.parse_args()
     if (a.cubin is None) == (a.arm is None):
         ap.error("give exactly one of --cubin or --arm")
@@ -173,28 +174,20 @@ def main() -> int:
     mach = sc.MACHINES[arch]
     print(f"machine {arch}: an HMMA holds the pipe {mach['hmma_pipe']} cycles a scheduler")
 
-    ok, lines, purity_rows = purity(cubin, burst_functions())
+    ok, lines, purity_rows = purity(cubin, burst_functions(), a.kernel)
     for line in lines:
         print(line)
 
-    floors = json.loads(FLOORS.read_text()) if FLOORS.exists() else {}
     loops = [tuple(x.rsplit(":", 1)) for x in a.loop]
     cov = {}
     for file, function in loops:
         source = Path(file) if Path(file).exists() else a.source.parent / file
         key = f"{source.name}:{function}"
-        r = coverage(sc.loop_of(cubin, source, function), mach, arch)
-        floor = floors.get(key)
-        covered = floor is None or r["occupancy"] >= floor
-        ok &= covered
-        cov[key] = {**r, "floor": floor, "covered": covered}
-        print(f"{'ok  ' if covered else 'RED '} coverage {key}: instr {r['instructions']} hmma {r['hmmas']} "
-              f"alone period {r['period']:.0f} of pipe {r['pipe']:.0f} = {r['occupancy']:.1f}% "
-              f"(floor {floor if floor is not None else 'none'}); exposed latency {r['exposed']:.0f}"
+        r = coverage(sc.loop_of(cubin, source, function, a.kernel), mach, arch)
+        cov[key] = r
+        print(f"read coverage {key}: instr {r['instructions']} hmma {r['hmmas']} alone period {r['period']:.0f} of "
+              f"pipe {r['pipe']:.0f} = {r['occupancy']:.1f}%; exposed latency {r['exposed']:.0f}"
               + (f" :: {r['worst']}" if r["worst"] else ""))
-    if a.write_floors:
-        FLOORS.write_text(json.dumps({k: v["occupancy"] for k, v in cov.items()}, indent=1, sort_keys=True) + "\n")
-        print(f"floors written to {FLOORS}")
 
     regs = registers(cubin)
     if regs:

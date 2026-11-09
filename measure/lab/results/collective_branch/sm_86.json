@@ -1,0 +1,194 @@
+{
+ "experiment": "collective_branch",
+ "question": "does a warp collective under a branch on the warp's id (warp-uniform, but derived from threadIdx) stay inline, and what does its other form cost? Does one under a branch on the block index or a kernel argument?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "b8309b3ccfc8f0582ff06d1a1ecb5cb4ec90b0ab",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-10-04T18:57:21+00:00",
+ "utilization_before": 0,
+ "results": [
+  {
+   "lab": "result",
+   "name": "no branch",
+   "unit": "cycles a shuffle",
+   "samples": [
+    8.319162,
+    8.319136,
+    8.319083,
+    8.319148,
+    8.319117,
+    8.319102,
+    8.319148
+   ],
+   "median": 8.319136,
+   "min": 8.319083,
+   "max": 8.319162,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "under the warp-role branch",
+   "unit": "cycles a shuffle",
+   "samples": [
+    13.637494,
+    13.637481,
+    13.63744,
+    13.63743,
+    13.637434,
+    13.637463,
+    13.637422
+   ],
+   "median": 13.63744,
+   "min": 13.637422,
+   "max": 13.637494,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "role by trip count",
+   "unit": "cycles a shuffle",
+   "samples": [
+    13.942725,
+    13.942725,
+    13.942725,
+    13.942725,
+    13.942725,
+    13.942725,
+    13.942725
+   ],
+   "median": 13.942725,
+   "min": 13.942725,
+   "max": 13.942725,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "under a block-index branch",
+   "unit": "cycles a shuffle",
+   "samples": [
+    8.319309,
+    8.319231,
+    8.319263,
+    8.319304,
+    8.319273,
+    8.319277,
+    8.31925
+   ],
+   "median": 8.319273,
+   "min": 8.319231,
+   "max": 8.319309,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "under an argument branch",
+   "unit": "cycles a shuffle",
+   "samples": [
+    8.319205,
+    8.319196,
+    8.319448,
+    8.319238,
+    8.319238,
+    8.319239,
+    8.319233
+   ],
+   "median": 8.319238,
+   "min": 8.319196,
+   "max": 8.319448,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void collective_branch::shuffles<(int)4>(int, int, int, long long *, int *)": {
+   "regs": 24,
+   "ops": {
+    "LOP3.LUT": 13,
+    "IADD3": 9,
+    "NOP": 9,
+    "SHFL.IDX": 8,
+    "IMAD.MOV.U32": 6,
+    "BRA": 4,
+    "IMAD": 3,
+    "S2R": 2,
+    "CS2R": 2,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2,
+    "ISETP.EQ.OR": 1
+   }
+  },
+  "void collective_branch::shuffles<(int)3>(int, int, int, long long *, int *)": {
+   "regs": 25,
+   "ops": {
+    "LOP3.LUT": 13,
+    "NOP": 13,
+    "IADD3": 9,
+    "SHFL.IDX": 8,
+    "IMAD.MOV.U32": 6,
+    "IMAD": 3,
+    "BRA": 3,
+    "S2R": 2,
+    "CS2R": 2,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2,
+    "ISETP.GE.OR": 1
+   }
+  },
+  "void collective_branch::shuffles<(int)2>(int, int, int, long long *, int *)": {
+   "regs": 24,
+   "ops": {
+    "IMAD.MOV.U32": 24,
+    "LOP3.LUT": 19,
+    "NOP": 14,
+    "IADD3": 9,
+    "SHFL.IDX": 9,
+    "MOV": 8,
+    "CALL.REL.NOINC": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 3,
+    "IMAD": 3,
+    "S2R": 2,
+    "CS2R": 2
+   }
+  },
+  "void collective_branch::shuffles<(int)1>(int, int, int, long long *, int *)": {
+   "regs": 23,
+   "ops": {
+    "IMAD.MOV.U32": 25,
+    "LOP3.LUT": 19,
+    "NOP": 14,
+    "IADD3": 9,
+    "SHFL.IDX": 9,
+    "MOV": 8,
+    "CALL.REL.NOINC": 8,
+    "BRA": 6,
+    "IMAD": 3,
+    "S2R": 2,
+    "CS2R": 2,
+    "BSSY": 2
+   }
+  },
+  "void collective_branch::shuffles<(int)0>(int, int, int, long long *, int *)": {
+   "regs": 24,
+   "ops": {
+    "LOP3.LUT": 13,
+    "NOP": 10,
+    "IADD3": 9,
+    "SHFL.IDX": 8,
+    "IMAD.MOV.U32": 6,
+    "BRA": 4,
+    "IMAD": 3,
+    "S2R": 2,
+    "CS2R": 2,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2,
+    "ISETP.NE.AND": 1
+   }
+  }
+ }
+}

@@ -51,6 +51,7 @@ from rola.routing.types import (
     SoftmaxActivation,
     Topology,
 )
+from tests.oracle.fixtures import with_gain
 
 
 def _topology(widths) -> Topology:
@@ -119,12 +120,7 @@ def test_write_conditioned_quiescence_state_bit_identical_across_write_free_inte
 
     states = []
     for prefix in range(1, T + 1):
-        _, final_state = naive_rola(
-            v[:, :prefix], (read_levels[0][:, :prefix], read_levels[1][:, :prefix]),
-            (write_levels[0][:, :prefix], write_levels[1][:, :prefix]),
-            g_write[:, :prefix], topology, decay,
-            output_final_state=True,
-        )
+        _, final_state = naive_rola(v[:, :prefix], (read_levels[0][:, :prefix], read_levels[1][:, :prefix]), with_gain((write_levels[0][:, :prefix], write_levels[1][:, :prefix]), g_write[:, :prefix]), topology, decay, output_final_state=True)
         states.append(final_state[0, 0, 0, :].clone())  # leaf 0's value state
 
     # Leaf 0 is write-conditioned-quiescent at tokens 1,2,3 (c==0 there): its
@@ -220,10 +216,7 @@ def test_complete_write_gives_keep_equals_one_minus_rate_exactly():
     g_write_value = 1.7
     g_write = torch.full((B, T, H), g_write_value, dtype=torch.float64)
 
-    _, final_state = naive_rola(
-        v, read_levels, write_levels, g_write, topology, decay,
-        initial_state=initial_state, output_final_state=True,
-    )
+    _, final_state = naive_rola(v, read_levels, with_gain(write_levels, g_write), topology, decay, initial_state=initial_state, output_final_state=True)
     m1 = final_state[0, 0, 0, 0].item()
     w1 = g_write_value * 1.0  # write factor is exactly 1 (one-hot)
     keep_recovered = (m1 - w1 * 2.0) / m0
@@ -259,10 +252,7 @@ def test_zero_rate_gives_keep_equals_one_for_any_c(c_value):
     v = torch.tensor([[[[3.0]], [[7.0]]]], dtype=torch.float64)
     g_write = torch.ones(B, T, H, dtype=torch.float64)
 
-    _, final_state = naive_rola(
-        v, (read_l0,), (write_l0,), g_write, topology, decay,
-        output_final_state=True,
-    )
+    _, final_state = naive_rola(v, (read_l0,), with_gain((write_l0,), g_write), topology, decay, output_final_state=True)
     # With keep==1 always at digit0 (rate==0 regardless of c), the leaf-0
     # value state is a plain running sum: M = c_value*3.0 + c_value*7.0.
     expected = c_value * 3.0 + c_value * 7.0
@@ -342,24 +332,13 @@ def test_split_then_continue_reproduces_unsplit_result_exactly(split_point):
         seed=42, B=B, T=T, H=H, dv=dv, widths=widths
     )
 
-    y_full, state_full = naive_rola(
-        v, read_levels, write_levels, g_write, topology, decay,
-        output_final_state=True,
-    )
+    y_full, state_full = naive_rola(v, read_levels, with_gain(write_levels, g_write), topology, decay, output_final_state=True)
 
     def _slice(levels, lo, hi):
         return tuple(level[:, lo:hi] for level in levels)
 
-    y1, state1 = naive_rola(
-        v[:, :split_point], _slice(read_levels, 0, split_point), _slice(write_levels, 0, split_point),
-        g_write[:, :split_point], topology, decay,
-        output_final_state=True,
-    )
-    y2, state2 = naive_rola(
-        v[:, split_point:], _slice(read_levels, split_point, T), _slice(write_levels, split_point, T),
-        g_write[:, split_point:], topology, decay,
-        initial_state=state1, output_final_state=True,
-    )
+    y1, state1 = naive_rola(v[:, :split_point], _slice(read_levels, 0, split_point), with_gain(_slice(write_levels, 0, split_point), g_write[:, :split_point]), topology, decay, output_final_state=True)
+    y2, state2 = naive_rola(v[:, split_point:], _slice(read_levels, split_point, T), with_gain(_slice(write_levels, split_point, T), g_write[:, split_point:]), topology, decay, initial_state=state1, output_final_state=True)
 
     y_chunked = torch.cat([y1, y2], dim=1)
     assert torch.equal(y_full, y_chunked), (

@@ -72,7 +72,7 @@ BF16_RTOL = 1e-2
 #: of itself, and keeping a float's HIGH HALF (a truncation) by at most two of them.
 U_BF16 = 2.0 ** -8
 
-#: THE CARRY'S CHAINS, counted in `csrc/rola/src/carry/carry_kernel.cuh`, where a term's error is the sum of its
+#: THE CARRY'S CHAINS, counted in `csrc/rola/src/carry/ampere/carry_kernel.cuh`, where a term's error is the sum of its
 #: roundings (every bf16 x bf16 product then lands exactly in an fp32 accumulator):
 #: the FOLD rounds a deposit twice before it reaches the fp32 state -- the outer pair times the gain, and the inner
 #: tile times that (`fold_fragment`'s two `mul_bf16x2`) -- so a state slot is off by at most two u of its terms;
@@ -126,7 +126,9 @@ PREFILL_READOUT = Output("prefill readout", rtol=CARRY_READOUT_RTOL,
 PREFILL_STATE = Output("prefill state", rtol=CARRY_FOLD_RTOL,
                        clauses=((0.0, 4.02e-2), (CARRY_FOLD_RTOL, 8.34e-3), (1.0, 1.96e-3), (1e2, 4.44e-4)))
 DECODE_Y = Output("decode y", rtol=BF16_RTOL, clauses=((0.0, 3.52e-3), (1.0, 1.25e-3), (1e2, 3.35e-4)))
-DECODE_STATE = Output("decode state", rtol=BF16_RTOL, clauses=((0.0, 4.38e-7), (1e-2, 7.80e-9), (1e-1, 0.0)))
+#: The int8 state's error grows as one rounding per write (sqrt of the writes per leaf; decay adds roundings): re-measured
+#: 2026-10-10 over the decode battery and g6 at widths (64, 64), seeds 64-79, with and without decay: 2 x 1.013e-6.
+DECODE_STATE = Output("decode state", rtol=BF16_RTOL, clauses=((0.0, 2.027e-6), (1e-2, 7.80e-9), (1e-1, 0.0)))
 INTRA_OUTPUT = Output("intra output", rtol=BF16_RTOL, clauses=((0.0, 1.66e-2), (1e-1, 7.74e-3)))
 INTRA_MASS = Output("intra mass", rtol=BF16_RTOL, clauses=((0.0, 9.88e-7), (1e-2, 0.0)))
 PROJECTION_LOGITS = Output("projection logits", rtol=U_BF16, clauses=((0.0, 1.32e-1), (1.0, 6.42e-2), (1e1, 0.0)))

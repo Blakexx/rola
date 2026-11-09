@@ -1,0 +1,719 @@
+{
+ "experiment": "pass_pipeline",
+ "question": "the fold's pass is a fill (its 128 token rows, scattered in global memory, copied by cp.async into a pool), a restage (pool rows to the f16 tiles the steps read) and 8 steps of MMAs, and the fp16 arm joins its partials every two passes. Serial between CTA barriers it pays the copy's latency, the restage and the realignment; where should each piece go in a two-stage pipeline (fill two passes ahead, restage one ahead, mbarriers for landed / staged / drained) -- the restage in a burst at the pass's start, a warp a step or mid-pass; the join in a burst, a list a step, or staggered between a scheduler's two warps?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "cff04e499c090c58bc48f0d9da7d87501cff9a17",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-10-04T19:13:31+00:00",
+ "utilization_before": 1,
+ "results": [
+  {
+   "lab": "result",
+   "name": "fp16 arm / serial / join burst",
+   "unit": "x floor",
+   "samples": [
+    1.541111,
+    1.542118,
+    1.540326,
+    1.540804,
+    1.541721,
+    1.540813,
+    1.541334
+   ],
+   "median": 1.541111,
+   "min": 1.540326,
+   "max": 1.542118,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage burst / join burst",
+   "unit": "x floor",
+   "samples": [
+    1.335425,
+    1.335432,
+    1.335416,
+    1.335849,
+    1.33595,
+    1.336334,
+    1.335754
+   ],
+   "median": 1.335754,
+   "min": 1.335416,
+   "max": 1.336334,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage a warp a step / join burst",
+   "unit": "x floor",
+   "samples": [
+    1.350472,
+    1.347768,
+    1.347212,
+    1.344859,
+    1.345331,
+    1.347206,
+    1.350261
+   ],
+   "median": 1.347212,
+   "min": 1.344859,
+   "max": 1.350472,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / steps alone / join burst",
+   "unit": "x floor",
+   "samples": [
+    1.248695,
+    1.249317,
+    1.249414,
+    1.249136,
+    1.249065,
+    1.249423,
+    1.249424
+   ],
+   "median": 1.249317,
+   "min": 1.248695,
+   "max": 1.249424,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage mid-pass / join burst",
+   "unit": "x floor",
+   "samples": [
+    1.26575,
+    1.265712,
+    1.266524,
+    1.266206,
+    1.265938,
+    1.265776,
+    1.266273
+   ],
+   "median": 1.265938,
+   "min": 1.265712,
+   "max": 1.266524,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / serial / join a list a step",
+   "unit": "x floor",
+   "samples": [
+    1.649958,
+    1.648666,
+    1.649041,
+    2.333078,
+    1.649504,
+    2.28281,
+    1.648734
+   ],
+   "median": 1.649504,
+   "min": 1.648666,
+   "max": 2.333078,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage burst / join a list a step",
+   "unit": "x floor",
+   "samples": [
+    1.482083,
+    1.482856,
+    1.482032,
+    2.1849,
+    1.482303,
+    1.482686,
+    1.482627
+   ],
+   "median": 1.482627,
+   "min": 1.482032,
+   "max": 2.1849,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage a warp a step / join a list a step",
+   "unit": "x floor",
+   "samples": [
+    1.445991,
+    1.448223,
+    1.446655,
+    1.450603,
+    1.447355,
+    1.4491,
+    1.447
+   ],
+   "median": 1.447355,
+   "min": 1.445991,
+   "max": 1.450603,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / steps alone / join a list a step",
+   "unit": "x floor",
+   "samples": [
+    1.322096,
+    1.322117,
+    1.322043,
+    1.322043,
+    1.322117,
+    1.322118,
+    1.322096
+   ],
+   "median": 1.322096,
+   "min": 1.322043,
+   "max": 1.322118,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage mid-pass / join a list a step",
+   "unit": "x floor",
+   "samples": [
+    1.324351,
+    1.325186,
+    1.319278,
+    1.321037,
+    1.32254,
+    1.322583,
+    1.322132
+   ],
+   "median": 1.32254,
+   "min": 1.319278,
+   "max": 1.325186,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / serial / join burst, staggered",
+   "unit": "x floor",
+   "samples": [
+    1.54664,
+    1.547609,
+    1.547063,
+    1.546811,
+    1.547633,
+    1.547209,
+    1.546979
+   ],
+   "median": 1.547063,
+   "min": 1.54664,
+   "max": 1.547633,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage burst / join burst, staggered",
+   "unit": "x floor",
+   "samples": [
+    1.358748,
+    1.358628,
+    1.358608,
+    1.358493,
+    1.358835,
+    1.358747,
+    1.358558
+   ],
+   "median": 1.358628,
+   "min": 1.358493,
+   "max": 1.358835,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage a warp a step / join burst, staggered",
+   "unit": "x floor",
+   "samples": [
+    1.347912,
+    1.34753,
+    1.345369,
+    1.347919,
+    1.349327,
+    1.351281,
+    1.35135
+   ],
+   "median": 1.347919,
+   "min": 1.345369,
+   "max": 1.35135,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / steps alone / join burst, staggered",
+   "unit": "x floor",
+   "samples": [
+    1.156309,
+    1.155509,
+    1.155945,
+    1.15612,
+    1.15614,
+    1.155944,
+    1.156348
+   ],
+   "median": 1.15612,
+   "min": 1.155509,
+   "max": 1.156348,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16 arm / pipelined, restage mid-pass / join burst, staggered",
+   "unit": "x floor",
+   "samples": [
+    1.245687,
+    1.246052,
+    1.247644,
+    1.962115,
+    1.243016,
+    1.246502,
+    1.24617
+   ],
+   "median": 1.24617,
+   "min": 1.243016,
+   "max": 1.962115,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / serial",
+   "unit": "x floor",
+   "samples": [
+    1.400263,
+    1.203708,
+    1.518097,
+    1.203994,
+    1.203813,
+    1.204326,
+    1.204091
+   ],
+   "median": 1.204091,
+   "min": 1.203708,
+   "max": 1.518097,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / pipelined, restage burst",
+   "unit": "x floor",
+   "samples": [
+    1.107438,
+    1.107737,
+    1.108293,
+    1.108219,
+    1.110543,
+    1.110011,
+    1.109677
+   ],
+   "median": 1.108293,
+   "min": 1.107438,
+   "max": 1.110543,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / pipelined, restage a warp a step",
+   "unit": "x floor",
+   "samples": [
+    1.107833,
+    1.107078,
+    1.108076,
+    1.107278,
+    1.106841,
+    1.107616,
+    1.106699
+   ],
+   "median": 1.107278,
+   "min": 1.106699,
+   "max": 1.108076,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / steps alone",
+   "unit": "x floor",
+   "samples": [
+    1.031512,
+    1.031489,
+    1.031471,
+    1.031464,
+    1.03147,
+    1.031462,
+    1.031514
+   ],
+   "median": 1.031471,
+   "min": 1.031462,
+   "max": 1.031514,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 arm / pipelined, restage mid-pass",
+   "unit": "x floor",
+   "samples": [
+    1.04546,
+    1.046277,
+    1.046517,
+    1.045967,
+    1.04525,
+    1.046482,
+    1.045432
+   ],
+   "median": 1.045967,
+   "min": 1.04525,
+   "max": 1.046517,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void pass_pipeline::pass<(int)0, (int)4, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 180,
+   "ops": {
+    "CS2R": 130,
+    "LOP3.LUT": 103,
+    "IMAD": 47,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "LDS": 37,
+    "IADD3": 35,
+    "PRMT": 35,
+    "HMMA.16816.F32": 33,
+    "HFMA2": 32,
+    "HMNMX2": 32,
+    "HMUL2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)0, (int)3, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 176,
+   "ops": {
+    "CS2R": 131,
+    "LOP3.LUT": 81,
+    "HMMA.16816.F32": 33,
+    "HMUL2": 32,
+    "IMAD.MOV.U32": 22,
+    "LDS.128": 22,
+    "FMUL": 22,
+    "STS.128": 20,
+    "PRMT": 18,
+    "HFMA2": 16,
+    "HMNMX2": 16,
+    "SHFL.IDX": 16
+   }
+  },
+  "void pass_pipeline::pass<(int)0, (int)2, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 178,
+   "ops": {
+    "CS2R": 130,
+    "LOP3.LUT": 105,
+    "IMAD": 47,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "LDS": 37,
+    "IADD3": 35,
+    "PRMT": 34,
+    "IMAD.MOV.U32": 33,
+    "HMMA.16816.F32": 33,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)0, (int)1, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 183,
+   "ops": {
+    "CS2R": 131,
+    "LOP3.LUT": 102,
+    "IMAD": 46,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "IADD3": 35,
+    "PRMT": 35,
+    "LDS": 33,
+    "HMMA.16816.F32": 33,
+    "HFMA2": 32,
+    "HMNMX2": 32,
+    "HMUL2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)0, (int)0, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 178,
+   "ops": {
+    "CS2R": 131,
+    "LOP3.LUT": 86,
+    "HMMA.16816.F32": 33,
+    "LDS.128": 32,
+    "HMUL2": 32,
+    "STS.128": 30,
+    "PRMT": 27,
+    "FMUL": 25,
+    "HFMA2": 24,
+    "HMNMX2": 24,
+    "IMAD.MOV.U32": 23,
+    "IMAD": 20
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)4, (int)2>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 241,
+   "ops": {
+    "CS2R": 194,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 109,
+    "LDS.128": 42,
+    "IMAD": 40,
+    "STS.128": 40,
+    "LDS": 37,
+    "PRMT": 34,
+    "BRA": 32,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)3, (int)2>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 193,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 82,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "MOV": 23,
+    "LDS.128": 22,
+    "FMUL": 22,
+    "STS.128": 20,
+    "PRMT": 16,
+    "HFMA2": 16
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)2, (int)2>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 237,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 111,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "IMAD": 39,
+    "LDS": 37,
+    "BRA": 34,
+    "PRMT": 34,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)1, (int)2>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 243,
+   "ops": {
+    "CS2R": 196,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 107,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "IMAD": 38,
+    "PRMT": 35,
+    "LDS": 33,
+    "HFMA2": 32,
+    "HMNMX2": 32,
+    "HMUL2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)0, (int)2>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 196,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 89,
+    "LDS.128": 32,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 30,
+    "FMUL": 25,
+    "PRMT": 24,
+    "HFMA2": 24,
+    "HMNMX2": 24
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)4, (int)1>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 196,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 109,
+    "BRA": 43,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "IMAD": 39,
+    "LDS": 37,
+    "PRMT": 34,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)3, (int)1>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 82,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "BRA": 24,
+    "LDS.128": 22,
+    "FMUL": 22,
+    "STS.128": 20,
+    "MOV": 19,
+    "PRMT": 16
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)2, (int)1>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 237,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 111,
+    "BRA": 45,
+    "IMAD": 42,
+    "LDS.128": 42,
+    "STS.128": 40,
+    "LDS": 37,
+    "PRMT": 34,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)1, (int)1>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 253,
+   "ops": {
+    "CS2R": 197,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 107,
+    "BRA": 42,
+    "LDS.128": 42,
+    "IMAD": 41,
+    "STS.128": 40,
+    "LDS": 37,
+    "PRMT": 34,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)0, (int)1>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 249,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 88,
+    "LDS.128": 32,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 30,
+    "BRA": 29,
+    "FMUL": 25,
+    "PRMT": 24,
+    "HFMA2": 24
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)4, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 196,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 108,
+    "LDS.128": 42,
+    "IMAD": 40,
+    "STS.128": 40,
+    "LDS": 37,
+    "PRMT": 34,
+    "BRA": 32,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)3, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 82,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "LDS.128": 22,
+    "FMUL": 22,
+    "STS.128": 20,
+    "MOV": 19,
+    "PRMT": 16,
+    "HFMA2": 16
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)2, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 237,
+   "ops": {
+    "CS2R": 195,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 110,
+    "LDS.128": 42,
+    "IMAD": 40,
+    "STS.128": 40,
+    "LDS": 37,
+    "BRA": 34,
+    "PRMT": 34,
+    "HFMA2": 32,
+    "HMNMX2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)1, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 242,
+   "ops": {
+    "CS2R": 197,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 107,
+    "LDS.128": 42,
+    "IMAD": 40,
+    "STS.128": 40,
+    "PRMT": 35,
+    "LDS": 33,
+    "HFMA2": 32,
+    "HMNMX2": 32,
+    "HMUL2": 32
+   }
+  },
+  "void pass_pipeline::pass<(int)1, (int)0, (int)0>(int, pass_pipeline::Source, long long *, int *)": {
+   "regs": 240,
+   "ops": {
+    "CS2R": 196,
+    "FADD": 136,
+    "HADD2.F32": 128,
+    "LOP3.LUT": 89,
+    "LDS.128": 32,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 30,
+    "FMUL": 25,
+    "PRMT": 24,
+    "HFMA2": 24,
+    "HMNMX2": 24
+   }
+  }
+ }
+}

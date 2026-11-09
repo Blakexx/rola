@@ -21,15 +21,15 @@ Checks:
      under csrc/rola/src/instantiations/, found by TEXT rather than AST so a
      macro-guarded or unusually-formatted include cannot hide from either
      check.
-  3. NO __syncthreads AFTER THE DECODE PROLOGUE (the decode prologue law, ledger
-     2026-08-27: "11 barriers, all in the prologue ... 0 after it"; scope
-     fixed 2026-08-29 -- that law is about CTA/grid barriers,
-     never about `__syncwarp`, which is intra-warp and which §12 REQUIRES
-     around a warp collective). The marker is decode.cu's own section
-     comment `// ---- THE WALK`; every `__syncthreads`/`bar.sync` (and any
-     cluster/grid barrier) after that line is a finding for Blake to rule on
-     -- `__syncwarp` after the marker is NOT a finding, it is §12's fence
-     doing its job.
+  3. NO CTA BARRIER IN A DECLARED BARRIER-FREE REGION (Blake, 2026-09-29, generalizing
+     the decode prologue law of 2026-08-27, "11 barriers, all in the prologue ... 0 after
+     it"). Any device file may declare a region between `//: @barrier-free <reason>` and
+     `//: @barrier-free-end`; every `__syncthreads`/`bar.sync` (and any cluster/grid
+     barrier) inside one is a finding, and so is a region that does not close or opens
+     inside another. The decode step declares its walk. The law is about CTA/grid barriers
+     only, never `__syncwarp`, which is intra-warp and which §12 REQUIRES around a warp
+     collective. The closer is not `//: @end` because a docrefs `//: @ref` region closes on
+     that.
 
 HEURISTIC LIMITS (check 1):
   - "Device code" is found by brace-counting from each `__global__`/`__device__`
@@ -73,7 +73,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CSRC_ROLA = ROOT / "csrc" / "rola"
 INSTANTIATIONS = CSRC_ROLA / "src" / "instantiations"
-DECODE_CU = CSRC_ROLA / "src" / "decode" / "decode.cu"
 TESTS_ROOT = ROOT / "tests"
 
 #: docs/testing.md: "there is no fourth tier". A test answers one of exactly three
@@ -86,7 +85,7 @@ DEVICE_SUFFIXES = (".cu", ".cuh")
 
 #: Identifiers that read as compile-time under this project's naming
 #: convention: ALL_CAPS (template params / macros: NC, DV, D) or a
-#: `k`-prefixed CamelCase constant (kDecodeWarps, kMaxLevels, kKinds).
+#: `k`-prefixed CamelCase constant (kDecodeMaxSpan, kMaxLevels, kKinds).
 CONSTEXPR_LOOKING = re.compile(r"^\s*(?:sizeof\s*\(.*\)|\d+|k[A-Z]\w*|[A-Z][A-Z0-9_]*)\s*$")
 
 FOR_RE = re.compile(r"^\s*for\s*\(")
@@ -99,23 +98,21 @@ REL_BOUND_RE = re.compile(r"[<>]=?\s*(.+?)\s*$")
 
 #: `unroll 1` (no unrolling) is the common case, but §6's actual requirement is an
 #: EXPLICIT pragma on a dynamic-bound loop, not that specific factor -- a bare
-#: `#pragma unroll <N>` for any measured N also satisfies it (decode.cu's
-#: `n_live` loop, docs/internals/decode/decode.md#decode-step-kernel-note-l655:
-#: "at 1 it is a correctness [performance] defect on this loop, not a style
-#: choice" -- unroll 8 there is measured, not a default left to the compiler).
+#: `#pragma unroll <N>` for any measured N also satisfies it.
 PRAGMA_UNROLL_RE = re.compile(r"^\s*#pragma\s+unroll(\s+\d+)?\s*$")
 COMMENT_LINE_RE = re.compile(r"^\s*//")
 
 TORCH_INCLUDE_RE = re.compile(r'#include\s*<\s*torch/')
 
-#: The prologue law is about CTA/grid barriers only (`__syncthreads`, PTX `bar.sync`,
+#: The barrier-free law is about CTA/grid barriers only (`__syncthreads`, PTX `bar.sync`,
 #: and a cluster/grid barrier such as `cluster.sync()`/`grid.sync()`);
 #: `__syncwarp` is intra-warp and is §12's REQUIRED fence around a warp
 #: collective, never this rule's concern (the rule's one
 #: remaining finding after MERGE-D1 was decode.cu:722's `__syncwarp`).
 SYNC_RE = re.compile(
     r"__syncthreads\s*\(|\bbar\.sync\b|(?:cluster|grid)\s*\.\s*sync\s*\(")
-WALK_MARKER_RE = re.compile(r"----\s*THE WALK")
+BARRIER_FREE_RE = re.compile(r"//:\s*@barrier-free(?!-end)\b")
+BARRIER_FREE_END_RE = re.compile(r"//:\s*@barrier-free-end\b")
 
 
 def device_files():
@@ -265,27 +262,27 @@ def check_no_torch_in_arm_tus() -> list[str]:
     return findings
 
 
-def check_no_sync_after_decode_prologue() -> list[str]:
+def check_barrier_free_regions() -> list[str]:
+    """Every declared barrier-free region, in every device file: closed, not nested, and holding no CTA barrier."""
     findings = []
-    if not DECODE_CU.is_file():
-        return findings
-    rel = DECODE_CU.relative_to(ROOT)
-    lines = DECODE_CU.read_text().splitlines()
-    marker_idx = next((i for i, l in enumerate(lines) if WALK_MARKER_RE.search(l)), None)
-    if marker_idx is None:
-        findings.append(
-            f"the decode prologue law: {rel}: could not locate the `---- THE WALK` prologue-end "
-            f"marker this check keys on -- the file was restructured and this check "
-            f"needs a new anchor."
-        )
-        return findings
-    for idx in range(marker_idx + 1, len(lines)):
-        if SYNC_RE.search(lines[idx]):
-            findings.append(
-                f"the decode prologue law (ledger 2026-08-27, decode.cu#per-cta-prologue): "
-                f"{rel}:{idx + 1}: barrier after the prologue marker "
-                f"(line {marker_idx + 1}) -- {lines[idx].strip()!r}"
-            )
+    for path in sorted(device_files()):
+        rel = path.relative_to(ROOT)
+        opened = None
+        for idx, line in enumerate(path.read_text().splitlines(), 1):
+            if BARRIER_FREE_RE.search(line):
+                if opened is not None:
+                    findings.append(f"the barrier-free law: {rel}:{idx}: a region opens inside the one opened at line "
+                                    f"{opened}")
+                opened = idx
+            elif BARRIER_FREE_END_RE.search(line):
+                if opened is None:
+                    findings.append(f"the barrier-free law: {rel}:{idx}: `@barrier-free-end` closes no region")
+                opened = None
+            elif opened is not None and not COMMENT_LINE_RE.match(line) and SYNC_RE.search(line):
+                findings.append(f"the barrier-free law (docs/internals/tools/lint.md): {rel}:{idx}: a CTA barrier in "
+                                f"the region declared at line {opened} -- {line.strip()!r}")
+        if opened is not None:
+            findings.append(f"the barrier-free law: {rel}:{opened}: the region opened here never closes")
     return findings
 
 
@@ -622,7 +619,6 @@ def _repo_identifier_text() -> str:
                 if (path.suffix in suffixes and "third_party" not in path.parts
                         and "__pycache__" not in path.parts):
                     chunks.append(path.read_text(errors="ignore"))
-        chunks.append((ROOT / "setup.py").read_text())
         _REPO_TEXT = "\n".join(chunks)
     return _REPO_TEXT
 
@@ -799,12 +795,15 @@ _NOT_A_WORK_CODE = re.compile(
 #: so a bare rung number spelled that way escapes; the standards form is `§R<n>` and is
 #: unambiguous. The sweep that turned this check on removed both classes where it found
 #: them; a new one is caught by review, not here.
-_WORK_CODE_ROOTS = ("csrc", "rola", "docs", "tests", "measure", "tools")
+_WORK_CODE_ROOTS = ("csrc", "rola", "docs", "tests", "measure", "tools", "bazel")
 _WORK_CODE_SUFFIXES = (".py", ".cu", ".cuh", ".cpp", ".h", ".hpp", ".md", ".json",
-                       ".yaml", ".yml", ".sh", ".toml")
+                       ".yaml", ".yml", ".sh", ".toml", ".bazel", ".bzl")
+#: the build graph's files at the checkout's root
+_WORK_CODE_ROOT_FILES = (".bazelrc", ".bazeliskrc", ".bazelversion", "MODULE.bazel")
 
 
 def _work_code_files():
+    yield from (ROOT / name for name in _WORK_CODE_ROOT_FILES if (ROOT / name).is_file())
     for name in _WORK_CODE_ROOTS:
         root = ROOT / name
         if not root.is_dir():
@@ -950,29 +949,13 @@ def check_no_bare_flock_on_gpu_lock() -> list[str]:
 _TOOLS_DIR = ROOT / "tools"
 
 
-def _read_generated_block(text: str, marker: str) -> str | None:
-    begin, end = f"<!-- BEGIN GENERATED: {marker} -->", f"<!-- END GENERATED: {marker} -->"
-    if begin not in text or end not in text:
-        return None
-    return text.split(begin, 1)[1].split(end, 1)[0].strip("\n")
-
-
 def check_supported_table() -> list[str]:
-    """Ported from tests/unit/test_generated_docs.py (deleted). `tools/supported.py`
-    derives README's `tools/supported.py` block from `arch_caps.cuh` (tabulated) and
-    `tools/manifests/` (ratified) -- FILES ONLY, no import of `rola` -- so this checks
-    that ONE block matches the generator, that every tabulated arch is listed and
-    correctly marked ratified/unratified, and (non-vacuity) that the comparison is
-    not vacuous: it fires on a hand-tampered copy.
-
-    A LINT reads files; it never imports the library under test (ITEM 0, 2026-08-29
-    -- `tools/supported.py`'s SECOND block, `rola.routing.activations.capability_table`,
-    executes real registry code to produce its content, so ITS drift check is a TEST
-    (`tests/unit/test_capability_table_docs.py`), not this lint -- a check that
-    executes the code under test is a test, not a lint (docs/testing.md). Importing
-    `rola` here crashed this hook under pre-commit's isolated environment, which has
-    no `rola` installed; this check must be a function of `tools/supported.py`, the
-    README, `arch_caps.cuh` and `tools/manifests/` alone."""
+    """The README's support table is `tools/supported.py`'s output: its generated block (`tools/supported.py`) equal to
+    `supported.table()`, which derives it from the kernel's arch table and `tools/manifests/` -- FILES ONLY, no import of
+    `rola` -- and (non-vacuity) the comparison fires on a hand-tampered copy. The README's other generated block, the
+    activation registry's capability table, runs the registry to produce, so its check is a test, in the CPU tier
+    (`tests/unit/test_capability_table_docs.py`): a check that executes the code under test is a test, not a lint
+    (docs/testing.md). The unratified row's wording is `check_arch_coverage`'s."""
     if str(_TOOLS_DIR) not in sys.path:
         sys.path.insert(0, str(_TOOLS_DIR))
     import supported
@@ -981,35 +964,18 @@ def check_supported_table() -> list[str]:
     findings = []
 
     def _drift(readme_text: str) -> str | None:
-        committed = _read_generated_block(readme_text, marker)
+        committed = supported.block(readme_text, marker)
         if committed is None:
             return f"README.md has no generated block for {marker}"
         if committed != supported.table():
             return (f"README.md's {marker} block drifted from tools/supported.py's "
-                    f"generator (regenerate with `python tools/supported.py --write`)")
+                    f"generator (regenerate with `bazel run //tools:supported -- --write`)")
         return None
 
     readme_text = supported.README.read_text()
     drift = _drift(readme_text)
     if drift is not None:
         findings.append(drift)
-
-    table = supported.table()
-    ratified = supported.ratified()
-    for arch in supported.tabulated_archs():
-        arch_marker = f"`{arch}`"
-        if arch_marker not in table:
-            findings.append(f"{arch} is tabulated in the kernel but absent from the "
-                            f"README support table")
-            continue
-        row = next(line for line in table.splitlines() if arch_marker in line)
-        if arch in ratified:
-            if "ratified |" not in row or "not ratified" in row:
-                findings.append(f"{arch} is ratified but the README row does not say "
-                                f"so: {row}")
-        elif "**not ratified — will refuse to load**" not in row:
-            findings.append(f"{arch} has no manifest but the README row does not say "
-                            f"so: {row}")
 
     tampered = readme_text.replace(
         "**not ratified — will refuse to load**", "ratified", 1)
@@ -1046,6 +1012,17 @@ def _repo_build_config() -> dict | None:
     return module.BUILD_CONFIG
 
 
+def check_hardware() -> list[str]:
+    """`measure/hardware.py --check`: `common/hardware.cuh` is what `common/hardware.json` generates, every built
+    architecture has a row that can price a choice, and every rate a source that holds -- a measured one matches the lab
+    record it names, on the product it names. Files only (the module imports no `rola`)."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from measure import hardware
+
+    return hardware.check()
+
+
 def check_shard_partition() -> list[str]:
     """Ported from tests/unit/test_shard_partition.py (deleted). The generated
     instantiation tree is a function of `tools/gen_shards.py`'s arm list alone, and
@@ -1061,7 +1038,7 @@ def check_shard_partition() -> list[str]:
     THE FALSE-FAIL THIS FIXES: the retired test recomputed the manifest
     digest over EVERY `tools/manifests/sm_*.json` file found on disk, but
     `BUILD_CONFIG["manifest_sha256"]` is the digest of whatever arch SUBSET this
-    build actually compiled (`ROLA_CUDA_ARCHS`) -- a single-arch iteration build
+    build actually compiled (`--//:archs`) -- a single-arch iteration build
     would then compare a one-arch digest against an all-arches recomputation and
     fail on a build that did nothing wrong. Scoped here to
     `BUILD_CONFIG["archs"]` -- what the build declares -- instead of a directory
@@ -1159,7 +1136,6 @@ def check_vendored_pin() -> list[str]:
     ratification probe compile against the vendored headers with the SAME include
     path (a probe compiled against a different include set measures a different
     kernel than the one shipped)."""
-    import hashlib
     import json
 
     cutlass_dir = ROOT / "csrc" / "third_party" / "cutlass"
@@ -1180,14 +1156,8 @@ def check_vendored_pin() -> list[str]:
                         "upstream tag, which is the only thing that makes the digest "
                         "more than self-referential")
 
-    def tree_sha256(root: Path) -> tuple[str, int]:
-        digest = hashlib.sha256()
-        files = sorted(p for p in root.rglob("*") if p.is_file() and p.name != "PIN.json")
-        for path in files:
-            digest.update(path.relative_to(root).as_posix().encode())
-            digest.update(b"\0")
-            digest.update(hashlib.sha256(path.read_bytes()).digest())
-        return digest.hexdigest(), len(files)
+    sys.path.insert(0, str(ROOT / "tools"))
+    from build_record import vendored_tree_sha256 as tree_sha256
 
     here, count = tree_sha256(cutlass_dir)
     if count != pin.get("file_count"):
@@ -1216,17 +1186,18 @@ def check_vendored_pin() -> list[str]:
         if "BSD-3-Clause" not in notice_text:
             findings.append("NOTICE does not name BSD-3-Clause")
 
-    setup_text = (ROOT / "setup.py").read_text()
+    units_build = (ROOT / "csrc" / "rola" / "BUILD.bazel").read_text()
     ratify_text = (ROOT / "tools" / "ratify.py").read_text()
     needle = '"csrc" / "third_party" / "cutlass"'
-    if needle not in setup_text:
-        findings.append("setup.py no longer passes the vendored include path")
+    if '"//csrc/third_party:cutlass"' not in units_build:
+        findings.append("csrc/rola/BUILD.bazel's units no longer compile against the vendored tree "
+                        "(//csrc/third_party:cutlass)")
     if needle not in ratify_text:
         findings.append("tools/ratify.py no longer passes the vendored include path; "
                         "the manifest would then be ratified against a compile the "
                         "extension does not perform")
-    if "_gate_vendored" not in setup_text:
-        findings.append("closed-world rule 5 gate (_gate_vendored) is gone from setup.py")
+    if "vendored_pin(" not in (ROOT / "bazel" / "record.py").read_text():
+        findings.append("closed-world rule 5 gate (build_record.vendored_pin) is gone from the graph's record action")
 
     BUILD_CONFIG = _repo_build_config()
     if BUILD_CONFIG is None:
@@ -1234,8 +1205,8 @@ def check_vendored_pin() -> list[str]:
     else:
         vendored = BUILD_CONFIG.get("vendored")
         if vendored is None:
-            findings.append("this .so was built by a setup.py that did not stamp its "
-                            "vendored codegen inputs; rebuild it")
+            findings.append("this .so's build record does not stamp its vendored codegen "
+                            "inputs; rebuild it (bazel run //:library)")
         elif vendored.get("cutlass", {}).get("tree_sha256") != pin.get("tree_sha256"):
             findings.append("the built binary's stamped vendored CUTLASS digest does "
                             "not match the current PIN.json")
@@ -1362,18 +1333,19 @@ def _python_env_reads(text: str) -> tuple[list[tuple[int, str]], list[tuple[int,
 
 def check_settings_come_from_the_dev_config() -> list[str]:
     """§23 (1): every machine-dependent value is read through `tools/dev_config.py`. A Python environment read, or a
-    shell expansion of a `ROLA_*` variable (or `MOLD_PATH`), that the loader does not list as a handoff or a build
-    parameter is a finding, and so is a CUDA or Windows path spelled outside the loader in tools, benchmarks or
-    setup.py."""
+    shell expansion of a `ROLA_*` variable (or `MOLD_PATH`), that the loader does not list as a handoff is a finding,
+    and so is a CUDA or Windows path spelled outside the loader in tools or benchmarks."""
     sys.path.insert(0, str(ROOT / "tools"))
     import dev_config
 
-    allowed = set(dev_config.HANDOFFS) | set(dev_config.BUILD_PARAMETERS)
+    allowed = set(dev_config.HANDOFFS)
     loader = ROOT / "tools" / "dev_config.py"
     findings = []
     for path in _tracked_files():
         rel = path.relative_to(ROOT).as_posix()
-        if (path.suffix not in (".py", ".sh") or path in (loader, _PORTABILITY_LINT_SELF)
+        #: the tracked git hooks are shell scripts without a suffix
+        hook = not path.suffix and rel.startswith("tools/git-hooks/")
+        if ((path.suffix not in (".py", ".sh") and not hook) or path in (loader, _PORTABILITY_LINT_SELF)
                 or rel.startswith("csrc/third_party/") or not path.is_file()):
             continue
         text = path.read_text()
@@ -1398,29 +1370,17 @@ def check_settings_come_from_the_dev_config() -> list[str]:
 
 
 def main() -> int:
-    #: THESE THIRTEEN are wired as a BLOCKING pre-commit/CI gate
-    #: (.pre-commit-config.yaml, .github/workflows/lint.yml) -- a nonzero exit
-    #: here fails every commit and every CI run, repo-wide. `check_entmax_pin`
-    #: is NOT here (S5c ITEM 0): it executes real code (`pin.gate()`,
-    #: monkeypatched refusal shapes) rather than reading files, so it is
-    #: restored to tests/unit/test_entmax_pin.py -- a lint reads files; it
-    #: never imports the library under test.
-    #:
-    #: S5c (2026-08-29): `check_comment_density`/`check_no_long_comment_blocks`
-    #: MOVE FROM ADVISORY TO GATING here. K39's reason for parking them advisory
-    #: (csrc/ ~40 files over the mandate's 15% line, "not to be fixed by you")
-    #: is resolved: S5b + S5c moved every remaining `//:` block and file header
-    #: to docs/internals/, and every csrc file is under the threshold as of this
-    #: commit -- a gate that is green on the tip it lands on is a gate a future
-    #: contributor can actually satisfy, not a standing debt notice.
+    #: EVERY CHECK BELOW GATES (`//:lint_standards` in the commit gate, and CI's lint job): a finding fails
+    #: the commit and the CI run, repo-wide. Each reads files; none imports the library under test.
     gating_findings: list[str] = []
     gating_findings += check_unroll_discipline()
     gating_findings += check_no_torch_in_arm_tus()
-    gating_findings += check_no_sync_after_decode_prologue()
+    gating_findings += check_barrier_free_regions()
     gating_findings += check_tests_tier_directories()
     gating_findings += check_docs_mirror()
     gating_findings += check_no_bare_flock_on_gpu_lock()
     gating_findings += check_supported_table()
+    gating_findings += check_hardware()
     gating_findings += check_shard_partition()
     gating_findings += check_arch_coverage()
     gating_findings += check_vendored_pin()

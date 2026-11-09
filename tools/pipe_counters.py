@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""THE PIPE COUNTERS (KERNEL_STANDARDS §22): the profiler's pipe and resource counters for one carry launch of a cell,
-as launch totals, raw.
+"""THE PIPE COUNTERS (KERNEL_STANDARDS §22): the profiler's pipe and resource counters for one launch of a kernel
+family on a cell (the carry by default), as launch totals, raw.
 
-    python tools/pipe_counters.py flagship-dense --json counters.json
+    bazel run //tools:pipe_counters -- flagship-dense --json counters.json
+    bazel run //tools:pipe_counters -- nl64k-alt-k4 --kernel intra --json counters.json
 
 One oneshot launch through the probe worker under `ncu --metrics` (the toolchain's `ncu`): HMMAs and instructions
 executed, scheduler cycles elapsed and active, issue activity, warps active and eligible, shared loads and stores, ldsm
 and global reductions and loads, shared-memory wavefronts and bank conflicts, LSU writeback, global reduction requests
-and sectors, DRAM bytes. The JSON carries every counter's launch value and the launch's CTA-windows, so a reader divides
+and sectors, DRAM bytes, and the standard set `tools/pipes.py` prices per card (docs/internals/tools/pipes.md). The
+JSON carries every counter's launch value and the launch's units (`tools/kernel_targets.py`), so a reader divides
 a sum into a unit and derives utilization; nothing derived is stored. Docs: docs/internals/tools/pipe_counters.md.
 """
 from __future__ import annotations
@@ -21,15 +23,17 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pipes  # noqa: E402
+
 import dev_config  # noqa: E402 -- path insert must precede this import
-import phase_ledger  # noqa: E402
+import kernel_targets  # noqa: E402
 from rola_devtools import process  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "measure"))
 from measure.provider import arm_name, oneshot_argv  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-COUNTERS = (
+_OWN = (
     "gpu__time_duration.sum",
     "sm__inst_executed_pipe_tensor_op_hmma.sum", "smsp__inst_executed.sum",
     "sm__cycles_elapsed.avg", "smsp__cycles_active.avg",
@@ -45,11 +49,17 @@ COUNTERS = (
     "l1tex__t_requests_pipe_lsu_mem_global_op_red.sum", "lts__t_sectors_op_red.sum",
     "dram__bytes_read.sum", "dram__bytes_write.sum",
 )
+COUNTERS = (*_OWN, *(m for m in pipes.metric_names() if m not in _OWN))
 
 
-def measure(cell: str, schedule: str) -> dict:
-    cmd = [dev_config.get("toolchain.ncu"), "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1",
-           "--metrics", ",".join(COUNTERS), "--csv", *oneshot_argv(cell, arm_name("carry_forward", schedule=schedule))]
+def measure(cell: str, family: str = "carry") -> dict:
+    from measure.cells import by_name
+
+    t = kernel_targets.target(family)
+    spec = by_name(cell)
+    cmd = [dev_config.ncu(), "--target-processes", "all", "-k",
+           f"regex:{t.symbol}", "-c", "1", "--metrics", ",".join(COUNTERS), "--csv",
+           *oneshot_argv(cell, arm_name(t.arm))]
     done = process.run(cmd, cwd=ROOT, timeout=3600)
     values = {}
     for line in done.stdout.splitlines():
@@ -59,17 +69,19 @@ def measure(cell: str, schedule: str) -> dict:
                 values[parts[-3]] = float(parts[-1].replace(",", ""))
     if not values:
         raise SystemExit(f"pipe_counters: no counters read (ncu rc {done.returncode}):\n{(done.stdout + done.stderr)[-1500:]}")
-    return {"cell": cell, "schedule": schedule, "cta_windows": phase_ledger.cta_windows(cell), "launch": values,
+    return {"cell": cell, "kernel": family, "unit": t.unit, "units": kernel_targets.units(t, spec),
+            **({"cta_windows": kernel_targets.units(t, spec)} if t.unit == "CTA-windows" else {}), "launch": values,
             "missing": sorted(set(COUNTERS) - set(values))}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
-    ap.add_argument("--schedule", default="first", help="the carry family's order policy the launch runs")
     ap.add_argument("--json", type=Path, required=True)
+    ap.add_argument("--kernel", default="carry", choices=sorted(kernel_targets.TARGETS),
+                    help="the kernel family launched (tools/kernel_targets.py)")
     a = ap.parse_args()
-    doc = measure(a.cell, a.schedule)
+    doc = measure(a.cell, a.kernel)
     a.json.write_text(json.dumps(doc, sort_keys=True) + "\n")
     print(f"{a.cell}: {len(doc['launch'])} counters, HMMAs {doc['launch'].get('sm__inst_executed_pipe_tensor_op_hmma.sum')}")
     return 0

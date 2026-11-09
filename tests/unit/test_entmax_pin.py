@@ -18,13 +18,9 @@ gate doing its job, not a reason to skip checking it; the tests below drive `gat
 and `pin.py`'s helpers directly, with a planted wrong version, so the refusal itself is
 exercised rather than assumed from the fact that collection succeeded.
 
-Restored 2026-08-29 (S5c ITEM 0): this file was folded into
-`tools/lint/lint_standards.py::check_entmax_pin` by K46, but it EXECUTES real code
-(`pin.gate()`, monkeypatched refusal shapes) rather than reading files -- a check that
-executes the code under test is a test, not a lint (docs/testing.md), and a lint that
-imports `rola` crashes under pre-commit's isolated hook environment, which has no
-`rola` installed. `check_entmax_pin` is removed from lint_standards.py; this is its
-restoration, verbatim.
+It is a test, not a lint: it EXECUTES real code (`pin.gate()`, monkeypatched refusal
+shapes) rather than reading files -- a check that executes the code under test is a
+test (docs/testing.md), and a lint's run holds no built `rola`.
 """
 from __future__ import annotations
 

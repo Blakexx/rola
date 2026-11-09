@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "note": "THE DECLARED CASES the addressing block's derivation is ratified on. The derivation is HOST code -- one function, run once per launch, that every kernel of the family then addresses through -- so it is ratified the way the codegen is: a hash of the sources it is computed from, plus the OUTPUT it produces on this declared set of named inputs, measured and recorded rather than asserted. `tools/ratify.py` compiles a harness against `sources`, runs these cases and records the result in `tools/manifests/derivation.json`. Cases that must be REFUSED are declared too, with their refusal read back: the refusal set is half the contract (KERNEL_STANDARDS §R13 -- the kernel accepts the descriptor's strict shape and refuses the rest) and an unstated refusal is the half that rots. A case is named, never numbered, so a drift report says which shape moved. EVERY GEOMETRY CASE NAMES A REAL (D, DV, warps_per_cta) POINT of the declared shipped set, through the BC that pair implies: BC = leaves_per_warp(DV) x warps_per_cta, with leaves_per_warp(DV) = 16384 / DV / 8 (docs/internals/common/geom.md, the arch constants). DV does not enter the derived block directly -- it enters through BC -- so two cases differing only in DV would be one measurement filed twice, and the case names carry the DV that produced their BC so a reader can see which arm each covers.",
+ "note": "THE DECLARED CASES the addressing block's derivation is ratified on. The derivation is HOST code -- one function, run once per launch, that every kernel of the family then addresses through -- so it is ratified the way the codegen is: a hash of the sources it is computed from, plus the OUTPUT it produces on this declared set of named inputs, measured and recorded rather than asserted. `tools/ratify.py` compiles a harness against `sources`, runs these cases and records the result in `tools/manifests/derivation.json`. Cases that must be REFUSED are declared too, with their refusal read back: the refusal set is half the contract (KERNEL_STANDARDS \u00a7R13 -- the kernel accepts the descriptor's strict shape and refuses the rest) and an unstated refusal is the half that rots. A case is named, never numbered, so a drift report says which shape moved. EVERY GEOMETRY CASE NAMES A REAL (D, DV, warps_per_cta) POINT of the declared shipped set, through the BC that pair implies: BC = leaves_per_warp(DV) x warps_per_cta, with leaves_per_warp(DV) = 16384 / DV / 8 (docs/internals/common/geom.md, the arch constants). DV does not enter the derived block directly -- it enters through BC -- so two cases differing only in DV would be one measurement filed twice, and the case names carry the DV that produced their BC so a reader can see which arm each covers.",
  "sources": [
   "common/geom.cuh"
  ],
@@ -271,6 +271,101 @@
    "nsw": 1,
    "dv": 64,
    "warps_per_cta": 8
+  },
+  {
+   "name": "tall-alt-256",
+   "widths": [
+    256,
+    256
+   ],
+   "level_modes": 6,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
+  },
+  {
+   "name": "tall-alt-128",
+   "widths": [
+    128,
+    128
+   ],
+   "level_modes": 6,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
+  },
+  {
+   "name": "tall-alt-128-interleaved",
+   "widths": [
+    128,
+    128
+   ],
+   "level_modes": 6,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0,
+   "interleave": 1
+  },
+  {
+   "name": "tall-dense-128",
+   "widths": [
+    128,
+    128
+   ],
+   "level_modes": 0,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
+  },
+  {
+   "name": "tall-deep3-one-sparse",
+   "widths": [
+    16,
+    16,
+    16
+   ],
+   "level_modes": 1,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
+  },
+  {
+   "name": "tall-deep4-dense",
+   "widths": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "level_modes": 0,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
+  },
+  {
+   "name": "tall-one-owner",
+   "widths": [
+    16,
+    16
+   ],
+   "level_modes": 6,
+   "bc": 1024,
+   "dv": 64,
+   "nsr": 8,
+   "nsw": 8,
+   "atom_floor": 0
   }
  ],
  "sub_boxes": [

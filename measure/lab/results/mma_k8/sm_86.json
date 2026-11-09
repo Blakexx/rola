@@ -1,0 +1,152 @@
+{
+ "experiment": "mma_k8",
+ "question": "does an m16n8k8 MMA cost half an m16n8k16 on the tensor pipe, so a fold step of 8 tokens costs half a 16-token step?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "47302223c4591cd5c0fdb24dc6d38ec8575fc901",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-11T23:04:57+00:00",
+ "utilization_before": 1,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "m16n8k16, fp32 accumulate",
+   "unit": "cycles an MMA a warp (two warps a scheduler)",
+   "samples": [
+    78.294404,
+    64.002676,
+    64.002696,
+    64.002686,
+    64.002687
+   ],
+   "median": 64.002687,
+   "min": 64.002676,
+   "max": 78.294404,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "m16n8k8, fp32 accumulate",
+   "unit": "cycles an MMA a warp (two warps a scheduler)",
+   "samples": [
+    31.234522,
+    31.235449,
+    31.235194,
+    31.235653,
+    31.235442
+   ],
+   "median": 31.235442,
+   "min": 31.234522,
+   "max": 31.235653,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "m16n8k16, fp16 accumulate",
+   "unit": "cycles an MMA a warp (two warps a scheduler)",
+   "samples": [
+    32.004322,
+    32.004331,
+    32.004285,
+    32.004314,
+    32.004373
+   ],
+   "median": 32.004322,
+   "min": 32.004285,
+   "max": 32.004373,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "m16n8k8, fp16 accumulate",
+   "unit": "cycles an MMA a warp (two warps a scheduler)",
+   "samples": [
+    15.613256,
+    15.613262,
+    15.613364,
+    15.61326,
+    15.613282
+   ],
+   "median": 15.613262,
+   "min": 15.613256,
+   "max": 15.613364,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void mma_k8::mmas<(int)3>(int, long long *, int *)": {
+   "regs": 75,
+   "ops": {
+    "CS2R": 34,
+    "HMMA.1688.F16": 32,
+    "IMAD.MOV.U32": 30,
+    "LOP3.LUT": 20,
+    "NOP": 9,
+    "MOV": 8,
+    "BRA": 4,
+    "IMAD": 3,
+    "IADD3": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2
+   }
+  },
+  "void mma_k8::mmas<(int)2>(int, long long *, int *)": {
+   "regs": 78,
+   "ops": {
+    "CS2R": 34,
+    "HMMA.16816.F16": 32,
+    "IMAD.MOV.U32": 31,
+    "LOP3.LUT": 23,
+    "NOP": 12,
+    "MOV": 7,
+    "IADD3": 5,
+    "BRA": 4,
+    "IMAD": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2
+   }
+  },
+  "void mma_k8::mmas<(int)1>(int, long long *, int *)": {
+   "regs": 138,
+   "ops": {
+    "CS2R": 66,
+    "HMMA.1688.F32": 32,
+    "IMAD.MOV.U32": 30,
+    "LOP3.LUT": 21,
+    "NOP": 14,
+    "MOV": 10,
+    "BRA": 4,
+    "S2R": 3,
+    "IMAD": 3,
+    "IADD3": 3,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2
+   }
+  },
+  "void mma_k8::mmas<(int)0>(int, long long *, int *)": {
+   "regs": 141,
+   "ops": {
+    "CS2R": 66,
+    "IMAD.MOV.U32": 32,
+    "HMMA.16816.F32": 32,
+    "LOP3.LUT": 24,
+    "NOP": 10,
+    "MOV": 7,
+    "IADD3": 5,
+    "BRA": 4,
+    "S2R": 3,
+    "IMAD": 3,
+    "ISETP.GE.AND": 2,
+    "IMAD.WIDE.U32": 2
+   }
+  }
+ }
+}

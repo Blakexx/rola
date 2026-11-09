@@ -1,0 +1,61 @@
+{
+ "experiment": "smem_rates",
+ "question": "what does an SM's shared-memory pipe sustain a wavefront (128 bytes a cycle is the documented bank rate) for loads -- `ld.shared.v4` and `ldmatrix.x4`, 4 wavefronts a warp each -- and for atomic adds -- `red.shared.add.u32` with a lane a bank (1 wavefront a warp), two lanes a bank (2), four (4)?",
+ "arch": "sm_86",
+ "git": {
+  "sha": "2b4ce17b5e546613ecce36174ad26c79a6aa9eeb",
+  "dirty": true
+ },
+ "date": "2026-10-07T01:37:10+00:00",
+ "metrics": [
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum",
+  "smsp__inst_executed_op_shared_ld.sum",
+  "smsp__sass_inst_executed_op_shared_ld.sum",
+  "smsp__sass_inst_executed_op_ldsm.sum",
+  "smsp__sass_inst_executed_op_shared_atom.sum",
+  "sm__cycles_elapsed.avg"
+ ],
+ "inputs": {},
+ "kernels": {
+  "void pipe<0>(int, long long *, int *)": {
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum": 61483040.0,
+   "sm__cycles_elapsed.avg": 784608.345,
+   "smsp__inst_executed_op_shared_ld.sum": 15360960.0,
+   "smsp__sass_inst_executed_op_ldsm.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_atom.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_ld.sum": 15360960.0
+  },
+  "void pipe<1>(int, long long *, int *)": {
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum": 61483040.0,
+   "sm__cycles_elapsed.avg": 773414.82,
+   "smsp__inst_executed_op_shared_ld.sum": 960.0,
+   "smsp__sass_inst_executed_op_ldsm.sum": 15360000.0,
+   "smsp__sass_inst_executed_op_shared_atom.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_ld.sum": 960.0
+  },
+  "void pipe<2>(int, long long *, int *)": {
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum": 15403040.0,
+   "sm__cycles_elapsed.avg": 389460.04,
+   "smsp__inst_executed_op_shared_ld.sum": 960.0,
+   "smsp__sass_inst_executed_op_ldsm.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_atom.sum": 15360000.0,
+   "smsp__sass_inst_executed_op_shared_ld.sum": 960.0
+  },
+  "void pipe<3>(int, long long *, int *)": {
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum": 30763040.0,
+   "sm__cycles_elapsed.avg": 388523.55,
+   "smsp__inst_executed_op_shared_ld.sum": 960.0,
+   "smsp__sass_inst_executed_op_ldsm.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_atom.sum": 15360000.0,
+   "smsp__sass_inst_executed_op_shared_ld.sum": 960.0
+  },
+  "void pipe<4>(int, long long *, int *)": {
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared.sum": 61483040.0,
+   "sm__cycles_elapsed.avg": 772400.675,
+   "smsp__inst_executed_op_shared_ld.sum": 960.0,
+   "smsp__sass_inst_executed_op_ldsm.sum": 0.0,
+   "smsp__sass_inst_executed_op_shared_atom.sum": 15360000.0,
+   "smsp__sass_inst_executed_op_shared_ld.sum": 960.0
+  }
+ }
+}

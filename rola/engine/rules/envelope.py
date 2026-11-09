@@ -13,34 +13,43 @@ from __future__ import annotations
 
 from typing import Any
 
-from rola.engine import Arm, rule
+from rola.engine import rule
 
 
-@rule(gives=("arm_envelope",),
-      needs=("widths", "d_v", "decay", "arm"))
-def arm_envelope(widths: tuple[int, ...], d_v: int, decay: Any,
-                 arm: Arm | None) -> str | None:
-    """Why the chunk arm refuses this call, or None if it runs.
+@rule(gives=("prefill_envelope",),
+      needs=("widths", "d_v", "decay", "intra_reads", "intra_dv", "carry_arm", "scale_refusal", "stateful"))
+def prefill_envelope(widths: tuple[int, ...], d_v: int, decay: Any, intra_reads: bool, intra_dv: int,
+                     carry_arm: tuple[int, ...] | None, scale_refusal: str | None, stateful: bool) -> str | None:
+    """Why the prefill has no kernel for this segment, or None if it runs.
 
-    `d_v` is the value stream's per-head width, which is a fact about `v` and not
-    about the routing -- the caller reads it off the operand and states it here.
+    ``intra_reads`` is whether the intra kernel reads these level widths (`rola.ops.intra.admits`) and ``intra_dv``
+    the value width it reads; ``carry_arm`` the arm key of the carve the planner picks when the binary's own census
+    carries it, else ``None``; ``scale_refusal`` the scale pass's (`rola.ops.scale.serves`); ``stateful`` whether the call
+    hands a state in or out.
     """
-    if d_v != 64:
-        return f"d_v={d_v}; the chunk matrix is built at d_v=64"
     if decay is not None:
-        return "decay is not implemented in the operator (the decay retirement; docs/internals/chunk/chunk.md); use the reference arm"
-    if len(set(widths)) != 1:
-        return f"widths={widths}; the built manifest is uniform-width"
-    if arm is None:
-        return f"topology (D={len(widths)}, B={widths[0]}) has no built arm in the manifest"
+        return ("decay is not implemented in the operator (the decay retirement; docs/internals/chunk/chunk.md); "
+                "use the reference arm")
+    if not intra_reads:
+        return (f"widths={widths}; the intra reads one or two levels, each a whole number of 16-digit granules up "
+                f"to 256")
+    if d_v != intra_dv:
+        return f"d_v={d_v}; the intra reads value width {intra_dv}"
+    if carry_arm is None:
+        return f"widths={widths}, d_v={d_v}; this build carries no carry arm for the carve the planner picks"
+    if scale_refusal is not None:
+        return f"the scale pass does not serve this bundle: {scale_refusal}"
+    if stateful:
+        return ("a state handed in or out: the carry takes no entry state yet (its segment boundary is not built); "
+                "call statelessly")
     return None
 
 
 @rule(gives=("envelope",), needs=("unratified", "device"))
 def envelope(unratified: tuple[str, ...], device) -> str | None:
-    """The operand-side clauses, which precede the arm matrix's own.
+    """The operand-side clauses, which precede the prefill's own.
 
-    They are separate from :func:`arm_envelope` because they are facts about the
+    They are separate from :func:`prefill_envelope` because they are facts about the
     operands rather than about the configuration, and because an unratified
     activation or a CPU tensor must be named BEFORE a question about the built
     matrix is asked of a device that may not have one.
@@ -53,18 +62,3 @@ def envelope(unratified: tuple[str, ...], device) -> str | None:
     return None
 
 
-@rule(gives=("training_envelope",), needs=("grad", "state"))
-def training_envelope(grad: bool, state: Any) -> str | None:
-    """The one clause that exists only on the grad path: a carried STATE.
-
-    Training in v1 is stateless -- the state plane is caller-owned and
-    mutated in place, and `d initial_state` is not in the scans -- so `state=` and a
-    gradient are mutually exclusive, by name, at the boundary rather than silently.
-    """
-    if grad and state is not None:
-        return (
-            "rola_op trains STATELESS ONLY and this call carries both a gradient and "
-            "a state plane. The state is caller-owned and mutated in place, and the "
-            "reverse pass has no `d initial_state`: it rebuilds from zero. Detach the "
-            "operands for a stateful step, or drop `state=` to train.")
-    return None

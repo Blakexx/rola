@@ -9,9 +9,8 @@
 #
 # `vulture` is not a project dependency (a lint tool, never imported by
 # shipped code): this script REFUSES per KERNEL_STANDARDS §18 rather than
-# silently skipping if it is not on PATH -- install it via the pinned
-# `.pre-commit-config.yaml` entry's `additional_dependencies`, or by hand
-# (`pip install vulture==2.16`) for a manual run.
+# silently skipping if it is not on PATH -- the graph's environment carries
+# it (requirements.lock pins vulture 2.16), on PATH for the graph's lints.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,19 +37,17 @@ fi
 
 if ! command -v vulture >/dev/null 2>&1; then
   echo "run_vulture.sh: refusing -- 'vulture' not on PATH." >&2
-  echo "  pip install vulture==2.16   (pinned in .pre-commit-config.yaml)" >&2
+  echo "  run it through the graph: bazel test //:ratchet_vulture   (requirements.lock pins vulture 2.16)" >&2
   exit 1
 fi
 
 set +e
 # `--exclude` keeps tools/lint/fixtures/**'s deliberate "must fire" violations
 # out of the real report (K46's ast-grep bug: a fixture re-triggering the
-# gate it exists to test).
-# `setup.py` is IN THE SCAN because it is a CALLER: it runs the pre-build and post-build
-# gates, and a scan that could not see it reported `tools/build_flags.py`'s DEPFILE_FLAGS
-# and `tools/gen_shards.py`'s declaration_matches_table as dead when setup.py calls both.
+# gate it exists to test). `bazel/` is IN THE SCAN because its action scripts are CALLERS: the record, the arm
+# gate and the flags call the tools' gates and lists.
 out=$(vulture --exclude '*/tools/lint/fixtures/*' \
-       rola/ tools/ tests/ measure/ setup.py tools/lint/vulture_whitelist.py 2>&1)
+       rola/ tools/ tests/ measure/ bazel/ tools/lint/vulture_whitelist.py 2>&1)
 set -e
 
 n=$(printf '%s\n' "$out" | grep -c . || true)

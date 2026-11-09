@@ -34,18 +34,11 @@ to have. It says nothing about the binary a different assembler would produce fo
 an architecture nobody measured. Read-back has a narrower job in this design:
 **drift detection between ratifications**.
 
-## 2. The four rules
+## 2. The rules
 
-Stated in full, with their enforcement points, in
-[`docs/ratification.md`](../ratification.md#the-four-closed-world-rules). In
-brief:
-
-| | Refused |
-|---|---|
-| **R1** | Building under an assembler the manifest was not ratified under. |
-| **R2** | Emitting `code=compute_XX` — any PTX a driver could JIT. |
-| **R3** | An architecture in the fatbin with no ratified manifest. |
-| **R4** | Launching on a device the kernel's architecture table does not describe. |
+The rules and their enforcement points are one table, in
+[`docs/ratification.md`](../ratification.md#the-four-closed-world-rules); this section
+keeps only their argument.
 
 R2 is the no-fallbacks rule applied to the compiler: an unknown architecture must
 **fail to load**, not silently JIT unmeasured code. R3 and R4 are what make
@@ -65,9 +58,8 @@ grows multiplicatively, compile times grow with it, and a JIT path compiles
 exactly the one kernel a user's call needs.
 
 **RoLA does not follow it.** The AOT-only build is a decision taken against that
-alternative — not an oversight and not an un-revisited default — and it is
-recorded as such in `workflows/research/cuda-code-quality.md` (decision X5) and
-in the campaign journal.
+alternative — not an oversight and not an un-revisited default — and this page is
+its record.
 
 **The reason is reproducibility for future readers — not process overhead.**
 A JIT path means the binary that produced a published number does not exist
@@ -98,7 +90,7 @@ central claims are numeric buys the second with the first.
 ## 4. Consequences a contributor should expect
 
 - **A new architecture is a ratification event**, not a `-gencode` line. Adding
-  `sm_XX` without its manifest fails the build before anything compiles.
+  `sm_XX` without its manifest fails the build.
 - **A toolchain bump invalidates every manifest**, in both directions. The
   numbers are a property of the assembler as much as of the source, so they say
   nothing about a different assembler even if they got *better*. Re-ratify.
@@ -110,11 +102,10 @@ central claims are numeric buys the second with the first.
   the ratchet refuses a change, the change is what must move. The in-tree
   precedent is a measured optimization held back because 12 instantiations gained
   spill; the resolution is a re-scope of the change to the structural axes where
-  it is clean, not a re-stamped manifest (journal, 2026-08-04: "phase 1 stopped
-  by the ratchet").
+  it is clean, not a re-stamped manifest.
 - **Anything that quietly reopens the input space is refused even when it is
   convenient.** The known instance: `TORCH_EXTENSION_SKIP_NVCC_GEN_DEPENDENCIES`
-  escapes an sccache/depfile collision, but it deletes header dependency edges,
+  escapes a compiler-cache/depfile collision, but it deletes header dependency edges,
   after which a stale object file passes every gate the project owns. Hard
   reject; a build-cache wrapper is admissible only with its own toolchain pin,
   which is R1 extended to the cache.
@@ -129,17 +120,14 @@ PASS or FAIL; it is answering a question nobody asked.
 
 Two measured instances, both in this tree:
 
-- **A symbol name is a key, and it depended on the checkout PATH.** `decode.cu` and
-  `entmax.cu` put their kernels in an anonymous namespace, whose mangled name embeds a
-  discriminator derived from the source directory — an input the ratification manifest
-  never named, because "the source" was assumed to mean the file's *content*. A
-  worktree build at a different path was therefore certifiable-looking and wrong: the
-  manifest's key set didn't match the binary's, and the failure mode was a hard build
-  refusal (`workflows/refactor/p06_review.md`) rather than a silent pass — which is the
-  lucky case. Fixed at the cause, not papered over with a path convention: those three
-  blocks moved into a named internal namespace (P19, `docs/build.md`'s path-trap
-  section, `workflows/refactor/p19_symbols.md`), so the key is a function of content
-  and toolchain only, the two things the manifest already claimed to certify.
+- **A symbol name is a key, and an anonymous namespace makes it depend on the checkout
+  PATH.** A kernel in an anonymous namespace carries a mangled discriminator derived
+  from the source directory — an input the ratification manifest never named, because
+  "the source" was assumed to mean the file's *content* — so a build at another path
+  is certifiable-looking and wrong. The fix is at the cause, not a path convention:
+  every kernel lives in a named namespace (the ast-grep rule
+  `tools/lint/rules/global_fn_in_anon_namespace.yml`), so the key is a function of
+  content and toolchain only, the two things the manifest claims to certify.
 - **A manifest is a value, and it depended on the codegen flag list.** The manifest
   pinned the assembler version and the calibration macros but not the `nvcc` flag
   list itself, so a codegen-affecting flag change left no fingerprint in anything a

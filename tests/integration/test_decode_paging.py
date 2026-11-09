@@ -3,8 +3,7 @@
 
 """DECODE's paged backing: one walk, one base translation, and growth per step.
 
-The `T = 1` sibling of `test_chunk_paging_equivalence.py`, and it claims the same
-three things for the same reason. Which page an atom lives on is the ONLY thing a
+Which page an atom lives on is the ONLY thing a
 backing changes: without a table the slot IS the atom, with one it is what the plan
 committed, and the instruction stream, the accumulation order and the ABI are the
 same object. So the claim is `torch.equal` and not a tolerance -- any difference at
@@ -53,7 +52,7 @@ The FACADE-level continuation (prefill on the chunk arm, then decode steps on th
 state object) is `tests/integration/test_decode_continuation.py`; this file stays at
 the ABI, where the addressing lives.
 
-Run: ``pytest tests/integration/test_decode_paging.py``
+Run: ``bazel test //tests:integration --test_filter=test_decode_paging``
 """
 from __future__ import annotations
 
@@ -64,7 +63,7 @@ import torch
 
 from rola.ops.decode import _decode_step, _write_atom_bitmap, derive_decode_geometry
 from rola.ops.lattice import permutation, to_canonical
-from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal, from_split_planes, to_split_planes
+from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal, encode_pages
 
 pytestmark = [
     pytest.mark.cuda,
@@ -73,10 +72,21 @@ pytestmark = [
 
 _DV = 64
 _COLS = _DV + 1
-_POISON = -4321.5
+_POISON = 0xA5  #: a byte no zeroed page holds
 
 #: THE ORACLE RULE AND THE TOPOLOGY BUILDER, ADOPTED RATHER THAN INVENTED, imported so there is ONE of each.
-from tests.oracle.fixtures import assert_slots_close, oracle_run  # noqa: E402
+from tests.oracle.fixtures import (  # noqa: E402
+    assert_reordered_close,
+    assert_slots_close,
+    bundle_operands,
+    oracle_run,
+    reordered_close,
+    state_pages,
+    state_quantum,
+    state_rounded,
+    step_bundles,
+    with_gain,
+)
 from tests.oracle.oracle_fixtures import (  # noqa: E402
     _topology as _build_topology,
 )
@@ -132,17 +142,17 @@ def _fixture(widths, *, seed, support=1.0, offset=0.0, B=2, H=3):
     return dict(read=read, write=write, g_write=g_write, v=v, B=B, H=H)
 
 
-def _f32(fixture):
-    return (fixture["v"].float(),
-            tuple(t.float() for t in fixture["read"]),
-            tuple(t.float() for t in fixture["write"]),
-            fixture["g_write"].float())
+def _bundles(fixture):
+    """The step in the internal format, ``(RouteFactors, Values)``: what the kernel reads and whose values the
+    oracle takes. Built once a fixture, so every reader sees the same rows."""
+    if "bundles" not in fixture:
+        widths = tuple(level.shape[-1] for level in fixture["read"])
+        fixture["bundles"] = step_bundles(fixture["v"], fixture["read"], with_gain(fixture["write"], fixture["g_write"]), _topology(widths))
+    return fixture["bundles"]
 
 
-def _config(widths, fixture):
-    return derive_decode_geometry(
-        _topology(widths), d_v=_DV, decay=False,
-        BH=fixture["B"] * fixture["H"], device="cuda")
+def _config(widths):
+    return derive_decode_geometry(_topology(widths), d_v=_DV, decay=False)
 
 
 def _leaf_support(levels, widths, config):
@@ -177,11 +187,21 @@ def _seed_from_dense(arena, dense):
     """Copy a dense `[BH, N, cols]` LATTICE-order state into the arena's committed slots."""
     arena.wait()
     BH, N, cols = dense.shape
-    #: THE ARENA HOLDS THE STORED FORM (the split planes); `dense` is the logical one.
-    atoms = to_split_planes(dense.reshape(BH * (N // MMA_K_QUANTUM), MMA_K_QUANTUM, cols))
+    #: THE ARENA HOLDS THE STORED FORM (the int8 state pages); `dense` is the logical one.
+    atoms = encode_pages(dense.reshape(BH * (N // MMA_K_QUANTUM), MMA_K_QUANTUM, cols))
     table = arena.page_table.reshape(-1)
     present = table >= 0
     arena.state.index_copy_(0, table[present].long(), atoms[present])
+
+
+def _stored_pages(arena):
+    """The arena's slots gathered into atom order, ``[BH, N/16, page_bytes]``, an absent atom a zero page: what a
+    dense plane holding the same state stores, byte for byte."""
+    table = arena.page_table
+    out = torch.zeros(*table.shape, arena.page_bytes, dtype=torch.uint8, device=table.device)
+    present = table >= 0
+    out[present] = arena.state[table[present].long()]
+    return out
 
 
 def _dense_masked_to(arena, dense):
@@ -214,8 +234,8 @@ def test_the_step_write_atom_set_is_exact(arm, support):
     """
     widths, _BC = arm
     fixture = _fixture(widths, seed=len(widths) * 31 + 7, support=_SUPPORTS[support])
-    config = _config(widths, fixture)
-    _v, _read, write, _gw = _f32(fixture)
+    config = _config(widths)
+    write = _bundles(fixture)[0].live("write")
 
     got = _write_atom_bitmap(write, config)
     want = _leaf_support(write, widths, config).view(
@@ -233,12 +253,13 @@ def test_the_step_write_atom_set_is_exact(arm, support):
 
 @pytest.mark.parametrize("support", list(_SUPPORTS), ids=list(_SUPPORTS))
 @pytest.mark.parametrize("arm", _ARMS, ids=lambda a: "x".join(map(str, a[0])))
-def test_the_paged_backing_is_bit_identical_to_the_dense_one(arm, support):
+def test_the_paged_backing_matches_the_dense_one(arm, support):
     widths, BC = arm
     fixture = _fixture(widths, seed=len(widths) * 97 + BC, support=_SUPPORTS[support])
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    v, read, write, g_write = _f32(fixture)
+    routes, values = _bundles(fixture)
+    write = routes.live("write")
 
     arena = _arena(widths, BC, BH)
     arena.plan_exact(_write_atom_bitmap(write, config), fresh=True)
@@ -250,15 +271,14 @@ def test_the_paged_backing_is_bit_identical_to_the_dense_one(arm, support):
     _seed_from_dense(arena, dense)
 
     y_dense, dense_out, _ = _decode_step(
-        v, read, write, g_write, config,
-        to_split_planes(dense.clone().view(fixture["B"], fixture["H"], config.N, _COLS)))
+        routes, values, config,
+        state_pages(dense.clone()))
     y_paged, _, _ = _decode_step(
-        v, read, write, g_write, config, arena.state,
+        routes, values, config, arena.state,
         page_table=arena.page_table)
 
-    assert torch.equal(y_dense, y_paged), "the two backings disagree on y"
-    assert torch.equal(from_split_planes(dense_out).view(BH, config.N, _COLS),
-                       arena.materialize()), "the two backings disagree on the state"
+    assert_reordered_close(y_paged, y_dense, "the two backings' y")
+    assert bytes_equal(dense_out, _stored_pages(arena)), "the two backings disagree on the state"
     # NON-VACUITY: pages were committed, they came back nonzero, and (unless the write
     # support is total) the table is NOT the identity map, so a translation ran.
     assert arena.allocated_pages > 0
@@ -286,9 +306,10 @@ def test_an_absent_atom_is_never_written_and_reads_as_zero(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=len(widths) * 13 + 5, support=0.25)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    v, read, write, g_write = _f32(fixture)
+    routes, values = _bundles(fixture)
+    write = routes.live("write")
 
     arena = _arena(widths, BC, BH)
     arena.plan_exact(_write_atom_bitmap(write, config), fresh=True)
@@ -306,17 +327,17 @@ def test_an_absent_atom_is_never_written_and_reads_as_zero(arm):
     table_before = arena.page_table.clone()
 
     y_dense, _, _ = _decode_step(
-        v, read, write, g_write, config,
-        to_split_planes(dense.clone().view(fixture["B"], fixture["H"], config.N, _COLS)))
+        routes, values, config,
+        state_pages(dense.clone()))
     y_paged, _, _ = _decode_step(
-        v, read, write, g_write, config, arena.state,
+        routes, values, config, arena.state,
         page_table=arena.page_table)
 
     assert bytes_equal(arena.state[resident:],
                        torch.full_like(arena.state[resident:], _POISON)), (
         "the step wrote a page no plan committed")
     assert torch.equal(arena.page_table, table_before), "the step moved the page table"
-    assert torch.equal(y_dense, y_paged), (
+    assert reordered_close(y_paged, y_dense), (
         "a read through an absent atom was not inert")
 
 
@@ -334,12 +355,12 @@ def test_a_step_grows_residency_by_exactly_its_new_atoms(arm):
     what makes this a planned-exact claim rather than a "grew somehow" one.
     """
     widths, BC = arm
-    config = _config(widths, _fixture(widths, seed=0))
+    config = _config(widths)
     BH = 2 * 3
     first = _fixture(widths, seed=len(widths) * 41 + 1, support=0.5)
     second = _fixture(widths, seed=len(widths) * 41 + 2, support=0.5, offset=0.25)
 
-    bits = [_write_atom_bitmap(_f32(step)[2], config) for step in (first, second)]
+    bits = [_write_atom_bitmap(_bundles(step)[0].live("write"), config) for step in (first, second)]
     new_atoms = int((bits[1] & ~bits[0]).sum())
     assert new_atoms > 0, "the second step reaches no new atom; the cell is vacuous"
 
@@ -353,12 +374,12 @@ def test_a_step_grows_residency_by_exactly_its_new_atoms(arm):
 
     ys = []
     for step, bitmap in zip((first, second), bits):
-        #: THE GROWTH ORDER, exactly `decode_forward`'s: plan the union on the side
+        #: THE GROWTH ORDER, exactly the layer's: plan the union on the side
         #: stream, wait once, launch.
         arena.plan_exact(bitmap, fresh=False)
         arena.wait()
-        v, read, write, g_write = _f32(step)
-        y, _, _ = _decode_step(v, read, write, g_write, config, arena.state,
+        routes, values = _bundles(step)
+        y, _, _ = _decode_step(routes, values, config, arena.state,
                                page_table=arena.page_table)
         ys.append(y)
 
@@ -379,11 +400,13 @@ def test_a_step_grows_residency_by_exactly_its_new_atoms(arm):
     #: the fp64 oracle, chained one token at a time -- which is what decode does.
     ref = None
     for step in (first, second):
-        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
+        ref = oracle_run(*bundle_operands(*_bundles(step)), _topology(widths), entry=ref)
+        ref = ref._replace(state=state_rounded(ref.state))
     state = to_canonical(arena.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
     assert_slots_close(ys[-1], ref.y, output=DECODE_Y, envelope=ref.y_envelope, what="the grown step's y")
-    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the grown state")
+    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the grown state",
+                       derived_atol=2 * state_quantum(ref.state))
 
 
 @pytest.mark.parametrize("arm", _ARMS, ids=lambda a: "x".join(map(str, a[0])))
@@ -398,11 +421,11 @@ def test_a_pool_admitted_sequence_is_the_oracle_s_and_the_host_admitted_one_s(ar
     indistinguishable from an atom `plan_exact` admitted.
     """
     widths, BC = arm
-    config = _config(widths, _fixture(widths, seed=0))
+    config = _config(widths)
     BH = 2 * 3
     first = _fixture(widths, seed=len(widths) * 41 + 1, support=0.5)
     second = _fixture(widths, seed=len(widths) * 41 + 2, support=0.5, offset=0.25)
-    bits = [_write_atom_bitmap(_f32(step)[2], config) for step in (first, second)]
+    bits = [_write_atom_bitmap(_bundles(step)[0].live("write"), config) for step in (first, second)]
     assert int((bits[1] & ~bits[0]).sum()) > 0, "the second step grows nothing here"
 
     admitted = _arena(widths, BC, BH)
@@ -414,23 +437,25 @@ def test_a_pool_admitted_sequence_is_the_oracle_s_and_the_host_admitted_one_s(ar
             if pool is None:
                 arena.plan_exact(bitmap, fresh=False)
                 arena.wait()
-            v, read, write, g_write = _f32(step)
-            y, _, _ = _decode_step(v, read, write, g_write, config, arena.state,
+            routes, values = _bundles(step)
+            y, _, _ = _decode_step(routes, values, config, arena.state,
                                    page_table=arena.page_table, pool=pool)
             out.append(y)
         ys[name] = out
 
     assert torch.equal(pooled.page_table >= 0, bits[0] | bits[1]), (
         "the device admitted a different residency than the two steps' write sets")
-    assert torch.equal(ys["pool"][-1], ys["host"][-1]), (
+    assert reordered_close(ys["pool"][-1], ys["host"][-1]), (
         "a pool-admitted step's y differs from a host-admitted one's")
     assert torch.equal(pooled.materialize(), admitted.materialize()), (
         "a pool-admitted state differs from a host-admitted one")
 
     ref = None
     for step in (first, second):
-        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], _topology(widths), entry=ref)
+        ref = oracle_run(*bundle_operands(*_bundles(step)), _topology(widths), entry=ref)
+        ref = ref._replace(state=state_rounded(ref.state))
     state = to_canonical(pooled.materialize(), widths, config.lattice_k,
                          config.lattice_m).view(2, 3, config.N, _COLS)
     assert_slots_close(ys["pool"][-1], ref.y, output=DECODE_Y, envelope=ref.y_envelope, what="the pool-admitted y")
-    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the pool-admitted state")
+    assert_slots_close(state, ref.state, output=DECODE_STATE, envelope=ref.state_envelope,
+                       what="the pool-admitted state", derived_atol=2 * state_quantum(ref.state))

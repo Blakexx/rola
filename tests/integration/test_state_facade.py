@@ -19,10 +19,9 @@ import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conftest import build_routes  # noqa: E402
+from conftest import alternating_routing, build_layer  # noqa: E402
 
 import rola  # noqa: E402
-from rola.routing.producer import union_routing  # noqa: E402
 
 pytestmark = [
     pytest.mark.cuda,
@@ -33,9 +32,11 @@ _HIDDEN, _H, _DV, _WIDTHS, _T = 64, 2, 64, (16, 16), 128
 
 
 def _producer(seed=0, widths=_WIDTHS):
+    """The routes of a stretch of tokens, from a layer's producer."""
     torch.manual_seed(seed)
-    return build_routes(hidden_size=_HIDDEN, num_heads=_H, widths=widths,
-                        routing=union_routing(1)).cuda()
+    layer = build_layer(hidden_size=_HIDDEN, num_heads=_H, widths=widths, d_v=_DV,
+                        routing=alternating_routing(len(widths))).cuda().eval()
+    return lambda x: layer._produce(x)[0]
 
 
 def _inputs(seed=0, T=_T, B=2):
@@ -50,11 +51,12 @@ def test_a_raw_tensor_is_not_a_state():
     Gated at `validate_context` (the seam the rebuilt kernel re-fronts): `rola_op` itself is
     the deletion refusal and speaks before it reads its arguments.
     """
-    from rola.engine.dags.chunk_dag import ChunkContext, validate_context
+    from rola.engine.dags.prefill_dag import PrefillContext, validate_context
+    from rola.values import Values
 
     producer, (x, v) = _producer(), _inputs()
     with torch.no_grad(), pytest.raises(TypeError, match="rola.RoLAState"):
-        validate_context(ChunkContext(routes=producer(x), v=v,
+        validate_context(PrefillContext(routes=producer(x), values=Values.from_projection(v),
                                       state=torch.zeros(1), want_state=True))
 
 

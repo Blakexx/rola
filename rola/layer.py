@@ -1,16 +1,14 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""The RoLA layer: a value projection, the feature-map slot, and the op.
+"""The RoLA layer: the declared routing, its weights, the producer and the op.
 
-    RoLA(routes, d_v=..., decay=..., layer_idx=...)
+    RoLA(Routing([...]), hidden_size=..., num_heads=..., d_v=..., decay=..., layer_idx=...)
 
-``routes`` is the feature-map slot: any callable producing a
-:class:`~rola.routing.factors.RouteFactors` bundle that also declares the topology.
-:class:`~rola.routing.producer.RouteProducer` is the one this
-package ships.
-It also carries ``hidden_size`` and ``num_heads``, so the layer reads them off it.
-``d_v`` is the per-head value width, which is the LAYER's: it sizes ``v_proj`` and
-``o_proj``, and the routing carries no value geometry at all. ``decay`` is a decay
+The routing is DECLARED (:class:`~rola.routing.producer.Routing`): data the layer compiles once into a producer
+plan. The layer owns every weight the declaration implies -- the packed routing projection, its bias, the write
+gain's bias, ``v_proj`` and ``o_proj`` -- and one producer call (:func:`rola.ops.produce.produce`) turns a stretch
+of tokens into the bundle the op takes. ``d_v`` is the per-head value width, which is the LAYER's: it sizes
+``v_proj`` and ``o_proj``, and the routing carries no value geometry at all. ``decay`` is a decay
 SOURCE (:mod:`rola.routing.decay`), the slot that decides where the recurrence's
 forgetting rates come from. Everything else the layer used to take was either one of
 those facts spelled out flat, or a launch decision the op makes.
@@ -46,17 +44,22 @@ from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 
+from rola._inference_copy import InferenceCopy, reads_copy
+from rola._state import state as rola_state
 from rola.engine import PlanOverrides
-from rola.engine.dags.decode_dag import decode_forward
+from rola.engine.dags.decode_dag import admit_growth, decode_step_gated, growth_pending
 from rola.interface import (
     BackwardNotImplemented,
     operands_of,
     requires_backward,
     rola_op,
 )
+from rola.ops.produce import ProducerPlan, ProducerWeights, hidden_contiguous, produce, projection_dtype
 from rola.routing.decay import validate_decay_source
+from rola.routing.factors import default_sparse
+from rola.routing.producer import Routing, _init_packed_router
+from rola.routing.side_gain import init_side_gain_bias
 
 if TYPE_CHECKING:
     from rola._state import RoLAState
@@ -104,16 +107,13 @@ class RoLA(nn.Module):
     """Routed linear attention.
 
     Args:
-        routes: the feature-map slot -- any callable returning a
-            :class:`~rola.routing.factors.RouteFactors`, typically a
-            :class:`~rola.routing.producer.RouteProducer`. It owns the topology (levels,
-            widths) and the side gains, because those are facts
-            about the map rather than about the layer
-            wrapping it, and it owns ``hidden_size``/``num_heads``, which the layer
-            reads off it rather than taking a second declaration of.
+        routing: the declared routing (:class:`~rola.routing.producer.Routing`): the
+            levels, the write gain and the projection bias. Data the layer compiles
+            into its producer; the weights it implies are the layer's.
+        hidden_size / num_heads: the source stream's width and the head count.
         d_v: per-head value width -- the width of the state each leaf holds. It sizes
-            ``v_proj`` and ``o_proj``, which is why it is the layer's; the default is
-            the width the chunk matrix is built at.
+            ``v_proj`` and ``o_proj``; the default is the width the chunk matrix is
+            built at.
         decay: a decay source (:mod:`rola.routing.decay`), or ``None`` for a
             non-decaying recurrence. Validated against the topology at construction.
         layer_idx: index into the recurrent cache.
@@ -124,47 +124,59 @@ class RoLA(nn.Module):
 
     def __init__(
         self,
-        routes,
+        routing: Routing,
         *,
+        hidden_size: int,
+        num_heads: int,
         d_v: int = 64,
         decay=None,
         layer_idx: int | None = None,
         expert=None,
+        memory_budget: int | None = None,  #: reserved: the caller's declaration (docs/api.md section 4.2)
     ) -> None:
         super().__init__()
-        #: THE PRODUCER IS A DUCK, so this is a STRUCTURAL check and not an isinstance
-        #: one: the layer reads three facts off the slot and calls it, and anything that
-        #: answers those three and returns a well-formed bundle is a feature map. The
-        #: check exists so a missing attribute is named here rather than surfacing as an
-        #: AttributeError inside a forward.
-        missing = [name for name in ("hidden_size", "num_heads", "topology")
-                   if not hasattr(routes, name)]
-        if missing or not callable(routes):
+        if not isinstance(routing, Routing):
             raise TypeError(
-                "RoLA's `routes` argument is the feature-map slot: a callable producing a "
-                "RouteFactors bundle, which also declares hidden_size, num_heads and topology. "
-                f"{type(routes).__name__} is missing {missing or ['__call__']}. "
-                "rola.RouteProducer is the one this package ships.")
-        hidden_size = routes.hidden_size
-        num_heads = routes.num_heads
+                "RoLA's first argument is the declared routing, a rola.Routing -- got "
+                f"{type(routing).__name__}. The routing is data the layer compiles into its producer; a "
+                "callable feature map is not taken (docs/api.md section 2).")
         if type(d_v) is not int or d_v < 1:
             raise ValueError(f"d_v must be a positive exact int, got {d_v!r}")
+        if memory_budget is not None and (type(memory_budget) is not int or memory_budget < 1):
+            raise ValueError(f"memory_budget is a positive exact int of bytes, or None; got {memory_budget!r}")
+        #: the plan validates `hidden_size` and `num_heads`
+        self.plan = ProducerPlan(routing=routing, num_heads=num_heads, hidden_size=hidden_size, d_v=d_v)
         if decay is not None:
-            validate_decay_source(decay, routes.topology, num_heads)
+            validate_decay_source(decay, routing.topology, num_heads)
 
         overrides = PlanOverrides() if expert is None else PlanOverrides.of(expert)
 
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.d_v = d_v
-        self.routes = routes
+        self.routing = routing
         self.decay = decay
         self.layer_idx = layer_idx
         self.expert = overrides
+        self.memory_budget = memory_budget
 
+        #: ONE ROUTING PARAMETER, and the write gain's columns are its trailing span: the gain is a function of the
+        #: same stream as the routing logits, so its column is one more column of the same GEMM.
+        self.route_W = nn.Parameter(torch.empty(num_heads, hidden_size, routing.columns))
+        _init_packed_router(self.route_W)
+        if routing.bias:
+            self.route_bias = nn.Parameter(torch.zeros(num_heads, routing.columns))
+        else:
+            self.register_parameter("route_bias", None)
+        gain_bias = 0.0 if routing.gain_bias_init is None else init_side_gain_bias(routing.gain_bias_init)
+        self.gain_bias = nn.Parameter(torch.full((num_heads, routing.gain_columns), gain_bias))
         self.value_dim = num_heads * d_v
         self.v_proj = nn.Linear(hidden_size, self.value_dim, bias=False)
         self.o_proj = nn.Linear(self.value_dim, hidden_size, bias=False)
+        #: the weights' copies for a step no gradient flows through (rola/_inference_copy.py).
+        self._route_copy = InferenceCopy(lay=hidden_contiguous)
+        self._v_copy = InferenceCopy(lay=None)
+        self._o_copy = InferenceCopy(lay=None)
 
         #: Which kernel the last forward took. A plain attribute, not a buffer:
         #: diagnostic state must not enter a state_dict and must not be cast by
@@ -177,17 +189,65 @@ class RoLA(nn.Module):
 
     @property
     def topology(self):
-        """The routing topology, which is the feature map's, not the layer's."""
-        return self.routes.topology
+        """The routing topology, the declaration's."""
+        return self.routing.topology
 
     @property
     def head_v_dim(self) -> int:
         return self.d_v
 
+    # --- segmentation (docs/api.md section 4.2) -------------------------------
+
+    def segment_bytes_per_token(self) -> int:
+        """AN UPPER BOUND on a prefill segment's working set per batch-token, in bytes: every per-token tensor
+        a segment allocates, summed as if all were alive at once. Gated against the measured peak
+        (tests/integration/test_layer_segments.py); a kernel port that adds or drops a tensor changes its term here.
+
+        A head's, both sides: its rows (a byte a digit at a sparse level, two at a dense one); the levels' scales and
+        the producer's level masses (four bytes each a level); the facts pass's words (a bit a row, the read and the
+        write slot), its tile unions, factor products, gains and list exponents; each side's lists at its one sparse
+        level -- a window's slots a digit, four int16 an entry, with the union by slot at the finest list group and
+        the boundaries and totals under a sixteenth of the width; the values (f16) and their scale and the gain; the
+        scale pass's byte and its masses; the carry's ``num`` (fp32 at most) and den; the readout's unpacked ``num``,
+        den, factor and reader factor, ``y`` and its bf16 copy for the output projection. A token's: the hidden
+        stream's two bf16 casts and the output, fp32 at most.
+        """
+        widths = self.topology.padded_widths
+        D, total = len(widths), sum(widths)
+        per_head = 16 * D + total // 4 + total // 64 + 16 * self.d_v + 49
+        for sparse in default_sparse(self.topology):
+            per_head += sum(width if flag else 2 * width for flag, width in zip(sparse, widths))
+            if sparse.count(True) == 1:
+                width = widths[sparse.index(True)]
+                per_head += 8 * width + width // 8 + width // 16
+        return self.num_heads * per_head + 8 * self.hidden_size
+
+    def state_bytes(self, batch: int) -> int:
+        """The carried state at full residency, in bytes: the fixed part of a segmented call's footprint."""
+        return batch * self.num_heads * self.topology.N * (self.d_v + 1) * 4
+
+    def segment_tokens(self, batch: int, length: int, device=None) -> int:
+        """THE SEGMENT LENGTH, derived from the declared ``memory_budget``: the largest whole number of
+        windows whose working set fits beside the state, capped at ``length``. No budget: one segment. A
+        budget below one window beside the state is refused. The window is ``device``'s card's (the current device's for
+        ``None``): the binary answers (docs/internals/common/arch_runtime.md#segment-tokens)."""
+        from rola.ops._ext import device_index, extension
+
+        if self.memory_budget is None:
+            return length
+        per_token = self.segment_bytes_per_token()
+        tokens = int(extension().segment_tokens(self.memory_budget, self.state_bytes(batch), per_token, batch, length,
+                                                device_index(device)))
+        if tokens < 1:
+            raise ValueError(
+                f"memory_budget={self.memory_budget} bytes cannot hold one window of {per_token} bytes a batch-token "
+                f"at batch {batch} beside the state ({self.state_bytes(batch)} bytes)")
+        return tokens
+
     def validate_decode_envelope(self, *operation_inputs) -> None:
         """THE DECODE ARM'S OWN CLAUSE: it is forward-only and has no node.
 
-        `decode_forward` is a bare extension call with no autograd node on it, so a
+        The gated decode step is a bare extension call with no autograd node on it, so a
         grad-bearing continuation step would return a tensor whose graph is severed
         and say nothing -- the layer-dispatch autograd gap, on the one path that
         still has it. Training mode alone is enough: reentrant checkpointing runs its
@@ -237,35 +297,73 @@ class RoLA(nn.Module):
         x = hidden_states
         B, L, _ = x.shape
         H = self.num_heads
-
-        #: `v` FLOWS bf16 into the op unconditionally (docs/api.md §4.1).
-        v = nn.functional.linear(x.to(torch.bfloat16), self.v_proj.weight.to(torch.bfloat16))
-        stateful = state is not None
-
-        v = rearrange(v, "b l (h d) -> b l h d", d=self.head_v_dim)
-        routes = self.routes(x)
         decay = None if self.decay is None else self.decay()
         #: a state that carries CONTENTS, which is what makes a step a continuation.
         #: A bound-but-empty state is a fresh sequence, and takes the prefill arm.
-        carrying = stateful and state.carries
+        carrying = state is not None and state.carries
 
         if L == 1 and carrying:
-            #: decode's envelope is its own -- BC-blind, general in the topology -- so
-            #: it is never asked the PREFILL matrix's questions.  Its GRADIENT clause
-            #: is its own too, and is asked here rather than above so that prefill,
-            #: which now trains, is not gated on decode's forward-only-ness.
-            self.validate_decode_envelope(*operands_of(routes, v, decay))
-            out, state = decode_forward(routes, v, state, decay=decay, expert=self.expert)
-            backend = "decode"
-        else:
-            out, state = rola_op(routes, v, decay, state=state, expert=self.expert)
-            backend = "cuda"
+            #: THE STEP, THE VERDICT, THE ADMISSION: a batch-head whose write atoms are absent skipped itself, and the
+            #: same step run again after the admission performs it (docs/api.md section 4)
+            projected = self._step(x, state)
+            if growth_pending(state):
+                admit_growth(state)
+                projected = self._step(x, state)
+            self.last_execution_backend = "decode"
+            return projected, LayerContinuation(state=state)
 
-        self.last_execution_backend = backend
-        out = out.reshape(B, L, H * self.head_v_dim)
-        projected = nn.functional.linear(
-            out.to(torch.bfloat16), self.o_proj.weight.to(torch.bfloat16)).to(x.dtype)
-        return projected, LayerContinuation(state=state)
+        out, state = self._prefill(x, state, decay)
+        self.last_execution_backend = "cuda"
+        return self._project(out.reshape(B, L, H * self.head_v_dim), x.dtype), LayerContinuation(state=state)
+
+    def _step(self, x: torch.Tensor, state) -> torch.Tensor:
+        """ONE DECODED TOKEN WITH NO HOST READ INSIDE: the producer's launch, the gated decode step and the output
+        projection, ``x [B, 1, hidden]`` to the projected ``[B, 1, hidden]`` -- CUDA-graph capturable. A batch-head
+        whose write atoms the state can neither address nor admit is a no-op; the caller owns the verdict at its own
+        synchronization -- ``growth_pending(state)``, then ``admit_growth(state)`` and the step again (a captured
+        step's replay), which advances every sequence exactly once (docs/internals/decode/decode.md#done-flags).
+        """
+        decay = None if self.decay is None else self.decay()
+        routes, values = self._produce(x)
+        #: decode's envelope is its own -- BC-blind, general in the topology -- so it is never asked the PREFILL
+        #: matrix's questions.
+        self.validate_decode_envelope(*operands_of(routes, values, decay))
+        out, _state = decode_step_gated(routes, values, state, decay=decay, expert=self.expert)
+        return self._project(out.reshape(x.shape[0], 1, self.num_heads * self.head_v_dim), x.dtype)
+
+    def _project(self, out: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+        """The output projection, bf16 operands, in the caller's dtype."""
+        return nn.functional.linear(out.to(torch.bfloat16), self._bf16(self.o_proj.weight, self._o_copy)).to(dtype)
+
+    def _produce(self, x: torch.Tensor):
+        """One stretch of tokens into the format: ``(routes, values)``, from one producer call."""
+        return produce(x, self.plan, self._weights(x))
+
+    def _weights(self, x: torch.Tensor) -> ProducerWeights:
+        """The layer's weights as the producer reads them: the reused copies when no gradient flows."""
+        dtype = projection_dtype(x)
+        route_W = self._route_copy(self.route_W, dtype) if reads_copy(self.route_W) else self.route_W.to(dtype)
+        return ProducerWeights(route_W=route_W, route_bias=self.route_bias, gain_bias=self.gain_bias,
+                               v_W=self._bf16(self.v_proj.weight, self._v_copy))
+
+    @staticmethod
+    def _bf16(W: torch.Tensor, copy: InferenceCopy) -> torch.Tensor:
+        """A projection weight in bf16: the reused copy when no gradient flows, else the cast in the graph."""
+        return copy(W, torch.bfloat16) if reads_copy(W) else W.to(torch.bfloat16)
+
+    def _prefill(self, x: torch.Tensor, state, decay):
+        """THE SEGMENT LOOP (docs/api.md section 4.2): each segment is projected, run and its state carried to
+        the next, so the projections are bounded with the op. A stateless call that spans segments carries an
+        internal state and hands none back."""
+        B, L, _ = x.shape
+        T = self.segment_tokens(B, L, x.device)
+        carried = state if state is not None or T >= L else rola_state()
+        outs = []
+        for start in range(0, L, T):
+            routes, values = self._produce(x[:, start:start + T])
+            y, carried = rola_op(routes, values, decay, state=carried, expert=self.expert)
+            outs.append(y)
+        return torch.cat(outs, dim=1) if len(outs) > 1 else outs[0], state if state is None else carried
 
     # --- state accounting (zoology's Hybrid.state_size reads these) ----------
 

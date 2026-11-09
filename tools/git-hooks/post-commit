@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Copyright 2026 Blake Bottum
+# SPDX-License-Identifier: Apache-2.0
+#
+# THE ADVISORY REVIEW, after every commit (Blake, 2026-11-06): tools/review_gate.py reviews HEAD against the
+# CONSTITUTION and KERNEL_STANDARDS in the background, its report in the git common dir's rola-review/
+# (`bazel run //tools:review_gate -- --show 1`). It never slows or refuses a commit: skipped mid-rebase, without the
+# `claude` CLI, or with no venv of the checkout's own. docs/internals/tools/review_gate.md
+command -v claude >/dev/null 2>&1 || exit 0
+git_dir="$(git rev-parse --git-dir)"
+{ [ -d "$git_dir/rebase-merge" ] || [ -d "$git_dir/rebase-apply" ]; } && exit 0
+#: the review runs from the checkout's own venv (`rola.venv`), never the host's python: without it, the review says
+#: so and does not run
+venv="$(git config --get rola.venv || true)"
+if [ -z "$venv" ] || [ ! -x "$venv/bin/python" ]; then
+  echo "post-commit: no review -- rola.venv names no venv ($venv): bazel run //:dev_env" >&2
+  exit 0
+fi
+#: its run target, detached: a `bazel` waiting on another command's server would otherwise hold the commit; its
+#: output beside the reports
+reviews="$(git rev-parse --path-format=absolute --git-common-dir)/rola-review"
+mkdir -p "$reviews"
+nohup bazel run --noshow_progress //tools:review_gate -- HEAD >>"$reviews/background.log" 2>&1 &
+exit 0

@@ -2,8 +2,8 @@
 
 CLOSED-WORLD RULE, entmax's shape of it. `csrc/third_party/cutlass/PIN.json` pins a
 VENDORED codegen input with a tag, a commit and a tree digest, and refuses a build
-whose vendored subtree does not match (`setup.py::_gate_vendored`,
-`tools/lint/lint_standards.py::check_vendored_pin`). `entmax` is the same class of input by a
+whose vendored subtree does not match (`tools/build_record.py::vendored_pin`, the graph's record action,
+and `tools/lint/lint_standards.py::check_vendored_pin`). `entmax` is the same class of input by a
 different route -- not vendored, because a pure-python test dependency has nothing to
 vendor, but pip-installed and unpinned in `pyproject.toml` before this module existed.
 

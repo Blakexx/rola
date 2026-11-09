@@ -70,13 +70,14 @@ def _scatter_digits(per_leaf, widths, l):
     return out.index_add_(-1, digit, per_leaf)
 
 
-def carry_backward_reference(read_levels, write_levels, g_write, v, widths, window,
+def carry_backward_reference(read_levels, write_levels, v, widths, window,
                              d_num, d_den, state_in=None, d_state_out=None):
     """The CROSS-WINDOW half of every gradient -- what Scan A and Scan B compute.
 
-    Returns ``(d_read, d_write, d_gw, d_v, d_state_in)`` with ``d_read``/``d_write``
-    tuples of ``[B,T,H,width_l]``, ``d_gw`` ``[B,T,H]``, ``d_v`` ``[B,T,H,d_v]`` and
-    ``d_state_in`` ``[B,H,N,cols]`` in CANONICAL leaf order.
+    Returns ``(d_read, d_write, d_v, d_state_in)`` with ``d_read``/``d_write``
+    tuples of ``[B,T,H,width_l]``, ``d_v`` ``[B,T,H,d_v]`` and ``d_state_in``
+    ``[B,H,N,cols]`` in CANONICAL leaf order. A producer's gain is in the write levels
+    (docs/CONSTITUTION.md#r23), so its gradient is theirs.
     """
     Bn, T, H, d_v = v.shape
     N = math.prod(widths)
@@ -87,7 +88,6 @@ def carry_backward_reference(read_levels, write_levels, g_write, v, widths, wind
 
     d_read = [torch.zeros(Bn, T, H, w, device=dev, dtype=torch.float64) for w in widths]
     d_write = [torch.zeros(Bn, T, H, w, device=dev, dtype=torch.float64) for w in widths]
-    d_gain = torch.zeros(Bn, T, H, device=dev, dtype=torch.float64)
     d_value = torch.zeros(Bn, T, H, d_v, device=dev, dtype=torch.float64)
 
     # ---- Scan A: the ascending replay, and the read side -------------------
@@ -98,7 +98,7 @@ def carry_backward_reference(read_levels, write_levels, g_write, v, widths, wind
         dR = torch.einsum("bthc,bhnc->bthn", dn[:, sl], state)
         for l in range(D):
             d_read[l][:, sl] = _scatter_digits(dR * _loo(read_levels, widths, l, sl), widths, l)
-        Wm = g_write[:, sl].double()[..., None] * leaf_product(write_levels, widths, sl)
+        Wm = leaf_product(write_levels, widths, sl)
         state = state + torch.einsum("bthn,bthc->bhnc", Wm, vt[:, sl])
         del dR, Wm
 
@@ -108,26 +108,23 @@ def carry_backward_reference(read_levels, write_levels, g_write, v, widths, wind
     for t0 in range(((T - 1) // window) * window, -1, -window):
         sl = slice(t0, min(t0 + window, T))
         U = leaf_product(write_levels, widths, sl)
-        gw = g_write[:, sl].double()
         dW = torch.einsum("bhnc,bthc->bthn", adjoint, vt[:, sl])
         for l in range(D):
-            d_write[l][:, sl] = gw[..., None] * _scatter_digits(
-                dW * _loo(write_levels, widths, l, sl), widths, l)
+            d_write[l][:, sl] = _scatter_digits(dW * _loo(write_levels, widths, l, sl), widths, l)
         acc = torch.einsum("bthn,bhnc->bthc", U, adjoint)
-        d_value[:, sl] = gw[..., None] * acc[..., :d_v]
-        d_gain[:, sl] = (acc * vt[:, sl]).sum(-1)
+        d_value[:, sl] = acc[..., :d_v]
         R = leaf_product(read_levels, widths, sl)
         adjoint = adjoint + torch.einsum("bthn,bthc->bhnc", R, dn[:, sl])
         del U, dW, acc, R
 
-    return tuple(d_read), tuple(d_write), d_gain, d_value, adjoint
+    return tuple(d_read), tuple(d_write), d_value, adjoint
 
 
-def intra_backward_reference(read_levels, write_levels, g_write, v, widths, window,
+def intra_backward_reference(read_levels, write_levels, v, widths, window,
                              d_num, d_den):
     """The WITHIN-WINDOW half of every gradient -- what the intra backward computes.
 
-    Returns ``(d_read, d_write, d_gw, d_v)``; the within-window term touches no state.
+    Returns ``(d_read, d_write, d_v)``; the within-window term touches no state.
     """
     Bn, T, H, d_v = v.shape
     D = len(widths)
@@ -135,13 +132,11 @@ def intra_backward_reference(read_levels, write_levels, g_write, v, widths, wind
 
     d_read = [torch.zeros(Bn, T, H, w, device=dev, dtype=torch.float64) for w in widths]
     d_write = [torch.zeros(Bn, T, H, w, device=dev, dtype=torch.float64) for w in widths]
-    d_gain = torch.zeros(Bn, T, H, device=dev, dtype=torch.float64)
     d_value = torch.zeros(Bn, T, H, d_v, device=dev, dtype=torch.float64)
 
     for t0 in range(0, T, window):
         sl = slice(t0, min(t0 + window, T))
         n = sl.stop - sl.start
-        gw = g_write[:, sl].double()
         grams = [torch.einsum("brhe,bche->bhrc", read_levels[l][:, sl].double(),
                               write_levels[l][:, sl].double()) for l in range(D)]
         prod = grams[0].clone()
@@ -152,9 +147,8 @@ def intra_backward_reference(read_levels, write_levels, g_write, v, widths, wind
         gd = (torch.einsum("brhv,bchv->bhrc", d_num[:, sl].double(), v[:, sl].double())
               + d_den[:, sl].double().permute(0, 2, 1)[..., None])
         dA = gd * mask
-        A = prod * gw.permute(0, 2, 1)[:, :, None, :] * mask
+        A = prod * mask
         d_value[:, sl] += torch.einsum("bhrc,brhv->bchv", A, d_num[:, sl].double())
-        d_gain[:, sl] += torch.einsum("bhrc,bhrc->bhc", dA, prod).permute(0, 2, 1)
         for l in range(D):
             #: the leave-one-out over LEVELS, as a product and never as A / G_l:
             #: G_l is exactly zero wherever the two supports are disjoint.
@@ -162,11 +156,11 @@ def intra_backward_reference(read_levels, write_levels, g_write, v, widths, wind
             for l2 in range(D):
                 if l2 != l:
                     loo = loo * grams[l2]
-            dG = dA * gw.permute(0, 2, 1)[:, :, None, :] * loo
+            dG = dA * loo
             d_read[l][:, sl] += torch.einsum("bhrc,bche->brhe", dG,
                                              write_levels[l][:, sl].double())
             d_write[l][:, sl] += torch.einsum("bhrc,brhe->bche", dG,
                                               read_levels[l][:, sl].double())
         del grams, prod, gd, dA, A
 
-    return tuple(d_read), tuple(d_write), d_gain, d_value
+    return tuple(d_read), tuple(d_write), d_value

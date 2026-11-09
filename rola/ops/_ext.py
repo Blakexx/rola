@@ -11,11 +11,10 @@ counts in ``tools/manifests/`` describe a binary that was *measured*; a JIT buil
 produces a different binary every time the environment moves, and no manifest can
 speak for it.
 
-So the extension is built ahead of time by ``setup.py`` (which runs the
-ratification gates as part of the build) and is merely *imported* here. Every
-build-environment knob that used to live in this file — ``CUDA_HOME``,
-``TORCH_CUDA_ARCH_LIST``, ``MAX_JOBS``, the WSL ``libcuda`` search path — now
-lives in ``setup.py``, where a build's environment belongs.
+So the extension is built ahead of time by the build graph (``bazel run //:library``,
+which runs the binary gates on what it links; the wheels package that library) and is
+merely *imported* here. No build-environment knob lives in this file: a build's
+parameters are the graph's settings, where a build's environment belongs.
 
 There is deliberately **no pure-torch fallback**. ``rola.ops.naive`` is an fp64
 oracle, not a fast path: silently routing to it when the wheel is missing would
@@ -135,7 +134,7 @@ Install the binary for your CUDA toolchain at this version:
     pip install "rola[{extra}]=={version}"
 
 It carries the kernels for every ratified architecture and the manifests they were measured against. A checkout builds
-the same package in place (`pip install -e . --no-build-isolation`, docs/build.md), and refuses an architecture that
+the same package in place (`bazel run //:library`, docs/build.md), and refuses an architecture that
 has no measured manifest (docs/bringup.md).
 
 There is no CPU or pure-torch fallback by design: `rola.ops.naive.naive_rola` is a float64 reference for checking the
@@ -160,4 +159,15 @@ def is_available() -> bool:
     return _rola_cuda is not None
 
 
-__all__ = ["extension", "is_available"]
+def device_index(device) -> int:
+    """A CUDA device's index for an entry's device argument: an index as given, else the device's, the current one for
+    ``None`` or an unindexed ``cuda``."""
+    import torch
+
+    if isinstance(device, int):
+        return device
+    index = None if device is None else torch.device(device).index
+    return torch.cuda.current_device() if index is None else index
+
+
+__all__ = ["device_index", "extension", "is_available"]

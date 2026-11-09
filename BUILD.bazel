@@ -1,0 +1,484 @@
+"""THE ROOT PACKAGE: the build's parameters and the extension (docs/build-graph.md#compile).
+
+    bazel build //:library                      # rola_cu13/_C.abi3.so and its build record, the shipped build
+    bazel run //:library                        # the same, copied into this checkout's rola_cu13/
+    bazel run //:library --//:archs=86 --//:carry_arms=3     # an iteration build
+    bazel test //:ratified                      # ratify's verdict on the build (docs/build-graph.md#ratify)
+    bazel run //:ratify -- --write              # re-ratify: the manifests, recorded from the build
+"""
+
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag", "string_list_flag")
+load("@rola_env//:flags.bzl", "CXX11_ABI", "RATIFIED_ARCHS", "TOOLCHAIN", "TORCH", "TORCH_CUDA")
+load("//bazel:defs.bzl", "checkout_test", "compile_database", "dev_run", "ratify_census", "ratify_run", "ratify_test", "rola_extension", "rola_instrument", "rola_wheels", "tool_run", "tool_test", "tree_part", "tree_test")
+load("@rola_tree//:tree.bzl", "TRACKED")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
+load("@tar.bzl", "tar")
+
+exports_files([
+    ".clang-format",
+    ".clang-tidy",
+    "MODULE.bazel",
+    "pyproject.toml",
+    "requirements.lock",
+    "sgconfig.yml",
+    "rola/__init__.py",
+    "measure/__init__.py",
+    "measure/hardware.py",
+    "measure/hw_profile.py",
+])
+
+#: THE BUILD'S PARAMETERS. The defaults are the shipped build: every ratified architecture, every arm, every part; any
+#: other value is an iteration build, which its record says.
+string_list_flag(
+    name = "archs",
+    build_setting_default = RATIFIED_ARCHS,
+    visibility = ["//visibility:public"],
+)
+
+string_list_flag(
+    name = "carry_arms",
+    build_setting_default = [],
+    visibility = ["//visibility:public"],
+)
+
+string_list_flag(
+    name = "decode_arms",
+    build_setting_default = [],
+    visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "carry_parts",
+    build_setting_default = "all",
+    visibility = ["//visibility:public"],
+)
+
+rola_extension(
+    name = "library",
+    cxx11_abi = CXX11_ABI,
+    toolchain = TOOLCHAIN,
+    torch = TORCH,
+    torch_cuda = TORCH_CUDA,
+    shared_libraries = ["@rola_env//:torch_libraries"],
+    #: the unit lints read the units it links; the test tiers import it
+    visibility = [
+        "//csrc/rola:__pkg__",
+        "//tests:__pkg__",
+    ],
+    deps = [
+        "//csrc/rola:carry_arms",
+        "//csrc/rola:registration",
+        "//csrc/rola:runtime",
+        "//csrc/rola:stamp_unit",
+        "//csrc/rola:units",
+    ],
+)
+
+#: THE MACHINE'S SETUP AS RUN TARGETS: each a tools/dev.py command, its arguments after `--` (docs/build-graph.md#use)
+[dev_run(
+    name = name,
+    command = [command],
+) for name, command in [
+    ("init", "init"),
+    ("check", "check"),
+    ("clock", "clock"),
+    ("show", "show"),
+    ("get", "get"),
+    ("worktree", "worktree"),
+]]
+
+#: THE CHECKOUT'S VENV over the graph's environment, which its commit hooks then run from (docs/build-graph.md#use)
+dev_run(
+    name = "dev_env",
+    checkout = True,
+    command = ["dev-env"],
+    env = True,
+    tools = {
+        "@rola_env//:python": "--python",
+        "@uv//:uv": "--uv",
+    },
+)
+
+#: RATIFY ON THE BUILD: its census is the units' own compiles (docs/build-graph.md#ratify). The verdict is its own test,
+#: run at a milestone and before a wheel, never by the gate or the lane: between milestones the manifests are stale by
+#: design (KERNEL_STANDARDS section 16)
+ratify_census(
+    name = "census",
+    harness = "//tools:derivation_harness_source",
+    harness_binary = "//tools:derivation_harness",
+    library = ":library",
+)
+
+ratify_test(
+    name = "ratified",
+    size = "medium",
+    census = ":census",
+    data = [":tree"],
+    tags = ["manual"],
+)
+
+#: THE WHEELS (docs/build.md#wheels): `rola` and its plugin `rola-cu13` from this library, on a clean commit whose
+#: build ratify passes; `bazel run //:wheels` writes dist/
+rola_wheels(
+    name = "wheels",
+    census = ":census",
+    library = ":library",
+)
+
+#: THE PART HARNESS'S DRIVER (KERNEL_STANDARDS section 22, `measure/harness/bench_carry_calib.py`): the calibration
+#: kernels as `rola_cu13/_C_parts.abi3.so` beside the extension; `bazel run //:parts_library --//:archs=86` for one card
+rola_instrument(
+    name = "parts_library",
+    kept = "//measure/harness/carry_parts:kept_signatures.json",
+    module = "_C_parts",
+    shared_libraries = ["@rola_env//:torch_libraries"],
+    deps = [
+        "//csrc/rola:runtime",
+        "//measure/harness/carry_parts",
+    ],
+)
+
+#: THE MEASUREMENTS (docs/measurement.md): rola-devtools' build system running this checkout's declarations, and the
+#: store's own command line, each in the checkout on its own venv
+tool_run(
+    name = "measure",
+    module = "rola_devtools.build",
+)
+
+tool_run(
+    name = "results",
+    module = "rola_results",
+)
+
+#: the public mirror's export (`.github/mirror/declarations.json`), on the environment's interpreter, which carries
+#: rola-devtools at its pin: what CI's mirror job runs
+tool_run(
+    name = "mirror",
+    environment = True,
+    module = "rola_devtools.mirror",
+)
+
+ratify_run(
+    name = "ratify",
+    census = ":census",
+)
+
+#: THE DEVBOX IMAGE, a thin wrapper around the bootstrap: what a host supplies itself before the graph, nothing the graph
+#: or the bootstrap installs -- see docs/setup.md#the-devbox-image. The packages' commands under the names their
+#: alternatives give them, which a layer of files cannot run
+tar(
+    name = "devbox_links",
+    mtree = [
+        "usr/local/bin uid=0 gid=0 mode=0755 time=0 type=dir",
+        "usr/local/bin/vim uid=0 gid=0 mode=0777 time=0 type=link link=/usr/bin/vim.nox",
+        "usr/local/bin/vi uid=0 gid=0 mode=0777 time=0 type=link link=/usr/bin/vim.nox",
+        "usr/local/bin/ctags uid=0 gid=0 mode=0777 time=0 type=link link=/usr/bin/ctags-universal",
+        "usr/local/bin/fd uid=0 gid=0 mode=0777 time=0 type=link link=/usr/bin/fdfind",
+        "usr/local/bin/clang-query uid=0 gid=0 mode=0777 time=0 type=link link=/usr/bin/clang-query-14",
+    ],
+)
+
+#: the packages as one layer for the base's merged /usr: what they ship under /bin, /lib, /lib64 or /sbin goes under
+#: /usr, as dpkg writes it through the base's links, which a layer's directories there would replace
+genrule(
+    name = "devbox_debs",
+    srcs = [
+        "@devbox//:flat",
+        "@devbox_base_linux_amd64",
+    ],
+    outs = ["devbox_debs.tar"],
+    cmd = "$(execpath @rola_env//:python) $(execpath //tools:usrmerge_layer.py) --base $(execpath @devbox_base_linux_amd64) " +
+          "--in $(execpath @devbox//:flat) --out $@",
+    tools = [
+        "//tools:oci_layout.py",
+        "//tools:usrmerge_layer.py",
+        "@rola_env//:python",
+    ],
+)
+
+oci_image(
+    name = "image",
+    base = "@devbox_base",
+    cmd = ["/bin/bash"],
+    env = {
+        #: under WSL the driver's Linux libraries are mounted at /usr/lib/wsl/lib, which the loader must search first
+        "LD_LIBRARY_PATH": "/usr/lib/wsl/lib",
+        #: the bootstrap links `bazel` in ~/.local/bin (`toolchain.bazel`), first on PATH as on a host
+        "PATH": "/root/.local/bin:${PATH}",
+    },
+    tars = [
+        ":devbox_debs",
+        ":devbox_links",
+    ],
+    workdir = "/workspace",
+)
+
+#: the package layer adds packages and never changes the base's: each package the base has is at the base's version
+tool_test(
+    name = "devbox_packages",
+    size = "small",
+    args_ = [
+        "--base",
+        "$(rootpath @devbox_base_linux_amd64)",
+        "--layer",
+        "$(rootpath :devbox_debs)",
+        "$(rootpaths @devbox//:packages)",
+    ],
+    data = [
+        ":devbox_debs",
+        "@devbox//:packages",
+        "@devbox_base_linux_amd64",
+        "//tools:oci_layout.py",
+        "//tools:usrmerge_layer.py",
+    ],
+    tool = "//tools:devbox_packages.py",
+)
+
+#: `bazel run //:image_load` hands the image to Docker, which only runs it
+oci_load(
+    name = "image_load",
+    image = ":image",
+    repo_tags = ["rola-devbox:latest"],
+)
+
+#: `bazel run //:image_push` publishes the image to Docker Hub (`blakeresearch/rola-devbox`, public like the namespace's
+#: other images), where a rented box pulls it by the digest the tree names; tagged by the digest's first 12 digits
+genrule(
+    name = "image_tag",
+    srcs = [":image"],
+    outs = ["image_tag.txt"],
+    cmd = "$(execpath @rola_env//:python) $(execpath //tools:oci_layout.py) --tag $(execpath :image) > $@",
+    tools = [
+        "//tools:oci_layout.py",
+        "@rola_env//:python",
+    ],
+)
+
+oci_push(
+    name = "image_push",
+    image = ":image",
+    remote_tags = ":image_tag",
+    repository = "index.docker.io/blakeresearch/rola-devbox",
+)
+
+#: the image as Docker loads it, which the container commands hand it
+filegroup(
+    name = "image_tarball",
+    srcs = [":image_load"],
+    output_group = "tarball",
+)
+
+#: THE CONTAINER (docs/setup.md#the-devbox-image): the clean room, the host's loop run inside the image on fresh
+#: volumes of its own and recorded under the image's digest; and an editor's dev container on the devbox's volumes
+[dev_run(
+    name = name,
+    command = ["container", action],
+    tools = {
+        ":image": "--layout",
+        ":image_tarball": "--tarball",
+    },
+) for name, action in [
+    ("container_check", "check"),
+    ("container_compose", "compose"),
+]]
+
+#: THE TREE: every tracked file, each package's part (`git ls-files`, @rola_tree), as the checks read it; and its
+#: Python files
+tree_part()
+
+filegroup(
+    name = "tree",
+    srcs = ["//%s:tracked" % package for package in TRACKED],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "tree_python",
+    srcs = ["//%s:tracked_python" % package for package in TRACKED],
+    visibility = ["//visibility:public"],
+)
+
+#: THE EDITOR'S COMPILE DATABASE: `bazel run //:compile_commands` writes compile_commands.json, each unit's clang
+#: command for the first ratified architecture (docs/build-graph.md#checks)
+compile_database(
+    name = "compile_commands",
+    units = [":library"],
+)
+
+#: THE REPO'S CHECKS (docs/build-graph.md#checks): the policies over the whole tree -- the Python's lints, the
+#: standards, the agent files and the mirror, each ratchet against its baseline -- and the checks of the commit, run in
+#: the checkout: what git knows
+
+tree_test(
+    name = "ruff",
+    size = "small",
+    cmd = ["ruff", "check", "--force-exclude", "."],
+    data = [":pyproject.toml", ":tree_python"],
+)
+
+tree_test(
+    name = "ruff_e3",
+    size = "small",
+    cmd = ["tools/lint/run_ruff_e3.sh"],
+    data = [
+        "//tools/lint:tracked",
+        ":pyproject.toml",
+        ":tree_python",
+    ],
+)
+
+tree_test(
+    name = "lint_standards",
+    size = "small",
+    cmd = ["python3", "tools/lint/lint_standards.py"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "readability_spacing",
+    size = "small",
+    cmd = ["python3", "tools/lint/readability_spacing.py"],
+    data = [
+        "//tools/lint:tracked",
+        ":tree_python",
+        "//csrc/rola:tracked",
+    ],
+)
+
+tree_test(
+    name = "portable_agent_files",
+    size = "small",
+    cmd = ["python3", "tools/lint/portable_claude.py"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "mirror_declarations",
+    size = "small",
+    cmd = ["python3", "-m", "rola_devtools.mirror", "--check"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_burst_tier",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "burst_tier"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_constant_parameters",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "constant_parameters"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_coverage",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "coverage"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_drift_guards",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "drift_guards"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_r9_enforcement",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "r9_enforcement"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_vulture",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "vulture"],
+    data = [":tree"],
+    git = True,
+)
+
+tree_test(
+    name = "ratchet_work_codes",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "work_codes"],
+    data = [":tree"],
+    git = True,
+)
+
+checkout_test(
+    name = "ratchet_baselines",
+    size = "small",
+    cmd = ["python3", "tools/lint/ratchet.py", "--grown"],
+)
+
+checkout_test(
+    name = "docrefs",
+    size = "small",
+    cmd = ["python3", "tools/docrefs.py"],
+)
+
+#: the devbox image the graph builds is the one the tree names, and a change to it carries a passing container check
+checkout_test(
+    name = "dev_container",
+    size = "small",
+    cmd = ["python3", "tools/dev.py", "container", "gate"],
+    tools = {":image": "--layout"},
+)
+
+test_suite(
+    name = "lints",
+    tests = [
+        ":ruff",
+        ":ruff_e3",
+        ":lint_standards",
+        ":readability_spacing",
+        ":portable_agent_files",
+        ":mirror_declarations",
+        ":ratchet_burst_tier",
+        ":ratchet_constant_parameters",
+        ":ratchet_coverage",
+        ":ratchet_drift_guards",
+        ":ratchet_r9_enforcement",
+        ":ratchet_vulture",
+        ":ratchet_work_codes",
+        "//csrc/rola:lints",
+    ],
+)
+
+test_suite(
+    name = "commit_checks",
+    tests = [
+        ":dev_container",
+        ":docrefs",
+        ":ratchet_baselines",
+    ],
+)
+
+#: THE GATE: every check the graph holds (docs/build-graph.md#checks)
+test_suite(
+    name = "gate",
+    tests = [
+        ":commit_checks",
+        ":lints",
+        "//tools/lint:lint_fixtures",
+    ],
+)
+
+#: THE TEST LANE: every tier (docs/testing.md#running-it)
+test_suite(
+    name = "lane",
+    tests = ["//tests:lane"],
+)

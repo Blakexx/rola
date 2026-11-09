@@ -29,6 +29,11 @@ tree does not exercise yet -- says so on its own line:
 definition's docstring naming the parameter, is the declaration. It carries a REASON,
 which is the whole point: "reserved" without one is indistinguishable from dead.
 
+WHO COUNTS AS A CALLER. Every call under `rola/`, `tools/` and `measure/`, and the tests' calls to the PUBLIC
+surface (the names `rola` and `rola.expert` export): a public option a test exercises is a feature under test, while
+an internal knob only a test sets is a test hook in production code, which says so with `reserved:`. A constructor's
+parameters are keyed by its class, since a call names the class.
+
 A new finding fails the commit; the findings no human has ruled on yet are the ratchet's baseline. Two blind
 spots make every finding a question rather than a proof, and both are one-directional --
 they over-report, never under-report:
@@ -39,8 +44,8 @@ they over-report, never under-report:
     is what a knob is passed as; a caller that supplies the same parameter positionally
     looks, to this scan, like a caller that did not supply it.
 
-    python tools/lint/constant_parameters.py
-    python tools/lint/constant_parameters.py --test-fixtures
+    bazel run //tools/lint:constant_parameters
+    bazel test //tools/lint:constant_parameters_fixtures
 """
 from __future__ import annotations
 
@@ -52,7 +57,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-ROOTS = ("rola", "tools", "measure")
+ROOTS = ("rola", "tools", "measure", "bazel")
+#: THE TESTS ARE CALLERS OF THE PUBLIC SURFACE (Blake, 2026-09-29): a public option a test exercises is a product
+#: feature under test, not a dead knob. An internal function still needs a caller in the product itself -- a knob
+#: only a test sets there is a test hook in production code.
+CALLER_ROOTS = ("tests",)
+#: the modules whose `__all__` is the public surface
+PUBLIC_MODULES = ("rola/__init__.py", "rola/expert.py")
 
 #: The declaration that a knob is deliberately unexercised, with its reason beside it.
 MARKER = "reserved:"
@@ -96,8 +107,19 @@ def _docstring_reserves(func: ast.AST, name: str) -> bool:
     return MARKER in doc and name in doc
 
 
-def collect(files: list[Path]):
-    """`(declarations, call values)` over the whole set, keyed by `(function, parameter)`.
+def public_names() -> set[str]:
+    """The names the public modules export, read off their `__all__` by AST."""
+    names: set[str] = set()
+    for rel in PUBLIC_MODULES:
+        for node in ast.walk(ast.parse((ROOT / rel).read_text())):
+            if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "__all__" for t in node.targets):
+                names |= set(ast.literal_eval(node.value))
+    return names
+
+
+def collect(files: list[Path], callers: list[Path] = (), public: set[str] = frozenset()):
+    """`(declarations, call values)` over the whole set, keyed by `(function, parameter)`; `callers` are read for
+    their calls to the `public` names only.
 
     ONE PASS OVER EVERY FILE, because the question is tree-wide by nature: a parameter is
     dead only if NOWHERE moves it, and a per-file scan can only ever say "not here".
@@ -105,17 +127,30 @@ def collect(files: list[Path]):
     declarations: dict[tuple[str, str], tuple[Path, int, bool]] = {}
     values: dict[tuple[str, str], set] = defaultdict(set)
     unknown: set[tuple[str, str]] = set()
-
+    #: function name -> its positional parameter names, so a POSITIONAL argument at a call
+    #: moves the parameter it lands on (a `self`/`cls` first parameter is skipped for an
+    #: attribute call, which is how a method is called)
+    positional: dict[str, list[str]] = {}
+    trees = []
     for path in files:
         source = path.read_text()
-        lines = source.splitlines()
         try:
-            tree = ast.parse(source)
+            trees.append((path, source.splitlines(), ast.parse(source)))
         except SyntaxError:
             continue
+
+    for path, lines, tree in trees:
+        #: A CONSTRUCTOR'S PARAMETERS ARE THE CLASS'S: a call names the class, never `__init__`, so an
+        #: `__init__` is keyed by its class's name -- keyed `__init__` it matched no call, and every class's
+        #: constructor shared one key.
+        owner = {id(item): cls.name for cls in ast.walk(tree) if isinstance(cls, ast.ClassDef)
+                 for item in cls.body if isinstance(item, ast.FunctionDef) and item.name == "__init__"}
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 args = node.args
+                name = owner.get(id(node), node.name)
+                params = [a.arg for a in args.posonlyargs + args.args]
+                positional[name] = params[1:] if id(node) in owner else params
                 defaulted = list(zip(args.args[len(args.args) - len(args.defaults):],
                                      args.defaults, strict=False))
                 defaulted += list(zip(args.kwonlyargs, args.kw_defaults, strict=False))
@@ -125,30 +160,53 @@ def collect(files: list[Path]):
                     ok, value = _literal(default)
                     if not ok:
                         continue
-                    key = (node.name, arg.arg)
+                    key = (name, arg.arg)
                     reserved = (_reserved(lines, arg) or _reserved(lines, node)
                                 or _docstring_reserves(node, arg.arg))
                     declarations[key] = (path, node.lineno, reserved)
                     values[key].add(("default", value))
-            elif isinstance(node, ast.Call):
-                name = getattr(node.func, "attr", getattr(node.func, "id", None))
-                if name is None:
+
+    def record(key, expr):
+        ok, value = _literal(expr)
+        if ok:
+            values[key].add(("call", value))
+        else:
+            unknown.add(key)
+
+    caller_trees = []
+    for path in callers:
+        try:
+            caller_trees.append(ast.parse(path.read_text()))
+        except SyntaxError:
+            continue
+    for tree, only_public in [(tree, False) for _path, _lines, tree in trees] + [(t, True) for t in caller_trees]:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "attr", getattr(node.func, "id", None))
+            if name is None or (only_public and name not in public):
+                continue
+            for keyword in node.keywords:
+                if keyword.arg is None:
                     continue
-                for keyword in node.keywords:
-                    if keyword.arg is None:
-                        continue
-                    key = (name, keyword.arg)
-                    ok, value = _literal(keyword.value)
-                    if ok:
-                        values[key].add(("call", value))
-                    else:
-                        unknown.add(key)
+                record((name, keyword.arg), keyword.value)
+            params = positional.get(name)
+            if params is None:
+                continue
+            if isinstance(node.func, ast.Attribute) and params and params[0] in ("self", "cls"):
+                params = params[1:]
+            for index, expr in enumerate(node.args):
+                if isinstance(expr, ast.Starred):
+                    break
+                if index < len(params):
+                    record((name, params[index]), expr)
     return declarations, values, unknown
 
 
 def findings(files: list[Path] | None = None) -> list[str]:
+    callers = python_files(CALLER_ROOTS) if files is None else []
     files = python_files() if files is None else files
-    declarations, values, unknown = collect(files)
+    declarations, values, unknown = collect(files, callers, public_names())
     out = []
     for key, (path, lineno, reserved) in sorted(declarations.items(),
                                                 key=lambda item: str(item[1][0])):

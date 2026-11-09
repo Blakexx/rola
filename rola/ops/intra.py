@@ -1,197 +1,97 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
+"""THE INTRA, as a caller reaches it: every pair inside one window, over the bundle, reduced into the output planes.
 
-"""The intra kernel's call surface — a side kernel, outside the shipped dispatch.
+One launch over the bundle's rows and values as stored (docs/internals/intra/intra_kernel.md): each level's Gram as f16
+MMAs -- a sparse level's u8 digits widened in registers, a dense level's f16 rows as they are -- the epilogue by the
+facts pass's writer factors ``fm``, the value product in f16 weights against the f16 values, and the rows REDUCED into
+the caller's ``num`` ``[BH, L, 64]`` and ``den`` ``[BH, L]`` fp32 -- the planes the carry reduces into beside it, zeroed
+by their owner. The reader's per-token factor is not applied: it cancels in ``num / den`` (the output contract, carry
+and intra alike). The slab gate reads the facts pass's tile unions (`rola.ops.facts`), and a side's dense levels -- the
+same statics that pass took -- are never gated. The MMAs accumulate by the device's rule, the carry readout's
+(:func:`rola.ops.carry.readout_accumulate`): fp32 where it runs at the fp16 rate, fp16 on GeForce.
 
-The kernel REDUCES into ``o`` and ``den`` (``fan_in_add`` semantics) rather than
-returning them, so the caller owns their allocation and their initial contents;
-:func:`intra_forward` allocates zeros when none are handed in, which is what a
-standalone conformance run wants and what a concurrent run with the carry kernel
-must never do.
+The per-level support modes are the carry's geometry input (its carve order reads them), kept here until the carry's
+port (docs/internals/intra/intra_api.md).
 """
-
 from __future__ import annotations
 
 import torch
 
-from rola.ops._ext import extension
-from rola.ops.carry import pack_side
-from rola.ops.padding import pad_routes, pad_v, slice_y
+from rola.engine.facts.liveness import LivenessLayout, SideStatics
+from rola.ops._ext import device_index, extension
 
-#: THE PER-LEVEL MODE, two bits per level: bit 0 the READ side is value-sparse there,
-#: bit 1 the WRITE side.  ``BOTH_SPARSE`` says BOTH SIDES ARE SPARSE AT THAT LEVEL AND
-#: NOTHING MORE: each side votes its own bitlists from
-#: its own factors, so the two supports never have to coincide.  Drawing ONE support for
-#: both is a modeling choice with a locality bonus, never a kernel requirement.  The
-#: class is what the carry's order-by-mode rule puts OUTERMOST, because it is where the
-#: two sides' carves agree and the exchange therefore does not move a leaf.
-DENSE_BOTH = 0
-READ_SPARSE = 1
-WRITE_SPARSE = 2
-BOTH_SPARSE = 3
-
-#: the built windows -- the carry family's `W` arms, mirrored.  ``WINDOW`` names the
-#: flagship because the architecture doc's two
-#: constraints (the C* basin and the intra's ``W/4`` flop/byte intensity) settle
-#: it there; ``WINDOW_SMALL`` is the conformance cell's.
-WINDOW = 384
-WINDOW_WIDE = 512
-WINDOW_SMALL = 64
-#: the built LEVEL WIDTHS -- an arm is a ``(D, B, W)`` triple, the carry family's
-#: topology arms mirrored.  A level narrower than the MMA's contraction step is
-#: contracted padded, which costs that level's Gram throughput and nothing else.
-LEVEL_WIDTH = 256
-LEVEL_WIDTH_DEEP3 = 16
-LEVEL_WIDTH_DEEP4 = 16
+#: The value width the kernel reads.
 VALUE_WIDTH = 64
+#: THE ROWS' LEVELS: the built arms serve depth <= 2, each level a whole number of 16-digit granules up to 256.
+MAX_LEVELS = 2
+WIDTH_GRANULE = 16
+MAX_LEVEL_WIDTH = 256
+#: A LEVEL'S FORM, the kernel's: bit 0 its read rows f16, bit 1 its write rows f16; the widest footprint is f16 on both.
+FORM_F16_F16 = 3
+#: THE PHASE LEDGER'S SHAPE: ``[warps][phases]``, the kernel's own `IntraPhase` order, booked over every CTA; a card
+#: whose block has fewer warps books its own rows and leaves the rest.
+LEDGER_PHASES = ("reader", "gate", "wait", "gram", "epilogue", "value", "deposit")
+LEDGER_WARPS = 8
+_ACCUMULATE = {"fp32": 0, "fp16": 1}
+
+__all__ = ["FORM_F16_F16", "LEDGER_PHASES", "LEDGER_WARPS", "MAX_LEVELS", "MAX_LEVEL_WIDTH", "VALUE_WIDTH",
+           "WIDTH_GRANULE", "admits", "block_rows", "build_stamp", "footprint", "intra_forward", "ledger_bind", "reads"]
 
 
-def pack_modes(modes: tuple[int, ...]) -> int:
-    """Two bits per level, level 0 in the low pair."""
-    packed = 0
-    for level, mode in enumerate(modes):
-        if mode not in (DENSE_BOTH, READ_SPARSE, WRITE_SPARSE, BOTH_SPARSE):
-            raise ValueError(f"level {level}: unknown support mode {mode!r}")
-        packed |= mode << (2 * level)
-    return packed
+def _dense_bits(statics: SideStatics) -> int:
+    """One side's dense levels as the bitmask the gate answers all-ones on."""
+    return sum(1 << level for level, dense in enumerate(statics.dense_levels) if dense)
 
 
-#: the producer's support word blocks 32 tokens to an ``int32`` -- ``factor.cu:236-239``,
-#: and the routing ABI's ``ROUTE_TILE_SIZE``.  It is the certificate's token grain.
-WORD_TOKENS = 32
+def intra_forward(routes, values, facts, layout: LivenessLayout, read_statics: SideStatics,
+                  write_statics: SideStatics, num: torch.Tensor, den: torch.Tensor, *,
+                  accumulate: str | None = None) -> None:
+    """REDUCE the within-window pairs of the bundle (``routes``, ``values``) into ``num`` and ``den``.
 
-
-def support_words(plane) -> torch.Tensor:
-    """A packed ``[BH, L, D*B]`` plane's frozen support word, ``[BH, L/32, D*B]`` int32.
-
-    THE SAME QUESTION THE PRODUCER ALREADY ANSWERED, for a caller that DREW its
-    planes instead of solving them. The test is exact bf16-storage-boundary
-    nonzero -- ``rola/routing/entmax/production.py``'s ``bf16_nonzero``, and the
-    kernel's own magnitude test -- so the word this returns is the word an entmax
-    solve of the same amplitudes would have emitted, bit for bit.
-
-    A producer-emitted word may be CONSERVATIVE (a set bit is allowed to accompany
-    a stored zero -- the ``RouteDescriptor`` contract); that costs a gated MMA
-    group whose product is exactly zero and can move no number.
+    ``facts`` is the facts pass's output over this bundle in ``layout`` (its tile unions and writer factors), the
+    statics the ones it was made with. Each level's rows are read at their own width (:func:`reads`), at most
+    ``layout``'s, in their stored dtype; a partial last window reduces its pairs up to the call's end. ``accumulate``
+    (``"fp32"`` or ``"fp16"``) is reserved: the gates' choice of form, the device's rule by default.
     """
-    bh, length, width = plane.shape
-    if length % WORD_TOKENS:
-        raise ValueError(
-            f"the support word blocks {WORD_TOKENS} tokens; L = {length} is not a whole "
-            f"number of them")
-    live = plane.to(torch.bfloat16) != 0
-    words = torch.zeros((bh, length // WORD_TOKENS, width), dtype=torch.int32,
-                        device=plane.device)
-    for bit in range(WORD_TOKENS):
-        words |= live[:, bit::WORD_TOKENS, :].to(torch.int32) << bit
-    return words
+    form = _ACCUMULATE[accumulate] if accumulate else -1
+    extension().rola_intra_forward(
+        list(routes.amp_read), list(routes.amp_write), values.v, facts.fm, facts.unions, num, den, list(layout.B),
+        _dense_bits(read_statics), _dense_bits(write_statics), form)
 
 
-def pack_support(levels) -> torch.Tensor:
-    """:func:`support_words` of ``carry.pack_side(levels)``, without the plane copy.
-
-    Same digit order as the plane it certifies, level by level -- the word's column
-    IS the plane's digit, which is what lets the kernel index one from the other.
-    """
-    batch, tokens, heads, _ = levels[0].shape
-    parts = [support_words(level.permute(0, 2, 1, 3).reshape(batch * heads, tokens,
-                                                             level.shape[-1]))
-             for level in levels]
-    return torch.cat(parts, dim=-1)
+def footprint(widths) -> int:
+    """The kernel's shared-memory bytes at these level widths on the current device's card in the widest form, f16 on
+    both sides -- for a gate reading the law (the seam refuses widths it does not read)."""
+    forms = [FORM_F16_F16] * len(widths)
+    return extension().intra_footprint([int(width) for width in widths], forms, torch.cuda.current_device())
 
 
-def intra_forward(pread, pwrite, gwrite, v, sread, swrite, modes, *, o=None, den=None,
-                  window=WINDOW):
-    """RED the within-window causal intra term into ``(o, den)`` and return them.
-
-    ``pread``/``pwrite`` are ``[BH, L, D*B]`` bf16 operand planes, ``gwrite`` is
-    ``[BH, L]`` bf16, ``v`` is token-major ``[B, T, H, 64]`` bf16. ``sread``/``swrite``
-    are the frozen support words of the plane of the same name (``[BH, L/32, D*B]``
-    int32, :func:`support_words`) -- the zero certificate READS the support rather
-    than re-deriving it from the amplitudes. ``modes`` is one per-level support mode,
-    and ``window`` names the built arm -- the SAME window the carry call is given,
-    since the two kernels share one grid.
-    """
-    bh, length, width = pread.shape
-    levels = len(modes)
-    if levels == 0 or width % levels:
-        raise ValueError(f"the plane is {width} wide and cannot hold {levels} uniform levels")
-    level_width = width // levels
-    if o is None:
-        o = torch.zeros((bh, length, VALUE_WIDTH), dtype=torch.float32, device=pread.device)
-    if den is None:
-        den = torch.zeros((bh, length), dtype=torch.float32, device=pread.device)
-    extension().intra_forward(pread, pwrite, gwrite, v, sread, swrite, o, den, levels,
-                              level_width, pack_modes(modes), int(window))
-    return o, den
+def block_rows(device) -> int:
+    """The readers a CTA holds resident on ``device``'s card."""
+    return extension().intra_block_rows(device_index(device))
 
 
-def _shipped_level_width(D: int, window: int) -> int:
-    """The uniform, kernel-facing per-level width this binary ships at ``(D, window)``.
-
-    Read off :func:`arms` (the device's own declared matrix), never a literal
-    ``{LEVEL_WIDTH, LEVEL_WIDTH_DEEP3, LEVEL_WIDTH_DEEP4}`` lookup: those constants
-    name today's declared arms, and the arm table -- not a mirror of it -- is what a
-    call is padded against.
-    """
-    widths_here = sorted({lw for levels, lw, w, _smem in arms() if levels == D and w == window})
-    if not widths_here:
-        raise ValueError(
-            f"no shipped intra arm at D={D}, window={window} -- there is no uniform "
-            "level width this call could be padded to")
-    return widths_here[0]
+def reads(widths) -> bool:
+    """Whether the kernel reads levels of these widths: one or two, each a whole number of `WIDTH_GRANULE`-digit
+    granules up to `MAX_LEVEL_WIDTH` (no device asked)."""
+    widths = tuple(int(width) for width in widths)
+    return 1 <= len(widths) <= MAX_LEVELS and all(
+        width % WIDTH_GRANULE == 0 and WIDTH_GRANULE <= width <= MAX_LEVEL_WIDTH for width in widths)
 
 
-def intra_forward_padded(read_levels, write_levels, gwrite, v, modes, *, window=WINDOW,
-                         o=None, den=None):
-    """:func:`intra_forward`, taking the caller's LOGICAL per-level tensors and ``v``.
-
-    HOST-SIDE PADDING ("padding at the producer" / "d_v padding is also
-    HOST-SIDE"): every level here is padded to the ONE uniform width this arm ships
-    (:func:`_shipped_level_width` -- intra's own kernel takes a single ``level_width``
-    for every level, a stricter uniformity than carry's per-level one), ``v`` to
-    ``VALUE_WIDTH``, and the returned ``o`` is sliced back to the caller's ``d_v``
-    before it leaves. The kernel never sees a width other than its own.
-    """
-    D = len(read_levels)
-    level_width = _shipped_level_width(D, window)
-    read_levels = pad_routes(read_levels, (level_width,) * D)
-    write_levels = pad_routes(write_levels, (level_width,) * D)
-    d_v = v.shape[-1]
-    v = pad_v(v, VALUE_WIDTH)
-    pread = pack_side(read_levels)
-    pwrite = pack_side(write_levels)
-    sread = pack_support(read_levels)
-    swrite = pack_support(write_levels)
-    o, den = intra_forward(pread, pwrite, gwrite, v, sread, swrite, modes,
-                           o=o, den=den, window=window)
-    return slice_y(o, d_v), den
-
-
-def arms():
-    """The built ``(levels, level_width, window, smem_bytes)`` rows."""
-    return extension().intra_arms()
+def admits(widths, d_v: int) -> bool:
+    """Whether the intra runs a call at these level widths and value width: widths it :func:`reads` and ``d_v`` the
+    `VALUE_WIDTH`. Every width it reads fits every card's shared memory in every form: each build's walk is sized for the
+    widest rows (`Walk<B>`, asserted at compile time; docs/internals/intra/intra.md#block)."""
+    return d_v == VALUE_WIDTH and reads(widths)
 
 
 def build_stamp() -> int:
-    """A fact only the loaded binary can produce — the extension-trap check."""
+    """A fact only the loaded binary can produce -- the extension-trap check."""
     return extension().intra_build_stamp()
 
 
-__all__ = [
-    "BOTH_SPARSE",
-    "DENSE_BOTH",
-    "READ_SPARSE",
-    "WINDOW",
-    "WINDOW_SMALL",
-    "WINDOW_WIDE",
-    "WRITE_SPARSE",
-    "arms",
-    "build_stamp",
-    "intra_forward",
-    "intra_forward_padded",
-    "pack_modes",
-    "pack_support",
-    "support_words",
-]
-
+def ledger_bind(ledger: torch.Tensor | None) -> None:  #: reserved: the measurement instrument (docs/internals/intra/intra_kernel.md#phase-ledger)
+    """Bind the phase ledger the next launches book into, ``[8, 7]`` int64 cycles, or ``None``."""
+    extension().rola_intra_ledger_bind(ledger)

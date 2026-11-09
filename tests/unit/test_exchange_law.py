@@ -7,7 +7,7 @@ that the COMPOSITE IS THE IDENTITY ON LATTICE LEAVES -- and, separately, that ne
 of the traffic conflicts in the banks.
 
 THE MODEL CONSUMES THE SHIPPED DERIVATION and composes it itself.  It reads the addressing
-block through `rola.ops.carry.geometry` (`csrc/rola/src/common/geom.cuh`, the ONE
+block through `rola.ops.geometry.geometry` (`csrc/rola/src/common/geom.cuh`, the ONE
 derivation) and builds the row map, the four accesses and the whole hybrid transit from
 it; a wrong derivation shows up as a broken permutation here rather than as noise on a
 device.  Pure arithmetic: no CUDA kernel is launched.
@@ -24,7 +24,7 @@ stream count; a MEMBER is the element of the generated shape set a side's order 
 
 import pytest
 
-from rola.ops import carry as carry_ops
+from rola.ops import geometry as carry_ops
 
 K_PAD_E = 8
 K_MMA_M, K_MMA_N, K_MMA_K = 16, 8, 16

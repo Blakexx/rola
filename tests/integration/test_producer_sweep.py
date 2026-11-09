@@ -19,8 +19,9 @@ pytestmark = [pytest.mark.cuda,
 
 
 def _write_density(routes) -> float:
-    live = sum(int((level != 0).sum()) for level in routes.write)
-    return live / sum(level.numel() for level in routes.write)
+    #: only the SPARSE write levels: a dense level is never zero (docs/api.md section 2.1)
+    rows = [routes.rows(level, "write") for level in range(routes.topology.D) if routes.sparse[1][level]]
+    return sum(int((r != 0).sum()) for r in rows) / sum(r.numel() for r in rows)
 
 
 def test_the_logit_gain_sweeps_the_realized_density():

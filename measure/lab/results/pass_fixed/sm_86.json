@@ -1,0 +1,447 @@
+{
+ "experiment": "pass_fixed",
+ "question": "what does each piece of the fold's fixed work cost alone, and what do its levers buy -- the fill (four factor planes, or the factor products precomputed into one 8-byte plane, or those and the dense digits precomputed as f16; 64-bit plane addresses or 32-bit offsets from a window base), the restage (the dense digits to f16 and the factor products, or the digits alone, or nothing), and the window's lists (each warp's entries by a serial loop over every set bit, as built, or word-parallel by ballot and popc)?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "8e1b33d2df698b21be98d223dd6df1b99e2bd25a",
+  "dirty": false
+ },
+ "reps": 5,
+ "date": "2026-10-04T23:22:57+00:00",
+ "utilization_before": 1,
+ "results": [
+  {
+   "lab": "result",
+   "name": "fill as built (4 factor planes, u8 dense) / 33 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    2407.554688,
+    2358.320469,
+    2365.734469,
+    2324.178063,
+    2356.858375
+   ],
+   "median": 2358.320469,
+   "min": 2324.178063,
+   "max": 2407.554688,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill, factor products precomputed / 33 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    2209.943281,
+    2248.745875,
+    2207.946,
+    2187.594938,
+    2182.950969
+   ],
+   "median": 2207.946,
+   "min": 2182.950969,
+   "max": 2248.745875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill, products and f16 dense precomputed / 33 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    2447.128156,
+    2502.103844,
+    2444.2525,
+    2647.610875,
+    2445.741406
+   ],
+   "median": 2447.128156,
+   "min": 2444.2525,
+   "max": 2647.610875,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fill, precomputed, 32-bit offsets / 33 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    2494.634281,
+    2471.805063,
+    2482.826375,
+    2432.184062,
+    2522.054969
+   ],
+   "median": 2482.826375,
+   "min": 2432.184062,
+   "max": 2522.054969,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill as built (4 factor planes, u8 dense) / 2 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    1372.434062,
+    1365.150594,
+    1372.511812,
+    1363.011781,
+    1368.657531
+   ],
+   "median": 1368.657531,
+   "min": 1363.011781,
+   "max": 1372.511812,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill, factor products precomputed / 2 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    1294.811625,
+    1293.316875,
+    1293.986625,
+    1289.67225,
+    1292.263219
+   ],
+   "median": 1293.316875,
+   "min": 1289.67225,
+   "max": 1294.811625,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill, products and f16 dense precomputed / 2 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    1308.269969,
+    1281.459281,
+    1291.439375,
+    1289.606031,
+    1299.522656
+   ],
+   "median": 1291.439375,
+   "min": 1281.459281,
+   "max": 1308.269969,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fill, precomputed, 32-bit offsets / 2 MB source",
+   "unit": "cycles a pass",
+   "samples": [
+    1298.6685,
+    1294.682188,
+    1296.995469,
+    1295.566187,
+    1294.825125
+   ],
+   "median": 1295.566187,
+   "min": 1294.682188,
+   "max": 1298.6685,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "restage as built (digits to f16, factor products)",
+   "unit": "cycles a pass (with two barriers)",
+   "samples": [
+    293.7805,
+    293.788187,
+    293.787875,
+    293.786313,
+    293.780625
+   ],
+   "median": 293.786313,
+   "min": 293.7805,
+   "max": 293.788187,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "restage, digits alone (products precomputed)",
+   "unit": "cycles a pass (with two barriers)",
+   "samples": [
+    223.762,
+    223.763563,
+    223.760812,
+    223.762,
+    223.758125
+   ],
+   "median": 223.762,
+   "min": 223.758125,
+   "max": 223.763563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "entries, a serial loop over set bits / 1 in 4",
+   "unit": "cycles a window",
+   "samples": [
+    2104.228187,
+    2104.213563,
+    2104.190062,
+    2104.214875,
+    2104.201625
+   ],
+   "median": 2104.213563,
+   "min": 2104.190062,
+   "max": 2104.228187,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "entries, word-parallel by popc / 1 in 4",
+   "unit": "cycles a window",
+   "samples": [
+    2654.128156,
+    2654.103969,
+    2654.102969,
+    2654.099156,
+    2654.079813
+   ],
+   "median": 2654.102969,
+   "min": 2654.079813,
+   "max": 2654.128156,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "entries, a serial loop over set bits / 1 in 16",
+   "unit": "cycles a window",
+   "samples": [
+    1283.576656,
+    1283.553094,
+    1283.589156,
+    1283.5335,
+    1283.506344
+   ],
+   "median": 1283.553094,
+   "min": 1283.506344,
+   "max": 1283.589156,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "entries, word-parallel by popc / 1 in 16",
+   "unit": "cycles a window",
+   "samples": [
+    2623.434813,
+    2623.457719,
+    2623.456062,
+    2623.418187,
+    2623.449562
+   ],
+   "median": 2623.449562,
+   "min": 2623.418187,
+   "max": 2623.457719,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void pass_fixed::lists<(int)1>(int, const unsigned int *, long long *, int *)": {
+   "regs": 27,
+   "ops": {
+    "LOP3.LUT": 13,
+    "POPC": 12,
+    "NOP": 12,
+    "IMAD.MOV.U32": 11,
+    "IMAD.IADD": 10,
+    "BRA": 8,
+    "IMAD": 8,
+    "LDS": 8,
+    "LEA": 7,
+    "STS.U16": 5,
+    "LDS.U16": 5,
+    "IADD3": 5
+   }
+  },
+  "void pass_fixed::lists<(int)0>(int, const unsigned int *, long long *, int *)": {
+   "regs": 25,
+   "ops": {
+    "NOP": 13,
+    "IMAD.MOV.U32": 10,
+    "IMAD": 7,
+    "BRA": 6,
+    "IMAD.IADD": 6,
+    "IMAD.SHL.U32": 5,
+    "SHFL.UP": 5,
+    "SEL": 5,
+    "LOP3.LUT": 4,
+    "ISETP.GE.U32.AND": 4,
+    "IADD3": 4,
+    "S2R": 3
+   }
+  },
+  "void pass_fixed::restage<(int)1>(int, long long *, int *)": {
+   "regs": 18,
+   "ops": {
+    "STS.U8": 30,
+    "NOP": 14,
+    "IMAD.MOV.U32": 11,
+    "BRA": 11,
+    "IADD3": 11,
+    "LOP3.LUT": 11,
+    "IMAD": 8,
+    "PRMT": 6,
+    "BSSY": 5,
+    "BSYNC": 5,
+    "IMAD.SHL.U32": 5,
+    "HFMA2": 4
+   }
+  },
+  "void pass_fixed::restage<(int)0>(int, long long *, int *)": {
+   "regs": 23,
+   "ops": {
+    "STS.U8": 30,
+    "NOP": 15,
+    "LOP3.LUT": 13,
+    "BRA": 11,
+    "IADD3": 11,
+    "IMAD.MOV.U32": 10,
+    "IMAD": 9,
+    "PRMT": 6,
+    "BSSY": 5,
+    "BSYNC": 5,
+    "IMAD.SHL.U32": 5,
+    "HFMA2": 4
+   }
+  },
+  "void pass_fixed::fill<(int)3, (int)1>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 36,
+   "ops": {
+    "NOP": 12,
+    "LOP3.LUT": 11,
+    "IADD3": 10,
+    "IMAD": 9,
+    "BRA": 6,
+    "IMAD.SHL.U32": 6,
+    "IMAD.MOV.U32": 5,
+    "IMAD.WIDE": 4,
+    "IADD3.X": 4,
+    "LDS": 3,
+    "LDGSTS.E.BYPASS.128": 3,
+    "S2R": 2
+   }
+  },
+  "void pass_fixed::fill<(int)2, (int)1>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 30,
+   "ops": {
+    "NOP": 15,
+    "IMAD": 10,
+    "LOP3.LUT": 9,
+    "IADD3": 9,
+    "IMAD.MOV.U32": 6,
+    "BRA": 6,
+    "S2R": 3,
+    "IMAD.SHL.U32": 3,
+    "SHF.R.S32.HI": 3,
+    "SHF.R.U32.HI": 3,
+    "LEA": 3,
+    "IADD3.X": 3
+   }
+  },
+  "void pass_fixed::fill<(int)1, (int)1>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 28,
+   "ops": {
+    "NOP": 11,
+    "LOP3.LUT": 9,
+    "IMAD": 8,
+    "IADD3": 7,
+    "BRA": 6,
+    "IMAD.MOV.U32": 5,
+    "IMAD.SHL.U32": 4,
+    "LEA": 3,
+    "LDS": 3,
+    "LDGSTS.E.BYPASS.128": 3,
+    "S2R": 2,
+    "CS2R": 2
+   }
+  },
+  "void pass_fixed::fill<(int)0, (int)1>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 28,
+   "ops": {
+    "NOP": 15,
+    "LOP3.LUT": 12,
+    "IMAD": 10,
+    "IADD3": 9,
+    "BRA": 7,
+    "IMAD.SHL.U32": 6,
+    "IMAD.MOV.U32": 5,
+    "S2R": 4,
+    "BSSY": 3,
+    "SHF.R.U32.HI": 3,
+    "IMAD.IADD": 3,
+    "LDS": 3
+   }
+  },
+  "void pass_fixed::fill<(int)3, (int)0>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 36,
+   "ops": {
+    "NOP": 12,
+    "LOP3.LUT": 11,
+    "IADD3": 10,
+    "IMAD": 9,
+    "BRA": 6,
+    "IMAD.SHL.U32": 6,
+    "IMAD.MOV.U32": 5,
+    "IMAD.WIDE": 4,
+    "IADD3.X": 4,
+    "LDS": 3,
+    "LDGSTS.E.BYPASS.128": 3,
+    "S2R": 2
+   }
+  },
+  "void pass_fixed::fill<(int)2, (int)0>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 30,
+   "ops": {
+    "NOP": 15,
+    "IMAD": 10,
+    "LOP3.LUT": 9,
+    "IADD3": 9,
+    "IMAD.MOV.U32": 6,
+    "BRA": 6,
+    "S2R": 3,
+    "IMAD.SHL.U32": 3,
+    "SHF.R.S32.HI": 3,
+    "SHF.R.U32.HI": 3,
+    "LEA": 3,
+    "IADD3.X": 3
+   }
+  },
+  "void pass_fixed::fill<(int)1, (int)0>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 28,
+   "ops": {
+    "NOP": 11,
+    "LOP3.LUT": 9,
+    "IMAD": 8,
+    "IADD3": 7,
+    "BRA": 6,
+    "IMAD.MOV.U32": 5,
+    "IMAD.SHL.U32": 4,
+    "LEA": 3,
+    "LDS": 3,
+    "LDGSTS.E.BYPASS.128": 3,
+    "S2R": 2,
+    "CS2R": 2
+   }
+  },
+  "void pass_fixed::fill<(int)0, (int)0>(int, pass_fixed::Source, long long *, int *)": {
+   "regs": 28,
+   "ops": {
+    "NOP": 15,
+    "LOP3.LUT": 12,
+    "IMAD": 10,
+    "IADD3": 9,
+    "BRA": 7,
+    "IMAD.SHL.U32": 6,
+    "IMAD.MOV.U32": 5,
+    "S2R": 4,
+    "BSSY": 3,
+    "SHF.R.U32.HI": 3,
+    "IMAD.IADD": 3,
+    "LDS": 3
+   }
+  }
+ }
+}

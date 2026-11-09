@@ -20,8 +20,8 @@ one state, one readout -- and the state's layout is then literally the
 Implements the recurrence exactly. There is no Q/K, no feature map, and
 no privileged routing level here -- every level is an ordinary mixed-radix
 routing level, and the oracle consumes already-materialized per-level, per-side
-routing allocations (``p_read``, ``p_write``) plus the positive write-side gain
-(``g_write``). Computing those allocations from a
+routing weights (``q_l``, ``k_l``), nonnegative and of any magnitude -- a producer's
+gain is folded into them (docs/CONSTITUTION.md#r23). Computing those weights from a
 projected hidden state is PRODUCER scope and
 is out of scope here.
 
@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import torch
 
-from rola.ops._oracle_contract import initial_cache, validate_inputs, validate_simplex
+from rola.ops._oracle_contract import initial_cache, validate_inputs, validate_levels
 from rola.ops.constants import READOUT_EPS
 from rola.routing.types import DecayConfig, Topology
 
@@ -111,7 +111,6 @@ def naive_rola(
     v: torch.Tensor,
     read_levels: tuple[torch.Tensor, ...],
     write_levels: tuple[torch.Tensor, ...],
-    g_write: torch.Tensor,
     topology: Topology,
     decay: DecayConfig,
     *,
@@ -122,21 +121,27 @@ def naive_rola(
     """Run the canonical routing-native RoLA reference in fp64 -- the executable spec.
 
     There is no ``q``, no ``k``, and no feature map anywhere in this function.
-    Inputs are per-level per-side routing allocations (already normalized
-    simplices, one tensor per level, shape ``[B,T,H,width_l]``), the positive
-    write-side gain (``g_write``, shape ``[B,T,H]``; there is no read-side gain
-    at all -- the readout is a ratio, which fixes it to 1 identically and
-    production has no read-gain projection), a ``Topology``, and a ``DecayConfig``
-    (``None`` or ``LeafMassDecay``).
+    Inputs are per-level per-side routing weights, nonnegative and finite, one
+    tensor per level: read ``[B,T,H,width_l]``, write ``[B,T,H_w,width_l]``. The op is
+    defined on their products alone (docs/CONSTITUTION.md#r23): a leaf's read is
+    ``R = prod_l q_l``, its deposit ``W = prod_l k_l``, and no level need sum to 1 --
+    a producer's own gain or simplex is folded into the levels it hands over. Then a
+    ``Topology`` and a ``DecayConfig`` (``None`` or ``LeafMassDecay``).
+
+    GROUPED QUERIES: ``H`` query heads read ``H_w`` write heads, ``H_w`` dividing
+    ``H``; query head ``h`` reads write head ``h // (H / H_w)``. The values, the
+    decay and the state are the write heads'; the read levels and ``y``
+    are the query heads'. ``H_w = H`` is the ungrouped layer.
 
     ``write_levels`` feeds the deposit ``W`` and trains normally, AND is what the
-    ``LeafMassDecay`` clock reads (``c[t,s] = stop_gradient(prod_l p_write[...])``).
-    There is no second, separately quantized clock input: the producer emits the
-    stored form, so the levels handed here ARE the stored representation and a
-    parameter for emulating one would be a second spelling of the same tensor.
+    ``LeafMassDecay`` clock reads: each leaf's SHARE of the token's write,
+    ``c[t,s] = stop_gradient(prod_l k_l[d_l(s)] / sum_d k_l[d])`` -- scale-free, so the
+    clock prices survival per unit of deposited mass whatever magnitude the levels
+    carry; a level that writes nothing (its row sums to 0) has share 0 and leaves the
+    clock still.
 
     Returns ``(y, final_state)`` with ``y: [B,T,H,d_v]`` and, if
-    ``output_final_state``, ``final_state: [B,H,N,d_v+1]`` (the last column
+    ``output_final_state``, ``final_state: [B,H_w,N,d_v+1]`` (the last column
     carries the mass state the ratio readout divides by).
 
     BOTH OUTPUTS ARE ``float64``, WHATEVER THE INPUTS WERE. Inputs of any dtype
@@ -152,8 +157,8 @@ def naive_rola(
     wants a zero asserts ``grad is None`` and supplies the zero itself.
     """
     write_levels = tuple(write_levels)
-    B, T, H, d_v = validate_inputs(
-        v, read_levels, write_levels, g_write, topology, decay
+    B, T, H, H_w, d_v = validate_inputs(
+        v, read_levels, write_levels, topology, decay
     )
     #: DERIVED HERE, not read off `topology`. The oracle's address map is its own
     #: (see `_radix_strides`); `topology` supplies the SHAPE (`widths`), which is
@@ -165,44 +170,45 @@ def naive_rola(
     v64 = v.to(torch.float64)
     read64 = tuple(level.to(torch.float64) for level in read_levels)
     write64 = tuple(level.to(torch.float64) for level in write_levels)
-    validate_simplex("read_levels", read64)
-    validate_simplex("write_levels", write64)
-
-    g_write64 = g_write.to(torch.float64)
+    validate_levels("read_levels", read64)
+    validate_levels("write_levels", write64)
 
     #: THE ONES COLUMN. The mass state is the same recurrence run on a value of
-    #: all ones, so it is a COLUMN of the value, not a second state. `[B,T,H,d_v+1]`.
+    #: all ones, so it is a COLUMN of the value, not a second state. `[B,T,H_w,d_v+1]`.
     deposit_value = torch.cat(
-        (v64, torch.ones((B, T, H, 1), device=v.device, dtype=torch.float64)), dim=-1)
+        (v64, torch.ones((B, T, H_w, 1), device=v.device, dtype=torch.float64)), dim=-1)
 
-    #: The read and write allocations, materialized per leaf. `[B,T,H,N]`. The
-    #: readout is a ratio, so the read side carries no gain column at all.
+    #: The read and write weights, materialized per leaf: `[B,T,H,N]` and `[B,T,H_w,N]`.
     R = _leaf_product(read64, strides, N)
-    W = g_write64[..., None] * _leaf_product(write64, strides, N)
+    W = _leaf_product(write64, strides, N)
 
     #: The gate. `keep[t,s] = (1 - rate[s]) ** c[t,s]` -- a DIAGONAL gate, which is
     #: what makes this the gated-LA recurrence and not something new. `rate` trains
     #: through the dials; `c`, the clock, is stop-gradient by definition.
     if decay is None:
-        keep = torch.ones((B, T, H, N), device=v.device, dtype=torch.float64)
+        keep = torch.ones((B, T, H_w, N), device=v.device, dtype=torch.float64)
     else:
         dials = tuple(dial.to(device=v.device, dtype=torch.float64) for dial in decay.dials)
-        rate = _leaf_product(dials, strides, N)                       # [H,N]
-        c = _leaf_product(write64, strides, N).detach()               # [B,T,H,N]
+        rate = _leaf_product(dials, strides, N)                       # [H_w,N]
+        mass = tuple(level.sum(dim=-1, keepdim=True) for level in write64)
+        shares = tuple(torch.where(m > 0, level / torch.where(m > 0, m, 1.0), 0.0)
+                       for level, m in zip(write64, mass, strict=True))
+        c = _leaf_product(shares, strides, N).detach()                # [B,T,H_w,N]
         keep = torch.pow(1.0 - rate, c)
 
     #: The state, in the layout it is handed back in: one row per leaf, `d_v`
     #: columns of value plus the ones column's mass.
     state = initial_cache(
-        initial_state, B=B, H=H, N=N, d_v=d_v, device=v.device
+        initial_state, B=B, H=H_w, N=N, d_v=d_v, device=v.device
     )
+    group = H // H_w
 
     outputs = []
     for t in range(T):
         # S[t,s,:] = keep[t,s] * S[t-1,s,:] + W[t,s] * v[t,:]
         state = keep[:, t, ..., None] * state + W[:, t, ..., None] * deposit_value[:, t, :, None, :]
-        # o[t,:] = sum_s R[t,s] * S[t,s,:], inclusive read-after-write
-        readout = torch.einsum("bhn,bhnv->bhv", R[:, t], state)
+        # o[t,:] = sum_s R[t,s] * S[t,s,:], inclusive read-after-write; each query head its write head's S
+        readout = torch.einsum("bwgn,bwnv->bwgv", R[:, t].reshape(B, H_w, group, N), state).reshape(B, H, d_v + 1)
         outputs.append(readout[..., :d_v] / (readout[..., d_v:] + eps))
 
     y = (torch.stack(outputs, dim=1) if outputs

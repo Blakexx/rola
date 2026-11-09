@@ -7,7 +7,8 @@ on this card by the reuse bits matching the `.reuse` annotations of the same ope
 give one warp's issue timeline for a loop whose memory is shared memory and registers, once the
 scoreboard classes have a latency each and the machine's shared resources are modelled.
 
-`--arm N` compiles the carry arm with line information; `--source F --function G` names the
+`--arm N` compiles the carry arm with line information (`--kernel` names the function where the
+cubin holds several); `--source F --function G` names the
 loop: the SASS whose inline chain touches the function's lines, from its first instruction to
 its last backward branch, one iteration. `--warps` is the warps a scheduler (one or two),
 `--sm-warps` the warps on the SM running the loop (eight in the kernel's fold and readout, where
@@ -24,8 +25,10 @@ plus the latency for a memory instruction); and, for an HMMA, the tensor pipe's 
 Each scheduler has an issue port (one instruction a cycle, a global access `issue` cycles) and a
 tensor pipe (one HMMA every `hmma_pipe` cycles, NO queue: a warp waits at an HMMA until the pipe
 is free -- the chain row refuted the two-deep queue the first model assumed). The SM has ONE
-memory pipe: every shared access holds it a cycle a 128-byte wavefront (`sass_control.mem_cost`:
-an `ldmatrix` of k matrices k cycles, a 128-bit access four), a global access `mem_sector` cycles
+memory pipe: every shared load holds it a cycle a 128-byte wavefront (`sass_control.mem_cost`:
+an `ldmatrix` of k matrices k cycles, a 128-bit load four), a shared write or atomic its measured
+`SHARED_WRITE` (lab `smem_rates`: a 32-bit store or lane-a-bank reduction 2 cycles, a 64-bit store
+2.13, a 128-bit 4.57), a global access `mem_sector` cycles
 a sector; it takes instructions in issue order behind a queue of `mem_queue` cycles, and a memory
 instruction does not issue while the queue is longer (the profiler's `mio_throttle`). Every warp
 starts at once. Occupancy = HMMAs x hmma_pipe x warps a scheduler over the steady-state period.
@@ -33,8 +36,13 @@ starts at once. Occupancy = HMMAs x hmma_pipe x warps a scheduler over the stead
 <a id="machine"></a>
 ## The machine is an architecture
 
-`tools/sass_control.py`'s `MACHINES` holds one row an architecture: the pipe cost of an HMMA (sm_86 32.5 cycles, bf16 with
-fp32 accumulate at half rate; sm_80 full rate), the latency by opcode class, the schedulers, the
+`tools/sass_control.py`'s `MACHINES` holds one row an architecture: the pipe cost of an HMMA by its shape (sm_86 32.5
+cycles with fp32 accumulate, at half rate; 16.1 with fp16 accumulate, lab `tensor_tax`; an m16n8k8 half its m16n8k16,
+lab `mma_k8`; sm_80 full rate) and of an IMMA a shape, the issue pipes an opcode class holds and the
+tensor
+pipe's extension beside FP32 and integer work (sm_86), the latency by opcode class (an HMMA on its accumulator 24 and an FFMA 4, lab
+[`issue_latency`](../../lab/issue_latency.md); its `LDSM.x4` at 29 against the table's 25 is owed to the memory
+side's model; changing the two moved no calibration row), the schedulers, the
 memory pipe's wavefront and sector costs and queue, and the issue cost of a global access -- from
 `carry/calibration.md`'s rows. The cubin's `.target` selects the row and an architecture without
 one is refused, never approximated. Hopper and after are a different model, not a row: `wgmma`

@@ -31,9 +31,13 @@ docs pass has read it. A doc the public mirror does not ship keeps its pins in `
 (`_visibility` reads `.github/mirror/declarations.json`), so the public lock never names it. `init` pinned the tree's
 references unread, the broken ones with a null digest.
 
+Each lock records the Python version its digests were taken under (`PYTHON`): `ast.unparse`'s output moves between
+versions, so a lock read under another one would show drift where nothing moved, and the tool refuses to give a verdict
+there. It runs from the checkout's venv, as the commit gate does.
+
 ## The gate and the pass
 
-`verdict` compares the survey to the locks. The gate (`python3 tools/docrefs.py`, a pre-commit hook and a CI step)
+`verdict` compares the survey to the locks. The gate (`bazel test //:docrefs`, run by the commit gate and a CI step)
 fails on a reference no pin holds (read it, then `accept` its doc; a reference that resolves to nothing cannot be
 accepted), a pin whose reference no doc makes any more (`prune`), and a broken pin HEAD's lock did not hold, so the
 broken backlog only shrinks. A pinned reference whose target's digest moved or vanished is pending: `pending` prints
@@ -42,3 +46,7 @@ each target with the docs citing it and the target's own source as a diff from i
 `accept DOC` pins the doc's new and changed references; `accept --whole DOC` also marks every other reference in it
 read, for the docs pass that read the whole page. `--closing` is the pass's end: it fails on anything pending, unread
 or broken, and lists each.
+
+A SKILL (`.claude/skills/<name>/SKILL.md`) is held strictly at every commit, as `--closing` holds a doc at the pass's
+end: a pending, unread or broken reference in a skill fails the gate (`SKILLS`, KERNEL_STANDARDS §31). A skill is the
+procedure an agent follows, so it changes in the commit that changes what it cites, never in a later pass.

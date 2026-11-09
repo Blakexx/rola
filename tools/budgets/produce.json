@@ -1,0 +1,36 @@
+{
+ "unit": "instructions per job tile (one job's 64 tokens, the block's 4 warps), the mean over nl64k-alt-h4-g4's 17 jobs a token tile: 16 one-row route jobs of 256 columns (8 softmax, 8 entmax at the measured ~3.7 Newton steps a row) and one value job (4 heads x 64 channels); the design's operation counts, stated 2026-11-01 after the code (the first attribution's) (docs/internals/produce/produce.md#budget)",
+ "components": {
+  "project": "k_loop",
+  "seed": "seed_bias",
+  "sources": "sources",
+  "softmax": "softmax_rows",
+  "entmax": "entmax_rows",
+  "bundle": "bundle_side",
+  "values": "value_class",
+  "gain_pass": "apply_gain",
+  "gain": "gain_logit",
+  "probe_logits": "probe_logits",
+  "probe_levels": "probe_levels",
+  "unions": "stub_rows",
+  "glue": "produce_kernel"
+ },
+ "cells": {
+  "nl64k-alt-h4-g4": {
+   "project": 4400,
+   "seed": 400,
+   "sources": 200,
+   "softmax": 1525,
+   "entmax": 6965,
+   "bundle": 1880,
+   "values": 140,
+   "gain_pass": 100,
+   "gain": 1060,
+   "probe_logits": 10,
+   "probe_levels": 10,
+   "unions": 0,
+   "glue": 600,
+   "hmma": 2048
+  }
+ }
+}

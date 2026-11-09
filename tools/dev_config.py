@@ -2,27 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE DEV CONFIG (KERNEL_STANDARDS §23): every value that depends on the machine, read from one directory.
 
-The directory is `~/.config/rola/`, or the directory `ROLA_DEV_CONFIG` names (a container, a test). It holds one JSON
+The directory is `~/.config/rola/`, or the directory `ROLA_DEV_CONFIG` names (a test). It holds one JSON
 file a section; every file and every key is declared in `SCHEMA` below with its type, default and meaning, and
 anything undeclared is refused, so a typo fails loudly instead of silently taking a default. A missing file or key
-takes the declared default. `python tools/dev.py init` writes the files for this machine, `python tools/dev.py show`
+takes the declared default. `bazel run //:init` writes the files for this machine, `bazel run //:show`
 prints every resolved value with the file it came from.
 
 The reader and the machine's own sections -- `host` (the locks, the compute budget, scratch) and `clock` -- are
 rola-devtools' (`rola_devtools.config`), shared with the locks (`rola_devtools.locks`) and every repository on the
-host; the sections below them are rola's. rola-devtools is a development dependency: `pip install -r
-tools/devtools.txt` installs the commit this tree is tested with, and `python tools/dev.py init` links the checkout at
+host; the sections below them are rola's. rola-devtools is a development dependency, pinned in MODULE.bazel: the
+graph's environment installs it from the module's source, and `bazel run //:init` links the checkout at
 `workspace.devtools` into every venv here.
 
 A setting is never read from the process environment. The environment variables the tree still uses are listed in
-`HANDOFFS` (a value one of the tree's own processes passes to a child it starts) and `BUILD_PARAMETERS` (what one build
-is, set per invocation); `tools/lint/lint_standards.py` refuses a read of any other. Docs:
+`HANDOFFS`, each a value one of the tree's own processes passes to a child it starts (a build's parameters are the
+graph's settings, docs/build-graph.md#compile); `tools/lint/lint_standards.py` refuses a read of any other. Docs:
 docs/internals/tools/dev_config.md.
 """
 from __future__ import annotations
 
-import re
-import shutil
+import json
+import os
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -37,80 +37,85 @@ try:
     )
     from rola_devtools.config import reload as reload_machine
 except ImportError as missing:
-    raise SystemExit("tools/dev_config.py: rola_devtools is not importable -- `pip install -r tools/devtools.txt`, or "
-                     "`pip install -e` a rola-devtools checkout (docs/setup.md)") from missing
+    raise SystemExit("tools/dev_config.py: rola_devtools is not importable -- run from the checkout's venv "
+                     "(`bazel run //:dev_env`), or put a rola-devtools checkout on the path (docs/setup.md)") from missing
+
+from bootstrap import DEVTOOLS, SIBLINGS  # noqa: E402 -- the defaults a pre-reader tool shares
 
 ROOT = Path(__file__).resolve().parents[1]
 
 SCHEMA: dict[str, dict[str, Key]] = {
     "toolchain": {
-        "cuda_home": Key("path?", None, "the CUDA toolkit the extension builds with (nvcc, ptxas, nvdisasm, cuobjdump "
-                         "under bin/); null takes torch.utils.cpp_extension's CUDA_HOME"),
-        "ncu": Key("path", "/usr/local/cuda/bin/ncu",
-                   "the Nsight Compute CLI; 2025.3 or later for PM sampling (tools/pipe_timeline.py)"),
-        "sccache": Key("path?", None, "the pinned sccache (tools/sccache_pin.json); null means none installed"),
-        "sccache_enabled": Key("bool", True, "false builds uncached, the one deliberate opt-out of the sccache gate"),
-        "mold": Key("path?", None, "the pinned mold (tools/mold_pin.json), the only linker; null means none installed"),
+        "cuda_home": Key("path?", None,
+                         "a CUDA toolkit the machine's toolchain file may name, for the checkouts on this machine that "
+                         "read it; this tree uses the pinned one (`cuda_home()`). A loader refuses a key it does not "
+                         "declare, so it stays declared while machine files carry it"),
+        "ncu": Key("path?", None,
+                   "a Nsight Compute CLI the machine's toolchain file may name, for the checkouts on this machine that "
+                   "read it; this tree finds the pinned one by its pin (`ncu()`). A loader refuses a key it does not "
+                   "declare, so it stays declared while machine files carry it"),
+        "sccache": Key("path?", None,
+                       "an sccache the machine's toolchain file may name, for the checkouts on this machine that read "
+                       "it; this tree reads none. A loader refuses a key it does not declare, so it stays declared "
+                       "while machine files carry it"),
+        "sccache_enabled": Key("bool", True,
+                               "the sccache switch the machine's toolchain file may hold, for the checkouts on this "
+                               "machine that read it; this tree reads none. A loader refuses a key it does not declare, "
+                               "so it stays declared while machine files carry it"),
+        "mold": Key("path?", None,
+                    "a mold the machine's toolchain file may name, for the checkouts on this machine that read it; this "
+                    "tree links with the graph's (@mold). A loader refuses a key it does not declare, so it stays "
+                    "declared while machine files carry it"),
+        "clang_tidy": Key("path?", None, "a clang-tidy the machine's toolchain file may name, for the checkouts on this "
+                          "machine whose commit hooks run it; this tree's unit lints run the graph's (@clang_tidy). A "
+                          "loader refuses a key it does not declare, so it stays declared while machine files carry it"),
+        "bazel": Key("path", "~/.local/bin/bazel", "where the bootstrap links `bazel`, the command the docs name, to the pinned "
+                     "bazelisk (under host.tools_dir by its pin, never a machine key: every checkout loads this "
+                     "machine's files, and an older loader refuses a key it does not declare): a path on PATH"),
     },
     **MACHINE,
     "store": {
-        "root": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-results"),
-                    "the measurements store: its own git repository, shared by every worktree and the container "
+        "root": Key("path", str(SIBLINGS / "rola-results"),
+                    "the measurements store: its own git repository, shared by every worktree on the machine "
                     "(the record, the ledgers, perf, the environment checks; docs/measurement.md)"),
     },
     "workspace": {
-        "suite": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-bench"),
+        "suite": Key("path", str(SIBLINGS / "rola-bench"),
                      "the rola-bench checkout whose measurement suite (its root declare.py) runs this tree's declarations"),
-        "devtools": Key("path", str((ROOT.parent if ROOT.parent.name == "worktrees" else ROOT).parent / "rola-devtools"),
+        "devtools": Key("path", str(DEVTOOLS),
                         "the rola-devtools checkout (the public mirror's export, the declared build system), linked into "
                         "every venv that runs here"),
         "worktrees": Key("path", str(ROOT.parent / "worktrees") if ROOT.parent.name != "worktrees" else str(ROOT.parent),
                          "the one folder every worktree and its venv live in"),
-        "base_venv": Key("path?", None, "the shared venv every worktree's pointer venv borrows site-packages from"),
-    },
-    "environment": {
-        "image_digest": Key("str", "", "inside the dev container: sha256 of the Dockerfile the image was built from"),
+        "base_venv": Key("path?", None,
+                         "a venv the machine's workspace file may name, for the checkouts on this machine whose hooks "
+                         "run from it; this tree reads none. A loader refuses a key it does not declare, so it stays "
+                         "declared while machine files carry it"),
     },
 }
 
-#: THE DEV IMAGE'S FIXED LAYOUT: `tools/dev.py init --image` writes it as the image's config, and `container compose`
-#: bind-mounts the host's lock directories, store and worktrees onto it, so host and container share one of each.
-IMAGE_LAYOUT = {
-    "toolchain": {"cuda_home": "/usr/local/cuda"},
-    "host": {"lock_dir": "/run/rola/locks", "gpu_lock": "/run/rola/gpu/rola_gpu.lock", "tools_dir": "/opt/rola/tools"},
-    "store": {"root": "/workspace/store"},
-    "workspace": {"suite": "/workspace/suite", "devtools": "/workspace/devtools", "worktrees": "/workspace/worktrees",
-                  "base_venv": "/opt/venv"},
-}
-#: where the image's loader looks for the WSL driver's libraries (the Dockerfile's LD_LIBRARY_PATH names it)
-WSL_LIB_IN_IMAGE = "/usr/lib/wsl/lib"
-#: where an Nsight Compute CLI installs: the standalone packages, then a CUDA toolkit's wrapper
-NCU_SEARCH = ("/opt/nvidia/nsight-compute/*/ncu", "/usr/local/cuda-*/bin/ncu")
+#: WHERE A CONTAINER THIS TREE STARTS FINDS THE HOST'S LOCKS: its launcher mounts them there (tools/dev.py's
+#: `_mounts`) and its init records them (`detect`), so one lock governs a GPU the host and the container share
+CONTAINER_LOCKS = {"lock_dir": "/run/rola/locks", "gpu_lock": "/run/rola/gpu/rola_gpu.lock"}
+#: where that launcher mounts the image's digest (`devbox_image`)
+CONTAINER_IMAGE = "/run/rola/devbox_image"
+#: where WSL puts the driver's Linux libraries, which a container this tree starts sees at the same path (the devbox
+#: image's loader searches it first)
+WSL_LIB = "/usr/lib/wsl/lib"
 
 #: Environment variables one of the tree's processes sets for a child it starts. Never a setting: the parent resolved
 #: the value (from this config or from its own state) and the child must use exactly that value.
 HANDOFFS = {
-    POINTER: "which config directory a child reads (set by a test or the container, never by a setting)",
-    "ROLA_REAL_NVCC": "the gated nvcc setup.py hands the sccache wrapper (tools/sccache_nvcc.py)",
-    "ROLA_SCCACHE_BIN": "the gated sccache setup.py hands the sccache wrapper",
-    "CUDA_HOME": "torch.utils.cpp_extension's toolkit, set by setup.py from toolchain.cuda_home before torch is imported",
-    "MAX_JOBS": "torch's ninja job count, set by setup.py from the slots it holds",
-    "PYTORCH_NVCC": "torch's compiler, set by setup.py to the sccache wrapper",
+    POINTER: "which config directory a child reads (set for the graph's tests by the front door, or by a test; never by a setting)",
+    "CUDA_HOME": "torch.utils.cpp_extension's toolkit, set to `cuda_home()` before torch's extension module is imported "
+                 "(ratify's compile path, the header self-check)",
     "PYTEST_XDIST_WORKER": "pytest-xdist's worker id",
-    "USER": "the login name printed into the sudoers rule `tools/dev.py clock` suggests",
+    "USER": "the login name printed into the sudoers rule `bazel run //:clock` suggests",
     "ROLA_SCRATCH": "the agent harness's campaign directory (.claude/settings.json), outside the repository",
-}
-
-#: Environment variables that say what one build is. Set per invocation (pip passes nothing else to setup.py).
-BUILD_PARAMETERS = {
-    "ROLA_CUDA_ARCHS": "the architectures to compile; unset reads the ratified manifests",
-    "ROLA_CARRY_ARMS": "the carry arm subset of an iteration build",
-    "ROLA_DECODE_ARMS": "the decode arm subset of an iteration build",
-    "ROLA_CARRY_PARTS": "the carry parts a composition build makes real (tools/gen_shards.py CARRY_PARTS)",
-    "ROLA_BUILD_PARTS": "the source families a build compiles",
-    "ROLA_NO_EXTENSION": "install the Python package without building the extension",
-    "ROLA_STRICT_MANIFEST": "refuse a build whose manifest does not match exactly (§16 tiering)",
-    "ROLA_SKIP_POST_BUILD_RATIFY": "skip the post-build ratification recompile",
+    "ROLA_CUDA_HOME": "the graph's copy of the pinned CUDA toolkit, which a test tier hands its tests (bazel/defs.bzl)",
+    "PATH": "the search path bazelisk hands what it runs, the front door's directory first (`check` finds the user's "
+            "`bazel` past it)",
+    "ROLA_NVCC_THREADS": "host.nvcc_threads, which the front door hands the graph's compile flags (bazel/flags.py)",
 }
 
 
@@ -132,16 +137,15 @@ def get(dotted: str) -> Any:
 
 
 def cuda_home() -> str:
-    """The toolkit every compile, disassembly and assembler check uses: the configured one, else torch's."""
-    home = get("toolchain.cuda_home")
-    if home is None:
-        try:
-            from torch.utils.cpp_extension import CUDA_HOME as home
-        except ImportError:
-            home = None
-    if not home:
-        raise SystemExit("no CUDA toolkit: set toolchain.cuda_home (python tools/dev.py init)")
-    return home
+    """The toolkit every compile, disassembly and assembler check outside the graph's own rules uses: the pinned one
+    (tools/cuda_toolkit_pin.json) -- the graph's copy in a test tier (`ROLA_CUDA_HOME`), else init's, refused until
+    init installed it."""
+    if os.environ.get("ROLA_CUDA_HOME"):
+        return os.environ["ROLA_CUDA_HOME"]
+    nvcc = pinned("cuda_toolkit")
+    if not nvcc.is_file():
+        raise SystemExit(f"the pinned CUDA toolkit is not installed at {nvcc.parents[1]}: bazel run //:init")
+    return str(nvcc.parents[1])
 
 
 def cuda_bin(tool: str) -> str:
@@ -154,36 +158,50 @@ def scratch(name: str) -> Path:
     return path
 
 
+def pinned(name: str) -> Path:
+    """Where a pin's binary is installed (`tools/<name>_pin.json`): its folder under `host.tools_dir` (`archive_root`,
+    which carries the version), the binary in it (`binary_path`)."""
+    pin = json.loads((Path(__file__).resolve().parent / f"{name}_pin.json").read_text())
+    return Path(get("host.tools_dir")) / pin["archive_root"] / pin["binary_path"]
+
+
+def ncu() -> str:
+    """The Nsight Compute CLI the measurement tools run: the pinned one, refused until init installed it."""
+    path = pinned("nsight_compute")
+    if not path.is_file():
+        raise SystemExit(f"the pinned Nsight Compute is not installed at {path}: bazel run //:init")
+    return str(path)
+
+
+def locks_mounted() -> bool:
+    """Whether this machine is a container whose launcher mounted the host's locks (`CONTAINER_LOCKS`): the mount point
+    is one of this process's mounts, never merely a directory, which a tool could have made."""
+    try:
+        mounts = Path("/proc/self/mountinfo").read_text().splitlines()
+    except OSError:
+        return False
+    return any(line.split()[4] == CONTAINER_LOCKS["lock_dir"] for line in mounts if len(line.split()) > 4)
+
+
+def devbox_image() -> str:
+    """The devbox image's digest inside a container this tree started (its launcher mounts it), else the empty string:
+    where a measurement ran, which ratify records."""
+    named = Path(CONTAINER_IMAGE)
+    return named.read_text().strip() if named.is_file() else ""
+
+
 def windows_tool(rel: str) -> Path | None:
     system32 = get("host.windows_system32")
     return Path(system32) / rel if system32 else None
 
 
-def ncu_candidates() -> list[Path]:
-    """Every installed Nsight Compute CLI under `NCU_SEARCH`, oldest version directory first."""
-    def version(p: Path) -> tuple[int, ...]:
-        return tuple(int(x) for x in re.findall(r"\d+", next((q for q in p.parts if q[0].isdigit() or
-                                                                  q.startswith("cuda-")), "0")))
-
-    return sorted((p for pattern in NCU_SEARCH for p in Path("/").glob(pattern.lstrip("/"))), key=version)
-
-
 def detect() -> dict[str, dict[str, Any]]:
-    """This machine's values where they differ from the declared defaults: what `tools/dev.py init` writes."""
-    found: dict[str, dict[str, Any]] = {"toolchain": {}, "host": {}, "workspace": {}, "environment": {}}
-    nvcc = shutil.which("nvcc")
-    if nvcc:
-        found["toolchain"]["cuda_home"] = str(Path(nvcc).parents[1])
-    ncus = ncu_candidates()
-    if ncus:
-        found["toolchain"]["ncu"] = str(ncus[-1])
-    for tool in ("sccache", "mold"):
-        if shutil.which(tool):
-            found["toolchain"][tool] = shutil.which(tool)
+    """This machine's values where they differ from the declared defaults: what `bazel run //:init` writes."""
+    found: dict[str, dict[str, Any]] = {"toolchain": {}, "host": {}, "workspace": {}}
     system32 = Path("/mnt/c/Windows/System32")
     if system32.exists():
         found["host"]["windows_system32"] = str(system32)
-    wsl_lib = Path(WSL_LIB_IN_IMAGE)
+    wsl_lib = Path(WSL_LIB)
     if (wsl_lib / "libdxcore.so").exists():
         found["host"]["wsl_lib"] = str(wsl_lib)
     return {k: v for k, v in found.items() if v}

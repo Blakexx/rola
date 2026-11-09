@@ -13,7 +13,7 @@ what lets a test state its claim in whichever order is natural and convert.
 The third cell is a PIN rather than a property: the two built carry arms must derive the
 SAME box, because the flagship and the carry family write and read one plane.
 
-Run: ``pytest tests/unit/test_lattice.py``
+Run: ``bazel test //tests:cpu --test_filter=test_lattice``
 """
 from __future__ import annotations
 

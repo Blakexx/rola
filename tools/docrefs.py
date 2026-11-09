@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """THE DOC REFERENCES: every place a doc cites the tree is pinned to the content it was last read against.
 
-    python3 tools/docrefs.py                   # the gate: every reference pinned, the lock matching the docs
-    python3 tools/docrefs.py pending           # the references whose target changed or vanished, with the change
-    python3 tools/docrefs.py accept DOC...     # pin DOC's new and changed references, read against their targets
-    python3 tools/docrefs.py accept --whole DOC  # the docs pass read all of DOC: every reference in it is read
-    python3 tools/docrefs.py prune             # drop the pins of references no doc makes any more
-    python3 tools/docrefs.py --closing         # the docs pass is done: nothing pending, unread or broken
-    python3 tools/docrefs.py init              # pin today's references, unread; refused when a lock exists
+    bazel test //:docrefs                       # the gate: every reference pinned, the lock matching the docs
+    bazel run //:docrefs -- pending            # the references whose target changed or vanished, with the change
+    bazel run //:docrefs -- accept DOC...      # pin DOC's new and changed references, read against their targets
+    bazel run //:docrefs -- accept --whole DOC  # the docs pass read all of DOC: every reference in it is read
+    bazel run //:docrefs -- prune              # drop the pins of references no doc makes any more
+    bazel run //:docrefs -- --closing          # the docs pass is done: nothing pending, unread or broken
+    bazel run //:docrefs -- init               # pin today's references, unread; refused when a lock exists
 
 A REFERENCE is a doc's citation of a primitive: `` `tools/ratify.py`'s `main` ``, a dotted name in code font whose
 module is in the tree (`` `rola.ops.carry.carry_forward` ``), a path in code font, or a link (`[x](build.md#wheels)`).
@@ -45,6 +45,8 @@ ROOT = Path(__file__).resolve().parents[1]
 #: The pins live with the docs they pin: a doc the public mirror does not ship (`.github/mirror/declarations.json`'s
 #: `private`) keeps its pins in the private lock, so the public lock never names it.
 LOCKS = {"public": "docs/references.lock.json", "private": ".claude/references.lock.json"}
+#: the repo's skills, whose references the gate holds strictly (KERNEL_STANDARDS section 31)
+SKILLS = ".claude/skills/"
 MIRROR_DECLARATIONS = ".github/mirror/declarations.json"
 #: A dotted name in code font is a reference when its first component is one of these; the value is the directory
 #: the package imports from.
@@ -381,16 +383,27 @@ def _visibility(doc: str) -> str:
     return "private" if any(doc == p or doc.startswith(p.rstrip("/") + "/") for p in private) else "public"
 
 
+#: the interpreter the digests are taken under: `ast.unparse`'s output moves between Python versions, so a pin read under
+#: another one reads as drift where nothing moved
+PYTHON = f"{sys.version_info[0]}.{sys.version_info[1]}"
+
+
 def _load(blobs) -> dict[tuple[str, str], dict]:
-    return {(e["doc"], e["target"]): e for blob in blobs for e in json.loads(blob)["references"]}
+    docs = [json.loads(blob) for blob in blobs]
+    pinned = {d["python"] for d in docs if "python" in d}
+    if pinned - {PYTHON}:
+        raise SystemExit(f"docrefs: the locks were pinned under Python {', '.join(sorted(pinned))} and this is "
+                         f"{PYTHON}, whose ast.unparse digests differ; run it from the checkout's venv "
+                         "(`git config rola.venv`)")
+    return {(e["doc"], e["target"]): e for d in docs for e in d["references"]}
 
 
 def _dump(entries: dict[tuple[str, str], dict]) -> None:
     for visibility, path in LOCKS.items():
         rows = [entries[k] for k in sorted(entries) if _visibility(k[0]) == visibility]
         (ROOT / path).parent.mkdir(parents=True, exist_ok=True)
-        (ROOT / path).write_text("{\n \"references\": [\n" + ",\n".join("  " + json.dumps(r, sort_keys=True)
-                                                                     for r in rows) + "\n ]\n}\n")
+        (ROOT / path).write_text(f"{{\n \"python\": \"{PYTHON}\",\n \"references\": [\n"
+                                 + ",\n".join("  " + json.dumps(r, sort_keys=True) for r in rows) + "\n ]\n}\n")
 
 
 def _lock() -> dict[tuple[str, str], dict] | None:
@@ -459,7 +472,7 @@ def main() -> int:
         return 0
     lock = _lock()
     if lock is None:
-        raise SystemExit("docrefs: no lock (python3 tools/docrefs.py init records one)")
+        raise SystemExit("docrefs: no lock (bazel run //:docrefs -- init records one)")
 
     if a.command == "accept":
         if not a.docs:
@@ -515,6 +528,18 @@ def main() -> int:
     unread = sum(1 for v in lock.values() if not v["reviewed"])
     broken = sum(1 for v in lock.values() if v["sha256"] is None)
     failed = bool(new or stale or grown)
+    #: KERNEL_STANDARDS section 31: a skill is held strictly -- each of its references current, read and resolving --
+    #: so a skill changes in the commit that changes what it cites
+    for (doc, target), ((_, line, digest), _) in sorted(pending.items()):
+        if doc.startswith(SKILLS):
+            print(f"{doc}:{line}: `{target}` {'vanished' if digest is None else 'changed'} since its pin; a skill "
+                  "follows what it cites in the same commit (KERNEL_STANDARDS 31)")
+            failed = True
+    for (doc, target), pin in sorted(lock.items()):
+        if doc.startswith(SKILLS) and (pin["sha256"] is None or not pin["reviewed"]):
+            print(f"{doc}: `{target}` {'resolves to nothing' if pin['sha256'] is None else 'is pinned unread'}; a skill "
+                  "is held strictly (KERNEL_STANDARDS 31)")
+            failed = True
     if a.closing:
         for (doc, target), ((_, line, digest), _) in sorted(pending.items()):
             print(f"{doc}:{line}: `{target}` {'vanished' if digest is None else 'changed'} since its pin")

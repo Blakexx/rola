@@ -55,8 +55,8 @@ Two uses, both binary verdicts:
 
 Usage:
 
-    python tools/sass_bodies.py build_a/_C.so --json a.json
-    python tools/sass_bodies.py --compare a.json b.json
+    bazel run //tools:sass_bodies -- build_a/_C.so --json a.json
+    bazel run //tools:sass_bodies -- --compare a.json b.json [--drop-builds]
 
 Both `.so`s must have been built under the SAME `ratify.SASS_HASH_VERSION` -- see the
 version-stamp note above. They no longer need to have been built at the same path.
@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -126,7 +127,47 @@ def read_map(path: str) -> dict[str, str]:
     return blob["bodies"]
 
 
+#: THE SOURCE STAMP's body is the csrc content hash (docs/ratification.md#the-device-stamp): it moves with every
+#: source edit by design, so a comparison reports it and never fails on it.
+STAMP_KERNELS = ("rola::stampdet::csrc_stamp_kernel(long*)",)
+#: A BUILD ARGUMENT (docs/internals/common/hardware.md#build-tag): `BuildTag<Build{cc, variant}>` as c++filt
+#: prints it (a zero variant may be omitted, as the ABI allows for trailing zero members)
+_BUILD_ARG = re.compile(r"denseref::arch::BuildTag<denseref::arch::Build\{(\d+)(?:, (\d+))?\}>(, )?")
+_EMPTY_ARGS = re.compile(r"<\s*>")
+
+
+def by_signature(bodies_by_key: dict[str, str], drop_builds: bool) -> dict[str, str]:
+    """The map keyed `sm_XX:<demangled signature>`, a kernel's `BuildTag<Build{cc, v}>` argument dropped when `drop_builds` --
+    the rename rule of a kernel templated on its build: the dropped argument must be its own image's (cc == XX),
+    since a build's kernels are compiled in its image alone (docs/internals/common/hardware.md#builds-renamed)."""
+    keys = sorted(bodies_by_key)
+    text = subprocess.run(["c++filt"], input="\n".join(k.split(":", 1)[1] for k in keys), capture_output=True,
+                          text=True, check=True).stdout.splitlines()
+    out = {}
+    for key, sig in zip(keys, text):
+        arch = key.split(":", 1)[0]
+        if drop_builds:
+            for m in _BUILD_ARG.finditer(sig):
+                if f"sm_{int(m.group(1)) // 10}" != arch:
+                    raise SystemExit(f"{key}: a Build{{{m.group(1)}, {m.group(2) or 0}}} kernel in the {arch} image")
+            sig = _BUILD_ARG.sub("", sig)
+            #: a kernel whose one template argument was its build is the untemplated kernel: its emptied list goes,
+            #: and with it the return type the ABI spells only for a template
+            untemplated = _EMPTY_ARGS.sub("", sig)
+            if untemplated != sig:
+                sig = untemplated.removeprefix("void ")
+        if f"{arch}:{sig}" in out:
+            raise SystemExit(f"{arch}:{sig}: two entry points under one name once their builds are dropped")
+        out[f"{arch}:{sig}"] = bodies_by_key[key]
+    return out
+
+
 def compare(a: dict[str, str], b: dict[str, str], label_a: str, label_b: str) -> bool:
+    stamps = sorted(k for k in set(a) & set(b) if k.split(":", 1)[1] in STAMP_KERNELS)
+    for k in stamps:
+        print(f"{k}: the source stamp ({'moved' if a[k] != b[k] else 'unmoved'}; never a verdict)")
+    a = {k: v for k, v in a.items() if k not in stamps}
+    b = {k: v for k, v in b.items() if k not in stamps}
     only_a = sorted(set(a) - set(b))
     only_b = sorted(set(b) - set(a))
     moved = sorted(k for k in set(a) & set(b) if a[k] != b[k])
@@ -153,9 +194,11 @@ def main() -> int:
     ap.add_argument("--json", metavar="PATH", help="write the hash map")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"),
                     help="compare two written hash maps; nonzero exit on any difference")
+    ap.add_argument("--drop-builds", action="store_true",
+                    help="compare by signature with each kernel's own-image Build argument dropped (the rename rule)")
     a = ap.parse_args()
     if a.compare:
-        maps = [read_map(p) for p in a.compare]
+        maps = [by_signature(read_map(p), a.drop_builds) for p in a.compare]
         return 0 if compare(maps[0], maps[1], *a.compare) else 1
     if a.so is None:
         raise SystemExit("pass a .so to hash, or --compare two written maps")

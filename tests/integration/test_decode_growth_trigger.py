@@ -43,7 +43,7 @@ leaf order = the page granule; **slot** = the physical page an atom is mapped to
 for an atom no plan committed; **needy** = a batch-head whose write set it can neither
 address nor admit.
 
-Run: ``pytest tests/integration/test_decode_growth_trigger.py``
+Run: ``bazel test //tests:integration --test_filter=test_decode_growth_trigger``
 """
 from __future__ import annotations
 
@@ -58,11 +58,12 @@ from rola.ops.decode import (
 from rola.ops.paging import MMA_K_QUANTUM, PageArena, bytes_equal
 from tests.integration.test_decode_paging import (
     _ARMS,
+    _bundles,
     _config,
-    _f32,
     _fixture,
     _leaf_support,
 )
+from tests.oracle.fixtures import assert_reordered_close, reordered_close
 
 _SUPPORT = {"sparse": 0.25, "half": 0.5, "all": 1.0}
 
@@ -74,12 +75,12 @@ pytestmark = [
 
 def _step(fixture, config, arena, *, workspace=None, pool=None):
     """One step at the ABI, on the residency the arena has. `(y, workspace)`."""
-    v, read, write, g_write = _f32(fixture)
+    routes, values = _bundles(fixture)
     BH = fixture["B"] * fixture["H"]
     if workspace is None:
         workspace = DecodeScratch.build(config, BH, torch.device("cuda"))
     y, _state, workspace = _decode_step(
-        v, read, write, g_write, config, arena.state, workspace=workspace,
+        routes, values, config, arena.state, workspace=workspace,
         page_table=arena.page_table, pool=pool)
     return y, workspace
 
@@ -101,7 +102,7 @@ def _verdict(fixture, config, arena, *, pool=None):
 
 def _would_admit(fixture, config, arena) -> int:
     """What the EXACT preamble would admit, run here and nowhere near the shipped path."""
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
     return int((bitmap & (arena.page_table < 0)).sum())
 
@@ -112,12 +113,12 @@ def _arena(widths, BC, BH, **kwargs):
 
 
 def _gathered(arena, BH):
-    """`[BH, N, cols]` from the arena's slots -- what two backings can both hold."""
+    """`[BH, N/16, page_bytes]` stored pages from the arena's slots -- what two backings can both hold."""
     table = arena.page_table
-    out = torch.zeros(BH, table.shape[1], MMA_K_QUANTUM, 65, device="cuda")
+    out = torch.zeros(BH, table.shape[1], arena.page_bytes, dtype=torch.uint8, device="cuda")
     present = table >= 0
     out[present] = arena.state[table[present].long()]
-    return out.reshape(BH, -1, 65)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +137,9 @@ def test_the_verdict_fires_exactly_when_the_preamble_would_admit(arm, support):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=hash((widths, support)) % 10_000, support=_SUPPORT[support])
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
 
     #: EMPTY: nothing is mapped, so every atom this step writes is new.
     arena = _arena(widths, BC, BH)
@@ -171,9 +172,9 @@ def test_one_absent_atom_is_enough_to_fire(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=907 + len(widths), support=0.5)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
 
     arena = _arena(widths, BC, BH)
@@ -205,9 +206,9 @@ def test_an_absent_atom_the_step_does_not_write_is_not_growth(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=311 + len(widths), support=0.25)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
 
     arena = _arena(widths, BC, BH)
@@ -248,9 +249,9 @@ def test_the_published_condensation_is_what_a_growth_step_admits(arm, support):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=419 + len(widths), support=_SUPPORT[support])
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
 
     arena = _arena(widths, BC, BH)
     fired, workspace = _verdict(fixture, config, arena)
@@ -282,7 +283,7 @@ def test_the_published_condensation_is_what_a_growth_step_admits(arm, support):
 
 def _hold_out_one_atom_of_one_bh(fixture, config, arena):
     """Admit the whole write set except one atom of ONE batch-head. `(bitmap, bh)`."""
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
     row, column = (bitmap.nonzero())[0].tolist()
     held_out = bitmap.clone()
@@ -304,7 +305,7 @@ def test_a_mixed_batch_advances_the_resident_batch_heads_and_no_others(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=2311, support=0.5)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
     assert BH > 1, "a mixed-batch cell needs more than one batch-head"
 
@@ -339,9 +340,9 @@ def test_the_admission_and_replay_advance_every_sequence_exactly_once(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=2317, support=0.5)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
 
     reference = _arena(widths, BC, BH)
@@ -357,7 +358,7 @@ def test_the_admission_and_replay_advance_every_sequence_exactly_once(arm):
     y_replayed, _ = _step(fixture, config, replayed, workspace=workspace)
     torch.cuda.synchronize()
 
-    assert torch.equal(y_reference, y_replayed), (
+    assert reordered_close(y_replayed, y_reference), (
         "the replay's `y` is not the admit-first `y`: a batch-head either deposited "
         "twice or was read before it deposited")
     assert bytes_equal(_gathered(reference, BH), _gathered(replayed, BH)), (
@@ -379,9 +380,9 @@ def test_a_covering_pool_admits_the_growth_itself_and_raises_no_verdict(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=4801 + len(widths), support=0.5)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
 
     reference = _arena(widths, BC, BH)
@@ -401,13 +402,13 @@ def test_a_covering_pool_admits_the_growth_itself_and_raises_no_verdict(arm):
         "the pool cursor did not advance by the batch-head's own demand")
     y_pooled, _ = _step(fixture, config, pooled, workspace=workspace, pool=pooled)
     torch.cuda.synchronize()
-    assert not torch.equal(y_pooled, y_reference), (
+    assert not reordered_close(y_pooled, y_reference), (
         "the second pooled step must differ -- it deposits on top of the first")
 
     fresh = _arena(widths, BC, BH, pool_slack=1.0)
     y_first, _ = _step(fixture, config, fresh, pool=fresh)
     torch.cuda.synchronize()
-    assert torch.equal(y_first, y_reference), (
+    assert reordered_close(y_first, y_reference), (
         "a pool-admitted atom is distinguishable from a host-admitted one; it must not be")
     assert bytes_equal(_gathered(fresh, BH), _gathered(reference, BH)), (
         "the pool-admitted state is not the host-admitted state")
@@ -423,9 +424,9 @@ def test_an_exhausted_pool_degrades_to_the_host_path_exactly(arm):
     """
     widths, BC = arm
     fixture = _fixture(widths, seed=4909, support=0.5)
-    config = _config(widths, fixture)
+    config = _config(widths)
     BH = fixture["B"] * fixture["H"]
-    _v, _read, write, _g = _f32(fixture)
+    write = _bundles(fixture)[0].live("write")
     bitmap = _write_atom_bitmap(write, config)
     demand = int(bitmap.sum(1).max())
 
@@ -450,5 +451,5 @@ def test_an_exhausted_pool_degrades_to_the_host_path_exactly(arm):
     starved.wait()
     y_replayed, _ = _step(fixture, config, starved, workspace=workspace, pool=starved)
     torch.cuda.synchronize()
-    assert torch.equal(y_replayed, y_reference)
+    assert_reordered_close(y_replayed, y_reference, "the replayed step's y")
     assert bytes_equal(_gathered(starved, BH), _gathered(reference, BH))

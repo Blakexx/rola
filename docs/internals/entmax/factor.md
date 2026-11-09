@@ -12,9 +12,7 @@ vocabulary this file shares with it, are [`entmax.md`](entmax.md).
 Gates: `tests/integration/test_production_levels.py` (the fp64 oracle, forward AND
 VJP, across `tied` / `mixed_per_level` / `dense_only`),
 `tests/unit/test_entmax_production.py` (the masked `production_factor` surface, the
-support word's bit-31 and tail-word contracts, the tile-major arena),
-tests/integration/test_execution_identity_gates.py, deleted with the tiled consumer (which routing family reached
-which kernel).
+support word's bit-31 and tail-word contracts, the tile-major arena).
 
 Symbols are `entmax.md`'s: a *stream* is one (batch, head)-like routing stream, a
 *token* one row of the solve, `width` the level's branch width with `col` indexing
@@ -49,44 +47,52 @@ cotangent in the input's dtype, and a fp32 gradient plane feeding a bf16 GEMM ba
 would be a widening with nothing on the other end of it. The tied backward's accumulating
 store is `add_value`, which is a bf16 device atomic on the closed-world arch set (sm_80+).
 
-<a id="provenance"></a>1. Where these came from, and what that constrains
+## <a id="provenance"></a>1. Why these are CUDA, and how they are judged
 
-<!-- ABSENT: _production_fwd_kernel _production_bwd_kernel -->
-These four were Triton (`rola/routing/entmax/production.py`'s
-`_production_fwd_kernel`, `_production_bwd_kernel` and their softmax pair) until
-P73 S5. The port is why `rola/` now imports no Triton, why `pyproject.toml` no
-longer depends on it, and why `build.md`'s "not `fla`, not `triton` — the kernels
-are CUDA" is true rather than aspirational. Decisively, it is what lets P65 train
-through this path: a Triton backward in the training path is the exact thing the
-CUDA-engine-first ruling forbids.
+These four kernels are CUDA so that `rola/` imports no Triton and the training path
+holds no Triton backward, which the CUDA-engine-first ruling forbids.
 
-**The port is NOT judged against Triton.** The two lowerings associate the prefix
-scan differently — Triton scans the padded row with `tl.cumsum`, this one
-accumulates serially within a lane and then runs one `WarpScan` across lanes — so
-the fp32 sums are not bitwise equal and a kernel-vs-kernel gate would be measuring
-the wrong thing (the matching-the-naive antipattern). The governing gate is the
-fp64 reference, and it asserts the SUPPORT SET identical, not merely close.
+**The solve is judged against the fp64 reference, never against another lowering.** A
+different lowering associates the prefix scan differently (a padded-row `tl.cumsum`
+against this one's serial per-lane sums and one `WarpScan` across lanes), so the fp32
+sums are not bitwise equal and a kernel-vs-kernel gate would measure the wrong thing (the
+matching-the-naive antipattern). The governing gate asserts the SUPPORT SET identical,
+not merely close.
 
 ## <a id="the-solve"></a>2. The forward: the union solve's phases B/C/D, fed one tensor
 
 `factor_forward_kernel` is `union_forward_kernel` with the union split removed. Its
-phases are that kernel's, unchanged and documented there
-([forward-phases](entmax.md#forward-phases)): row max/min, the finite row-relative
-sentinel that pads without putting an infinity in the scan, `WarpMergeSort`
-descending, the `(Σz, Σz²)` `WarpScan`, the packed-key `Max` reduction that selects
-the greatest valid `k` and carries its `tau` in the same 64-bit word, and the
-amplitude `((α−1)(z − tau))_+` — squared at α=1.5.
+phases B and C are the same header function, `threshold<LW, IPT, ALPHA15>`, called on
+the masked row where the union calls it on the midpoint row
+([`entmax.md#threshold`](entmax.md#threshold)): row max/min,
+<a id="sentinel"></a>the finite row-relative sentinel that pads without putting an infinity in the
+scan, the descending `RowSort`, the `(Σz, Σz²)` `WarpScan`, and <a id="packedkey"></a>the
+`packed_key` `Max` reduction that selects the greatest valid `k` and carries its `tau` in
+the same 64-bit word. Phase D is that kernel's too
+([forward-phases](entmax.md#forward-phases)): the amplitude `((α−1)(z − tau))_+`,
+squared at α=1.5.
+
+<a id="sort-bytes"></a><a id="stream32"></a><a id="stream32-2"></a><a id="stream32-3"></a><a id="stream32-4"></a>
+<a id="nstreams"></a><a id="nstreams-2"></a><a id="nstreams-3"></a><a id="nstreams-4"></a>The
+shared-memory slot, its alias
+with the support staging, and the stream split are the union kernel's, unchanged
+([`entmax.md#smem-slot-alias`](entmax.md#smem-slot-alias),
+[`entmax.md#stream-split`](entmax.md#stream-split)).
+
+<a id="near-line-200"></a>A level that stores two sides from one solve (`values_second`, a `shares_solve` level) hands
+read and write the SAME amplitudes, never a second solve; `values_second` absent means the level stores one side.
 
 What is NOT there: phase A's midpoint fold and phase E's write normalization. What
 IS there and is not in the union kernel: the candidate mask.
 
 ### <a id="mask"></a>2.1 The mask, and why it is a per-ROW quantity
 
-`production_factor` is a public surface and takes an optional boolean candidate
-mask, laid out like the logits. A masked element is not a candidate: it leaves the
+<a id="factorforward"></a>`production_factor` is a public surface and takes an optional detached boolean candidate
+mask, laid out like the logits (absent: every element is a candidate). A masked element is not a candidate: it leaves
+the
 support by construction rather than by a correction applied afterwards.
 
-The consequence that shapes the kernel is that the member count is then a
+<a id="validcount"></a>The consequence that shapes the kernel is that the member count (`valid_count`) is then a
 reduction, not `width`:
 
 * The row max and min are taken over the CANDIDATES, and a fully-masked row has
@@ -106,7 +112,8 @@ matrix to buy a prologue.
 
 ### <a id="support"></a>2.2 The support word
 
-Identical to the union solve's, including the two things that are easy to get
+<a id="near-line-204"></a><a id="near-line-212"></a>Identical to the union solve's, including the two things that are
+easy to get
 wrong: support is the set of POST-CAST bf16 nonzeros and never the pre-quantization
 solve ([bf16-support-boundary](entmax.md#bf16-support-boundary)) — which holds even
 when this level's values are STORED in fp32, because the word describes what the
@@ -117,7 +124,7 @@ word ([frozen-support-word](entmax.md#frozen-support-word)).
 
 ## <a id="backward"></a>3. The backward: a rank-1 correction, support as an INPUT
 
-The α-entmax VJP is `dz = s ⊙ (dp − ⟨s, dp⟩ / Σs)` with `s = p^(2−α)` on support
+<a id="launch-bounds"></a>The α-entmax VJP is `dz = s ⊙ (dp − ⟨s, dp⟩ / Σs)` with `s = p^(2−α)` on support
 and 0 off it — `1` at α=2, `√p` at α=1.5. Softmax's is the same shape with `s = p`
 and the denominator identically 1, which is why `softmax_backward_kernel` carries no
 support word and no `α`.
@@ -139,17 +146,14 @@ staged form is what puts that kernel over its 64-register bound. Re-reading keep
 this family at zero spill across all 96 instantiations, which `tools/ratify.py`
 enforces.
 
-`accumulate` selects `atomicAdd` over a store. It is a parameter and not a fact
+<a id="factorbackward"></a>`accumulate` selects `atomicAdd` over a store. It is a parameter and not a fact
 about the tensor because a TIED level runs two solves into ONE gradient buffer, and
 only the second of them may accumulate — a property of the walk, not of the memory.
 
 ## <a id="batched-levels"></a>4. One launch across levels
 
-`producer.py` has always claimed "one packed projection and one batched solve", and
-until P73 S5 only the first half was true: the solve was a Python `for` loop over
-`routing.levels`, one launch and three allocations per level.
-
-The launch shape here makes the claim true. Each entry takes BASE tensors plus
+The producer runs one packed projection and one batched solve, not a loop of one launch
+and three allocations a level. Each entry takes BASE tensors plus
 per-level element offsets; `blockIdx.z` indexes a `LevelTable` that travels in the
 kernel's parameter space (448 B at `MAX_BATCHED_LEVELS = 16`, against a 4 KB
 floor), so batching costs no device table, no H2D copy and no indirection.
@@ -168,8 +172,10 @@ largest, and the caller (`production.py`) is what groups the plan walk into tabl
 
 ## <a id="stored-form"></a>5. The stored form is what the solve WRITES
 
-The routing factors have exactly one consumer -- the chunk operator -- and it reads
-`bf16`. So `OutT` is `__nv_bfloat16` on the shipped path and the solve writes the stored
+The solve's levels have one consumer, the producer's torch path
+(`rola.ops.produce`'s reference, through `production_routing_factor_levels`), which folds
+them and quantizes them into the bundle's rows (`RouteFactors.from_levels`); it reads
+`bf16`. So `OutT` is `__nv_bfloat16` on that path and the solve writes the stored
 representation directly; there is no fp32 plane and no narrowing pass between them. The
 union arm and the independent/softmax arms are both instantiated for it
 (`entmax.cu::union_forward`, `factor.cu::check_values`), and the value dtype is read off
@@ -191,177 +197,3 @@ over four stress fixtures x four routing shapes x two alphas.
 `stored_dtype=torch.float32` exists for one purpose: a FIDELITY gate that wants the
 solve's own arithmetic without the storage quantization on top of it. It is a test-side
 argument; no runtime path passes it.
-
-## Comments moved from source
-
-Verbatim `//:` prose blocks from `csrc/rola/src/entmax/factor.cu`, in source order, one heading per declaration. Source keeps only a short decl block pointing here.
-
-<a id="sort-bytes"></a>
-### `SORT_BYTES`
-
-HAZARD smem-slot-alias -- docs/internals/entmax/entmax.md#smem-slot-alias
-One per-physical-warp slot serves the row sort's scratch and then the support-word
-staging. `RowSort::kSlotBytes` is ZERO for the register network, so at `IPT <= 4` the
-slot is the staging alone -- docs/internals/entmax/entmax.md#row-sort
-
-<a id="stream32"></a>
-### `stream32`
-
-ONE 32-BIT division per BLOCK on a uniform value: `blockIdx.y` is the solve's
-stream, and a token-major operand needs it as `(b, h)`. The width is load-bearing --
-a 64-bit div/mod here is a register-hungry sequence live across the whole kernel,
-and it spilled the family. `heads == 0` means no split at all.
--- docs/internals/entmax/entmax.md#stream-split
-THE STREAM SPLIT, and it is UNCONDITIONAL on purpose. `heads >= 1` always -- 1 is
-one head, for which this is `sb = stream, sh = 0` -- because guarding it with
-`heads ? ... : stream` MEASURED as a family-wide spill: the ternary pins `sb`/`sh`
-in registers, where `blockIdx.y` is free to re-read and a plain quotient of it is
-cheap to rematerialize. 4 spilling instantiations became 56.
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="stream32-2"></a>
-### `stream32`
-
-ONE 32-BIT division per BLOCK on a uniform value: `blockIdx.y` is the solve's
-stream, and a token-major operand needs it as `(b, h)`. The width is load-bearing --
-a 64-bit div/mod here is a register-hungry sequence live across the whole kernel,
-and it spilled the family. `heads == 0` means no split at all.
--- docs/internals/entmax/entmax.md#stream-split
-THE STREAM SPLIT, and it is UNCONDITIONAL on purpose. `heads >= 1` always -- 1 is
-one head, for which this is `sb = stream, sh = 0` -- because guarding it with
-`heads ? ... : stream` MEASURED as a family-wide spill: the ternary pins `sb`/`sh`
-in registers, where `blockIdx.y` is free to re-read and a plain quotient of it is
-cheap to rematerialize. 4 spilling instantiations became 56.
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="stream32-3"></a>
-### `stream32`
-
-ONE 32-BIT division per BLOCK on a uniform value: `blockIdx.y` is the solve's
-stream, and a token-major operand needs it as `(b, h)`. The width is load-bearing --
-a 64-bit div/mod here is a register-hungry sequence live across the whole kernel,
-and it spilled the family. `heads == 0` means no split at all.
--- docs/internals/entmax/entmax.md#stream-split
-THE STREAM SPLIT, and it is UNCONDITIONAL on purpose. `heads >= 1` always -- 1 is
-one head, for which this is `sb = stream, sh = 0` -- because guarding it with
-`heads ? ... : stream` MEASURED as a family-wide spill: the ternary pins `sb`/`sh`
-in registers, where `blockIdx.y` is free to re-read and a plain quotient of it is
-cheap to rematerialize. 4 spilling instantiations became 56.
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="stream32-4"></a>
-### `stream32`
-
-ONE 32-BIT division per BLOCK on a uniform value: `blockIdx.y` is the solve's
-stream, and a token-major operand needs it as `(b, h)`. The width is load-bearing --
-a 64-bit div/mod here is a register-hungry sequence live across the whole kernel,
-and it spilled the family. `heads == 0` means no split at all.
--- docs/internals/entmax/entmax.md#stream-split
-THE STREAM SPLIT, and it is UNCONDITIONAL on purpose. `heads >= 1` always -- 1 is
-one head, for which this is `sb = stream, sh = 0` -- because guarding it with
-`heads ? ... : stream` MEASURED as a family-wide spill: the ternary pins `sb`/`sh`
-in registers, where `blockIdx.y` is free to re-read and a plain quotient of it is
-cheap to rematerialize. 4 spilling instantiations became 56.
--- docs/internals/entmax/entmax.md#stream-split
-
-## Comments moved from source
-
-Verbatim `//:` prose blocks from `csrc/rola/src/entmax/factor.cuh`, in source order, one heading per declaration. Source keeps only a short decl block pointing here.
-
-## More comments moved from source
-
-Verbatim trailing/banner `//` comments from `csrc/rola/src/entmax/factor.cu` condensed at their call site into a short pointer.
-
-<a id="launch-bounds"></a>
-### `__launch_bounds__`
-
----------------------------------------------------------------------------
-BACKWARD -- the alpha-entmax rank-1 Jacobian action.
-
-No sort and no scan: ONE fused (numerator, denominator) reduction over a support that
-is an INPUT, unpacked from the same frozen word the forward emitted, so the two
-directions cannot disagree about the support set by construction. Off support every
-output term is an exact zero by multiplication.
-
-It RE-READS `values` and the cotangents in the second pass rather than staging them:
-the union backward's measured spill trade, and the same `IPT`-sized arrays would apply
-here -- docs/internals/entmax/factor.md#backward
----------------------------------------------------------------------------
-
-<a id="validcount"></a>
-### `valid_count`
-
-A masked row can be EMPTY, so the member count is a per-row reduction and not
-`width`; `production_factor`'s empty-row autograd contract is exactly this case.
-
-<a id="sentinel"></a>
-### `sentinel`
-
-A finite row-relative sentinel keeps padded lanes strictly below every real
-value without an infinity in the scan. `row_min` is pre-shift, so shift it too.
-
-<a id="packedkey"></a>
-### `packed_key`
-
-ONE reduction selects the greatest valid k AND carries its tau: the column in the
-high 32 bits makes integer Max pick it, and `best_col = -1` maps to key 0 so an
-all-empty row yields tau = 0 -- docs/internals/entmax/entmax.md#forward-phases
-
-<a id="near-line-200"></a>
-### near line 200
-
-The second output is the SAME solve, never a second one: a `shares_solve` level
-hands read and write one set of amplitudes.
-
-<a id="near-line-204"></a>
-### near line 204
-
-HAZARD bf16-support-boundary -- docs/internals/entmax/entmax.md#bf16-support-boundary
-Support is defined at the native bf16 storage boundary, never at the
-pre-quantization solve, whatever dtype this level's values are stored in.
-
-<a id="near-line-212"></a>
-### near line 212
-
-The butterfly runs over exactly the bits at or above LW, which is what separates
-lanes holding the same column: docs/internals/entmax/entmax.md#epilogue-butterfly
-
-<a id="nstreams"></a>
-### `n_streams`
-
-A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`;
-a flat plane declares `heads == 1` and the same product is `size(0)`
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="nstreams-2"></a>
-### `n_streams`
-
-A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`;
-a flat plane declares `heads == 1` and the same product is `size(0)`
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="nstreams-3"></a>
-### `n_streams`
-
-A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`;
-a flat plane declares `heads == 1` and the same product is `size(0)`
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="nstreams-4"></a>
-### `n_streams`
-
-A token-major plane's stream is TWO axes, so the grid's stream extent is `B * H`;
-a flat plane declares `heads == 1` and the same product is `size(0)`
--- docs/internals/entmax/entmax.md#stream-split
-
-<a id="factorforward"></a>
-### `factor_forward`
-
-`mask` is a detached boolean candidate mask laid out like `logits`; absent means every
-element is a candidate. `values_second` absent means the level stores one side.
-
-<a id="factorbackward"></a>
-### `factor_backward`
-
-`accumulate` adds into `d_logits` instead of storing -- what a TIED level's second
-side needs, and the reason it is a parameter rather than a fact about the tensor.

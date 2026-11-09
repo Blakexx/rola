@@ -6,7 +6,7 @@
 namespace rola::carry {
 
 #if defined(ROLA_CARRY_BUILD_0)
-ROLA_CARRY_ARM_DEFINE(0, 2, 64, 8)
+ROLA_CARRY_ARM_DEFINE(0, 16, 1, 32, 1, 64, 0)
 #endif
 
 }  // namespace rola::carry

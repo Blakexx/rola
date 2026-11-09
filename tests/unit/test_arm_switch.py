@@ -2,10 +2,10 @@
 
 `csrc/rola/src/common/arm_switch.cuh` dispatches over the arm set the generated
 selection header carries; this file never depends on which arms are actually shipped
-(today's shipped set is one arm, `(2, 64, 8)`, per `tools/manifests/shipped_set.json`).
+(the shipped set lives in `tools/manifests/shipped_set.json`).
 This file compiles a probe against the SHIPPED HEADER with
 a synthetic three-arm selection header in front of it -- rendered by the one renderer
-`setup.py` and `tools/ratify.py` use, so what is tested is what a build would emit --
+the graph's header action and `tools/ratify.py` use, so what is tested is what a build would emit --
 and checks every layer of the contract:
 
 * the two counts are the generated ones, and the set names its members;
@@ -38,7 +38,7 @@ BUILD_LOCK = [sys.executable, "-m", "rola_devtools.locks.host", "--"]
 #: THE SYNTHETIC TABLE, and the only mirror in this file: three rows on the real key,
 #: of which a build carries the first and the last. The middle row is what makes
 #: "declared but not built" a distinct case from "not declared".
-TABLE = ((1, 64, 8), (2, 64, 8), (2, 128, 4))
+TABLE = ((32, 1, 32, 1, 32, 0), (32, 1, 32, 1, 32, 1), (128, 2, 128, 2, 64, 1))
 BUILT = [0, 2]
 
 
@@ -96,12 +96,12 @@ def empty(tmp_path_factory):
 
 def test_the_counts_and_the_members_are_the_generated_ones(built):
     assert built["count"] == ["2", "3"]
-    assert built["members"] == ["(1, 64, 8), (2, 128, 4)"]
+    assert built["members"] == ["(32, 1, 32, 1, 32, 0), (128, 2, 128, 2, 64, 1)"]
 
 
 @pytest.mark.parametrize("label,want", [
-    ("built_first", ["0", "1", "64", "8"]),
-    ("built_last", ["2", "2", "128", "4"]),
+    ("built_first", ["0", "32", "1", "32", "0"]),
+    ("built_last", ["2", "128", "2", "64", "1"]),
 ])
 def test_a_built_arm_dispatches_with_its_own_constants(built, label, want):
     """The body runs under ITS member: a body carrying another arm's constants is
@@ -119,9 +119,10 @@ def test_a_declared_arm_this_build_did_not_carry_is_refused_with_both_counts(bui
 
 
 @pytest.mark.parametrize("label,field", [
-    ("undeclared_depth", "D"),
-    ("undeclared_width", "DV"),
-    ("undeclared_warps", "warps_per_cta"),
+    ("undeclared_rows", "fold_rows"),
+    ("undeclared_channels", "channels"),
+    ("undeclared_factors", "read_factors"),
+    ("undeclared_split", "same_split"),
 ])
 def test_the_refusal_names_the_field_that_misses(built, label, field):
     assert built[label][0] == "refused"

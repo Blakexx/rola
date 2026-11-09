@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""ONE registry cell, ONE carry launch, no test framework -- the racecheck lane's driver.
+"""ONE registry cell, ONE carry or intra launch, no test framework -- the racecheck lane's driver.
 
 `tools/sanitize_oracle.py` wraps a PYTEST process for most (family, tool) pairs, which is
 right: the cell, its draw and its assertions are the oracle tier's, and a sanitizer row that
@@ -13,13 +13,17 @@ carrying the module, its 160 parametrised rows and torch's own arenas on top of 
 OOM-killed at 23 GB before the report is written (the K2 journal's open item, and it reappears
 under the one-box cell, so the cell was not the whole of it).
 
-This driver runs the SAME cell through the SAME binding (`measure.cells.carry_call`) with
-nothing else resident: one draw, one launch, one synchronise. It asserts nothing -- correctness
+This driver runs the SAME cell through the SAME binding (the carry's operands, `measure.subjects.carry_operands`, or
+for the intra the bench subject's bundle, `measure.subjects.bundle_of`, and the facts pass over it) with
+nothing else resident: one draw, one launch, one synchronise. The intra's row needs it for the
+same reason in another form: its oracle test computes the fp64 reference inside the instrumented
+process, and racecheck slows every torch kernel of that past the test's timeout. It asserts nothing -- correctness
 is the oracle tier's row for the same cell -- and it prints a line naming the launch and a
 checksum of its outputs, which is what makes a vacuous pass (a cell whose arm is not built, an
 empty selection) impossible to read as coverage.
 
-    python tools/sanitize_cell.py --cell one-box-short --order first
+    bazel run //tools:sanitize_cell -- --cell one-box-short
+    bazel run //tools:sanitize_cell -- --kernel intra --cell flagship-alt-k4
 """
 from __future__ import annotations
 
@@ -35,43 +39,45 @@ if str(ROOT) not in sys.path:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--cell", required=True)
-    ap.add_argument("--order", default="first", choices=("first", "identity"),
-                    help="the order policy, the launch's one dial")
-    ap.add_argument("--phase", default="both", choices=("both", "fold", "readout"),
-                    help="which phase's schedule to instrument. racecheck's shadow state is "
-                         "per shared access per barrier interval and this host's budget "
-                         "reaches ONE PHASE at a time on a real draw; zeroing the OTHER "
-                         "side's routing plane makes that phase reap everything, so its "
-                         "schedule still runs and its memory traffic is nil. The arithmetic "
-                         "is the oracle tier's business, not this driver's.")
+    ap.add_argument("--kernel", default="carry", choices=("carry", "intra"))
     args = ap.parse_args()
 
     import torch
 
-    from measure.cells import by_name, carry_call
+    if args.kernel == "intra":
+        return _intra(args.cell)
+
+    from measure.cells import by_name
+    from measure.subjects import carry_operands
     from rola.ops import carry as carry_ops
 
     spec = by_name(args.cell)
-    drawn, call = carry_call(spec, 1)
-    routes, v = call.pop("routes"), call.pop("v")
-    if args.phase != "both":
-        dead = torch.zeros_like(routes.read if args.phase == "fold" else routes.write)
-        routes = carry_ops.RoutePlanes(
-            read=dead if args.phase == "fold" else routes.read,
-            write=dead if args.phase == "readout" else routes.write, gain=routes.gain)
-        words = call["liveness"].words.clone()
-        words[:, 0 if args.phase == "fold" else 1] = 0
-        call["liveness"] = carry_ops.LivenessWords(words=words)
-    schedule = carry_ops.CarrySchedule(order=args.order)
-    state = carry_ops.state_plane(call["descriptor"], 1)
-    num, den = carry_ops.carry_forward(routes, v, state_in=None, state_out=state,
-                                       schedule=schedule, **call)
+    num, _den, check, _ = carry_ops.carry(*carry_operands(spec))
     torch.cuda.synchronize()
-    print(f"sanitize_cell: {spec.name} phase={args.phase} "
-          f"order={args.order} LAUNCHED "
-          f"num={int(num.view(torch.int32).abs().sum()):d} "
-          f"den={int(den.view(torch.int32).abs().sum()):d} "
-          f"state={int(state.view(torch.int32).abs().sum()):d}")
+    print(f"sanitize_cell: {spec.name} LAUNCHED "
+          f"num={int(num.abs().sum()):d} check={float(check):g}")
+    return 0
+
+
+def _intra(cell: str) -> int:
+    """The cell's bundle, its facts and one intra launch into zeroed planes."""
+    import torch
+
+    from measure.cells import by_name, realize
+    from measure.subjects import bundle_of, lists_form_of
+    from rola.ops import facts as facts_ops
+    from rola.ops import intra as intra_ops
+
+    spec = by_name(cell)
+    routes, values, layout, statics = bundle_of(spec, realize(spec))
+    unions = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec)).unions
+    bh = routes.batch * routes.heads
+    num = torch.zeros(bh, routes.tokens, intra_ops.VALUE_WIDTH, device="cuda")
+    den = torch.zeros(bh, routes.tokens, device="cuda")
+    intra_ops.intra_forward(routes, values, unions, layout, *statics, num, den)
+    torch.cuda.synchronize()
+    print(f"sanitize_cell: {spec.name} kernel=intra LAUNCHED "
+          f"num={int(num.view(torch.int32).abs().sum()):d} den={int(den.view(torch.int32).abs().sum()):d}")
     return 0
 
 

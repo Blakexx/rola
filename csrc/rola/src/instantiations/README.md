@@ -13,5 +13,5 @@ that are wanted compile in parallel rather than serially inside one front end.
 The directory is exempt from the per-file mirror-doc rule because its contents are
 generated; this page is what that exemption is paid for with. The mechanism each unit
 instantiates is documented at its source: `docs/internals/carry/carry_arm.md` for the launch
-and the census, `docs/internals/carry/carry_kernel.md` for the body, and
+and the census, `docs/internals/carry/ampere/carry_kernel.md` for the body, and
 `docs/internals/tools/gen_shards.md` for the generator.

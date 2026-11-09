@@ -26,7 +26,7 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     out = declared()
     labels = set(out["targets"])
     assert {"rola/binary", "rola/environment", "rola/sass", "rola/registers", "rola/phases", "rola/roofline",
-            "rola/carry_forward", "rola/carry_intra", "rola/clock", "session", "memory", "store/session", "store/memory",
+            "rola/carry_forward", "rola/clock", "session", "memory", "store/session", "store/memory",
             "store/sass", "timing-server", "timing-server-stop"} <= labels
     assert {"rola/entmax_solve@layer=chunk-sparse-gain8", "rola/entmax_solve@layer=chunk-decode-w16",
             "rola/decode_step@layer=chunk-decode-w16"} <= labels
@@ -42,7 +42,8 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     assert {t.label for t in out["targets"]["rola/phases"].inputs} == carry
     assert out["targets"]["cells/flagship-dense"].params == {"cell": "flagship-dense"}
     assert {t.label for t in out["targets"]["rola/carry_forward"].inputs} == carry
-    assert out["targets"]["rola/binary"].holds == {"host_cpu": "all"}
+    #: the graph's front door takes the host budget for the build: a holder never starts a Bazel build
+    assert out["targets"]["rola/binary"].holds == {} and not out["targets"]["rola/binary"].cache
     assert out["targets"]["rola/phases"].holds == {"gpu": "all"}
     assert out["targets"]["timing-server-stop"].always_run
     assert set(out["public"]) == {"all"}
@@ -59,9 +60,8 @@ def test_every_declared_code_digest_names_files_that_exist():
 
 
 def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_list():
-    """Selection is the build CLI's, by label; a node's cells are its own declaration. The sides and the in-checkout
-    kernel-vs-oracle diff are declared beside the instruments, and the kernel's side reads the binary while the pure
-    reference does not."""
+    """Selection is the build CLI's, by label; a node's cells are its own declaration. The sides are declared beside
+    the instruments, and a side that holds no GPU does not read the binary."""
     import inspect
 
     from rola_devtools.build.declare import load
@@ -70,28 +70,19 @@ def test_every_node_declares_the_cells_it_runs_on_and_the_root_takes_no_cell_lis
     assert "cells" not in inspect.signature(declared["root"]).parameters
     g = Graph()
     declared["root"](g, python=sys.executable)
-    kernel, reference = g.targets["rola/side/carry-kernel"], g.targets["rola/side/carry-reference"]
-    assert "binary" in kernel.deps and "binary" not in reference.deps
-    assert kernel.holds == {"gpu": "all"} and reference.holds == {"host_cpu": "all"}
-    assert [t.label for t in kernel.inputs] == [t.label for t in reference.inputs]
-    diff = g.targets["rola/diff/carry-vs-oracle"]
-    assert diff.params["strategy"] == "per-slot" and set(diff.params["params"]["per_quantity"]) == {"num", "den", "state"}
-    assert diff.params["minimum"] == len(kernel.inputs)
+    assert "binary" not in g.targets["rola/side/oracle"].deps and "binary" not in g.targets["rola/side/producer"].deps
     assert {t.label for t in g.targets["rola/side/producer"].inputs} == {
         f"cells/{n}" for n in declared["surface_cells"]("producer")}
 
 
-def test_a_surface_states_what_it_is_and_its_numeric_facts_but_chooses_no_comparison():
+def test_a_surface_states_what_it_is_but_chooses_no_comparison():
     """rola-bench owns the rule a surface is compared under across checkouts, as it owns the timing methodology; rola
-    states what a surface IS and, where it matters, a FACT about its numerics -- the readout fan-in reassociates."""
+    states what a surface IS."""
     from rola_devtools.build.declare import load
 
     d = load(ROOT / "declare.py")
     for name, (executor, kind_, tier, holds) in d["SURFACES"].items():
         assert executor.startswith("tests.oracle.sides:") and kind_ in ("carry", "producer") and holds
-    facts = d["NUMERICS"]["carry-kernel"]
-    assert set(facts["reassociation"]) == {"num", "den"} and facts["exact"] == ["state"]
-    assert all(0 < f["rtol"] < 1e-5 for f in facts["reassociation"].values())
 
 
 def test_the_oracle_tier_is_one_target_keyed_on_its_code_and_the_binary_and_stored():
@@ -119,8 +110,6 @@ def test_a_backward_surface_admits_only_the_cells_under_the_retained_state_budge
     for name, record in central().cells.items():
         if d["kind"](name) == "carry" and record["params"].get("tier") == "oracle":
             assert (name in admitted) == (d["retained_state_bytes"](record) < d["RETAINED_STATE_BUDGET"])
-    #: the kernel's forward-only side takes every oracle-tier cell; the budget is the backward's alone
-    assert "flat-small-dense" in d["surface_cells"]("carry-kernel")
 
 
 def test_loading_the_declarations_imports_neither_rola_nor_torch():

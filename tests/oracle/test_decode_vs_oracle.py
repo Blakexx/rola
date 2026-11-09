@@ -13,17 +13,19 @@ asking for something no implementation can deliver:
 1. The prefill consumer's ``y`` is not reproducible against ITSELF wherever a ``bh``
    holds more than one owner block — it fans partials in by ``atomicAdd`` and CUDA
    fixes no inter-CTA order (Track K measured 384 of 976 fixture cases differing
-   between two runs of one binary). Decode is deterministic by design.
+   between two runs of one binary). Decode's ``y`` is summed the same way now: its warps
+   add their partials into a batch-head's sums atomically, in whatever order the work
+   queue hands out positions (Blake, 2026-09-29: determinism is not a requirement).
 2. Summation order differs by construction: the prefill kernel contracts inside an
    MMA fragment tree per owner then sums owners by atomic; decode contracts in leaf
-   order in fp32 FMA chains and folds 8 warps then ``n_split`` CTAs in fixed order.
+   order in fp32 FMA chains and adds warps' partials by atomic.
 3. The precision path differs: the prefill readout narrows its operands to bf16 for
    the MMA; decode has no MMA and stays fp32. Decode is the *more* accurate of the
    two, which is the safe direction but is still a difference.
 
-So the gates are: byte-equality where decode is *supposed* to be exact (G1, G2, the
-BC-blindness row in tier 2), and the ORACLE band everywhere else. Decode's byte gates
-are STRONGER than the prefill kernel's, not weaker — G1 is a gate no MMA path passes.
+So the gates are: byte-equality where decode is *supposed* to be exact -- the STATE, which
+no reduction touches (G1, G2, the BC-blindness row in tier 2) -- and the ORACLE band
+everywhere else, ``y`` included.
 
 **P67 D2-b / K31.** The prefill leg here is the fp64 ORACLE now: the tiled consumer
 left at D2, and the chunk arm left with the K31 deletion batch (baseline = tag
@@ -31,8 +33,8 @@ left at D2, and the chunk arm left with the K31 deletion batch (baseline = tag
 That took one gate with it and improved another:
 
 * **G5** — decode against the TILED consumer at ``T = 1`` — RETIRES. Its subject was
-  the second prefill kernel as a cross-check, and the chunk arm cannot run ``T = 1``
-  at all (``T`` must be a multiple of ``rola.engine.rules.arm.CHUNK_TOKENS``). What G5
+  the second prefill kernel as a cross-check, and the retired chunk arm could not run ``T = 1``
+  at all (``T`` had to be a whole number of its 32-token chunks). What that gate
   actually established beyond the oracle rows was consumer-to-consumer agreement, and
   after D2 there is one prefill consumer.
 * **G7** — the prefill/decode seam — is now graded against the fp64 ORACLE over the
@@ -41,11 +43,12 @@ That took one gate with it and improved another:
   INDEPENDENT reference for the seam instead of the same family of kernel twice,
   which is the direction the standing rule points.
 
-Run: ``pytest tests/oracle/test_decode_vs_oracle.py``
+Run: ``bazel test //tests:oracle --test_filter=test_decode_vs_oracle``
 """
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import pytest
@@ -53,9 +56,23 @@ import torch
 
 from rola.ops.decode import _decode_step, derive_decode_geometry
 from rola.ops.lattice import permutation, to_canonical, to_lattice
-from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
+from rola.ops.paging import bytes_equal
+from rola.routing import quant
+from rola.routing.factors import RouteFactors
 from rola.routing.types import LeafMassDecay
-from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, oracle_run
+from rola.values import Values
+from tests.oracle.fixtures import (
+    assert_planted_errors_fail,
+    assert_slots_close,
+    bundle_operands,
+    logical_state,
+    oracle_run,
+    state_pages,
+    state_quantum,
+    state_rounded,
+    step_bundles,
+    with_gain,
+)
 from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
 from tests.oracle.tolerances import DECODE_STATE, DECODE_Y
 
@@ -66,11 +83,8 @@ pytestmark = [
 
 
 def _chunk_tokens() -> int:
-    """The prefill arm's chunk length. Imported through the function so this
-    module stays importable without the extension for a collection-only run."""
-    from rola.engine.rules.arm import CHUNK_TOKENS
-
-    return CHUNK_TOKENS
+    """The oracle prefill's length unit, in tokens."""
+    return 32
 
 
 #: THE TOPOLOGY AXIS, written out rather than reduced because the lattice ``(k, m)`` each
@@ -111,7 +125,7 @@ def _lattice_mask(mask, config):
 
 
 def _leaf_support(levels, widths, B, H, device):
-    """``[BH, N]`` bool: leaf ``s`` is live iff EVERY level's digit is exact-nonzero.
+    """``[BH, N]`` bool: leaf ``s`` is live iff EVERY level's digit is live (``RouteFactors.live``).
 
     This is `schedule.py`'s own definition of the support bitmap
     (``read_mask = tuple(level != 0 ...)``) taken to leaf granularity, written here in
@@ -130,7 +144,7 @@ def _leaf_support(levels, widths, B, H, device):
     return mask
 
 
-def _kernel_realized_support(levels, widths, B, H, device, d_v=64):
+def _kernel_realized_support(routes, side, widths, B, H, device, d_v=64):
     """The step kernel's OWN touched leaf set, as ``[BH, N]`` bool in LATTICE order.
 
     The walk is ONE device path and it does not know which side it is serving, so the
@@ -141,24 +155,32 @@ def _kernel_realized_support(levels, widths, B, H, device, d_v=64):
 
     The read side is left empty so the walk's union is the set under test, the state
     starts at zero and ``v`` is all ones, so a deposited row is a nonzero row and the
-    correspondence is exact rather than statistical.
+    correspondence is exact rather than statistical. ``side``'s rows are the bundle's own stored rows, carried with
+    its sparse flags (a dense level's zeros read as the floor), so the support is the one the kernel is handed.
     """
     topology = _topology(widths)
     N = math.prod(widths)
-    BH = B * H
-    config = derive_decode_geometry(topology, d_v=d_v, decay=False, BH=BH, device=device)
+    config = derive_decode_geometry(topology, d_v=d_v, decay=False)
     f32 = dict(device=device, dtype=torch.float32)
-    empty_read = tuple(torch.zeros(B, 1, H, w, **f32) for w in widths)
-    write = tuple(t.float() for t in levels)
-    g_write = torch.ones(B, 1, H, **f32)
-    v = torch.ones(B, 1, H, d_v, **f32)
-    state = to_split_planes(torch.zeros(B, H, N, config.cols, **f32))
-    _y, state, _ws = _decode_step(v, empty_read, write, g_write, config, state)
-    return (from_split_planes(state).reshape(BH, N, config.cols) != 0).any(-1)
+    ones = torch.ones(B, 1, H, **f32)
+    rows = routes.read_rows if side == "read" else routes.write_rows
+    #: the read side is empty, but it must declare a dense level: level 0, which the probe ignores (the state diff
+    #: shows only what the step WROTE, and a read deposits nothing), the others sparse and empty
+    read_flags = (False,) + (True,) * (len(widths) - 1)
+    flags = routes.sparse[0] if side == "read" else routes.sparse[1]
+    #: a dense level is f16 at the floor on either side: the rows move to the write side in their own form
+    empty = tuple(quant.aligned_rows(*r.shape, r.device, quant.ROW_DTYPE if sparse else quant.DENSE_DTYPE)
+                  for r, sparse in zip(rows, read_flags))
+    routes = RouteFactors.from_rows(topology, empty, rows, (ones,) * len(widths), (ones,) * len(widths),
+                                    sparse=(read_flags, flags))
+    values = Values.from_projection(torch.ones(B, 1, H, d_v, **f32))
+    state = state_pages(torch.zeros(B, H, N, config.cols, **f32))
+    _y, state, _ws = _decode_step(routes, values, config, state)
+    return (logical_state(state, d_v) != 0).any(-1)
 
 
 def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
-          n_split=None, nonzero_m0=True, steps=1, stored_bf16=False):
+          ctas=None, nonzero_m0=True, steps=1, flushed=False):
     """Build one fixture, run the oracle and decode, return everything both produced."""
     device = "cuda"
     generator = torch.Generator(device=device).manual_seed(seed)
@@ -166,19 +188,17 @@ def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
     N = math.prod(widths)
     cols = d_v + (1 if norm == "global" else 0)
 
-    read_levels, write_levels, g_writes, vs = [], [], [], []
+    bundles, drawn_write = [], []
     for _ in range(steps):
-        read_levels.append(tuple(_simplex((B, 1, H, w), p_read, generator, device) for w in widths))
+        read = tuple(_simplex((B, 1, H, w), p_read, generator, device) for w in widths)
         write = tuple(_simplex((B, 1, H, w), p_write, generator, device) for w in widths)
-        #: ONE representation, and it is the STORED one: the producer emits bf16, so
-        #: the clock and the deposit read the same tensor and a flushed amplitude is
-        #: absent from both. Rounding here, before either side is called, is what makes
-        #: that identity the fixture rather than an argument.
-        if stored_bf16:
-            write = tuple(t.to(torch.bfloat16).to(t.dtype) for t in write)
-        write_levels.append(write)
-        g_writes.append(torch.rand(B, 1, H, device=device, dtype=torch.float64, generator=generator) + 0.5)
-        vs.append(torch.randn(B, 1, H, d_v, device=device, dtype=torch.float64, generator=generator))
+        if flushed:
+            write = tuple(_flush_some(t, generator) for t in write)
+        drawn_write.append(write)
+        g_write = torch.rand(B, 1, H, device=device, dtype=torch.float64, generator=generator) + 0.5
+        v = torch.randn(B, 1, H, d_v, device=device, dtype=torch.float64, generator=generator)
+        #: ONE representation, and it is the STORED one: the kernel reads the bundle and the oracle its values.
+        bundles.append(step_bundles(v, read, with_gain(write, g_write), topology))
 
     initial_state = None
     if nonzero_m0:
@@ -186,49 +206,61 @@ def _case(widths, d_v, B, H, norm, p_read, p_write, *, seed, decay_dials=None,
                                           generator=generator)
         if norm == "global":
             initial_state[..., d_v] = initial_state[..., d_v].abs()
+        #: the entry state IS a stored one: both sides start from the int8 format's values.
+        initial_state = state_rounded(initial_state)
 
     decay = None if decay_dials is None else LeafMassDecay(dials=decay_dials)
 
     # ---- the oracle, chained one token at a time (which is what decode does) ----
     #: each step's readout and its envelope; the states are carried, not kept (64 fp64 planes at N = 65536 would not fit).
     y_refs, ref = [], initial_state
-    for s in range(steps):
-        ref = oracle_run(vs[s], read_levels[s], write_levels[s], g_writes[s], topology, decay, entry=ref)
+    for routes, values in bundles:
+        ref = oracle_run(*bundle_operands(routes, values), topology, decay, entry=ref)
         y_refs.append((ref.y, ref.y_envelope))
+        #: THE DECLARED STORE, mirrored: the step rounds every row it wrote to its group's s24 quantum.
+        ref = ref._replace(state=state_rounded(ref.state))
 
     # ---- decode ---------------------------------------------------------------
-    config = derive_decode_geometry(topology, d_v=d_v, decay=decay is not None, BH=B * H,
-                                  device=device, n_split=n_split)
+    config = derive_decode_geometry(topology, d_v=d_v, decay=decay is not None)
+    if ctas is not None:
+        config = dataclasses.replace(config, ctas=ctas)
     #: THE SEAM. The oracle's plane is canonical forever; the kernel's is lattice-ordered.
-    #: THE STORED FORM IS THE SPLIT PLANES: the seam packs after the lattice
+    #: THE STORED FORM IS THE INT8 STATE PAGE: the seam packs after the lattice
     #: permutation and unpacks before the inverse, because a page is 16 leaves OF THAT
     #: ORDER and the kernel reads the bytes, not the logical view.
-    state = to_split_planes(
+    state = state_pages(
         torch.zeros(B, H, N, cols, device=device, dtype=torch.float32)
         if initial_state is None
         else to_lattice(initial_state.to(torch.float32), widths,
                         config.lattice_k, config.lattice_m))
     workspace = None
     y_outs = []
-    for s in range(steps):
-        y, state, workspace = _decode_step(
-            vs[s].float(), tuple(t.float() for t in read_levels[s]),
-            tuple(t.float() for t in write_levels[s]),
-            g_writes[s].float(),
-            config, state, decay=decay, workspace=workspace)
+    for routes, values in bundles:
+        y, state, workspace = _decode_step(routes, values, config, state, decay=decay, workspace=workspace)
         y_outs.append(y)
-    state = to_canonical(from_split_planes(state), widths, config.lattice_k, config.lattice_m)
+    state = to_canonical(logical_state(state, d_v).reshape(B, H, N, cols), widths, config.lattice_k, config.lattice_m)
 
-    return dict(y=y_outs, state=state, y_refs=y_refs, ref=ref, config=config,
-                workspace=workspace, read_levels=read_levels, write_levels=write_levels,
+    return dict(y=y_outs, state=state, y_refs=y_refs, ref=ref, config=config, workspace=workspace,
+                routes=[routes for routes, _ in bundles], drawn_write=drawn_write,
                 widths=widths, B=B, H=H, N=N, device=device)
+
+
+def _flush_some(level, generator):
+    """A simplex with a third of its live non-max digits moved below half a u8 step of the row's max, so the stored
+    row holds a zero where the drawn level does not."""
+    peak = level.amax(-1, keepdim=True)
+    tiny = (level > 0) & (level < peak) & (torch.rand(level.shape, device=level.device, generator=generator) < 1 / 3)
+    level = torch.where(tiny, peak * 1e-4, level)
+    return level / level.sum(-1, keepdim=True)
 
 
 def _assert_oracle(out):
     """Every step's ``y`` and the final state, per slot against the chained oracle's envelopes."""
     for step, (y, (y_ref, y_envelope)) in enumerate(zip(out["y"], out["y_refs"])):
         assert_slots_close(y, y_ref, output=DECODE_Y, envelope=y_envelope, what=f"decode y at step {step}")
-    assert_slots_close(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope, what="decode state")
+    #: the store's own rounding, on both sides from one fp32 update apart: a tie may land a quantum away.
+    assert_slots_close(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope,
+                       what="decode state", derived_atol=2 * state_quantum(out["ref"].state))
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +283,12 @@ def test_g3_expansion_is_the_exact_leaf_support(widths, p_read, p_write):
     """
     out = _case(widths, 64, 2, 3, "global", p_read, p_write, seed=17)
     B, H, device, config = out["B"], out["H"], out["device"], out["config"]
-    want_r = _lattice_mask(_leaf_support(out["read_levels"][0], widths, B, H, device), config)
-    want_w = _lattice_mask(_leaf_support(out["write_levels"][0], widths, B, H, device), config)
-    assert torch.equal(_kernel_realized_support(out["read_levels"][0], widths, B, H, device),
+    routes = out["routes"][0]
+    want_r = _lattice_mask(_leaf_support(routes.live("read"), widths, B, H, device), config)
+    want_w = _lattice_mask(_leaf_support(routes.live("write"), widths, B, H, device), config)
+    assert torch.equal(_kernel_realized_support(routes, "read", widths, B, H, device),
                        want_r), "the read walk is not the exact read support"
-    assert torch.equal(_kernel_realized_support(out["write_levels"][0], widths, B, H, device),
+    assert torch.equal(_kernel_realized_support(routes, "write", widths, B, H, device),
                        want_w), "the write walk is not the exact write support"
 
 
@@ -280,26 +313,20 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     out = _case((64, 64), 64, 2, 3, "global", 0.5, 0.4, seed=64, steps=16)
     y_ref, y_envelope = out["y_refs"][-1]
     assert_planted_errors_fail(out["y"][-1], y_ref, output=DECODE_Y, envelope=y_envelope, what="decode y")
-    assert_planted_errors_fail(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope, what="decode state")
+    assert_planted_errors_fail(out["state"], out["ref"].state, output=DECODE_STATE, envelope=out["ref"].state_envelope,
+                               what="decode state", derived_atol=2 * state_quantum(out["ref"].state))
 
 
 def test_the_empty_support_corner_is_inert_rather_than_undefined():
     """``M = 0``: no leaf is touched, ``y`` is zero, and the state is byte-unchanged.
 
-    **This is a ROBUSTNESS row, not a semantics row, and the distinction is itself a
-    finding.** ``M = 0`` requires some level to have no live digit on EITHER side, and
-    every routing level is a SIMPLEX — it sums to 1, so it always has one. The canonical
-    oracle enforces exactly that (``_oracle_contract.validate_simplex`` refuses an all-zero level),
-    which means the corner is UNREACHABLE from a valid producer and cannot be gated
-    against the oracle at all: there is no reference answer because there is no legal
-    input. Asserting against the oracle here would have meant weakening the oracle.
-
-    It is still worth pinning, because the empty UNIT RANGE it exercises is very much
-    reachable — the frozen ``n_split`` sizes the grid from a CEILING, so ordinary steps
-    launch CTAs with empty ranges — and the degenerate forms of the unit partition and
-    the split-K combine live on that path. So the assertion is against the arithmetic
-    identity (a sum over no terms is zero, and ``0 / (0 + eps)`` is zero), not against a
-    reference.
+    ``M = 0`` is some level with no live digit on EITHER side -- an all-zero level, a legal
+    input since no level need sum to 1 (docs/CONSTITUTION.md#r23). The oracle's answer is
+    exact arithmetic: no write deposits, so the state is the entry's, and the readout is a
+    sum over no terms, ``0 / (0 + eps) = 0``. Those identities are what this asserts, bit
+    for bit. The empty UNIT RANGE it exercises is the path a head whose support is empty
+    takes -- its one position is claimed and walks nothing -- and the degenerate forms of
+    the queue and the split-K combine live on it.
     """
     device = "cuda"
     widths, d_v, B, H = (64, 64), 64, 1, 2
@@ -307,31 +334,31 @@ def test_the_empty_support_corner_is_inert_rather_than_undefined():
     zeros = tuple(torch.zeros(B, 1, H, w, device=device, dtype=torch.float32) for w in widths)
     g_write = torch.ones(B, 1, H, device=device, dtype=torch.float32)
     v = torch.randn(B, 1, H, d_v, device=device, dtype=torch.float32)
-    config = derive_decode_geometry(topology, d_v=d_v, decay=False, BH=B * H, device=device)
-    m0 = to_split_planes(0.1 * torch.randn(B, H, config.N, config.cols, device=device,
-                                      dtype=torch.float32))
+    config = derive_decode_geometry(topology, d_v=d_v, decay=False)
+    m0 = state_pages(0.1 * torch.randn(B, H, config.N, config.cols, device=device, dtype=torch.float32))
     state = m0.clone()
-    y, state, _workspace = _decode_step(v, zeros, zeros, g_write, config, state)
-    assert not _leaf_support(zeros, widths, B, H, device).any(), (
+    routes, values = step_bundles(v, zeros, with_gain(zeros, g_write), topology)
+    y, state, _workspace = _decode_step(routes, values, config, state)
+    assert not _leaf_support(routes.live("write"), widths, B, H, device).any(), (
         "the fixture did not produce M = 0")
     assert torch.equal(y, torch.zeros_like(y))
     assert bytes_equal(state, m0), "an untouched state must be byte-unchanged"
 
 
-@pytest.mark.parametrize("n_split", [7, 64])
-def test_more_ctas_than_rows_is_inert(n_split):
-    """``n_split > M``: the surplus CTAs contribute nothing and the answer does not move.
+@pytest.mark.parametrize("ctas", [7, 64])
+def test_more_ctas_than_rows_is_inert(ctas):
+    """``ctas > positions``: the surplus CTAs claim nothing and the answer does not move.
 
-    The reachable half of the corner above, and what makes a FROZEN ``n_split`` safe: the
-    carrier sizes the grid from a ceiling, so a step whose realized support is far below
-    it launches empty CTAs on every call. They must contribute an exact zero to the
-    fixed-order combine, not an uninitialized workspace slot.
+    The reachable half of the corner above, and what makes a FROZEN grid safe: the grid is
+    sized before the step's work is known, so a step whose realized support is small
+    launches CTAs that find every head's queue empty. They must add nothing to a head's
+    sums and finish no head they did not walk.
     """
-    ref = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=1)
-    got = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, n_split=n_split)
+    ref = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, ctas=1)
+    got = _case((64, 64), 64, 1, 2, "global", 0.3, 0.3, seed=4, ctas=ctas)
     assert torch.equal(ref["state"], got["state"])
     assert_slots_close(got["y"][-1], ref["y"][-1], output=DECODE_Y, envelope=ref["ref"].y_envelope,
-                       what=f"y at n_split={n_split} against n_split=1")
+                       what=f"y at ctas={ctas} against ctas=1")
 
 
 def test_the_widest_staged_topology():
@@ -384,7 +411,7 @@ def test_g4_decay_hot_dials(widths):
 
 
 def test_g4_decay_on_the_stored_write_representation():
-    """The clock and the deposit read ONE representation, and it is the bf16 one.
+    """The clock and the deposit read ONE representation, and it is the stored u8 row.
 
     An amplitude that flushed to zero in storage is absent from the deposit AND from
     the clock, so ``keep == 1`` there with nothing deposited — the regime the shipped
@@ -392,48 +419,48 @@ def test_g4_decay_on_the_stored_write_representation():
     """
     generator = torch.Generator(device="cuda").manual_seed(31337)
     dials = _decay_dials((64, 64), 3, generator, "cuda")
-    _assert_oracle(_case((64, 64), 64, 2, 3, "global", 0.5, 0.4, seed=808,
-                         decay_dials=dials, stored_bf16=True))
+    out = _case((64, 64), 64, 2, 3, "global", 0.5, 0.4, seed=808, decay_dials=dials, flushed=True)
+    flushed = any(bool(((drawn > 0) & (row == 0)).any())
+                  for drawn, row in zip(out["drawn_write"][0], out["routes"][0].write_rows))
+    assert flushed, "no drawn amplitude flushed in storage: the row is vacuous"
+    _assert_oracle(out)
 
 
 # ---------------------------------------------------------------------------
 # G1 / G2 -- determinism
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("n_split", [1, 2, 7, 64])
+@pytest.mark.parametrize("ctas", [1, 2, 7, 64])
 @pytest.mark.parametrize("widths", _TOPOLOGIES)
-def test_g1_is_byte_reproducible_against_itself(n_split, widths):
-    """TWO RUNS OF THIS BINARY GIVE BYTE-IDENTICAL ``y`` AND ``state``.
+def test_g1_the_state_is_byte_reproducible_against_itself(ctas, widths):
+    """TWO RUNS OF THIS BINARY GIVE A BYTE-IDENTICAL ``state``, and ``y`` inside the oracle band.
 
-    This is the gate the tiled consumer cannot pass and decode must. It is what the
-    fixed-order slot combine buys, and a failure means either that combine is not
-    fixed-order or the row partition is not a partition.
+    The state is not a reduction: every touched leaf is walked by exactly one warp, whichever
+    CTA claims its position, so a failure means the positions do not partition the leaves.
+    ``y`` is summed by atomics in queue order, so it is only graded against the oracle.
     """
-    kwargs = dict(seed=2024, n_split=n_split)
-    a = _case(widths, 64, 2, 3, "global", 0.4, 0.3, **kwargs)
-    b = _case(widths, 64, 2, 3, "global", 0.4, 0.3, **kwargs)
-    assert torch.equal(a["y"][-1], b["y"][-1]), "decode's y is not run-reproducible"
+    a = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=2024, ctas=ctas)
+    b = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=2024, ctas=ctas)
     assert torch.equal(a["state"], b["state"]), "decode's state is not run-reproducible"
+    assert_slots_close(b["y"][-1], a["y_refs"][-1][0], output=DECODE_Y, envelope=a["y_refs"][-1][1],
+                       what=f"y at ctas={ctas}")
 
 
 @pytest.mark.parametrize("widths", _TOPOLOGIES)
-def test_g2_state_is_invariant_across_n_split(widths):
-    """``state`` is byte-identical across ``n_split``, UNCONDITIONALLY.
+def test_g2_state_is_invariant_across_the_grid(widths):
+    """``state`` is byte-identical whatever the resident grid, UNCONDITIONALLY.
 
-    Unlike ``y``, the state is not a reduction: the row partition hands every touched
-    row to exactly one CTA, warp and lane, so changing how the rows are split cannot
-    change a single stored bit. ``y`` is a reduction and fp32 addition is not
-    associative, so ``y`` is only byte-stable at FIXED ``n_split`` (which is what ships,
-    since ``n_split`` is a pure function of the frozen config) and is checked at the
-    oracle band across ``n_split``.
+    Unlike ``y``, the state is not a reduction: the positions hand every touched leaf to
+    exactly one warp, so how many CTAs claim them cannot change a single stored bit. ``y``
+    is a reduction and is checked at the oracle band across grids.
     """
-    ref = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, n_split=1)
-    for n_split in (2, 7, 64):
-        got = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, n_split=n_split)
+    ref = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, ctas=1)
+    for ctas in (2, 7, 64):
+        got = _case(widths, 64, 2, 3, "global", 0.4, 0.3, seed=555, ctas=ctas)
         assert torch.equal(ref["state"], got["state"]), (
-            f"state moved with n_split={n_split}; the row partition is not a partition")
+            f"state moved with ctas={ctas}; the positions do not partition the leaves")
         assert_slots_close(got["y"][-1], ref["y"][-1], output=DECODE_Y, envelope=ref["ref"].y_envelope,
-                           what=f"y at n_split={n_split} against n_split=1")
+                           what=f"y at ctas={ctas} against ctas=1")
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +508,10 @@ def _oracle_prefill(widths, d_v, B, T, H, generator, device):
     read_levels = tuple(_simplex((B, T, H, w), 0.5, generator, device) for w in widths)
     write_levels = tuple(_simplex((B, T, H, w), 0.4, generator, device) for w in widths)
     g_write = torch.rand(B, T, H, device=device, dtype=torch.float64, generator=generator) + 0.5
+    write_levels = with_gain(write_levels, g_write)
     v = torch.randn(B, T, H, d_v, device=device, dtype=torch.float64, generator=generator)
-    ref = oracle_run(v, read_levels, write_levels, g_write, topology)
-    return dict(topology=topology, read_levels=read_levels, write_levels=write_levels,
-                g_write=g_write, v=v, y=ref.y,
+    ref = oracle_run(v, read_levels, write_levels, topology)
+    return dict(topology=topology, read_levels=read_levels, write_levels=write_levels, v=v, y=ref.y,
                 state=ref.state.float())
 
 
@@ -518,26 +545,24 @@ def test_g7_prefill_decode_seam(widths):
     step_gw = torch.rand(B, 1, H, device=device, dtype=torch.float64, generator=gen) + 0.5
     step_v = torch.randn(B, 1, H, d_v, device=device, dtype=torch.float64, generator=gen)
 
-    config = derive_decode_geometry(pre["topology"], d_v=d_v, decay=False, BH=B * H,
-                                  device=device)
+    config = derive_decode_geometry(pre["topology"], d_v=d_v, decay=False)
     #: THE SEAM ITSELF: the entry state is the oracle's, so it crosses into lattice order
     #: here and its answer crosses back.
-    entry = to_split_planes(to_lattice(pre["state"], widths, config.lattice_k, config.lattice_m))
-    y_dec, state_dec, _ = _decode_step(
-        step_v.float(), tuple(t.float() for t in step_read),
-        tuple(t.float() for t in step_write), step_gw.float(),
-        config, entry)
-    state_dec = to_canonical(from_split_planes(state_dec), widths, config.lattice_k,
-                             config.lattice_m)
+    entry = state_pages(to_lattice(pre["state"], widths, config.lattice_k, config.lattice_m))
+    routes, values = step_bundles(step_v, step_read, with_gain(step_write, step_gw), pre["topology"])
+    y_dec, state_dec, _ = _decode_step(routes, values, config, entry)
+    step_v, step_read, step_write = bundle_operands(routes, values)
+    state_dec = to_canonical(logical_state(state_dec, d_v).reshape(B, H, config.N, d_v + 1), widths,
+                             config.lattice_k, config.lattice_m)
 
     #: THE WHOLE SEQUENCE, on the oracle: prefill and step concatenated, so the
     #: reference sees exactly what the two kernel legs together saw.
     cat = lambda a, b: tuple(torch.cat([x, s], dim=1) for x, s in zip(a, b))  # noqa: E731
-    ref = oracle_run(
-        torch.cat([pre["v"], step_v], dim=1),
-        cat(pre["read_levels"], step_read), cat(pre["write_levels"], step_write),
-        torch.cat([pre["g_write"], step_gw], dim=1), pre["topology"])
+    ref = oracle_run(torch.cat([pre["v"], step_v], dim=1), cat(pre["read_levels"], step_read),
+                     cat(pre["write_levels"], step_write), pre["topology"])
 
     assert_slots_close(y_dec, ref.y[:, L:L + 1], output=DECODE_Y, envelope=ref.y_envelope[:, L:L + 1], what="y across the seam")
-    assert_slots_close(state_dec, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what="the state across the seam")
+    #: the entry state crossed the seam as a stored one (half a quantum), and the step stored it again.
+    assert_slots_close(state_dec, ref.state, output=DECODE_STATE, envelope=ref.state_envelope,
+                       what="the state across the seam", derived_atol=2 * state_quantum(ref.state))
     assert pre["y"].shape[1] == L

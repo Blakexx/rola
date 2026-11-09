@@ -1,0 +1,1374 @@
+{
+ "experiment": "facts_two",
+ "question": "does the facts pass as two plain kernels -- a STREAM kernel that reads every row once and a BUILD kernel that ranks from its intermediates, the call chunked and the two overlapped on two CUDA streams -- come near its DRAM floor at k 4 and k 16, and what do its intermediates cost?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "66b8fdec141e55a8a193c67a644470ca8cc88b8f",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-11T00:11:50+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "flat read of all the rows",
+   "unit": "us",
+   "samples": [
+    314.36801,
+    313.344002,
+    313.344002,
+    317.440003,
+    317.440003
+   ],
+   "median": 314.36801,
+   "min": 313.344002,
+   "max": 317.440003,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / stream alone / chunk 8",
+   "unit": "us",
+   "samples": [
+    482.176006,
+    484.351993,
+    483.328015,
+    480.255991,
+    479.13599
+   ],
+   "median": 482.176006,
+   "min": 479.13599,
+   "max": 484.351993,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / build alone / chunk 8",
+   "unit": "us",
+   "samples": [
+    221.088007,
+    225.280002,
+    224.255994,
+    227.295995,
+    225.280002
+   ],
+   "median": 225.280002,
+   "min": 221.088007,
+   "max": 227.295995,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on two streams / chunk 8",
+   "unit": "us",
+   "samples": [
+    636.031985,
+    654.335976,
+    639.999986,
+    648.191988,
+    646.143973
+   ],
+   "median": 646.143973,
+   "min": 636.031985,
+   "max": 654.335976,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on one stream / chunk 8",
+   "unit": "us",
+   "samples": [
+    642.048001,
+    654.111981,
+    652.28802,
+    658.432007,
+    652.28802
+   ],
+   "median": 652.28802,
+   "min": 642.048001,
+   "max": 658.432007,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / fused unit kernel / chunk 8",
+   "unit": "us",
+   "samples": [
+    522.239983,
+    518.047988,
+    519.168019,
+    519.168019,
+    521.215975
+   ],
+   "median": 519.168019,
+   "min": 518.047988,
+   "max": 522.239983,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x required-bytes floor / chunk 8",
+   "unit": "x",
+   "samples": [
+    1.874737,
+    1.928689,
+    1.886432,
+    1.910579,
+    1.904542
+   ],
+   "median": 1.904542,
+   "min": 1.874737,
+   "max": 1.928689,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x pair floor / chunk 8",
+   "unit": "x",
+   "samples": [
+    1.748695,
+    1.79902,
+    1.759605,
+    1.782128,
+    1.776497
+   ],
+   "median": 1.776497,
+   "min": 1.748695,
+   "max": 1.79902,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / stream alone / chunk 16",
+   "unit": "us",
+   "samples": [
+    411.648005,
+    419.840008,
+    415.744007,
+    411.648005,
+    413.664013
+   ],
+   "median": 413.664013,
+   "min": 411.648005,
+   "max": 419.840008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / build alone / chunk 16",
+   "unit": "us",
+   "samples": [
+    164.864004,
+    161.791995,
+    165.887997,
+    161.599994,
+    162.816003
+   ],
+   "median": 162.816003,
+   "min": 161.599994,
+   "max": 165.887997,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on two streams / chunk 16",
+   "unit": "us",
+   "samples": [
+    547.839999,
+    547.839999,
+    551.935971,
+    557.05601,
+    807.936013
+   ],
+   "median": 551.935971,
+   "min": 547.839999,
+   "max": 807.936013,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on one stream / chunk 16",
+   "unit": "us",
+   "samples": [
+    541.696012,
+    540.575981,
+    540.672004,
+    543.744028,
+    543.744028
+   ],
+   "median": 541.696012,
+   "min": 540.575981,
+   "max": 543.744028,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / fused unit kernel / chunk 16",
+   "unit": "us",
+   "samples": [
+    686.079979,
+    452.607989,
+    453.503996,
+    450.560004,
+    451.584011
+   ],
+   "median": 452.607989,
+   "min": 450.560004,
+   "max": 686.079979,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x required-bytes floor / chunk 16",
+   "unit": "x",
+   "samples": [
+    1.614786,
+    1.614786,
+    1.626859,
+    1.641951,
+    2.381432
+   ],
+   "median": 1.626859,
+   "min": 1.614786,
+   "max": 2.381432,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x pair floor / chunk 16",
+   "unit": "x",
+   "samples": [
+    1.506222,
+    1.506222,
+    1.517483,
+    1.53156,
+    2.221325
+   ],
+   "median": 1.517483,
+   "min": 1.506222,
+   "max": 2.221325,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / stream alone / chunk 32",
+   "unit": "us",
+   "samples": [
+    378.879994,
+    378.879994,
+    379.743993,
+    378.879994,
+    388.096005
+   ],
+   "median": 378.879994,
+   "min": 378.879994,
+   "max": 388.096005,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / build alone / chunk 32",
+   "unit": "us",
+   "samples": [
+    129.023999,
+    130.048007,
+    129.023999,
+    130.048007,
+    129.823998
+   ],
+   "median": 129.823998,
+   "min": 129.023999,
+   "max": 130.048007,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on two streams / chunk 32",
+   "unit": "us",
+   "samples": [
+    496.639997,
+    495.615989,
+    496.639997,
+    494.592011,
+    497.664005
+   ],
+   "median": 496.639997,
+   "min": 494.592011,
+   "max": 497.664005,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on one stream / chunk 32",
+   "unit": "us",
+   "samples": [
+    496.639997,
+    488.447994,
+    488.447994,
+    489.472002,
+    489.376009
+   ],
+   "median": 489.376009,
+   "min": 488.447994,
+   "max": 496.639997,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / fused unit kernel / chunk 32",
+   "unit": "us",
+   "samples": [
+    417.791992,
+    419.840008,
+    417.791992,
+    418.047994,
+    435.200006
+   ],
+   "median": 418.047994,
+   "min": 417.791992,
+   "max": 435.200006,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x required-bytes floor / chunk 32",
+   "unit": "x",
+   "samples": [
+    1.463872,
+    1.460853,
+    1.463872,
+    1.457835,
+    1.46689
+   ],
+   "median": 1.463872,
+   "min": 1.457835,
+   "max": 1.46689,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x pair floor / chunk 32",
+   "unit": "x",
+   "samples": [
+    1.365453,
+    1.362638,
+    1.365453,
+    1.359823,
+    1.368269
+   ],
+   "median": 1.365453,
+   "min": 1.359823,
+   "max": 1.368269,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / stream alone / chunk 64",
+   "unit": "us",
+   "samples": [
+    362.495989,
+    360.448003,
+    361.472011,
+    361.472011,
+    360.448003
+   ],
+   "median": 361.472011,
+   "min": 360.448003,
+   "max": 362.495989,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / build alone / chunk 64",
+   "unit": "us",
+   "samples": [
+    109.568,
+    111.616001,
+    111.616001,
+    111.391999,
+    108.543999
+   ],
+   "median": 111.391999,
+   "min": 108.543999,
+   "max": 111.616001,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on two streams / chunk 64",
+   "unit": "us",
+   "samples": [
+    466.944009,
+    466.944009,
+    477.183998,
+    470.016003,
+    470.016003
+   ],
+   "median": 470.016003,
+   "min": 466.944009,
+   "max": 477.183998,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on one stream / chunk 64",
+   "unit": "us",
+   "samples": [
+    461.824,
+    460.799992,
+    460.799992,
+    461.824,
+    461.600006
+   ],
+   "median": 461.600006,
+   "min": 460.799992,
+   "max": 461.824,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / fused unit kernel / chunk 64",
+   "unit": "us",
+   "samples": [
+    401.407987,
+    411.648005,
+    424.959987,
+    402.431995,
+    402.431995
+   ],
+   "median": 402.431995,
+   "min": 401.407987,
+   "max": 424.959987,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x required-bytes floor / chunk 64",
+   "unit": "x",
+   "samples": [
+    1.376341,
+    1.376341,
+    1.406524,
+    1.385396,
+    1.385396
+   ],
+   "median": 1.385396,
+   "min": 1.376341,
+   "max": 1.406524,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x pair floor / chunk 64",
+   "unit": "x",
+   "samples": [
+    1.283808,
+    1.283808,
+    1.311961,
+    1.292254,
+    1.292254
+   ],
+   "median": 1.292254,
+   "min": 1.283808,
+   "max": 1.311961,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / stream alone / chunk 128",
+   "unit": "us",
+   "samples": [
+    353.280008,
+    354.303986,
+    353.280008,
+    352.256,
+    352.256
+   ],
+   "median": 353.280008,
+   "min": 352.256,
+   "max": 354.303986,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / build alone / chunk 128",
+   "unit": "us",
+   "samples": [
+    101.375997,
+    101.279996,
+    100.192003,
+    101.375997,
+    100.351997
+   ],
+   "median": 101.279996,
+   "min": 100.192003,
+   "max": 101.375997,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on two streams / chunk 128",
+   "unit": "us",
+   "samples": [
+    461.824,
+    458.752006,
+    454.656005,
+    454.656005,
+    455.680013
+   ],
+   "median": 455.680013,
+   "min": 454.656005,
+   "max": 461.824,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair on one stream / chunk 128",
+   "unit": "us",
+   "samples": [
+    447.48801,
+    446.464002,
+    446.464002,
+    446.624011,
+    447.48801
+   ],
+   "median": 446.624011,
+   "min": 446.464002,
+   "max": 447.48801,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / fused unit kernel / chunk 128",
+   "unit": "us",
+   "samples": [
+    420.863986,
+    394.239992,
+    394.239992,
+    393.216014,
+    394.239992
+   ],
+   "median": 394.239992,
+   "min": 393.216014,
+   "max": 420.863986,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x required-bytes floor / chunk 128",
+   "unit": "x",
+   "samples": [
+    1.36125,
+    1.352195,
+    1.340122,
+    1.340122,
+    1.34314
+   ],
+   "median": 1.34314,
+   "min": 1.340122,
+   "max": 1.36125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair x pair floor / chunk 128",
+   "unit": "x",
+   "samples": [
+    1.269731,
+    1.261285,
+    1.250023,
+    1.250023,
+    1.252839
+   ],
+   "median": 1.252839,
+   "min": 1.250023,
+   "max": 1.269731,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / required-bytes floor",
+   "unit": "us",
+   "samples": [
+    339.264719
+   ],
+   "median": 339.264719,
+   "min": 339.264719,
+   "max": 339.264719,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 4 / pair floor",
+   "unit": "us",
+   "samples": [
+    363.718008
+   ],
+   "median": 363.718008,
+   "min": 363.718008,
+   "max": 363.718008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / stream alone / chunk 8",
+   "unit": "us",
+   "samples": [
+    541.696012,
+    545.69602,
+    548.864007,
+    550.912023,
+    542.72002
+   ],
+   "median": 545.69602,
+   "min": 541.696012,
+   "max": 550.912023,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / build alone / chunk 8",
+   "unit": "us",
+   "samples": [
+    394.239992,
+    399.360001,
+    396.288007,
+    397.311985,
+    398.303986
+   ],
+   "median": 397.311985,
+   "min": 394.239992,
+   "max": 399.360001,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on two streams / chunk 8",
+   "unit": "us",
+   "samples": [
+    845.824003,
+    832.512021,
+    834.559977,
+    834.559977,
+    827.391982
+   ],
+   "median": 834.559977,
+   "min": 827.391982,
+   "max": 845.824003,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on one stream / chunk 8",
+   "unit": "us",
+   "samples": [
+    890.784025,
+    904.191971,
+    890.655994,
+    890.879989,
+    888.704002
+   ],
+   "median": 890.784025,
+   "min": 888.704002,
+   "max": 904.191971,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / fused unit kernel / chunk 8",
+   "unit": "us",
+   "samples": [
+    702.463984,
+    712.704003,
+    708.607972,
+    705.536008,
+    706.528008
+   ],
+   "median": 706.528008,
+   "min": 702.463984,
+   "max": 712.704003,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x required-bytes floor / chunk 8",
+   "unit": "x",
+   "samples": [
+    2.188152,
+    2.153714,
+    2.159012,
+    2.159012,
+    2.140468
+   ],
+   "median": 2.159012,
+   "min": 2.140468,
+   "max": 2.188152,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x pair floor / chunk 8",
+   "unit": "x",
+   "samples": [
+    1.754267,
+    1.726657,
+    1.730905,
+    1.730905,
+    1.716038
+   ],
+   "median": 1.730905,
+   "min": 1.716038,
+   "max": 1.754267,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / stream alone / chunk 16",
+   "unit": "us",
+   "samples": [
+    462.848008,
+    459.776014,
+    462.848008,
+    460.799992,
+    461.824
+   ],
+   "median": 461.824,
+   "min": 459.776014,
+   "max": 462.848008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / build alone / chunk 16",
+   "unit": "us",
+   "samples": [
+    304.127991,
+    304.127991,
+    308.223993,
+    305.088013,
+    304.928005
+   ],
+   "median": 304.928005,
+   "min": 304.127991,
+   "max": 308.223993,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on two streams / chunk 16",
+   "unit": "us",
+   "samples": [
+    706.560016,
+    700.416028,
+    697.344005,
+    708.832026,
+    709.631979
+   ],
+   "median": 706.560016,
+   "min": 697.344005,
+   "max": 709.631979,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on one stream / chunk 16",
+   "unit": "us",
+   "samples": [
+    733.18398,
+    734.016001,
+    729.92003,
+    728.064001,
+    734.207988
+   ],
+   "median": 733.18398,
+   "min": 728.064001,
+   "max": 734.207988,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / fused unit kernel / chunk 16",
+   "unit": "us",
+   "samples": [
+    591.647983,
+    584.703982,
+    588.800013,
+    586.751997,
+    588.576019
+   ],
+   "median": 588.576019,
+   "min": 584.703982,
+   "max": 591.647983,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x required-bytes floor / chunk 16",
+   "unit": "x",
+   "samples": [
+    1.827875,
+    1.811981,
+    1.804033,
+    1.833753,
+    1.835822
+   ],
+   "median": 1.827875,
+   "min": 1.804033,
+   "max": 1.835822,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x pair floor / chunk 16",
+   "unit": "x",
+   "samples": [
+    1.465429,
+    1.452686,
+    1.446314,
+    1.470141,
+    1.4718
+   ],
+   "median": 1.465429,
+   "min": 1.446314,
+   "max": 1.4718,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / stream alone / chunk 32",
+   "unit": "us",
+   "samples": [
+    422.912002,
+    421.887994,
+    422.847986,
+    450.560004,
+    422.912002
+   ],
+   "median": 422.912002,
+   "min": 421.887994,
+   "max": 450.560004,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / build alone / chunk 32",
+   "unit": "us",
+   "samples": [
+    247.807994,
+    247.807994,
+    251.744002,
+    250.880003,
+    251.648009
+   ],
+   "median": 250.880003,
+   "min": 247.807994,
+   "max": 251.744002,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on two streams / chunk 32",
+   "unit": "us",
+   "samples": [
+    646.143973,
+    643.072009,
+    644.096017,
+    671.743989,
+    645.120025
+   ],
+   "median": 645.120025,
+   "min": 643.072009,
+   "max": 671.743989,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on one stream / chunk 32",
+   "unit": "us",
+   "samples": [
+    651.264012,
+    651.072025,
+    653.312027,
+    651.199996,
+    650.143981
+   ],
+   "median": 651.199996,
+   "min": 650.143981,
+   "max": 653.312027,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / fused unit kernel / chunk 32",
+   "unit": "us",
+   "samples": [
+    534.528017,
+    526.336014,
+    525.312006,
+    528.38397,
+    528.38397
+   ],
+   "median": 528.38397,
+   "min": 525.312006,
+   "max": 534.528017,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x required-bytes floor / chunk 32",
+   "unit": "x",
+   "samples": [
+    1.671579,
+    1.663631,
+    1.66628,
+    1.737806,
+    1.66893
+   ],
+   "median": 1.66893,
+   "min": 1.663631,
+   "max": 1.737806,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x pair floor / chunk 32",
+   "unit": "x",
+   "samples": [
+    1.340124,
+    1.333753,
+    1.335876,
+    1.393219,
+    1.338
+   ],
+   "median": 1.338,
+   "min": 1.333753,
+   "max": 1.393219,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / stream alone / chunk 64",
+   "unit": "us",
+   "samples": [
+    403.456002,
+    403.456002,
+    403.456002,
+    403.456002,
+    420.863986
+   ],
+   "median": 403.456002,
+   "min": 403.456002,
+   "max": 420.863986,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / build alone / chunk 64",
+   "unit": "us",
+   "samples": [
+    222.207993,
+    222.207993,
+    221.919999,
+    225.280002,
+    223.104
+   ],
+   "median": 222.207993,
+   "min": 221.919999,
+   "max": 225.280002,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on two streams / chunk 64",
+   "unit": "us",
+   "samples": [
+    621.568024,
+    619.520009,
+    617.471993,
+    618.496001,
+    620.544016
+   ],
+   "median": 619.520009,
+   "min": 617.471993,
+   "max": 621.568024,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on one stream / chunk 64",
+   "unit": "us",
+   "samples": [
+    615.423977,
+    613.376021,
+    615.423977,
+    613.600016,
+    616.447985
+   ],
+   "median": 615.423977,
+   "min": 613.376021,
+   "max": 616.447985,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / fused unit kernel / chunk 64",
+   "unit": "us",
+   "samples": [
+    498.688012,
+    504.832029,
+    522.239983,
+    497.664005,
+    498.944014
+   ],
+   "median": 498.944014,
+   "min": 497.664005,
+   "max": 522.239983,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x required-bytes floor / chunk 64",
+   "unit": "x",
+   "samples": [
+    1.608,
+    1.602702,
+    1.597404,
+    1.600053,
+    1.605351
+   ],
+   "median": 1.602702,
+   "min": 1.597404,
+   "max": 1.608,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x pair floor / chunk 64",
+   "unit": "x",
+   "samples": [
+    1.289153,
+    1.284905,
+    1.280657,
+    1.282781,
+    1.287029
+   ],
+   "median": 1.284905,
+   "min": 1.280657,
+   "max": 1.289153,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / stream alone / chunk 128",
+   "unit": "us",
+   "samples": [
+    392.192006,
+    392.192006,
+    391.167998,
+    392.192006,
+    393.216014
+   ],
+   "median": 392.192006,
+   "min": 391.167998,
+   "max": 393.216014,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / build alone / chunk 128",
+   "unit": "us",
+   "samples": [
+    209.920004,
+    209.920004,
+    208.895996,
+    210.943997,
+    210.784003
+   ],
+   "median": 209.920004,
+   "min": 208.895996,
+   "max": 210.943997,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on two streams / chunk 128",
+   "unit": "us",
+   "samples": [
+    604.160011,
+    603.136003,
+    605.184019,
+    603.136003,
+    604.160011
+   ],
+   "median": 604.160011,
+   "min": 603.136003,
+   "max": 605.184019,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair on one stream / chunk 128",
+   "unit": "us",
+   "samples": [
+    595.968008,
+    612.384021,
+    596.032023,
+    595.968008,
+    594.944
+   ],
+   "median": 595.968008,
+   "min": 594.944,
+   "max": 612.384021,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / fused unit kernel / chunk 128",
+   "unit": "us",
+   "samples": [
+    481.279999,
+    484.351993,
+    484.127998,
+    484.351993,
+    483.424008
+   ],
+   "median": 484.127998,
+   "min": 481.279999,
+   "max": 484.351993,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x required-bytes floor / chunk 128",
+   "unit": "x",
+   "samples": [
+    1.562966,
+    1.560317,
+    1.565615,
+    1.560317,
+    1.562966
+   ],
+   "median": 1.562966,
+   "min": 1.560317,
+   "max": 1.565615,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair x pair floor / chunk 128",
+   "unit": "x",
+   "samples": [
+    1.253048,
+    1.250924,
+    1.255172,
+    1.250924,
+    1.253048
+   ],
+   "median": 1.253048,
+   "min": 1.250924,
+   "max": 1.255172,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / required-bytes floor",
+   "unit": "us",
+   "samples": [
+    386.547182
+   ],
+   "median": 386.547182,
+   "min": 386.547182,
+   "max": 386.547182,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "k 16 / pair floor",
+   "unit": "us",
+   "samples": [
+    482.152417
+   ],
+   "median": 482.152417,
+   "min": 482.152417,
+   "max": 482.152417,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void facts_two::stream_p<(bool)1>(facts_two::Params, facts_two::Chunk)": {
+   "regs": 64,
+   "ops": {
+    "LOP3.LUT": 190,
+    "IADD3": 115,
+    "IMAD": 103,
+    "IMAD.IADD": 76,
+    "IMAD.SHL.U32": 74,
+    "BRA": 68,
+    "LEA.HI": 60,
+    "IMAD.MOV.U32": 58,
+    "LEA": 41,
+    "LEA.HI.X": 38,
+    "SEL": 36,
+    "ISETP.NE.AND": 35
+   }
+  },
+  "void facts_two::stream_p<(bool)0>(facts_two::Params, facts_two::Chunk)": {
+   "regs": 38,
+   "ops": {
+    "LOP3.LUT": 113,
+    "IADD3": 70,
+    "IMAD.IADD": 47,
+    "IMAD.SHL.U32": 41,
+    "IMAD": 40,
+    "BRA": 30,
+    "LEA.HI": 30,
+    "LDS": 29,
+    "IMAD.MOV.U32": 28,
+    "SHFL.BFLY": 28,
+    "FMNMX": 24,
+    "LEA": 21
+   }
+  },
+  "void facts_two::stream<(bool)1>(facts_two::Params, facts_two::Chunk)": {
+   "regs": 46,
+   "ops": {
+    "LOP3.LUT": 192,
+    "IADD3": 109,
+    "IMAD.SHL.U32": 81,
+    "IMAD.IADD": 69,
+    "IMAD": 65,
+    "IMAD.MOV.U32": 62,
+    "BRA": 61,
+    "LEA.HI": 57,
+    "LEA": 39,
+    "LEA.HI.X": 37,
+    "SEL": 36,
+    "POPC": 33
+   }
+  },
+  "void facts_two::stream<(bool)0>(facts_two::Params, facts_two::Chunk)": {
+   "regs": 36,
+   "ops": {
+    "LOP3.LUT": 111,
+    "IADD3": 61,
+    "IMAD.IADD": 40,
+    "IMAD.SHL.U32": 38,
+    "SHFL.BFLY": 28,
+    "LDS": 26,
+    "IMAD": 25,
+    "LEA.HI": 24,
+    "FMNMX": 24,
+    "LEA": 20,
+    "BRA": 20,
+    "IMAD.MOV.U32": 17
+   }
+  },
+  "facts_two::reference(facts_two::Params, int, unsigned long long *)": {
+   "regs": 56,
+   "ops": {
+    "LOP3.LUT": 48,
+    "IADD3": 43,
+    "SEL": 35,
+    "LDG.E.U8": 33,
+    "IMAD.MOV.U32": 30,
+    "IMAD.IADD": 28,
+    "BRA": 24,
+    "ISETP.NE.AND": 24,
+    "IMAD.MOV": 22,
+    "ISETP.EQ.AND": 17,
+    "ISETP.GT.U32.AND": 16,
+    "IMAD": 15
+   }
+  },
+  "facts_two::build(facts_two::Params, facts_two::Chunk)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 90,
+    "IMAD": 57,
+    "IMAD.MOV.U32": 41,
+    "IADD3": 40,
+    "IMAD.SHL.U32": 36,
+    "BRA": 36,
+    "IMAD.IADD": 24,
+    "LEA.HI": 24,
+    "LEA": 23,
+    "LEA.HI.X": 23,
+    "SHF.R.U32.HI": 22,
+    "ISETP.NE.AND": 20
+   }
+  },
+  "facts_two::flat(const unsigned char *, int *)": {
+   "regs": 26,
+   "ops": {
+    "IADD3": 17,
+    "LOP3.LUT": 13,
+    "NOP": 12,
+    "IMAD.SHL.U32": 9,
+    "IMAD.IADD": 9,
+    "IADD3.X": 9,
+    "LDGSTS.E.BYPASS.128": 8,
+    "IMAD.MOV.U32": 7,
+    "IMAD": 5,
+    "LDGDEPBAR": 4,
+    "BRA": 4,
+    "LDS": 4
+   }
+  },
+  "facts_two::sum_lists(const unsigned short *, long long, const unsigned short *, long long, unsigned long long *)": {
+   "regs": 40,
+   "ops": {
+    "IADD3": 150,
+    "IMAD.X": 78,
+    "IADD3.X": 68,
+    "LDG.E.U16": 58,
+    "IMAD.MOV.U32": 34,
+    "BRA": 25,
+    "IMAD": 15,
+    "NOP": 14,
+    "ISETP.NE.U32.AND": 13,
+    "IMAD.HI.U32": 13,
+    "BSSY": 12,
+    "BSYNC": 12
+   }
+  },
+  "facts_two::count_live(const unsigned char *, long long, long long, unsigned long long *)": {
+   "regs": 40,
+   "ops": {
+    "IADD3": 82,
+    "IMAD.X": 51,
+    "SEL": 37,
+    "LDG.E.U8": 29,
+    "ISETP.NE.AND": 29,
+    "IMAD.MOV.U32": 28,
+    "IADD3.X": 28,
+    "IMAD.WIDE.U32": 14,
+    "IMAD": 14,
+    "BRA": 13,
+    "IMAD.HI.U32": 11,
+    "NOP": 10
+   }
+  },
+  "facts_two::fill(unsigned char *, float2 *, int)": {
+   "regs": 28,
+   "ops": {
+    "LOP3.LUT": 28,
+    "SHF.R.U32.HI": 26,
+    "IADD3": 16,
+    "IMAD": 11,
+    "IMAD.WIDE.U32": 8,
+    "NOP": 8,
+    "UIADD3": 6,
+    "BRA": 5,
+    "IADD3.X": 5,
+    "STG.E.U8": 5,
+    "UMOV": 4,
+    "IMAD.MOV.U32": 3
+   }
+  }
+ }
+}

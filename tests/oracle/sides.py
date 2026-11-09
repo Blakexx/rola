@@ -13,7 +13,8 @@ here compares anything or states a tolerance -- the rule is the diff node's (`bi
 
 THE OLD SIDE IS A SECOND CHECKOUT, not an import alias: the build system runs each side in its own environment, and
 the side declares the library it must be running (`binds="rola"`), which the node proves rather than arranges for.
-Everything here is CPU and fp64 -- the references are pure torch, so no build is involved and no device is touched.
+The oracle pair's sides are CPU and fp64 -- pure torch, no build and no device. The carry's pair is rola's own
+kernel-vs-oracle diff: the kernel's ``num`` in the recurrence's units against the fp64 inter term and its envelope.
 
     producer    the routing reference: the solve's amplitudes, its SUPPORT SET, tau, and the VJP through the public
                 entry point. The support set is the claim with teeth: a threshold that moves by one entry is a routing
@@ -21,6 +22,8 @@ Everything here is CPU and fp64 -- the references are pure torch, so no build is
     oracle      `naive_rola` itself, FORWARD AND BACKWARD, on a carry cell's own draw. Compared BY BIT-IDENTITY: both
                 sides run fp64 on identical inputs, so a rewrite that only nearly reproduces the old one has changed
                 the definition.
+    carry-kernel the carry over a whole call against the fp64 inter term, per slot under the output kind's clauses
+                (`declare.py`'s `KERNEL_VS_ORACLE`); across checkouts, per slot at twice the reassociation measured.
 
 THE BACKWARD HALF IS NOT OPTIONAL. A seeded VJP per cell over every operand, with "no gradient" recorded as an EMPTY
 tensor rather than a zero one: the oracle's `.detach()` at the clock is its literal spec, and the difference between
@@ -33,6 +36,8 @@ import torch
 from rola_devtools.cells import build as build_cell
 from rola_devtools.cells import carry as carry_cells
 from rola_devtools.cells import producer as producer_cells
+
+from tests.oracle.fixtures import with_gain
 
 #: "this input received NO gradient", as a tensor: an EMPTY one, never a zero one, because `None` and `0.0` are
 #: different answers and a shape mismatch is how the comparison reports the difference
@@ -105,8 +110,9 @@ def oracle(record: dict, *, batch: int = 1, heads: int = 2, **_params) -> dict:
     operands = _flatten(v=v, g_write=g_write, read=read, write=write,
                         dials=None if decay is None else decay.dials)
     #: a CARRIED cell enters with its own state, which is the cell's claim and not this comparison's
-    entry = None if drawn.entry is None else drawn.entry.double()
-    y, state = naive_rola(v, read, write, g_write, topology, decay, initial_state=entry, output_final_state=True)
+    #: the draw's entry is `[B H, N, cols]`, the oracle's `[B, H, N, cols]` (`bh = b H + h`)
+    entry = None if drawn.entry is None else drawn.entry.double().reshape(batch, heads, *drawn.entry.shape[1:])
+    y, state = naive_rola(v, read, with_gain(write, g_write), topology, decay, initial_state=entry, output_final_state=True)
     out = {"y": y.detach(), "state": state.detach()}
     dy = torch.linspace(-1.0, 1.0, y.numel(), dtype=torch.float64).reshape(y.shape)
     dstate = torch.linspace(0.25, -0.75, state.numel(), dtype=torch.float64).reshape(state.shape)
@@ -117,32 +123,27 @@ def oracle(record: dict, *, batch: int = 1, heads: int = 2, **_params) -> dict:
     return out
 
 
-__all__ = ["NO_GRAD", "oracle", "producer"]
-
-
 def carry_kernel(record: dict, **_params) -> dict:
-    """THE CARRY KERNEL on one carry cell, its slots in the reference's layout -- the left side of rola's own
+    """THE CARRY on one carry cell, its ``num`` in the recurrence's units -- the left side of rola's own
     kernel-vs-oracle diff, the same call `test_carry_vs_oracle.py` makes."""
-    from tests.oracle.test_carry_vs_oracle import kernel_slots, run
+    from tests.oracle.readout_reference import num_in_truth
+    from tests.oracle.test_carry_vs_oracle import run
 
-    spec = build_cell(record)
-    drawn, num, den, plane = run(spec)
-    got_num, got_den, got_state = kernel_slots(spec, num, den, plane)
-    return {"num": got_num, "den": got_den, "state": got_state}
+    routes, _values, unit, num = run(build_cell(record))
+    return {"num": num_in_truth(num, routes, unit)}
 
 
 def carry_reference(record: dict, **_params) -> dict:
-    """THE fp64 REFERENCE on the same cell, with each slot's ENVELOPE beside it: the reference run again on `|v|` and
-    `|state_in|`, which is the sum of the sizes of the terms each slot adds up (`tests.oracle.fixtures`)."""
-    from measure.cells import carry_call
-    from tests.oracle.test_carry_vs_oracle import entry, ref
+    """THE fp64 INTER TERM on the same cell, with each slot's ENVELOPE beside it: the reference run again on `|v|` and
+    `|entry|`, the sum of the sizes of the terms each slot adds up (`tests.oracle.fixtures`)."""
+    from measure.cells import realize
+    from measure.subjects import bundle_of
+    from tests.oracle.test_carry_vs_oracle import ref
 
     spec = build_cell(record)
-    drawn, _call = carry_call(spec, bh=1)
-    want, env = ref(drawn, entry(spec, drawn)), ref(drawn, entry(spec, drawn), magnitudes=True)
-    shape = (1, spec.N, spec.dv + 1)
-    return {"num": want[0], "den": want[1], "state": want[2].reshape(shape),
-            "num_envelope": env[0], "den_envelope": env[1], "state_envelope": env[2].reshape(shape)}
+    routes, values, _layout, _statics = bundle_of(spec, realize(spec))
+    return {"num": ref(spec, routes, values), "num_envelope": ref(spec, routes, values, magnitudes=True)}
 
 
-__all__ += ["carry_kernel", "carry_reference"]
+__all__ = ["NO_GRAD", "carry_kernel", "carry_reference", "oracle", "producer"]
+

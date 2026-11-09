@@ -9,10 +9,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-# A tiny, deliberately non-tomllib extraction (this hook runs under
-# `language: system`, whatever `python3` is on PATH -- tomllib needs >=3.11,
-# and pre-commit's own invoking shell is not guaranteed to have that; a real
-# TOML parser would be overkill for one single-line array this file owns).
+# A tiny, deliberately non-tomllib extraction (whatever `python3` is first on
+# PATH runs it; a real TOML parser would be overkill for one single-line array
+# this file owns).
 CODES=$(python3 -c "
 import re
 text = open('pyproject.toml').read()

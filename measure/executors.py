@@ -6,9 +6,9 @@ The build system's worker runs them from this checkout's directory with `.`, `me
 Each takes the target's context (`rola_devtools.build.context.Context`) and returns its JSON output, keeping raw files
 in its workspace:
 
-    compile_kernel      the extension, by this checkout's own gated build (`pip install -e .`, which takes the host
-                        budget itself); its output is the binary's path in the checkout and its sha256, and
-                        `binary_present` confirms a cached build still stands on this machine
+    compile_kernel      the extension, by the build graph (`bazel run //:library`: the gated build, copied into the
+                        checkout; its front door takes the host budget itself); its output is the binary's path in the
+                        checkout and its sha256
     probe_environment   the machine facts a number depends on (GPU and driver, assembler, torch, Nsight Compute, the
                         clock the host locks), read from the machine and the dev config, never from a path
     run_tool            a checkout instrument through its `--json` command line, once or on each cell it takes: a cell
@@ -50,19 +50,12 @@ def binary() -> Path:
 def compile_kernel(ctx) -> dict:
     from rola_devtools.build.identity import digest
 
-    done = _run([sys.executable, "-m", "pip", "install", "-e", ".", "--no-build-isolation", "--no-deps"], BUILD_TIMEOUT_S)
+    done = _run(["bazel", "run", "--noshow_progress", "//:library"], BUILD_TIMEOUT_S)
     (ctx.workspace / "build.log").write_text(_portable(done.stdout[-50000:] + done.stderr[-50000:]))
     if done.returncode:
         raise RuntimeError(f"the build exited {done.returncode}:\n{_portable((done.stdout + done.stderr)[-3000:])}")
     so = binary()
     return {"binary": so.relative_to(CHECKOUT).as_posix(), "sha256": digest(so)}
-
-
-def binary_present(output: dict) -> bool:
-    from rola_devtools.build.identity import digest
-
-    path = CHECKOUT / output["binary"]
-    return path.is_file() and digest(path) == output["sha256"]
 
 
 def _version(cmd: list[str]) -> str:
@@ -76,8 +69,12 @@ def probe_environment(ctx) -> dict:
     import dev_config
 
     smi = _version(["nvidia-smi", "--query-gpu=name,driver_version,compute_cap", "--format=csv,noheader"]).strip()
-    ptxas = _version([f"{dev_config.get('toolchain.cuda_home')}/bin/ptxas", "--version"]).split()
-    ncu = _version([dev_config.get("toolchain.ncu"), "--version"])
+    ptxas = _version([dev_config.cuda_bin("ptxas"), "--version"]).split()
+    #: provenance only: a host without the pinned Nsight Compute records none
+    try:
+        ncu = _version([dev_config.ncu(), "--version"])
+    except SystemExit:
+        ncu = ""
     return {"gpu": smi, "ptxas": next((w for w in ptxas if w.startswith("V")), " ".join(ptxas[-2:])),
             "torch": metadata.version("torch"),
             "ncu": next((line.split("Version ")[1].split()[0] for line in ncu.splitlines() if "Version " in line), ""),

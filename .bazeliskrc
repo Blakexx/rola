@@ -1,0 +1,4 @@
+# The Bazel release .bazelversion names, by its digest: bazelisk refuses a download that does not match.
+BAZELISK_VERIFY_SHA256=7f775b54bbec487efaf0f49ccda1d2ed02cd34f582edfdd6aeeec76e39ef585c
+# The graph's front door: bazelisk runs bazel/bazel in place of Bazel (docs/build-graph.md#front-door).
+BAZELISK_WRAPPER_DIRECTORY=bazel

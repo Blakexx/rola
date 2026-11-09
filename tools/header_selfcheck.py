@@ -17,8 +17,8 @@ Compiled with the SAME flag list the extension is built with (`tools/build_flags
 the one source), so a header that needs a define the build supplies is not reported as
 broken and a header that needs one the build does NOT supply is.
 
-    python tools/header_selfcheck.py            # every header under csrc/rola
-    python tools/header_selfcheck.py --list     # what it would compile, no nvcc
+    bazel run //tools:header_selfcheck               # every header under csrc/rola
+    bazel run //tools:header_selfcheck -- --list     # what it would compile, no nvcc
 
 ONE ARCH, and that is deliberate: this asks a question about NAMES, not about codegen,
 so the per-arch expansion the ratification gate pays for buys nothing here. Neither
@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import os
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_flags  # noqa: E402
+import dev_config  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "csrc" / "rola"
@@ -50,13 +52,18 @@ def headers() -> list[Path]:
 
 
 def compile_flags(arch: int) -> list[str]:
+    #: torch resolves its toolkit when its extension module is first imported: the pinned one, as the build's
+    os.environ["CUDA_HOME"] = dev_config.cuda_home()
     import torch
     from torch.utils.cpp_extension import include_paths
 
-    flags = ["-O0", "-std=c++17", f"-gencode=arch=compute_{arch},code=sm_{arch}"]
+    flags = ["-O0", "-std=c++20", f"-gencode=arch=compute_{arch},code=sm_{arch}"]
     flags += build_flags.torch_defines()
     flags += [f"-I{p}" for p in include_paths(device_type="cuda")]
-    flags += [f"-I{SRC / 'src'}", f"-I{ROOT / 'csrc' / 'third_party' / 'cutlass' / 'include'}"]
+    #: the build's own include path: the generated headers (`build/generated`, written by every build) are includes a
+    #: header makes, not ones it leans on
+    flags += [f"-I{SRC / 'src'}", f"-I{ROOT / 'csrc' / 'third_party' / 'cutlass' / 'include'}",
+              f"-I{ROOT / 'build' / 'generated'}"]
     import sysconfig
     flags.append(f"-I{sysconfig.get_paths()['include']}")
     del torch
@@ -69,7 +76,7 @@ def check(header: Path, flags: list[str], tmp: Path) -> tuple[Path, str]:
     #: The absolute path, so the result does not depend on which `-I` resolves it.
     tu.write_text(f'#include "{header}"\n#include "{header}"\n')
     proc = subprocess.run(
-        ["nvcc", "-c", str(tu), "-o", str(tu.with_suffix(".o")), *flags],
+        [dev_config.cuda_bin("nvcc"), "-c", str(tu), "-o", str(tu.with_suffix(".o")), *flags],
         capture_output=True, text=True)
     return header, "" if proc.returncode == 0 else (proc.stderr.strip() or proc.stdout.strip())
 

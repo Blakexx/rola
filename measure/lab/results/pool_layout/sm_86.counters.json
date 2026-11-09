@@ -1,0 +1,62 @@
+{
+ "experiment": "pool_layout",
+ "question": "the fold's pool rows are 160 bytes, so the 8 rows of one ldmatrix matrix (one 16-byte column) land on 4 bank groups -- a 2-way conflict -- unless half the rows move that column by 16 bytes, while cp.async folds a lane pair's 32-byte global sector into one L2 request only when the shared destination keeps the sector's 32-byte phase. Does swapping the two 16-byte halves inside each aligned 32-byte pair (on rows with bit 2 set) keep the fill's sectors and make the steps' reads conflict-free?",
+ "arch": "sm_86",
+ "git": {
+  "sha": "84dd6b052bad5f7c1ed26c9cd845034613df711a",
+  "dirty": false
+ },
+ "date": "2026-10-04T19:52:16+00:00",
+ "metrics": [
+  "lts__t_sectors_srcunit_tex_op_read.sum",
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum",
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum"
+ ],
+ "kernels": {
+  "void fill<0, 0>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 28672000.0
+  },
+  "void fill<1, 0>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 28672000.0
+  },
+  "void fill<2, 0>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 36864001.0
+  },
+  "void fill<0, 1>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 28672041.0
+  },
+  "void fill<1, 1>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 28672013.0
+  },
+  "void fill<2, 1>(int, Source, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 640.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 36864058.5
+  },
+  "void read<0>(int, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 153600000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 307200000.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 0.0
+  },
+  "void read<1>(int, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 153600000.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 0.0
+  },
+  "void read<2>(int, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 153600000.0,
+   "lts__t_sectors_srcunit_tex_op_read.sum": 0.0
+  }
+ }
+}

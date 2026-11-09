@@ -1,6 +1,6 @@
-"""Focused tests for the compact RouteDescriptor ABI."""
+"""Focused tests for the routing declaration types."""
 
-from dataclasses import FrozenInstanceError, fields, replace
+from dataclasses import FrozenInstanceError, fields
 
 import pytest
 import torch
@@ -12,26 +12,10 @@ from rola.routing.types import (
     EntmaxActivation,
     IndependentRouting,
     ResolvedRouting,
-    RouteDescriptor,
     SoftmaxActivation,
     TiedRouting,
     UnionRouting,
 )
-
-
-def _descriptor(plan, *, tokens=33):
-    tiles = (tokens + 31) // 32
-    values = torch.empty(2, tiles, plan.level_offsets[-1], 32, dtype=torch.bfloat16)
-    support = torch.empty(
-        2, tiles,
-        sum(width for width, offset in zip(plan.branches, plan.support_offsets) if offset >= 0),
-        dtype=torch.int32,
-    )
-    return RouteDescriptor(
-        values, values, support,
-        plan.level_offsets, plan.support_offsets, plan.branches,
-        plan.radix_strides, plan.support_side_flags, 17, tokens, plan.topology_stamp,
-    )
 
 
 def test_union_routing_has_only_width_and_validated_alpha_and_fixed_split_semantics():
@@ -54,11 +38,10 @@ def test_tied_routing_has_only_width_and_one_validated_activation():
     assert TiedRouting(width=4, op=EntmaxActivation(2.0)) != tied
     with pytest.raises(ValueError, match="duty"):
         tied.activation("both")
-    # A tied SOFTMAX level is legal and reports DENSE_BOTH (no exact zeros, simplex
-    # output on both duties).
+    # A tied SOFTMAX level is legal and dense on both duties (no exact zeros).
     dense_tied = TiedRouting(width=3, op=SoftmaxActivation())
-    assert dense_tied.duty_simplex_output("read") is dense_tied.duty_simplex_output("write") is True
-    assert not dense_tied.properties.exact_zeros
+    assert dense_tied.activation("read") is dense_tied.activation("write")
+    assert not dense_tied.op.properties.exact_zeros
 
 
 def test_tied_routing_at_another_width_keeps_the_activation():
@@ -104,63 +87,6 @@ def test_tied_routing_has_one_packed_slot_and_is_the_shared_solve_level():
     assert tied_plan.packed_slot_widths == (4, 5, 5)
     assert tied_plan.read_level_can_zero == (True, True)
     assert tied_plan.write_level_can_zero == (True, True)
-
-
-def test_route_descriptor_has_one_compact_tile_major_and_support_arena():
-    plan = ResolvedRouting(
-        (IndependentRouting(width=3, read=EntmaxActivation(1.5), write=SoftmaxActivation()),
-         UnionRouting(width=5, alpha=2.0)),
-    )
-    descriptor = _descriptor(plan)
-    assert descriptor.read_values.shape == descriptor.write_values.shape == (2, 2, 8, 32)
-    assert descriptor.read_values.dtype == descriptor.write_values.dtype == torch.bfloat16
-    assert descriptor.support_words.shape == (2, 2, 8)
-    assert descriptor.support_words.dtype == torch.int32
-    assert descriptor.read_values is descriptor.write_values
-    assert descriptor.token_origin == 17
-    assert descriptor.token_count == 33
-    assert not hasattr(descriptor, "read")
-    assert not hasattr(descriptor, "write")
-    assert not hasattr(descriptor, "digits")
-    assert not hasattr(descriptor, "support_stream_map")
-    with pytest.raises(FrozenInstanceError):
-        descriptor.token_count = 1
-
-
-def test_route_descriptor_rejects_noncompact_or_inconsistent_metadata():
-    values = torch.empty(1, 1, 4, 32, dtype=torch.bfloat16)
-    support = torch.empty(1, 1, 4, dtype=torch.int32)
-    with pytest.raises(ValueError, match="topology_stamp"):
-        RouteDescriptor(
-            values, values, support, (0, 4), (0,), (4,), (1,), (READ_SUPPORT | WRITE_SUPPORT,),
-            0, 1, (ROUTE_DESCRIPTOR_VERSION, 1, 4, 1, READ_SUPPORT),
-        )
-
-
-@pytest.mark.parametrize(
-    "field,value",
-    [
-        ("level_offsets", (0, True)),
-        ("support_offsets", (0.0,)),
-        ("level_widths", (4.0,)),
-        ("radix_strides", (1.0,)),
-        ("support_side_flags", (3.0,)),
-        ("topology_stamp", (float(ROUTE_DESCRIPTOR_VERSION), 1, 4, 1, 3)),
-    ],
-)
-def test_route_descriptor_requires_exact_integer_metadata(field, value):
-    plan = ResolvedRouting((UnionRouting(width=4),))
-    descriptor = _descriptor(plan, tokens=1)
-    with pytest.raises(TypeError, match="exact ints"):
-        replace(descriptor, **{field: value})
-
-
-@pytest.mark.parametrize("field", ["token_origin", "token_count"])
-def test_route_descriptor_rejects_non_exact_integer_token_metadata(field):
-    plan = ResolvedRouting((UnionRouting(width=4),))
-    descriptor = _descriptor(plan, tokens=1)
-    with pytest.raises(ValueError, match="exact int"):
-        replace(descriptor, **{field: True})
 
 
 @pytest.mark.parametrize(

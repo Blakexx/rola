@@ -1,0 +1,537 @@
+{
+ "experiment": "issue_latency",
+ "question": "how many cycles after an instruction issues can a dependent one issue -- a shared load to its use, a tensor MMA to the next MMA on its accumulator, an FFMA to its use (the instrument's probe)?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "checks": [
+  {
+   "lab": "unchecked",
+   "variant": "FFMA / 32 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "FFMA / 64 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "FFMA / latency",
+   "reason": "derived: the slope between the two chains' rows"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDS.32 (address from the load) / 32 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDS.32 (address from the load) / 64 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDS.32 (address from the load) / latency",
+   "reason": "derived: the slope between the two chains' rows"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDSM.x4 (address from the load) / 32 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDSM.x4 (address from the load) / 64 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "LDSM.x4 (address from the load) / latency",
+   "reason": "derived: the slope between the two chains' rows"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp32-accumulate HMMA.16816 on one accumulator / 32 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp32-accumulate HMMA.16816 on one accumulator / 64 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp32-accumulate HMMA.16816 on one accumulator / latency",
+   "reason": "derived: the slope between the two chains' rows"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp16-accumulate HMMA.16816 on one accumulator / 32 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp16-accumulate HMMA.16816 on one accumulator / 64 links",
+   "reason": "a latency probe: its chain's value is a fixed point folded into a sink"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "fp16-accumulate HMMA.16816 on one accumulator / latency",
+   "reason": "derived: the slope between the two chains' rows"
+  }
+ ],
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "8724089863b85de4ec841cb682a4835cf44725da",
+  "dirty": true
+ },
+ "reps": 7,
+ "date": "2026-10-17T00:06:43+00:00",
+ "utilization_before": 3,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "FFMA / 32 links",
+   "unit": "cycles to issue",
+   "samples": [
+    166.70249,
+    166.69917,
+    166.704639,
+    166.700391,
+    166.712842,
+    166.7,
+    166.699805
+   ],
+   "median": 166.700391,
+   "min": 166.69917,
+   "max": 166.712842,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "FFMA / 64 links",
+   "unit": "cycles to issue",
+   "samples": [
+    294.699658,
+    294.695801,
+    294.697705,
+    294.699219,
+    294.693701,
+    294.694531,
+    294.695557
+   ],
+   "median": 294.695801,
+   "min": 294.693701,
+   "max": 294.699658,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "FFMA / latency",
+   "unit": "cycles a link",
+   "samples": [
+    3.999911,
+    3.999895,
+    3.999783,
+    3.999963,
+    3.999402,
+    3.999829,
+    3.999867
+   ],
+   "median": 3.999867,
+   "min": 3.999402,
+   "max": 3.999963,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDS.32 (address from the load) / 32 links",
+   "unit": "cycles to issue",
+   "samples": [
+    757.011719,
+    757.011719,
+    757.011719,
+    757.011719,
+    757.011719,
+    757.011719,
+    757.011719
+   ],
+   "median": 757.011719,
+   "min": 757.011719,
+   "max": 757.011719,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDS.32 (address from the load) / 64 links",
+   "unit": "cycles to issue",
+   "samples": [
+    1493.011719,
+    1493.011719,
+    1493.011719,
+    1493.011719,
+    1493.011719,
+    1493.011719,
+    1493.011719
+   ],
+   "median": 1493.011719,
+   "min": 1493.011719,
+   "max": 1493.011719,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDS.32 (address from the load) / latency",
+   "unit": "cycles a link",
+   "samples": [
+    23.0,
+    23.0,
+    23.0,
+    23.0,
+    23.0,
+    23.0,
+    23.0
+   ],
+   "median": 23.0,
+   "min": 23.0,
+   "max": 23.0,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDSM.x4 (address from the load) / 32 links",
+   "unit": "cycles to issue",
+   "samples": [
+    943.023438,
+    943.023438,
+    943.023438,
+    943.023438,
+    943.023438,
+    943.023438,
+    943.023438
+   ],
+   "median": 943.023438,
+   "min": 943.023438,
+   "max": 943.023438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDSM.x4 (address from the load) / 64 links",
+   "unit": "cycles to issue",
+   "samples": [
+    1871.023438,
+    1871.023438,
+    1871.023438,
+    1871.023438,
+    1871.023438,
+    1871.023438,
+    1871.023438
+   ],
+   "median": 1871.023438,
+   "min": 1871.023438,
+   "max": 1871.023438,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "LDSM.x4 (address from the load) / latency",
+   "unit": "cycles a link",
+   "samples": [
+    29.0,
+    29.0,
+    29.0,
+    29.0,
+    29.0,
+    29.0,
+    29.0
+   ],
+   "median": 29.0,
+   "min": 29.0,
+   "max": 29.0,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-accumulate HMMA.16816 on one accumulator / 32 links",
+   "unit": "cycles to issue",
+   "samples": [
+    1083.011536,
+    1083.023877,
+    1083.004785,
+    1083.002539,
+    1083.018652,
+    1083.023193,
+    1083.008496
+   ],
+   "median": 1083.011536,
+   "min": 1083.002539,
+   "max": 1083.023877,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-accumulate HMMA.16816 on one accumulator / 64 links",
+   "unit": "cycles to issue",
+   "samples": [
+    2135.016748,
+    2135.021484,
+    2135.031299,
+    2135.006494,
+    2135.022754,
+    2135.0229,
+    2135.0229
+   ],
+   "median": 2135.022754,
+   "min": 2135.006494,
+   "max": 2135.031299,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-accumulate HMMA.16816 on one accumulator / latency",
+   "unit": "cycles a link",
+   "samples": [
+    32.875163,
+    32.874925,
+    32.875829,
+    32.875124,
+    32.875128,
+    32.874991,
+    32.87545
+   ],
+   "median": 32.875128,
+   "min": 32.874925,
+   "max": 32.875829,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-accumulate HMMA.16816 on one accumulator / 32 links",
+   "unit": "cycles to issue",
+   "samples": [
+    805.006299,
+    805.015039,
+    805.011768,
+    805.031152,
+    805.016113,
+    805.008594,
+    805.008154
+   ],
+   "median": 805.011768,
+   "min": 805.006299,
+   "max": 805.031152,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-accumulate HMMA.16816 on one accumulator / 64 links",
+   "unit": "cycles to issue",
+   "samples": [
+    1573.025195,
+    1573.010156,
+    1573.013965,
+    1573.021777,
+    1573.025049,
+    1573.010498,
+    1573.007715
+   ],
+   "median": 1573.013965,
+   "min": 1573.007715,
+   "max": 1573.025195,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-accumulate HMMA.16816 on one accumulator / latency",
+   "unit": "cycles a link",
+   "samples": [
+    24.000591,
+    23.999847,
+    24.000069,
+    23.999707,
+    24.000279,
+    24.00006,
+    23.999986
+   ],
+   "median": 24.00006,
+   "min": 23.999707,
+   "max": 24.000591,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void issue_latency::chain<(int)4, (int)64>(int, const unsigned int *, long long *, int *)": {
+   "regs": 18,
+   "ops": {
+    "UIADD3": 129,
+    "HMMA.16816.F16": 64,
+    "NOP": 15,
+    "IMAD.MOV.U32": 8,
+    "LDG.E": 6,
+    "LOP3.LUT": 5,
+    "UMOV": 4,
+    "BRA": 3,
+    "MOV": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)4, (int)32>(int, const unsigned int *, long long *, int *)": {
+   "regs": 18,
+   "ops": {
+    "UIADD3": 65,
+    "HMMA.16816.F16": 32,
+    "NOP": 15,
+    "IMAD.MOV.U32": 8,
+    "LDG.E": 6,
+    "LOP3.LUT": 5,
+    "UMOV": 4,
+    "BRA": 3,
+    "MOV": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)3, (int)64>(int, const unsigned int *, long long *, int *)": {
+   "regs": 18,
+   "ops": {
+    "UIADD3": 129,
+    "HMMA.16816.F32": 64,
+    "NOP": 14,
+    "IMAD.MOV.U32": 8,
+    "LDG.E": 6,
+    "LOP3.LUT": 5,
+    "UMOV": 4,
+    "BRA": 3,
+    "MOV": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)3, (int)32>(int, const unsigned int *, long long *, int *)": {
+   "regs": 18,
+   "ops": {
+    "UIADD3": 65,
+    "HMMA.16816.F32": 32,
+    "NOP": 14,
+    "IMAD.MOV.U32": 8,
+    "LDG.E": 6,
+    "LOP3.LUT": 5,
+    "UMOV": 4,
+    "BRA": 3,
+    "MOV": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "IADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)2, (int)64>(int, const unsigned int *, long long *, int *)": {
+   "regs": 38,
+   "ops": {
+    "LDSM.16.M88.4": 64,
+    "NOP": 11,
+    "IMAD.MOV.U32": 6,
+    "UMOV": 4,
+    "LOP3.LUT": 4,
+    "BRA": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "MOV": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)2, (int)32>(int, const unsigned int *, long long *, int *)": {
+   "regs": 38,
+   "ops": {
+    "LDSM.16.M88.4": 32,
+    "NOP": 11,
+    "IMAD.MOV.U32": 6,
+    "UMOV": 4,
+    "LOP3.LUT": 4,
+    "BRA": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "MOV": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)1, (int)64>(int, const unsigned int *, long long *, int *)": {
+   "regs": 16,
+   "ops": {
+    "LDS": 64,
+    "NOP": 12,
+    "IMAD.MOV.U32": 6,
+    "UMOV": 4,
+    "BRA": 3,
+    "LOP3.LUT": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "MOV": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)1, (int)32>(int, const unsigned int *, long long *, int *)": {
+   "regs": 15,
+   "ops": {
+    "LDS": 32,
+    "NOP": 12,
+    "IMAD.MOV.U32": 6,
+    "UMOV": 4,
+    "BRA": 3,
+    "LOP3.LUT": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "MOV": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)0, (int)64>(int, const unsigned int *, long long *, int *)": {
+   "regs": 12,
+   "ops": {
+    "FFMA": 64,
+    "MOV": 11,
+    "NOP": 8,
+    "UMOV": 4,
+    "BRA": 3,
+    "LOP3.LUT": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "LDG.E": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  },
+  "void issue_latency::chain<(int)0, (int)32>(int, const unsigned int *, long long *, int *)": {
+   "regs": 12,
+   "ops": {
+    "FFMA": 32,
+    "MOV": 11,
+    "NOP": 8,
+    "UMOV": 4,
+    "BRA": 3,
+    "LOP3.LUT": 3,
+    "S2R": 2,
+    "ISETP.GE.AND": 2,
+    "LDG.E": 2,
+    "S2UR": 2,
+    "DEPBAR.LE": 2,
+    "UIADD3": 2
+   }
+  }
+ }
+}

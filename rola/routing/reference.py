@@ -7,13 +7,9 @@ import torch.nn.functional as F
 
 from rola.routing.entmax.reference import entmax, entmax_forward
 from rola.routing.types import (
-    READ_SUPPORT,
-    ROUTE_TILE_SIZE,
-    WRITE_SUPPORT,
     EntmaxActivation,
     IndependentRouting,
     ResolvedRouting,
-    RouteDescriptor,
     RoutingActivation,
     SoftmaxActivation,
     TiedRouting,
@@ -89,15 +85,6 @@ def union_split(
     return read, write
 
 
-def _tile_major_arena(levels: list[torch.Tensor], token_count: int) -> torch.Tensor:
-    """Pack compact level widths into the descriptor's physical tile-major arena."""
-    values = torch.cat(levels, dim=-1).to(torch.bfloat16)
-    tiles = (token_count + ROUTE_TILE_SIZE - 1) // ROUTE_TILE_SIZE
-    padded = torch.nn.functional.pad(values, (0, 0, 0, tiles * ROUTE_TILE_SIZE - token_count))
-    return padded.reshape(values.shape[0], tiles, ROUTE_TILE_SIZE, values.shape[-1]).permute(
-        0, 1, 3, 2).contiguous()
-
-
 def routing_factor_levels(
     read_logits: torch.Tensor,
     write_logits: torch.Tensor,
@@ -141,41 +128,4 @@ def routing_factor_levels(
     return tuple(reads), tuple(writes)
 
 
-def routing_factors(
-    read_logits: torch.Tensor,
-    write_logits: torch.Tensor,
-    routing: ResolvedRouting,
-    *,
-    token_origin: int = 0,
-) -> RouteDescriptor:
-    """Pack reference factors into the production RouteDescriptor layout."""
-    if type(token_origin) is not int or token_origin < 0:
-        raise ValueError("token_origin must be a nonnegative exact int")
-    reads, writes = routing_factor_levels(read_logits, write_logits, routing)
-
-    token_count = read_logits.shape[1]
-    read_values = _tile_major_arena(reads, token_count)
-    write_values = read_values if all(read is write for read, write in zip(reads, writes)) else _tile_major_arena(
-        writes, token_count)
-    support_chunks = []
-    for index, (offset, flag) in enumerate(zip(routing.support_offsets, routing.support_side_flags)):
-        if offset == -1:
-            continue
-        support = torch.zeros_like(reads[index], dtype=torch.bool)
-        if flag & READ_SUPPORT:
-            support |= reads[index].to(torch.bfloat16) != 0
-        if flag & WRITE_SUPPORT:
-            support |= writes[index].to(torch.bfloat16) != 0
-        support_chunks.append(_pack_token_support(support))
-    words = (token_count + ROUTE_TILE_SIZE - 1) // ROUTE_TILE_SIZE
-    support_words = torch.cat(support_chunks, dim=-1).contiguous() if support_chunks else torch.empty(
-        (read_logits.shape[0], words, 0), dtype=torch.int32, device=read_logits.device)
-    return RouteDescriptor(
-        read_values, write_values, support_words,
-        routing.level_offsets, routing.support_offsets, routing.branches,
-        routing.radix_strides, routing.support_side_flags,
-        token_origin, token_count, routing.topology_stamp,
-    )
-
-
-__all__ = ["routing_factor_levels", "routing_factors", "union_split"]
+__all__ = ["routing_factor_levels", "union_split"]

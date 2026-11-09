@@ -5,16 +5,15 @@
 `arms(cell)` takes a central carry cell (a shape, a draw and the state it binds) or a central layer cell (an input)
 and returns a builder for every arm this checkout runs on it, or refuses the cell by raising:
 - any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
-  (`ROLA_CARRY_ARMS`) measures a subset of the tree;
-- a carry cell whose carry arm (D, DV, warps_per_cta at `measure.cells.WARPS_PER_CTA`) the binary does not carry;
+  (`--//:carry_arms`) measures a subset of the tree;
+- a carry cell whose carry arm (the key its carve selects, `rola.ops.carry.arm_key`) the binary does not carry;
 - data that is neither kind.
 `measure/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
 through `oneshot_argv`.
 An arm is a subject that applies to the cell (`measure.subjects.applicable`, the cell's own facts) and whose kernel this
-binary carries at the cell's shape (the intra arm at the cell's depth and window for `intra_forward` and `carry_intra`,
-the decode arm for `decode_step`), with its dials: its name is the subject, then `@calls=N` for a call count other than
-one and `@schedule=S` for a carry order other than `first`, each only where the subject reads that dial
-(`Subject.calls`, `Subject.dials`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
+binary carries at the cell's shape (the intra arm at the cell's depth and level width for `intra_forward`, the decode
+arm for `decode_step`), with its call count: its name is the subject, then `@calls=N` for a call count other than one
+(`Subject.calls`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
 (`measure.cells.layer.CONSTRUCTIONS`). Only the arm asked for is built.
 Building one proves two things before anything is timed, and refuses the arm by name when either fails: from a fact the
 device produces, that this binary carries the subject's family (its stamp entry; a path or a hash cannot catch a stale
@@ -22,7 +21,7 @@ binary), and that `import rola` resolved inside this checkout.
 
 A built arm is a `rola_devtools.timing.Timed`: its call times one launch between two CUDA events (the canonical
 instrument, `cuda_events`) and returns milliseconds; its reset is the launch's (a carried state restored, a decode state
-re-seeded), run untimed before every call. What an arm reports is the cell's facts beside the arm's dials and the
+re-seeded), run untimed before every call. What an arm reports is the cell's facts beside the arm's call count and the
 binary's: the manifest digest, the family stamp, the device, torch, the assembler, and the SM clock read when the arm
 was built (docs/measurement.md).
 """
@@ -36,10 +35,9 @@ from pathlib import Path
 CHECKOUT = Path(__file__).resolve().parents[1]
 
 
-def arm_name(subject: str, *, calls: int = 1, schedule: str = "first", construction: str | None = None) -> str:
-    """An arm's name: the subject, then each dial that is not its default, then a layer arm's construction."""
-    return subject + (f"@calls={calls}" if calls != 1 else "") + (f"@schedule={schedule}" if schedule != "first" else "") \
-        + (f"@layer={construction}" if construction else "")
+def arm_name(subject: str, *, calls: int = 1, construction: str | None = None) -> str:
+    """An arm's name: the subject, then a call count other than one, then a layer arm's construction."""
+    return subject + (f"@calls={calls}" if calls != 1 else "") + (f"@layer={construction}" if construction else "")
 
 
 def arms(data) -> dict:
@@ -49,17 +47,16 @@ def arms(data) -> dict:
     from rola_devtools.cells.carry import CarryCell
     from rola_devtools.cells.layer import LayerCell
 
-    from measure.cells import arm_key
     from measure.cells.layer import CONSTRUCTIONS
-    from measure.subjects import SUBJECTS, applicable
+    from measure.subjects import SUBJECTS, applicable, cell_carve
     from rola.ops import carry
-    from rola.ops.carry import ORDER_POLICIES
 
     _refuse_a_partial_binary()
     if isinstance(data, CarryCell):
         kind, constructions = "carry", [None]
-        if arm_key(data) not in {tuple(arm) for arm in carry.arms()}:
-            raise LookupError(f"{data.name}: this binary carries no carry arm {arm_key(data)} (D, DV, warps_per_cta); it "
+        key = carry.arm_key(cell_carve(data))
+        if key not in {tuple(arm) for arm in carry.arms()}:
+            raise LookupError(f"{data.name}: this binary carries no carry arm {key} (see rola.ops.carry.arm_key); it "
                               f"carries {sorted(tuple(arm) for arm in carry.arms())}")
     elif isinstance(data, LayerCell):
         kind, constructions = "layer", [c for c in CONSTRUCTIONS.values() if data.name in c.cells]
@@ -69,12 +66,10 @@ def arms(data) -> dict:
         raise TypeError(f"rola's runner takes a central carry cell or layer cell, got {type(data).__name__}")
     out = {}
     for subject in SUBJECTS.values():
-        schedules = tuple(ORDER_POLICIES) if "schedule" in subject.dials else ("first",)
-        for construction, calls, schedule in product(constructions, subject.calls, schedules):
+        for construction, calls in product(constructions, subject.calls):
             if subject.name in applicable(data, kind, calls) and _kernel_carried(subject.name, data, construction):
-                name = arm_name(subject.name, calls=calls, schedule=schedule,
-                                construction=construction and construction.name)
-                out[name] = partial(_build, subject.name, kind, data, calls, schedule, construction)
+                name = arm_name(subject.name, calls=calls, construction=construction and construction.name)
+                out[name] = partial(_build, subject.name, kind, data, calls, construction)
     return out
 
 
@@ -89,20 +84,16 @@ def _refuse_a_partial_binary() -> None:
     built = {tuple(arm) for arm in carry.arms()}
     if declared - built:
         raise RuntimeError(f"this binary carries {sorted(built)} and lacks the shipped arms {sorted(declared - built)}: an "
-                           "iteration build (ROLA_CARRY_ARMS) measures a subset of the tree; build the shipped set")
+                           "iteration build (--//:carry_arms) measures a subset of the tree; build the shipped set")
 
 
 def _kernel_carried(subject: str, spec, construction) -> bool:
     """Whether this binary carries the kernel `subject` launches at the cell's shape, or a layer cell's construction
     (the cell's own facts are `measure.subjects.applicable`'s)."""
-    from rola.ops import carry, decode, intra
-    from rola.ops.prefill import _intra_level_width
+    from rola.ops import decode, intra
 
-    if subject == "carry_intra":
-        return len(set(spec.widths)) == 1 and _intra_level_width(len(spec.widths)) == spec.widths[0]
     if subject == "intra_forward":
-        widths = {lw for levels, lw, window, _smem in intra.arms() if levels == len(spec.widths) and window == carry.WINDOW}
-        return bool(widths) and max(spec.widths) <= min(widths)
+        return intra.reads(spec.widths)
     if subject == "decode_step":
         rows = decode.arms()
         padded = [dv for dv, _d, _decay in rows if dv >= spec.dv]
@@ -110,7 +101,7 @@ def _kernel_carried(subject: str, spec, construction) -> bool:
     return True
 
 
-def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
+def _build(name: str, kind: str, spec, calls: int, construction):
     import torch
     from rola_devtools.timing import Timed
 
@@ -128,7 +119,7 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
         raise RuntimeError(f"`import rola` resolved outside this checkout ({CHECKOUT.name}); the arm would time another "
                            "tree's binary under this tree's name")
     fx = {"cell": spec} if kind == "carry" else _layer_fixture(spec, construction)
-    fx.update(schedule=schedule, calls=calls)
+    fx.update(calls=calls)
     launch = subject.build(fx)
     try:
         from rola_cu13._build_config import BUILD_CONFIG
@@ -147,7 +138,6 @@ def _build(name: str, kind: str, spec, calls: int, schedule: str, construction):
 
     widths = spec.widths if kind == "carry" else construction.widths
     cell = {"cell": spec.name, "kind": kind, "subject": name, "level": subject.level, "calls": calls,
-            "schedule": fx["schedule"],
             "state": getattr(spec, "state", None), "backing": getattr(spec, "backing", None),
             "construction": construction and construction.name, "tokens": spec.tokens, "d_v": spec.dv,
             "widths": list(widths),

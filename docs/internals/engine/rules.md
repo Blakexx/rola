@@ -3,7 +3,7 @@
 Mirror of `rola/engine/rules/`. This page explains WHY the layer exists and how its folds
 connect to the DAGs; the code is the authoritative statement of what each one decides.
 
-Symbols: `C` chunk tokens, `BC` owner block, `D` routing depth, `B` uniform level
+Symbols: `BC` the carry's box in leaves, `D` routing depth, `B` uniform level
 width, `d_v` value width, `N` leaf count, `R`/`W`/`S` the liveness byte's read, write
 and state bits.
 
@@ -14,21 +14,19 @@ and state bits.
 > of them recomputes a fact, and none of them may issue a launch.
 
 The layer exists because those two kinds of statement have different costs, different
-tests and different failure modes, and every one of these folds used to live inline at
-the site that needed it — a preference order in the chunk seam, an envelope split
-across two modules, a truth table in CUDA C++. Inline, none of them could be read as a
-set, and none could be exercised without a device.
+tests and different failure modes. A fold left inline at the site that needs it — a
+preference order in a seam, an envelope split across two modules, a truth table in CUDA
+C++ — cannot be read as a set with the others, and cannot be exercised without a device.
 
 | rule | reads | decides |
 |---|---|---|
 | `mask` | `CallClass` | which subgraph — M1 or M2 |
-| `arm` | `widths`, the manifest | `Arm = (C, BC)`, or none |
-| `arm_envelope` | `widths`, `d_v`, decay, `arm` | the arm matrix's refusal, or None |
+| `prefill_envelope` | `widths`, `d_v`, decay, whether the intra reads the widths, the carry census | the prefill's refusal, or None |
 | `envelope` | unratified activations, device | the operand-side refusal, or None |
-| `training_envelope` | grad, state | the stateless-training refusal, or None |
-| `run_table` | the three state ARGUMENTS' presence | the `uint32` skip table |
+| `run_table` | the three state ARGUMENTS' presence | the `uint32` skip table (in no DAG: kept for the carry port) |
 | `paging_preference` | the expert overrides | dense or paged backing |
 | `admission` | the allocator's cursor, capacity, extent, count | the run's first slot |
+| `carve` | the rows' shipped widths, each level's two sparse flags, `d_v`, the expert overrides | the carry's box and each side's operation plan |
 
 ## <a id="the-marker"></a>2. The marker is the inventory
 
@@ -62,7 +60,7 @@ handed — survives an import-graph check only while the import hides in a funct
 
 There is no second executor and no rule pass. Band 2 runs INTERLEAVED with band 1 in
 the one walk — `paging_preference` at the head, `mask` the moment the call class
-exists, `arm` the moment the manifest and the topology do, `decode_mask` the moment the
+exists, `decode_mask` the moment the
 step's backing does — and every one of them sits on the DAG's parallel front, never on
 its critical path. That is why the layer costs nothing.
 
@@ -71,20 +69,17 @@ allocates nothing — so `rule` declares it so, and a rule on a captured recipe 
 further argument.
 
 Two of the folds are not in a DAG tuple, and each for a stated reason rather than
-by oversight (`backward_envelope` and `retention` left with the K31 deletion
-batch's reverse pass; baseline = tag `baseline/pre-k31`):
+by oversight:
 
-* `arm_envelope` / `envelope` / `training_envelope` are composed
+* `prefill_envelope` / `envelope` are composed
   by `facts/call.py`'s `envelope_refusal` and `require_envelope`, which
   `validate_context` calls BEFORE the walk's first node so that no refusal can
-  arrive with the operands already consumed ([`engine.md` §7](engine.md#refusals)).
+  arrive with the operands already consumed ([`engine.md` §8](engine.md#refusals)).
   Placing them in the tuple would move a refusal after work. The composition is an
   ADAPTER and lives with the adapters: it reads a bundle rather than folding declared
   fact values, so it carries no `rule` marker and could not live here (§2).
-* `run_table` IS in the chunk tuple, last before the terminal node, so it folds after
-  `backing` has produced the three presences it reads and without stepping between two
-  launches. Its `uint32` is a `ChunkPlan` field and a launch argument
-  ([`#run-table`](#run-table)).
+* `run_table` is in NO tuple: no kernel takes the skip table as a launch argument
+  ([`#run-table`](#run-table)); the rebuilt carry has no state I/O yet.
 
 ## <a id="derive-never-author"></a>4. Derive; never hand-author the derived artefact
 
@@ -94,10 +89,8 @@ the RULE once in readable form — the rows of
 it over all eight bit values. The kernel's predicate is then one shift and one AND with
 no call-class knowledge in it.
 
-Generalized: `arm` derives from the manifest and never from a threshold on `d_v` or
-`N`. The rule's inputs do not even include `d_v`, so there is nothing to compare a
-dimension against — what exists is what was built and measured, and the pinned
-preference order over what exists is the whole of the policy.
+Generalized: `prefill_envelope` derives from the binary's own censuses and never from a
+threshold on `d_v` or `N` — what exists is what was built and measured.
 
 ## <a id="admission-splits"></a>5. AdmissionRule splits, and where the seam is
 
@@ -119,19 +112,63 @@ launch, a new mask and a new byte cost, separately. There is no third path in wh
 decision quietly grows a pass. This is the anti-creep clause and it is the reason the
 two layers are separated at all.
 
+## <a id="carve"></a>The carve: the carry's box and operation plans, one descriptor
+
+The carry's CTA owns a BOX of leaves -- an extent a level, and a channel extent -- and runs
+two operations on it: the fold over the write side's lists and the readout over the read
+side's. The box and both sides' operation plans are one value, `Carve` (`types.py`), and
+every kernel that depends on the geometry takes it: the facts pass groups its unions and
+lists by the box's list levels, and the carry addresses by it. A kernel
+validates the carve it is handed and refuses one it was not built for; it never decides
+a carve. So the planner can change -- a cost model in place of fixed rules -- and every
+kernel keeps working for whatever it returns.
+
+`carve` is the rule: the expert's pinned carve (`PlanOverrides.carve`) after the same
+check the planner's own passes, else the planner's (`rola/engine/carve.py`,
+[`carve.md`](carve.md)). It reads the rows' last dimension and the bundle's flags, never
+their contents. That is the standing rule for every launch-static axis: it is a function of
+launch-static facts (shapes, declared flags, the binary's arms) and never of a routing
+statistic, because the routing distribution moves step to step and a layout chosen from it
+would make the state's shape depend on the data.
+
+**A side's sparse levels are its lists; its dense levels are its operand.** A level's tag
+is its two flags, read then write: `SD`, `DS`, `DD`, `SS`. The fold's lists are the
+write-sparse levels and its operand rows the write-dense ones (formed in level order, the
+canonical product); the readout's lists are the read-sparse levels and its operand the
+read-dense ones. Every side has a dense level, so every side has an operand.
+
+**Producer v1's rules,** each from a priced trade:
+
+* `DD` levels take as much of the box as fits, spread evenly: their rows' bytes ADD while
+  their extent MULTIPLIES, so a token's row feeds the most dense leaves per byte.
+* `DS` and `SD` levels share what is left by turns, `DS` first: each is one side's lists and
+  the other side's operand, so they trade against each other, and the readout's operand (its
+  K) goes first because the readout is the costlier phase. Within its tag the extent goes to
+  the widest level, whole, so a token's live digits there arrive in one copy.
+* `SS` levels take only what nothing else can.
+* No level takes more than the cap, 32 -- the square root of the box's 1,024 leaves. When the
+  box cannot be filled under it, the cap lifts to the widths.
+* The channel extent is chosen first, toward `d_v` (at most 128): a token's output then
+  leaves a CTA as whole lines, and each readout warp owns its channels -- halved until every
+  listed level spans one of the facts pass's list groups (16 or 32 digits, or its whole width)
+  and each side's rows fill an MMA tile, and a box with a listed side holds at most 64 channels
+  (`carve.md#producer-v1`).
+
+**The fold's warp tile** is its lists x its operand rows, `box leaves / 8` leaves a warp, the
+rows whole while they fit. **The readout's warps** each hold every leaf for their channels --
+8-channel groups by token groups (`carve.md#sides`) -- so the state reaches the readout
+through the image, never in place. Whether the fold's lists are the readout's digits (both
+sides list the same level) or its K fixes how the hand-off reads the state into the image:
+the arm key's `same_split` (`../carry/ampere/handoff.md#same-split`).
+
 ## <a id="run-table"></a>The run table: the skip predicate is a host decision
 
-*(Moved from the deleted docs/internals/chunk/chunk.md with the tiled consumer — the
-rule outlives the consumer: the liveness facts and the fold survive, and K31 R2
-re-consumes the `uint32` as a launch argument.)*
-
-The liveness epilogue (`chunk_block_bits`, reducing the union table this call already
-built — `../facts/liveness_contract.md#two-classes-and-nothing-between-them`) emits three FACTS per `(bh, block)`: `READ`,
-`WRITE`, `STATE`. It does not emit a verdict, because the verdict is not a property of the
-routing. What a skipped block would have cost differs by call class and by backing, and a
-call class here is the PRESENCE of the three launch arguments — the entry-state plane, the
-exit-state plane and the page table — never the engagement bits the facade classifies with
-(`rola/engine/types.py`'s `CallClass`), because it is the argument that decides the cost:
+The liveness facts are three bits per `(bh, block)`: `READ`, `WRITE`, `STATE`. They carry
+no verdict, because the verdict is not a property of the routing. What a skipped block would
+have cost differs by call class and by backing, and a call class here is the PRESENCE of the
+three launch arguments — the entry-state plane, the exit-state plane and the page table —
+never the engagement bits the facade classifies with (`rola/engine/types.py`'s `CallClass`),
+because it is the argument that decides the cost:
 
 | call class | `s_in` | `s_out` | `page_tbl` | rule |
 |---|---|---|---|---|
@@ -151,14 +188,13 @@ taxonomy and no call-class knowledge in it. The eighth argument triple — a pag
 no state at all — is refused at the binding before the derivation is reached, and derives
 the stateless row in any case.
 
-**IT IS A HOST DECISION IN THE PLACE HOST DECISIONS LIVE.** The fold is a band-2 rule and
-its `uint32` is a `ChunkPlan` field; the deleted consumer's entries took it as a launch
-argument beside the bitmap it predicates over, and the rebuilt kernel will again. The kernel read
-`ChunkParams::run_table` and derived nothing: a second derivation behind the
-extension boundary could not promise that the table a call PLANS is the table it RUNS, and
-the seven rows above could only be exercised through a launch. They are now device-free unit
-cells over all eight liveness bytes × all seven rows (`tests/unit/test_facts_rules.py`), and
-`tests/unit/test_facts_rules.py` transcribes the rows above and holds the doc and the rule to each other.
+**IT IS A HOST DECISION IN THE PLACE HOST DECISIONS LIVE.** The fold is a band-2 rule, and a
+kernel that takes it reads the `uint32` as a launch argument beside the bitmap it predicates
+over and derives nothing: a second derivation behind the extension boundary could not promise
+that the table a call PLANS is the table it RUNS, and the seven rows above could only be
+exercised through a launch. They are device-free unit cells over all eight liveness bytes ×
+all seven rows (`tests/unit/test_facts_rules.py`), which transcribes the rows above and holds
+the doc and the rule to each other.
 
 **The two paged state-out rows differ, and the difference is the entry state.** A CONTINUED
 sequence may hold value in a block it does not write this call, and only a read of that
@@ -186,18 +222,11 @@ no `S` to read — so the `y` term must assume the block carries and degrades to
 store term is `W`; together, `R | W`. That is the paged continued row with `S` forced true,
 which is precisely what having no residency map means.
 
-**The dense FRESH row USED to be the one that cannot skip at all, and P80b closed it.**
-The old rule was `always run`, for one reason: a fresh bind's `s_out` was allocated
-uninitialised precisely because it was written WHOLE, so skipping a block left garbage in
-the returned state. Since P80b the exit sweep stores the atoms this call WRITES and no
-others — in EITHER backing — so "written whole" is no longer true of any call, and the
-fresh dense plane is ZEROED at bind instead (`rola/engine/facts/nodes.py`'s backing node,
-one fill per SEQUENCE). An unwritten atom then reads back the same zero an unmapped paged
-atom does, which is what lets this row collapse to `W` like its paged twin. The paged
-backing never had the problem: an unmapped atom is already a no-op in the epilogue, and a
-mapped slot either was zero-initialised on admission or is carried from a previous call,
-which a skipped block must leave UNCHANGED — which is what skipping does.
-
-**Every arm takes the bitmap.** The predicate is a load and a branch above every register
-the body allocates, so there is no arm whose census cannot hold it — including the one at
-`reg_floor` 255.
+**The dense FRESH row skips like its paged twin.** The exit sweep stores the atoms this call
+WRITES and no others, in EITHER backing, so no call writes its plane whole, and the fresh
+dense plane is ZEROED at bind (`rola/engine/facts/nodes.py`'s backing node, one fill per
+SEQUENCE). An unwritten atom then reads back the same zero an unmapped paged atom does, which
+is what lets this row collapse to `W`. The paged backing needs no fill: an unmapped atom is a
+no-op in the epilogue, and a mapped slot either was zero-initialised on admission or is
+carried from a previous call, which a skipped block must leave UNCHANGED — which is what
+skipping does.

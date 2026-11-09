@@ -24,26 +24,31 @@ import torch
 
 import rola
 from rola.routing.factors import RouteFactors
+from rola.values import Values
 
 
 def _routes(*, widths=(4, 4), hidden=32, heads=2, routing=None, **kwargs):
+    """A layer over a declared routing: the producer is the layer's."""
     levels = [rola.dense_routing(w) if routing is None else routing.at(w) for w in widths]
-    return rola.RouteProducer(levels, hidden_size=hidden, num_heads=heads, **kwargs)
+    return rola.RoLA(rola.Routing(levels, **kwargs), hidden_size=hidden, num_heads=heads, d_v=8)
 
 
-def _x(producer, *, B=2, T=6, dtype=torch.float64):
-    return torch.randn(B, T, producer.hidden_size, dtype=dtype)
+def _x(layer, *, B=2, T=6, dtype=torch.float64):
+    return torch.randn(B, T, layer.hidden_size, dtype=dtype)
+
+
+def _factors(layer, **kwargs) -> RouteFactors:
+    """The routes of a stretch of tokens, from the layer's producer."""
+    return layer._produce(_x(layer, **kwargs))[0]
 
 
 def _validate(routes, v) -> None:
-    """One walk of the engine's fast-fail over `(routes, v)`.
+    """One walk of the engine's fast-fail over `(routes, v)`: the prefill DAG's `validate_context`, which is where
+    the bundle contract is gated, before any fact is found."""
+    from rola.engine.dags.prefill_dag import PrefillContext, validate_context
 
-    K31: `rola_op` is the deletion refusal and speaks before it reads the bundle,
-    so the bundle contract is gated where it lives -- the chunk DAG's
-    `validate_context`, which R2 re-fronts with the rebuilt arm."""
-    from rola.engine.dags.chunk_dag import ChunkContext, validate_context
-
-    validate_context(ChunkContext(routes=routes, v=v))
+    values = Values.from_projection(v) if isinstance(v, torch.Tensor) else v
+    validate_context(PrefillContext(routes=routes, values=values))
 
 
 def _admitted(routes, v) -> None:
@@ -57,8 +62,8 @@ def _admitted(routes, v) -> None:
 def _oracle(routes, v):
     from rola.ops.naive import naive_rola
 
-    y, _ = naive_rola(v, routes.read_simplex(), routes.write, routes.g_write,
-                      routes.topology, None)
+    _, write = routes.dequantized()
+    y, _ = naive_rola(v, routes.dequantized()[0], write, routes.topology, None)
     return y
 
 
@@ -78,11 +83,8 @@ def test_a_well_formed_hand_built_bundle_is_legal():
     exactly that.
     """
     producer = _routes()
-    factors = producer(_x(producer))
-    hand_built = RouteFactors(
-        topology=factors.topology,
-        read=factors.read, write=factors.write,
-        g_write=factors.g_write)
+    factors = _factors(producer)
+    hand_built = RouteFactors.from_levels(factors.topology, *factors.dequantized())
     v = torch.randn(2, 6, 2, 8, dtype=torch.float64)
     _admitted(hand_built, v)
     assert torch.isfinite(_oracle(hand_built, v)).all()
@@ -91,52 +93,183 @@ def test_a_well_formed_hand_built_bundle_is_legal():
 @pytest.mark.parametrize("break_it,message", [
     ("width", "wide but the topology"),
     ("levels", "one tensor per routing level"),
-    ("prefix", r"one \[B, T, H\] prefix"),
-    ("dtype", "one dtype"),
-    ("gain_shape", r"g_write must be a \[B, T, H\]"),
+    ("prefix", "a side's routing levels share one prefix"),
+    ("dtype", "is stored as"),
+    ("scale_shape", r"scale_write\[0\] is the rows' maxima"),
 ])
 def test_a_malformed_hand_built_bundle_is_refused_by_its_structure(break_it, message):
     """Unsealing removed the ORIGIN check, not the invariants. Each row plants one
     structural violation the derivation code could never have produced, and the
     refusal is the observation.
 
-    Deliberately NOT among them: unit-sum-ness. It is a device reduction per level per
-    call, it is the producer's own output contract, and conformance fixtures plant
-    non-canonical amplitudes on purpose. Also not among them any more: a planted
-    read-gain column -- there is no `g_read` field left to plant one on, so a caller
-    supplying `g_read=` gets the honest `TypeError` for an unknown keyword instead of
-    a plantable structural violation.
+    Deliberately NOT among them: unit-sum-ness. No level is required to sum to one
+    (docs/CONSTITUTION.md#r23), and conformance fixtures plant amplitudes of any
+    magnitude on purpose.
     """
     producer = _routes()
-    f = producer(_x(producer))
-    fields = dict(topology=f.topology,
-                  read=list(f.read), write=list(f.write),
-                  g_write=f.g_write)
+    f = _factors(producer)
+    fields = dict(topology=f.topology, amp_read=list(f.amp_read), amp_write=list(f.amp_write),
+                  scale_read=f.scale_read, scale_write=list(f.scale_write))
     if break_it == "width":
-        fields["read"][0] = fields["read"][0][..., :2]
+        fields["amp_read"][0] = fields["amp_read"][0][..., :2]
     elif break_it == "levels":
-        fields["read"] = fields["read"][:1]
+        fields["amp_read"] = fields["amp_read"][:1]
     elif break_it == "prefix":
-        fields["write"][1] = fields["write"][1][:1]
+        fields["amp_write"][1] = fields["amp_write"][1][:1]
     elif break_it == "dtype":
-        fields["write"][0] = fields["write"][0].to(torch.float32)
-    elif break_it == "gain_shape":
-        fields["g_write"] = fields["g_write"][..., :1]
+        #: each level's rows have one stored type (f16 for a dense write level, u8 otherwise): plant the other
+        rows = fields["amp_write"][0]
+        fields["amp_write"][0] = rows.to(torch.uint8 if rows.dtype is torch.float16 else torch.float16)
+    elif break_it == "scale_shape":
+        fields["scale_write"][0] = fields["scale_write"][0][..., :1]
     with pytest.raises((ValueError, TypeError), match=message):
-        RouteFactors(**{k: (tuple(v) if isinstance(v, list) else v)
-                        for k, v in fields.items()})
+        RouteFactors(**fields)
+
+
+def _grouped(heads, write_heads, *, B=2, T=6):
+    """A hand-built bundle of ``heads`` query heads over ``write_heads`` write heads, the layer's topology."""
+    topology, gen = _factors(_routes()).topology, torch.Generator().manual_seed(11)
+
+    def side(h):
+        return tuple(torch.rand((B, T, h, w), generator=gen).softmax(-1) for w in topology.widths)
+
+    return RouteFactors.from_levels(topology, side(heads), side(write_heads))
+
+
+def test_a_grouped_bundle_names_its_query_heads_write_heads_and_group():
+    """GROUPED QUERIES (docs/api.md section 2.1): the read side at H query heads, the write side at H_w write heads,
+    each write head read by H / H_w consecutive query heads."""
+    routes = _grouped(4, 2)
+    assert (routes.heads, routes.write_heads, routes.group) == (4, 2, 2)
+    assert routes.scale_write[0].shape == (2, 6, 2) and routes.scale_read[0].shape == (2, 6, 4)
+
+
+def test_the_write_heads_must_divide_the_query_heads():
+    with pytest.raises(ValueError, match="its H_w divide H"):
+        _grouped(3, 2)
+
+
+def test_the_prefill_reads_groups_and_a_consumer_of_one_head_count_refuses_them_by_name():
+    """The prefill's kernels read groups -- the values a write head's, the bundle's rows its query heads' -- so its
+    fast-fail admits a grouped bundle; a consumer that reads one head count (the decode step, the carried state)
+    refuses one at its seam."""
+    _admitted(_grouped(4, 2), torch.randn(2, 6, 2, 8, dtype=torch.float64))
+    with pytest.raises(NotImplementedError, match="a consumer reads one head count"):
+        _grouped(4, 2).refuse_grouped("a consumer")
+    _grouped(2, 2).refuse_grouped("a consumer")
+
+
+def test_the_digit_header_mirrors_the_quantizer():
+    """`facts/liveness_contract.cuh` and `rola.routing.quant` state one format: the row max's digit and the dense floor."""
+    from pathlib import Path
+
+    from rola.routing import quant
+
+    text = (Path(__file__).resolve().parents[2] / "csrc/rola/src/facts/liveness_contract.cuh").read_text()
+    assert "constexpr float kRowMaxDigit = 255.0f;" in text and quant.AMP_LEVELS == 255.0
+    assert "constexpr float kDenseFloor = 1.0f / 8192.0f;" in text and quant.DENSE_FLOOR == 1.0 / 8192.0
+
+
+def test_the_factory_refuses_an_entry_its_form_does_not_hold():
+    """docs/CONSTITUTION.md#r23: a routing form is nonnegative and every form finite, and the factory refuses what its
+    form does not hold -- a negative or non-finite routing level, a non-finite value -- where a signed value is held."""
+    from rola.routing import quant
+
+    topology = _factors(_routes()).topology
+    good = tuple(torch.rand(1, 2, 2, w, dtype=torch.float64) for w in topology.widths)
+    for planted in (-1e-3, float("nan"), float("inf")):
+        bad = (good[0].clone(),) + good[1:]
+        bad[0][0, 0, 0, 0] = planted
+        with pytest.raises(ValueError, match="form holds nonnegative, finite entries"):
+            RouteFactors.from_levels(topology, good, bad)
+    v = torch.randn(1, 2, 2, 8, dtype=torch.float64)
+    assert torch.equal(Values.from_projection(v).v.float() < 0, v < 0), "the signed form holds negative values"
+    v[0, 0, 0, 0] = float("nan")
+    with pytest.raises(ValueError, match="form holds finite entries"):
+        Values.from_projection(v)
+    with pytest.raises(ValueError, match="f16 signed"):
+        quant.SIGNED.quantize(v)
+
+
+def test_a_dense_levels_zero_digit_reads_as_the_floor_in_a_live_row_only():
+    """RULED 2026-10-03 (docs/internals/facts/liveness_contract.md#floor): a dense level's zero digit dequantizes to
+    the floor times its row's scale, a dead row (scale 0) stays zero, and a sparse level's zero is exact."""
+    from rola.routing import quant
+
+    scale = torch.tensor([2.0, 0.0])
+    dense = quant.DENSE.dequantize(torch.tensor([[1.0, 0.0, 0.5], [0.0, 0.0, 0.0]], dtype=torch.float16), scale)
+    assert dense[0, 1] == 2.0 * quant.DENSE_FLOOR and dense[0, 0] == 2.0 and torch.equal(dense[1], torch.zeros(3))
+    sparse = quant.SPARSE.dequantize(torch.tensor([[255, 0, 3], [0, 0, 0]], dtype=torch.uint8), scale)
+    assert sparse[0, 1] == 0.0 and sparse[0, 0] == 2.0
+
+
+def test_rows_are_u8_at_every_depth():
+    """RULED 2026-10-03: the producer writes u8 rows at every depth, each against its own max -- a dense level's rows
+    f16 at the floor (the write side 2026-10-04, the read side 2026-10-07), and every side has a dense level
+    (2026-10-08); a row of any other type is refused, and a deep bundle dequantizes to its levels within half a digit a
+    row."""
+    from rola.routing.types import OpaqueRouting, Topology
+
+    deep = Topology(levels=tuple(OpaqueRouting(width=4) for _ in range(3)))
+    level = torch.rand(1, 2, 1, 4, dtype=torch.float64) + 0.1
+    sparse = ((False, True, True), (False, True, True))
+    bundle = RouteFactors.from_levels(deep, (level,) * 3, (level,) * 3, sparse=sparse)
+    assert all(row.dtype is torch.uint8 for row in bundle.amp_read[1:] + bundle.amp_write[1:])
+    assert bundle.amp_read[0].dtype is torch.float16 and bundle.amp_write[0].dtype is torch.float16
+    with pytest.raises(ValueError, match="every read level sparse"):
+        RouteFactors.from_levels(deep, (level,) * 3, (level,) * 3, sparse=((True,) * 3, (False, True, True)))
+    for got in bundle.dequantized()[0]:
+        top = level.amax(-1, keepdim=True)
+        assert ((got.double() - level).abs() <= top / 510 * (1 + 2 ** -20)).all()
+    from rola.routing import quant
+
+    wrong = list(bundle.amp_read)
+    wrong[1] = quant.DENSE.quantize(level)[0]
+    with pytest.raises(TypeError, match="stored as torch.uint8"):
+        RouteFactors(topology=deep, amp_read=wrong, amp_write=bundle.amp_write, scale_read=bundle.scale_read,
+                     scale_write=bundle.scale_write, sparse=sparse)
 
 
 def test_the_op_refuses_anything_that_is_not_a_bundle():
     """PLANTED VIOLATION: hand the op the tensors directly, as the old signature did."""
     producer = _routes()
-    factors = producer(_x(producer))
+    factors = _factors(producer)
     v = torch.randn(2, 6, 2, 8, dtype=torch.float64)
     with pytest.raises(TypeError, match="RouteFactors"):
-        _validate(factors.read, v)
+        _validate(factors.amp_read, v)
     #: The well-formed call is the control: the refusal above must be about the TYPE,
     #: not about this fixture being unrunnable.
     _admitted(factors, v)
+
+
+def test_the_op_refuses_a_bare_value_tensor_and_names_the_bundle():
+    """PLANTED VIOLATION: hand the op the value tensor itself. The value stream is a
+    `Values` bundle -- the format the kernels read -- and the refusal says so by name."""
+    from rola.engine.dags.prefill_dag import PrefillContext, validate_context
+
+    producer = _routes()
+    factors = _factors(producer)
+    v = torch.randn(2, 6, 2, 8, dtype=torch.float64)
+    with pytest.raises(TypeError, match="Values"):
+        validate_context(PrefillContext(routes=factors, values=v))
+    _admitted(factors, v)
+
+
+def test_the_value_bundle_is_the_format_and_its_view_is_the_rounded_projection():
+    """`Values.from_projection` writes the value format against the token's largest channel: f16 with that channel
+    at 1; the scale is its magnitude in fp32, and `dequantized` is the rounded projection carrying its gradient
+    (docs/api.md section 4.1)."""
+    v = torch.randn(2, 6, 2, 8, dtype=torch.float64, requires_grad=True)
+    values = Values.from_projection(v)
+    assert values.v.dtype is torch.float16 and tuple(values.v.shape) == (2, 6, 2, 8)
+    assert values.scale.dtype is torch.float32
+    torch.testing.assert_close(values.scale, v.detach().abs().amax(-1).float())
+    assert values.v.abs().amax(-1).eq(1).all()
+    torch.testing.assert_close(values.dequantized().double(), v.detach(), rtol=2.0 ** -11, atol=0)
+    values.dequantized().sum().backward()
+    assert torch.equal(v.grad, torch.ones_like(v))
+    with pytest.raises(ValueError, match="f16"):
+        Values(v=values.v.float(), scale=values.scale)
 
 
 def test_the_bundle_carries_v_shape_disagreement_to_the_caller_not_to_the_kernel():
@@ -144,12 +277,12 @@ def test_the_bundle_carries_v_shape_disagreement_to_the_caller_not_to_the_kernel
 
     `d_v` is `v`'s own width -- the routing carries no value geometry -- so a
     different one is a different model, not a mismatch, and the op reads it. What
-    the bundle does pin is `[B, T, H]`, and a `v` that disagrees there is refused
-    with the expected prefix in the message rather than handed to a kernel.
+    the bundle does pin is `[B, T, H_w]` (the values are a write head's), and a `v` that
+    disagrees there is refused with the expected prefix in the message rather than handed to a kernel.
     """
     producer = _routes()
-    factors = producer(_x(producer))
-    with pytest.raises(ValueError, match=r"\[B, T, H\]=\(2, 6, 2\)"):
+    factors = _factors(producer)
+    with pytest.raises(ValueError, match=r"\[B, T, H_w\]=\(2, 6, 2\)"):
         _validate(factors, torch.randn(2, 5, 2, 8, dtype=torch.float64))
     #: the control: the same call at a width the bundle never declared is admitted.
     _admitted(factors, torch.randn(2, 6, 2, 9, dtype=torch.float64))
@@ -160,31 +293,12 @@ def test_the_bundle_carries_v_shape_disagreement_to_the_caller_not_to_the_kernel
 # ---------------------------------------------------------------------------
 
 
-def test_the_simplex_output_column_is_read_per_duty_not_per_activation():
-    """The skip's licence is a ROUTING-FORM question.
-
-    Union routing names one entmax for both duties, but hands the write duty the whole
-    of the shared solve and the read duty a SHARE of it. A skip keyed on the
-    activation's row alone would skip a fold that is not an identity, so the read
-    cell's answer must be ``False`` while its own activation's column is ``True``.
-    """
-    union = rola.RouteProducer(
-        [rola.union_routing(4, 1.5), rola.union_routing(4, 1.5)],
-        hidden_size=32, num_heads=2).topology
-    dense = _routes().topology
-    assert [union.duty_simplex_output(l, d) for l, d in union.duty_cells()] == [
-        False, True, False, True]
-    assert union.activation_properties(0, "read").simplex_output is True
-    assert all(dense.duty_simplex_output(l, d) for l, d in dense.duty_cells())
-
-
-def test_a_foreign_producer_runs_with_no_registration_and_no_tier():
-    """U02, mechanically: THE BUNDLE IS THE WHOLE CONTRACT.
-
-    The duck below shares no base class, no tag and no metadata with the shipped
-    producer -- it is a plain module returning a bundle. It must be admitted by the op
-    and accepted by the layer's slot, and its levels must be OPAQUE: the topology reads
-    the opaque registry row for them, which is the only thing being foreign costs it.
+def test_a_producer_outside_the_framework_still_emits_the_format_or_nothing():
+    """RULED 2026-09-26: production lives in our framework and emits ONE internal format. A module that returns a
+    bundle can only do so through the format's epilogue (`RouteFactors.from_levels`), so what the op admits is
+    always u8 unit-max rows with their scales; a bundle assembled from bare floating levels is refused by its
+    structure. Such levels reach the op through the format's utilities; the LAYER takes a declared routing, and a
+    callable in its place is refused (ruled 2026-09-29: the producer is a declared configuration).
     """
     from rola.routing.types import OpaqueRouting, Topology
 
@@ -195,30 +309,30 @@ def test_a_foreign_producer_runs_with_no_registration_and_no_tier():
         def forward(self, stream):
             B, T = stream.shape[0], stream.shape[1]
             level = torch.full((B, T, 2, 4), 0.25, dtype=stream.dtype)
-            return RouteFactors(
-                topology=self.topology,
-                read=(level,), write=(level.clone(),),
-                g_write=torch.ones(B, T, 2, dtype=stream.dtype))
+            return RouteFactors.from_levels(self.topology, (level,), (level.clone(),), sparse=((False,), (False,)))
 
     producer = Uniform()
-    assert type(producer.topology.levels[0]).__name__ == "OpaqueRouting", (
-        "a producer that names no activation must take the opaque registry row")
     factors = producer(_x(producer))
+    assert factors.amp_read[0].dtype is torch.float16 and factors.amp_write[0].dtype is torch.float16
+    assert torch.equal(factors.amp_read[0], torch.ones_like(factors.amp_read[0])), "a flat dense row is all ones"
     v = torch.randn(2, 6, 2, 8, dtype=torch.float64)
     _admitted(factors, v)
     assert torch.isfinite(_oracle(factors, v)).all()
-    assert rola.RoLA(producer, d_v=8).topology is producer.topology, (
-        "the layer's slot is structural, so a foreign producer occupies it unwrapped")
+    with pytest.raises(TypeError, match="declared routing"):
+        rola.RoLA(producer, hidden_size=32, num_heads=2, d_v=8)
+    with pytest.raises(TypeError):
+        RouteFactors(topology=producer.topology, amp_read=factors.amp_read,
+                     amp_write=factors.amp_write)  # the format's fields are not optional
 
 
-def test_a_slot_that_declares_none_of_what_the_layer_reads_is_refused_at_construction():
+def test_a_layer_without_a_declared_routing_is_refused_at_construction():
     """Construction-time validation, so an unbuildable model fails on the line that
     built it rather than inside a forward several frames away.
 
-    PLANTED VIOLATION: a callable that declares nothing.
+    PLANTED VIOLATION: a module where the declaration goes.
     """
-    with pytest.raises(TypeError, match="hidden_size"):
-        rola.RoLA(torch.nn.Identity())
+    with pytest.raises(TypeError, match="declared routing"):
+        rola.RoLA(torch.nn.Identity(), hidden_size=32, num_heads=2)
 
 
 def test_one_producer_covers_many_levels_in_the_order_they_were_declared():
@@ -226,8 +340,8 @@ def test_one_producer_covers_many_levels_in_the_order_they_were_declared():
     were declared in."""
     producer = _routes(widths=(4, 6))
     assert producer.topology.widths == (4, 6)
-    factors = producer(_x(producer))
-    assert [tuple(level.shape[-1:]) for level in factors.read] == [(4,), (6,)]
+    factors = _factors(producer)
+    assert [tuple(level.shape[-1:]) for level in factors.amp_read] == [(4,), (6,)]
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +349,7 @@ def test_one_producer_covers_many_levels_in_the_order_they_were_declared():
 # ---------------------------------------------------------------------------
 
 
-def test_the_public_layout_is_a_view_and_not_a_materialization():
+def test_the_public_levels_are_the_formats_rows_dequantized():
     """The solve emits ONE layout and the public tensors are permuted views of it,
     so nothing on this surface costs a copy.
 
@@ -250,12 +364,18 @@ def test_the_public_layout_is_a_view_and_not_a_materialization():
     owed, is that the public tensors are views.
     """
     producer = _routes(widths=(4, 6))
-    factors = producer(_x(producer))
-    for level, public in enumerate(factors.read):
-        assert not public.is_contiguous(), f"level {level}'s public tensor was materialized"
-        assert public._base is not None, (
-            f"level {level}'s public tensor owns its storage; the solve's layout was "
-            "copied out instead of being viewed")
+    factors = _factors(producer)
+    #: RULED 2026-09-26: the rows (u8, a dense level's f16) and their scales ARE the stored layout; the dequantized
+    #: levels are computed at a consumer's seam, for consumers that still compute on floating levels.
+    read, _ = factors.dequantized()
+    for level, (rows, scale, public) in enumerate(zip(factors.amp_read, factors.scale_read, read)):
+        dense = not factors.sparse[0][level]
+        assert rows.dtype is factors.form(level, "read").dtype and tuple(rows.shape) == tuple(public.shape)
+        top = 1 if dense else 255
+        assert torch.equal(rows.amax(dim=-1), torch.full_like(rows.amax(dim=-1), top)), (
+            f"level {level}'s rows are not unit-max")
+        assert torch.allclose(factors.form(level, "read").dequantize(rows, scale).to(public.dtype), public.detach()), (
+            f"level {level}'s public level is not its rows dequantized")
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +403,9 @@ def test_a_decay_source_sized_for_another_topology_is_refused_at_construction():
     """PLANTED VIOLATION: the right source, the wrong widths."""
     producer = _routes(widths=(4, 4))
     with pytest.raises(ValueError, match="widths"):
-        rola.RoLA(producer,
+        rola.RoLA(producer.routing, hidden_size=32, num_heads=2,
                   decay=rola.LearnedDecay(widths=(4, 6), num_heads=2))
-    rola.RoLA(producer, decay=rola.LearnedDecay(widths=(4, 4), num_heads=2))
+    rola.RoLA(producer.routing, hidden_size=32, num_heads=2, decay=rola.LearnedDecay(widths=(4, 4), num_heads=2))
 
 
 # ---------------------------------------------------------------------------
@@ -308,15 +428,15 @@ def test_no_launch_geometry_is_reachable_from_the_top_level():
     assert quarantined.issubset(set(expert.__all__))
 
 
-def test_the_layer_takes_the_slot_and_not_the_slot_spelled_out():
+def test_the_layer_takes_the_declaration_and_its_widths_and_nothing_spelled_out():
     """The constructor's shape IS the claim. A knob creeping back is what this catches."""
     import inspect
 
     signature = inspect.signature(rola.RoLA.__init__)
     assert list(signature.parameters) == [
-        "self", "routes",
-        "d_v", "decay", "layer_idx", "expert"]
-    for name in ("d_v", "decay", "layer_idx", "expert"):
+        "self", "routing", "hidden_size", "num_heads",
+        "d_v", "decay", "layer_idx", "expert", "memory_budget"]
+    for name in ("hidden_size", "num_heads", "d_v", "decay", "layer_idx", "expert", "memory_budget"):
         assert signature.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
@@ -334,7 +454,7 @@ def test_the_expert_argument_refuses_a_lookalike():
     """PLANTED VIOLATION: a dict that happens to have the right keys."""
     producer = _routes()
     with pytest.raises(TypeError, match="PlanOverrides"):
-        rola.RoLA(producer, expert={"state_block": 16})
+        rola.RoLA(producer.routing, hidden_size=32, num_heads=2, expert={"state_block": 16})
 
 
 # ---------------------------------------------------------------------------
@@ -342,21 +462,23 @@ def test_the_expert_argument_refuses_a_lookalike():
 # ---------------------------------------------------------------------------
 
 
-def test_the_layer_prefill_path_speaks_the_deletion_refusal():
-    """K31: the layer's prefill dispatch lands on `rola_op`, which is the
-    deletion refusal — the ruling is named before any kernel could run, in
-    training mode and out of it. Training mode's own clause survives on the
-    DECODE fork alone (`RoLA.validate_decode_envelope`); the dispatch table in
-    `tests/integration/test_decode_dispatch.py` is where that is asserted."""
-    layer = rola.RoLA(_routes()).double().train()
-    with torch.no_grad(), pytest.raises(NotImplementedError, match="the prefill arm is deleted"):
+def test_the_layer_prefill_path_refuses_before_any_kernel_runs():
+    """The layer's prefill dispatch lands on `rola_op`, whose fast-fail speaks before any kernel could run: in
+    training mode the gradient clause (the prefill has no reverse pass yet), out of it the envelope's device
+    clause for these CPU fp64 fixtures."""
+    from rola.engine import BackwardNotImplemented
+
+    layer = _routes().double().train()
+    with pytest.raises(BackwardNotImplemented, match="has no reverse pass"):
+        layer(torch.randn(2, 6, 32, dtype=torch.float64))
+    with torch.no_grad(), pytest.raises(NotImplementedError, match="CUDA kernel"):
         layer(torch.randn(2, 6, 32, dtype=torch.float64))
     assert layer.last_execution_backend is None, "the refusal let a kernel run first"
 
 
 def test_an_unsupported_forward_keyword_raises_rather_than_being_swallowed():
     """PLANTED VIOLATION: the HF-compat keyword the layer used to accept and ignore."""
-    layer = rola.RoLA(_routes()).double().eval()
+    layer = _routes().double().eval()
     x = torch.randn(2, 6, 32, dtype=torch.float64)
     with pytest.raises(TypeError, match="output_attentions"):
         layer(x, output_attentions=True)
@@ -391,8 +513,8 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
 
     **THE DEFECT.** A module under `rola/` reached a package under `measure/`
     by inserting that directory onto `sys.path` RELATIVE TO ITS OWN FILE. That
-    resolves from a source checkout and from nowhere else: `setup.py` packages
-    `find_packages(include=["rola", "rola.*"])`, so an installed wheel has no
+    resolves from a source checkout and from nowhere else: the `rola` wheel packages
+    the `rola/` package alone (`tools/wheels.py`), so an installed wheel has no
     `measure/` sibling and every relocated name raised `ModuleNotFoundError`
     there.
 
@@ -404,7 +526,7 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
     re-introducing a `measure/` reach fails here with the import error itself,
     and one that merely IMPORTS a measure module fails on the second assertion.
 
-    The module list is the prefill path itself -- the facade, the chunk arm, the
+    The module list is the prefill path itself -- the facade, the prefill DAG, the
     state, decode, paging -- and nothing else: a module the prefill path does not
     resolve does not belong in a probe about what the prefill path resolves. The
     general `measure/` clause is the release blocker.
@@ -431,10 +553,10 @@ def test_the_prefill_path_imports_from_the_INSTALLED_package_layout():
             "from rola.interface import rola_op;"
             "from rola.ops.decode import step_plane;"
             "from rola.engine.facts.call import require_envelope;"
-            "from rola.engine.facts.planes import atom_bits;"
-            "from rola.engine.rules.arm import CHUNK_TOKENS;"
-            "from rola.engine.rules.envelope import arm_envelope;"
-            "from rola.engine.dags.chunk_dag import ChunkContext, build_chunk_plan;"
+            "from rola.ops.facts import facts;"
+            "from rola.engine.rules.envelope import prefill_envelope;"
+            "from rola.engine.dags.prefill_dag import PrefillContext, run_prefill;"
+            "from rola.ops.prefill import prefill;"
             "from rola.ops.decode import derive_decode_geometry;"
             "from rola.ops.paging import PageArena, MMA_K_QUANTUM;"
             # Nothing may have come from a `measure/` or `tests/` tree.

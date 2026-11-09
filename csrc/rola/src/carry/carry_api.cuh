@@ -1,27 +1,31 @@
 // csrc/rola/src/carry/carry_api.cuh -- the carry family's HOST entries for the pybind TU.
-// See docs/internals/carry/carry.md
+// see docs/internals/carry/carry_api.md
 #pragma once
-#include <optional>
 
 #include "common/torch_seam.cuh"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace rola::carry {
 
-void carry_forward(const Tensor& read, const Tensor& write, const Tensor& gain, const Tensor& v,
-                   Tensor& num, Tensor& den, const std::vector<int64_t>& widths, int64_t dv,
-                   int64_t page_bits, int64_t warps_per_cta,
-                   const std::vector<int64_t>& carve_order, const std::vector<int64_t>& schedule,
-                   const Tensor& liveness, const Tensor& activity,
-                   const std::optional<Tensor>& state_in, const std::optional<Tensor>& state_out,
-                   const std::optional<Tensor>& page_table);
+//: ONE LAUNCH over a call's windows. -- see docs/internals/carry/carry_api.md#carry-forward
+Tensor carry_forward(std::vector<Tensor> read_rows, std::vector<Tensor> write_rows, Tensor values,
+                     std::vector<Tensor> write_lists, Tensor write_exp, Tensor factors,
+                     Tensor factor_shift, std::vector<Tensor> read_lists, Tensor scale, Tensor num,
+                     Tensor den, Tensor check, std::vector<int64_t> widths,
+                     std::vector<int64_t> extents, int64_t channels, int64_t write_list,
+                     std::vector<int64_t> write_operand, int64_t read_list,
+                     std::vector<int64_t> read_operand, std::vector<int64_t> key,
+                     int64_t accumulate, int64_t reduce, int64_t forced);
 
-//: the phase ledger binding (a debug instrument; None unbinds). -- carry_kernel.md#phase-ledger
+int64_t carry_readout_accumulate(int64_t device);  // carry_api.md#carry-readout-accumulate
+
 void carry_ledger_bind(const std::optional<Tensor>& ledger);
-//: the phase trace binding, `[ctas][warps][cap]` (a debug instrument; None unbinds). -- carry_kernel.md#phase-trace
-void carry_trace_bind(const std::optional<Tensor>& trace, int64_t warps_per_cta);
+void carry_probe_bind(const std::optional<Tensor>& probe, const std::optional<Tensor>& den);
+void carry_capture_bind(const std::optional<Tensor>& out);  // carry_api.md#carry-capture-bind
+int64_t carry_capture_bytes();
 int64_t carry_build_stamp();
 std::vector<std::vector<int64_t>> carry_census();
 std::vector<std::vector<int64_t>> carry_arms();

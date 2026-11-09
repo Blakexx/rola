@@ -4,10 +4,11 @@
 """THE CALIBRATIONS (KERNEL_STANDARDS §22 (10)): each cost the carry kernel's parts are made of, alone,
 on every warp of every CTA, timed by the host under the locked clock, as cycles an operation a warp.
 
-    python measure/harness/bench_carry_calib.py [--only hmma,shared_load,...] [--owners 80]
+    bazel run //:parts_library --//:archs=86                       # the module, for this card
+    bazel run //measure/harness:carry_calib -- [--only hmma,shared_load,...] [--owners 80]
 
 The kernels are `measure/harness/carry_parts/carry_calib.cuh`, built into the part harness's module
-(`ROLA_BUILD_PARTS=1`). A calibration is sized from a short launch to take `--seconds` a launch, run
+(`bazel run //:parts_library`). A calibration is sized from a short launch to take `--seconds` a launch, run
 once to warm, then `--launches` times; the median launch's seconds times the locked clock's cycles a
 second, over the operations a warp issues in it, is the row. The rows are stored
 through `rola_results` at `calibration`: reference rows for this card, the composer's and the tracer's
@@ -165,7 +166,7 @@ def main() -> int:
     try:
         from rola_cu13 import _C_parts  # loading the library registers torch.ops.rola_parts
     except ImportError as ex:
-        raise SystemExit("the part harness's module is not built (ROLA_BUILD_PARTS=1)") from ex
+        raise SystemExit("the part harness's module is not built: bazel run //:parts_library") from ex
     mod = torch.ops.rola_parts
 
     dev = torch.device("cuda")

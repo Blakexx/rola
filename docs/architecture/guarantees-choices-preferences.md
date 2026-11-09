@@ -33,23 +33,22 @@ same week.
   straight-through estimator, no thresholded skip. A skip is exact by
   construction or it does not ship.
 - **Membership is decided by the realized support bits and by nothing else.**
-  `digit_in_mask` (`csrc/rola/src/facts/liveness_contract.cuh`) is the sole support
-  authority. Amplitude comparisons exist in
-  the kernel only as *performance* skips on a value where inclusion is a no-op
-  (`if (out != 0.0f)`), and none of them decides membership
-  ([`carry/carry_kernel.md`](../internals/carry/carry_kernel.md)).
+  A digit is live exactly when it is nonzero (`csrc/rola/src/facts/liveness_contract.cuh`'s
+  `digit_live`), and the facts pass's words carry that bit to every consumer
+  ([`facts/liveness_contract.md`](../internals/facts/liveness_contract.md)). An
+  amplitude comparison in a kernel is only ever a *performance* skip on a value where
+  inclusion is a no-op, and none decides membership.
 - **Paging is bitwise invisible**, not approximately equivalent. An absent atom
   reads as zeros and is never stored back
   ([`paging/paging.md`](../internals/paging/paging.md)).
 
 **Numerics**
 
-- **Accumulators are fp32** — value state, mass state, clock, decay dials,
-  emission accumulators. → [fp32-accumulators.md](fp32-accumulators.md).
+- **State accumulators are fp32 or exact integer** — the fold's state, the mass, the scale pass's write masses, the
+  readout's partials (exact s16 pairs), decay dials. → [precision.md](precision.md).
 - **The amplitude is never logged.** The direct staged-factor lowering is required,
-  not preferred (the arithmetic is in the retired tiled consumer's
-  `intra_panel.md#no-log-space`, `git show c7eaeb9:docs/internals/intra_panel.md`;
-  the rule binds every arm).
+  not preferred: a product of factors is formed from the factors, never through a
+  log-space sum, in every kernel.
 
 **Build and execution**
 
@@ -72,18 +71,11 @@ transactional, in either backing: a continuation advances its carried state IN P
 so a launch that fails part way through leaves that state part advanced rather than as
 it was. Recovering a pre-call state is `clone()` before the call
 ([`../internals/state.md`](../internals/state.md#the-dense-continuation)). The output
-`y` is **not** bit-reproducible run to run: split-K uses non-deterministic atomics, and two runs
-of the unchanged code differ by ~`5e-7` max-abs at the parity cell. The **state**
-*is* byte-equal and is gated as such. Every `y` comparison in this repository is
-therefore reported against a measured same-order floor. Converting `y` to
-byte-equality was BUILT and MEASURED (a single-writer workspace + one host-fixed-
-order reduce kernel, P10) and then REVERTED: the mechanism
-priced at **+23.0%** step time at the canonical at-scale cell — over 3x the
-figure it was first accepted against — and Blake ruled the price not worth
-carrying. It survives in git (`perf/deterministic-splitk`, tip `70f607b`) and
-revives on a hard external bitwise-reproducibility requirement AND a banded
-workspace reduction that fixes both the price and the mechanism's nc-scaling
-cliff together.
+`y` is **not** bit-reproducible run to run: the intra's and the decode step's fan-ins add
+fp32 partials in arrival order, and bitwise run-to-run reproducibility is not worth a
+cost (Blake, 2026-09-30). The **state** *is* byte-equal and is gated as such; every `y`
+comparison is held to a reassociation bound
+([`decode.md#determinism`](../internals/decode/decode.md#determinism)).
 
 ## 2. Choices — measured, and revisable
 
@@ -92,20 +84,16 @@ beat.
 
 | Choice | The measurement | Where it could move |
 |---|---|---|
-| **Owner order is head-major** (`bh` primary, cost descending within head) | step `71.98 → 67.60 ms` (−6.1%); L2 read hit `27% → 71%`; DRAM `20.27 → 6.38 GB`; request side provably untouched | Remaining locality is in the token band and the emission, not in within-head order — a hierarchy-order key was tested and **refuted** (+0.14% at parity, and it *lowers* the L2 hit rate). |
-| **Ring depth 1** (no run-ahead buffer) | A/B: wash at parity (−0.16%), **+3.8% regression** at the sparse cell; stalls converted rather than removed | The verdict is explicitly conditional on the tree it was measured in, and the visit's phase structure has since been rebuilt around a single `__syncthreads()`; the axis is therefore open. |
-| **One `__syncthreads()` per visit, guarded by `mixed`** | the counter protocol it replaced cost 18.6% of warp-instructions in spin; collapsing both edges onto the hardware barrier is part of a measured **−21.8% warp-inst/visit, −16.2% kernel duration** | A single-sided visit pays nothing, so the choice is only load-bearing where visits are mixed; a formulation that decorrelates warps *within* the CTA (the enlarged-chunk/cursor-paced form) would reopen it. |
-| **`frag_a_slot` hoist (rung 4) declined** | regressions +0.5…+1.9% persisting at 8× `T` **and** at `N = 65,536`; the foregone −0.99% win reproduced three times and is smaller than the losses it buys | Parked, not closed: a formulation started from the SASS. Revival trigger named — if the kernel becomes issue-bound again. |
-| **Warp specialization demoted** | both mechanisms it is predicted to buy fail measurement: the register recovery does not appear, and `setmaxnreg` is `sm_90+` against an `sm_86` build. The rendezvous spin it was last aimed at no longer exists — the visit's ordering is one hardware barrier | A cell where issue pressure binds. |
-| **The headline metric is CPM, not slots/MMA** | schedulers are **starved, not oversubscribed**: 0.85 eligible warps of 5.81 active; no eligible warp on 52.5% of cycles; issue capacity in 3.2× surplus | "What you gate is what you get": a slots/MMA metric gates a resource held in 3.2× surplus. Any replacement metric needs a bandwidth companion or it repeats the failure in a new coordinate. |
-| **bf16 read-only storage family** (amplitudes, values, projections, `y` cast) | not yet landed; priced at 0–4%, best ~1.5–2%, low end genuinely zero | Its own precision gate first, then the oracle A/B, then perf. Distinct from the state's own STORAGE, which is a live axis in its own right, not this family — the state's ACCUMULATION staying fp32 is the guarantee (§1), unmoved by the compensated bf16-pair storage ([fp32-accumulators.md](fp32-accumulators.md#compensated-pair)). |
+| **Every input a carry chunk reads lands in its buffer first** (its rows, its lists' entries, its zeroed panel: no inner loop reads global memory) | the readout fell from 6.3K to 5.4K cycles a warp-window and the fold from 4.6K to 3.2K at nl64k-alt-k4 against entries read in place (2026-10-14, [`schedule.md#buffers`](../internals/carry/ampere/schedule.md#buffers)) | A card whose global latency the fills cannot hide behind a chunk's work. |
+| **Each window's plan is a rule, not a search: the largest chunks that fit, the image whole where it fits, entries in two alternating slots with the next filled while one computes wherever the two fit** (`rule_plan`, `window_plan_kernel`) | at nl64k-alt-k4 on sm_86 the rule's form timed fastest of every named form (3.22-3.26 ms a call), an extra fold chunk ~500 us slower, a cost-model search ranked them inverted at 661 us a call; evaluated once a window by the plan pass rather than by every warp at every step (~3,500 cycles a warp-window, 2026-10-16); every form gated per slot on its cell (`tests/oracle/carry_fixtures.py`'s `FORM_CELLS`) ([`schedule.md#planner`](../internals/carry/ampere/schedule.md#planner)) | A component whose chunks cost little apart (an interleaved fold or readout), where smaller chunks that land beside their partner beat one exposed fill. |
+| **The producer's entmax threshold is Newton from the left, not a sort** | a 256-wide row at one decoded token: sorted 13.8K cycles, twelve-round multisection 10K, Newton 2.7K ([`produce.md#threshold`](../internals/produce/produce.md#threshold)) | Prefill, where a CTA holds many live rows and the sort's straight-line network is no longer run once from a cold instruction cache. |
 
 **A choice is only as good as the regime it was measured in**, and this record
 contains its own cautionary tale: perf claims that scale with routing sparsity
 are functions of a *fixture knob*. The benchmarked logit gain sits on the
 steepest part of the curve, with candidate fraction spanning 0.96 → 0.09 over
-gains 1…32 and no plateau. **No trained V3 checkpoint exists on which to take a
-real census.** Quote perf claims with the gain; never present the sparse arm as
+gains 1…32 and no plateau. Until a trained model gives a real census, quote perf
+claims with the gain; never present the sparse arm as
 "the realistic regime" without that qualifier. This is the single largest
 uncertainty in the performance record.
 
@@ -126,7 +114,7 @@ uncertainty in the performance record.
   `docs/internals/DELETIONS.md`.
 - **Linear, single-purpose commits on `master`.**
 - **`csrc/rola` is formatted once, mechanically** (clang-format, pinned, Google
-  base, 100 columns, comment reflow off), enforced by pre-commit and CI so that
+  base, 100 columns, comment reflow off), enforced by the commit gate and CI so that
   every later diff is content.
 - **Names follow the architectural mental model** — the reduction-theorem
   vocabulary — rather than implementation history.
@@ -154,9 +142,9 @@ number cleared.
   Light-tier probing is allowed and labelled; a light-tier decision is re-confirmed
   at full rigor before landing.
 - **Through the gates, in the tree the manifest was ratified in.** Register/spill
-  ratchet, bit-identity suites, the scoped test lines, census. A nine-shape
-  compile probe is a *screen*, not a ratchet — it cannot see a 12-instantiation
-  regression in a 1,216-entry space.
+  ratchet, bit-identity suites, the scoped test lines, census. A compile probe
+  of a few shapes is a *screen*, not a ratchet — it cannot see a regression in
+  the instantiations it did not compile.
 - **With a gate that can fail.** Every new gate ships its must-fail
   demonstration. The three sanctioned mechanisms, all with in-tree precedent:
   in-test non-vacuity assertions (which catch vacuous fixtures — a fixture with

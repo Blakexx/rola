@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE PIPE TIMELINE (KERNEL_STANDARDS §22 (11)): the pipes' activity over one launch, measured on silicon.
 
-    python tools/pipe_timeline.py --cell flagship-dense [--rep existing.ncu-rep] [--html out.html]
+    bazel run //tools:pipe_timeline -- --cell flagship-dense [--rep existing.ncu-rep] [--html out.html]
 
 The capture is the Nsight Compute CLI's PM sampling (`--section PmSampling`, CLI 2025.3 or later): the profiler
 replays the kernel over several passes, each sampling one single-pass counter group at a fixed interval (1 us on
@@ -41,7 +41,6 @@ import toolchains  # noqa: E402
 from rola_devtools import process  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-NCU = dev_config.get("toolchain.ncu")
 #: the `rola_results` location of the calibrations: the MMA-only composition's plateau, per binary
 SCALE = "pipe_timeline.scale"
 PY = sys.executable
@@ -64,7 +63,7 @@ def capture(cell: str, out: Path) -> Path:
     """One launch of the cell through rola's runner under PM sampling; returns the report."""
     from measure.provider import oneshot_argv
 
-    r = process.run([NCU, "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1", "--section",
+    r = process.run([dev_config.ncu(), "--target-processes", "all", "-k", "regex:carry_kernel", "-c", "1", "--section",
                      "PmSampling", "-f", "-o", str(out), *oneshot_argv(cell)], cwd=ROOT, timeout=3600)
     rep = out.with_suffix(".ncu-rep") if out.suffix != ".ncu-rep" else out
     if r.returncode or not rep.exists():
@@ -73,7 +72,7 @@ def capture(cell: str, out: Path) -> Path:
 
 
 def export(rep: Path) -> tuple[list[str], list[str]]:
-    r = process.run([NCU, "--import", str(rep), "--page", "raw", "--print-metric-instances", "details", "--csv"],
+    r = process.run([dev_config.ncu(), "--import", str(rep), "--page", "raw", "--print-metric-instances", "details", "--csv"],
                     timeout=3600)
     csv.field_size_limit(sys.maxsize)
     rows = list(csv.reader(r.stdout.splitlines()))
@@ -211,7 +210,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, help="report path stem (default: the scratch directory's pipe_timeline/<cell>)")
     ap.add_argument("--scale", type=float, help="the MMA-only plateau in the tensor series (default: the stored row)")
     ap.add_argument("--calibrate", action="store_true",
-                    help="this capture is the MMA-only composition (ROLA_CARRY_PARTS=none): store its plateau as the scale")
+                    help="this capture is the MMA-only composition (`--//:carry_parts=none`): store its plateau as the scale")
     ap.add_argument("--no-record", action="store_true",
                     help="store no CALIBRATION: --calibrate then only prints the plateau it measured")
     ap.add_argument("--json", type=Path, help="also write the timeline document here")
@@ -225,7 +224,7 @@ def main() -> int:
     if a.calibrate:
         import datetime as dt
         row = {"utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H%MZ"), "cell": a.cell, "report": rep.name,
-               "metric": dict(SERIES)["tensor"], "composition": "ROLA_CARRY_PARTS=none", **plateau(tl)}
+               "metric": dict(SERIES)["tensor"], "composition": "--//:carry_parts=none", **plateau(tl)}
         if not a.no_record:
             Store(SCALE).put({"cell": a.cell, "binary": binary(), "composition": row["composition"]}, output=row,
                              provenance=checkout(ROOT))

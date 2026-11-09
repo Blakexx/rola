@@ -3,15 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """ONE wrapper over `ast-grep scan`, two scopes.
 
-**THE BUG THIS REPLACES.** `sgconfig.yml`'s rules each carry `files:
-[csrc/**, tools/lint/fixtures/**]` -- the fixtures glob is there so the rule's
-own must-fire fixture is reachable at all, per rule, without a second config
-file. But `.pre-commit-config.yaml` invoked `ast-grep scan --config
-sgconfig.yml` with NO path argument, which defaults to the whole repo -- so
-every commit re-triggered every fixture's deliberate violation as a gating
-error. `docs/build.md`'s OWN documented invocation already said `... csrc/`;
-only the wired hook had drifted from it. A run of stages bypassed the
-hook rather than fix the four-word drift.
+**WHY THE SCAN NAMES ITS ROOT.** `sgconfig.yml`'s rules each carry `files:
+[csrc/**, tools/lint/fixtures/**]` -- the fixtures glob makes each rule's
+own must-fire fixture reachable without a second config file -- so a scan
+with no path argument (the whole repo) would report every fixture's
+deliberate violation as a gating error.
 
 **Commit gate (default, no flag):** `ast-grep scan --config sgconfig.yml
 csrc` -- csrc/ only. A rule's fixtures/** glob is irrelevant to this

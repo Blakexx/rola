@@ -42,8 +42,8 @@ against something other than itself (`git clone --branch v3.5.1 && diff -r`).
 It is vendored rather than fetched because the build is closed-world: a codegen input
 that a network fetch supplies at build time is an input the ratification manifest
 cannot describe. `csrc/third_party/cutlass/PIN.json` records the tag, the commit, the
-licence and a digest of the whole subtree; `setup.py::_gate_vendored` (closed-world
-rule 5) re-computes that digest before every compile and refuses a build whose
+licence and a digest of the whole subtree; the graph's record action (`tools/build_record.py`'s
+`vendored_pin`, closed-world rule 5) re-computes that digest on every build and refuses a build whose
 vendored headers drifted, and the pin is stamped into `rola_cu13/_build_config.py` so an
 installed wheel answers "which CUTLASS is inside this `.so`?" with no checkout.
 
@@ -59,4 +59,5 @@ text verbatim and `NOTICE` points at it.
 | `Blakexx/rola-zoology` | Synthetic-task (MQAR and relatives) evaluation harness. |
 | `Blakexx/rola-bench` | The benchmarks and the local measurement suite. |
 | `Blakexx/rola-results` | The measurement records every reported number is read from. |
-| `Blakexx/rola-paper` | The paper. The canonical **claims** document; the engineering **contract** document here (a `docs/` spec page, still owed) is the canonical one. They cite each other; neither subsumes the other. |
+| `Blakexx/rola-devtools` | The development tools every RoLA repository shares: the dev config reader, the machine's locks, the public mirror's export, the central cells, the declared build system and its timing system, and the build graph's shared machinery (a Bazel module). Pinned in `MODULE.bazel`. |
+| `Blakexx/rola-paper` | The paper, the canonical **claims** document; the engineering contract is this repository's docs. They cite each other; neither subsumes the other. |

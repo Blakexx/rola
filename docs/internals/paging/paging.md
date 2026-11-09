@@ -1,56 +1,50 @@
 # `rola/ops/paging.py` — page commitment, keyed to the MMA atom
 
-Moved from the module docstring; the module keeps the vocabulary and the
-one-sentence purpose.  Companion: `vmm_owner.md` (the VMM backing).
+Mirrors `rola/ops/paging.py`, whose docstring keeps the vocabulary and the one-sentence purpose.
+Companion: `vmm_owner.md` (the VMM backing).
 
-## What Changed, And Why It Is Not A Tuning Choice
+## A page is the MMA atom, not a compute tile
 
-``page_states := MMA_K_QUANTUM`` (was ``BC``). The ruling: **``BC`` is a re-derivable
-COMPUTE tile; a page is a MEMORY-RESIDENCY atom.** Their consumers are different
-objects with different lifetimes -- admission bitmaps, arena pools, residency ledgers,
-warm reuse across sequences -- and every one of them must survive a ``BC`` change
-unbiased. The re-key was ruled while a PLANNER chose ``BC`` per launch: a
-``BC``-keyed page would have to be rebuilt whenever the planner moved it, which is
-exactly the arena-rebuild class the re-key kills. That planner is retired
-(``DELETIONS.md``) and ``BC`` is now a property of the built chunk arm, which
-weakens the URGENCY of the argument and none of its force -- ``BC`` still varies
-across arms and across rebuilds of the matrix, and a residency structure keyed to
-a compute tile would still be re-keyed by each such move.
+``page_states := MMA_K_QUANTUM``. The ruling: **``BC`` is a re-derivable COMPUTE tile; a
+page is a MEMORY-RESIDENCY atom.** Their consumers are different objects with different
+lifetimes -- admission bitmaps, arena pools, residency ledgers, warm reuse across
+sequences -- and every one of them must survive a ``BC`` change unbiased: ``BC`` varies
+with the carve and across rebuilds, and a residency structure keyed to a compute tile
+would be re-keyed by each such move.
 
-Every legal ``BC`` is a whole number of atoms by construction (``16 | BC``), so an
-owner spans exactly ``QPO`` atoms and a CTA resolves ``QPO`` slots at startup instead
-of one page. Residency tests move to atom granularity -- the SAME atom as the
-emptiness-skipping quantum -- so ONE predicate serves both.
+Every legal ``BC`` is a whole number of atoms by construction (``16 | BC``), so a box
+spans exactly ``BC / 16`` atoms. Residency tests are at atom granularity -- the SAME atom
+as the emptiness-skipping quantum -- so ONE predicate serves both.
 
 **THE ADDRESS.** Logical atom id ``bh * (N / MMA_K_QUANTUM) + leaf // MMA_K_QUANTUM``;
-``table[atom id] = slot | ABSENT``; the value address is
-``((slot << LOG2_ATOM | row) * cols + v)`` with ``row = leaf & (MMA_K_QUANTUM - 1)``.
-Both shifts are DERIVED from the named constant (invariant I1) -- see
-:data:`_LOG2_ATOM_LEAVES` -- so there is no ``4`` and no ``15`` anywhere in this file.
+``table[atom id] = slot | ABSENT``. A slot is one page of the state format, at
+``slot * kBytes`` with the leaf's row ``leaf & (MMA_K_QUANTUM - 1)`` inside it
+([`../common/state_page.md#geometry`](../common/state_page.md#geometry)). The shift is
+DERIVED from the named constant -- see :data:`_LOG2_ATOM_LEAVES` -- so there
+is no ``4`` and no ``15`` anywhere in this file.
 
-**WHO RESOLVES IT.** The chunk consumer, at the two ends of its state I/O and
-nowhere else -- that kernel touches pages only there, so the resolve is one
-``int32`` load per atom rather than a per-CTA-startup cost. It resolves
-``slot = page_tbl ? page_tbl[atom] : atom``, which makes the DENSE plane the same
-kernel with a null table (the slot IS the atom), and paging ONE base translation
-rather than a second path. ``slot < 0`` -- an atom the plan committed nothing for
--- is skipped at both ends, exactly and not defensively, because the plan's bitmap
-is the write set exactly (``../facts/liveness.md``). ``chunk_kernel.md`` carries the
-addressing, the CTA-uniformity of the barriers around that skip, and the 4 GiB
-plane bound the 32-bit displacement form owes the caller.
+**WHO RESOLVES IT.** A kernel with state I/O, at the two ends of it and nowhere else, so
+the resolve is one ``int32`` load per atom. It resolves
+``slot = page_tbl ? page_tbl[atom] : atom``, which makes the DENSE plane the same kernel
+with a null table (the slot IS the atom), and paging ONE base translation rather than a
+second path. ``slot < 0`` -- an atom the plan committed nothing for -- is skipped at both
+ends, exactly and not defensively, because the plan's bitmap is the write set exactly
+(``../facts/facts.md``). The decode step is today's reader
+([`../decode/decode.md#paged-address`](../decode/decode.md#paged-address)); the rebuilt
+carry has no state I/O yet.
 
 ## Allocation: Planned-Exact-Async
 
 The pool is sized EXACTLY, not grown: the popcount of the atom condensation is the
 number of atoms this call will touch, so the arena knows its own footprint before the
-consumer launches, and there is nothing to discover. The condensation comes from the
-call's own arm and never from a second derivation — the liveness pass at `T > 1`
-([`../facts/liveness.md`](../facts/liveness.md)), the decode step's own published `atom_bits` at `T = 1`
+kernel launches, and there is nothing to discover. The condensation comes from the
+call's own arm and never from a second derivation — the facts pass at `T > 1`
+([`../facts/facts.md`](../facts/facts.md)), the decode step's own published `atom_bits` at `T = 1`
 ([`decode/decode_api.md` §4](../decode/decode_api.md#the-verdict)) — and both are EXACT
 rather than a bound, which is what makes `resident == realized` a fact instead of a hope.
 
-Allocation and zero-init issue on a SIDE STREAM as soon as the epilogue lands, and the
-consumer launch waits on ONE event. That is the whole of the asynchrony: no polling, no
+Allocation and zero-init issue on a SIDE STREAM as soon as the facts land, and the
+launch waits on ONE event. That is the whole of the asynchrony: no polling, no
 second sync, and the zeroing overlaps the schedule build rather than serializing with
 it.
 
@@ -96,26 +90,19 @@ path. An atom the device later claims into one of them is therefore BYTE-INDISTI
 from one `plan_exact` admitted: no migration, no copy, and the dense-vs-paged equality
 gate is untouched by the pool existing.
 
-**THE DEVICE CLAIM is replicated and canonical, with no atomic and no cross-CTA
-communication.** Every CTA of a batch-head independently computes the SAME mapping: the
-batch-head's touched-unmapped atoms, in ASCENDING ATOM ID, taken from `pool_slots[bh]`
-starting at `pool_cursor[bh]`, via a block scan every CTA runs identically over the same
-inputs. It is all-or-nothing per batch-head — a CTA either finds the demand fits under
-`pool_cap - cursor` and claims the whole of it, or claims nothing and the batch-head is
-`needy` exactly as an unpooled one would be.
+**THE DEVICE CLAIM is the batch-head's owner's.** The first CTA to visit the batch-head
+in a step owns its admission ([`decode.md#queue-admission`](../decode/decode.md#queue-admission)):
+it maps the batch-head's touched-unmapped atoms, in ASCENDING ATOM ID, to `pool_slots[bh]`
+starting at `pool_cursor[bh]`, via a block scan. It is all-or-nothing per batch-head — the
+owner either finds the demand fits under `pool_cap - cursor` and claims the whole of it, or
+claims nothing and the batch-head is `needy` exactly as an unpooled one would be.
 
-<a id="the-shadow-row"></a>**WHY IT WRITES A SHADOW ROW, AND NOT THE TABLE.** The claim's
-predicate is `page_tbl[a] < 0` — an atom not yet mapped. Writing a claimed slot into the
-real table during the prologue would move that predicate out from under a SIBLING CTA
-still computing its own claim, and two CTAs' independently-replicated claims would then
-diverge over which atoms remain unclaimed. The claim instead writes `pool_map[bh]` — a
-WHOLE SHADOW COPY of that batch-head's table row, the claim merged in — and the walk
-addresses through THAT row instead of the table, by choosing one base pointer once,
-before the walk starts. The walk's own body knows nothing about pools: it is the same
-loop over `page_row[atom]` whether `page_row` is the table or the shadow. The batch-head's
-LAST-ARRIVING CTA — elected from the same split-K `ctr[bh]` the combine uses — folds the
-shadow row's new entries into the real table and advances the cursor, once, after every
-sibling CTA is done reading either row.
+<a id="the-table-claim"></a>**IT WRITES THE TABLE ITSELF.** The owner writes the claimed slots
+into the page table and advances the cursor before it publishes the batch-head's admission,
+and no other CTA reads that table row until it has seen the publication, so the walk's own
+body knows nothing about pools: it is the same loop over `page_row[atom]` it always is. (The
+split-K grid replicated the claim in every CTA of the batch-head, where a table write would
+have moved a sibling's predicate; it kept a shadow row until its last CTA folded it in.)
 
 **EXHAUSTION DEGRADES TO THE POOL-FREE PATH, EXACTLY.** A batch-head whose demand exceeds
 `pool_cap - cursor` claims nothing and is `needy`: the verdict, the per-`bh` no-op, the

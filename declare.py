@@ -2,19 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 """ROLA'S DECLARATIONS: this checkout's targets for rola-devtools' declared build system (`rola_devtools.build`).
 
-    python -m rola_devtools.build plan declare.py:all
-    python -m rola_devtools.build run  declare.py:all --only 'rola/phases' --skip '*/timeline'
+    bazel run //:measure -- plan declare.py:all
+    bazel run //:measure -- run declare.py:all --only 'rola/phases' --skip '*/timeline'
 
 `declare(g, env, cells=..., timing=...)` declares one checkout's targets under the graph's scope and returns them (the
 timing registrations by arm name), so a root elsewhere (rola-bench's) loads this file from each checkout it measures,
 calls it per checkout with one shared timing server, and composes its own sessions. `root(g, **args)` is rola measuring itself: this checkout, its own server,
 one session and one memory pass over the cells, every result stored.
 
-Per checkout: `binary` (the gated build, held on every host slot, cached while its binary stands), `environment` (the
+Per checkout: `binary` (the build graph's library, `bazel run //:library`, every run), `environment` (the
 machine facts, every run), the instruments of `INSTRUMENTS` (SASS and the register walk once, cached; the phase clock,
-pipe counters, stall census, timeline and the intra roofline on every carry cell, every run, holding the GPU), and with
-a timing server the timing registrations: `carry_forward` and `carry_intra` on the carry cells, `entmax_solve@layer=C`
-and `decode_step@layer=C` for each RoLA construction on the layer cells declared for it, and the clock reader. Every
+pipe counters, stall census, timeline and the intra roofline on every carry cell, and the intra's own
+(`counters-intra`, `census-intra`) on the cells of `LONG_CELL_TOKENS` and
+more, every run, holding the GPU), and with
+a timing server the timing registrations: `carry_forward`, `carry_intra`, `intra_forward`, `scale_pass` and `prefill` on
+the carry cells, `entmax_solve@layer=C`, `produce@layer=C`, `layer_prefill@layer=C`, `decode_step@layer=C` and the op's
+stages on the layer's own bundle (`layer_facts`, `layer_scale`, `layer_carry`, `layer_intra`, `layer_op`) for each RoLA
+construction on the layer cells declared for it (a decode step on the cells that take steps), and the clock reader. Every
 target depends on the binary and the environment, whose outputs reach its key. Every cell is a NODE (`rola_devtools.cells.declare`) whose output is its record and the digest of the code that drew it;
 a target that runs on cells takes those nodes as its data inputs, so nothing here or in the build system resolves a cell
 by name at run time. This file imports nothing of rola's: it reads the constructions from `measure/cells/layer.py` by
@@ -42,31 +46,35 @@ HERE = Path(__file__).resolve().parent
 EXECUTORS = "measure.executors:"
 #: where this checkout's repository-local imports resolve, for code digests
 IMPORT_ROOTS = ["tools", "."]
-#: what the extension is built from, besides the files `setup.py` imports
-BUILD_DATA = ["csrc", "pyproject.toml", "tools/manifests", "tools/toolchains", "tools/sccache_pin.json",
-              "tools/mold_pin.json", "tools/devtools.txt"]
+#: the carry's schedule files, its kernel's own first (`tools/kernel_targets.py`'s one derivation)
+CARRY_SOURCES = load(HERE / "tools" / "kernel_targets.py")["schedule_sources"]("carry")
 #: name -> (tool, arguments, runs per carry cell, holds, data files its result depends on)
 INSTRUMENTS = {
     "sass": ("tools/sass_gate.py", ["{binary}"], False, {"host_cpu": 1}, [], 600),
-    "registers": ("tools/life_ranges.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], False,
+    "registers": ("tools/life_ranges.py", ["--arm", "0", "--kernel", "carry_kernel",
+                                           *(a for f in CARRY_SOURCES for a in ("--source", f)),
+                                           "--budget", "tools/budgets/carry.json"], False,
                   {"host_cpu": 1}, ["csrc/rola/src"], 600),
-    "burst": ("tools/burst_gate.py", ["--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh",
-                                     "--loop", "csrc/rola/src/carry/carry_kernel.cuh:frag_mma",
-                                     "--loop", "csrc/rola/src/carry/carry_kernel.cuh:readout_tile"], False,
+    "burst": ("tools/burst_gate.py", ["--arm", "0", "--kernel", "carry_kernel", "--source", CARRY_SOURCES[0]], False,
               {"host_cpu": 1}, ["csrc/rola/src"], 600),
     "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, [], 120),
     "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, [], 900),
     "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
-               ["tools/budgets/carry.json", "csrc/rola/src/carry/carry_kernel.cuh"], 900),
+               ["tools/budgets/carry.json", CARRY_SOURCES[0]], 900),
     "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, [], 900),
-    "warp-timeline": ("tools/warp_timeline.py", ["{cell}", "--census", "auto"], True, {"gpu": "all"},
-                      ["csrc/rola/src/carry/carry_kernel.cuh", "tools/nvbit", "tools/nvbit_pin.json"], 1800),
     "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, [], 120),
+    #: what each layer construction's weights route on its cells (the layer readings' regime), once a binary
+    "support": ("tools/realized_support.py", [], False, {"gpu": 1}, ["measure/cells", "rola"], 1800),
+    "counters-intra": ("tools/pipe_counters.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"}, [], 900),
+    "census-intra": ("tools/stall_census.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"},
+                     ["tools/budgets/intra.json", "csrc/rola/src/intra/ampere/intra_kernel.cuh"], 900),
 }
-#: instruments that read another instrument's scratch export
-AFTER_CENSUS = ("warp-timeline",)
-CARRY_ARMS = ("carry_forward", "carry_intra")
-LAYER_ARMS = ("entmax_solve", "decode_step")
+#: the instruments read only on the long cells (16K tokens and more): the intra's
+LONG_CELL_INSTRUMENTS = {"counters-intra", "census-intra"}
+LONG_CELL_TOKENS = 16384
+CARRY_ARMS = ("carry_forward", "carry_intra", "intra_forward", "scale_pass", "prefill")
+LAYER_ARMS = ("entmax_solve", "produce", "layer_prefill", "decode_step", "layer_facts", "layer_scale", "layer_carry",
+              "layer_intra", "layer_op")
 #: seconds an instrument may run on one cell
 #: EACH INSTRUMENT'S TIMEOUT IS PER CELL AND SIZED TO THE INSTRUMENT: a phase-clock launch is seconds on the largest
 #: cell (37 cells in 1.1 minutes, measured 2026-09-16), an ncu replay minutes. A hang then costs one timeout and lands
@@ -101,8 +109,12 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
     #: cells to 49 and an ncu replay apiece (2026-09-16).
     carry = [c for c in cells if kind(c) == "carry" and central().cell(c)["params"].get("tier") in ("probe", "both")]
     layer = [c for c in cells if kind(c) == "layer"]
-    binary = g.node("binary", executor=EXECUTORS + "compile_kernel", env=env, holds={"host_cpu": "all"},
-                    verify=EXECUTORS + "binary_present", code=_code("setup.py", BUILD_DATA))
+    #: THE LIBRARY IS THE BUILD GRAPH'S (docs/build-graph.md#use): the node runs every build (uncached) -- Bazel's cache
+    #: is the build's key, and the node's output, the library's digest, keys every target that reads the binary -- and
+    #: holds no host slot, since the graph's front door takes the host budget itself (a holder never starts a Bazel
+    #: build, build-graph.md rule 13)
+    binary = g.node("binary", executor=EXECUTORS + "compile_kernel", env=env, cache=False,
+                    code=_code("measure/executors.py"))
     environment = g.node("environment", executor=EXECUTORS + "probe_environment", env=env, cache=False)
     facts = {"binary": binary, "environment": environment}
     out = {"binary": binary, "environment": environment, "instruments": {}, "entries": {}, "clock": None,
@@ -114,15 +126,15 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
         "oracle-tier", executor=EXECUTORS + "pytest_tier", env=env, deps=facts, holds={"gpu": 1},
         params={"paths": ["tests/oracle"], "timeout": TIER_TIMEOUT_S},
         code={"files": ["tests/oracle", "tests/conftest.py", "rola", "measure"]})
+    long_cells = [c for c in carry if central().cell(c)["params"].get("tokens", 0) >= LONG_CELL_TOKENS]
     for name in instruments:
         tool, args, per_cell, holds, data, timeout = INSTRUMENTS[name]
-        if per_cell and not carry:
+        on = long_cells if name in LONG_CELL_INSTRUMENTS else carry
+        if per_cell and not on:
             continue
-        #: the warp timeline joins the census's per-instruction export, so it runs after the census
-        deps = {**facts, **({"census": out["instruments"]["census"]} if name in AFTER_CENSUS and "census" in out["instruments"] else {})}
         out["instruments"][name] = g.node(
-            name, executor=EXECUTORS + "run_tool", env=env, deps=deps,
-            inputs=cell_nodes(g, carry) if per_cell else (), holds=holds,
+            name, executor=EXECUTORS + "run_tool", env=env, deps=facts,
+            inputs=cell_nodes(g, on) if per_cell else (), holds=holds,
             params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": timeout},
             cache=not per_cell, code=_code(tool, data))
     if timing is None:
@@ -149,24 +161,18 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
 #: THE DIFF SURFACES (`tests/oracle/sides.py`): what each IS -- the side executor, the cells it runs on (a cell kind
 #: and, where it has one, a tier), and what the side holds while it runs. Exposed for rola-bench, which pairs a surface
 #: across checkouts and OWNS the rule it compares them under (its `RULES`), as it owns the timing methodology; the
-#: only diff this file declares itself is the kernel against its own oracle, below. What rola states about a
-#: surface's numerics is a FACT, in `NUMERICS`: the carry kernel's readout fan-in is an fp32 atomic reduction whose
-#: association order varies run to run, so `num` and `den` reassociate -- MEASURED 2026-09-16, one binary against
-#: itself, three runs over every oracle-tier cell: den within 7e-7 relative, num within 1.9e-9 absolute where a
-#: cancelled slot made the relative error meaningless; `state`, written once per leaf, is exact.
+#: only diff this file declares itself is the kernel against its own oracle, below. What rola states about a surface's
+#: numerics is a FACT, in `NUMERICS`: the carry's ``num`` is EXACT run to run -- its readout adds exact integer pairs,
+#: MEASURED 2026-10-15, three runs of one binary over every oracle cell it reads, every slot bit-identical.
 SURFACES = {
     "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}),
     "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}),
     "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}),
 }
-NUMERICS = {
-    "carry-kernel": {"reassociation": {"num": {"rtol": 7e-7, "atol": 1.9e-9}, "den": {"rtol": 7e-7, "atol": 2.4e-7}},
-                     "exact": ["state"]},
-}
-#: the kernel-vs-oracle diff INSIDE one checkout: the carry kernel's slots against the fp64 reference's, PER SLOT under
-#: each output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
-KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference",
-                    {"num": "CARRY_NUM", "den": "CARRY_DEN", "state": "CARRY_STATE"})
+NUMERICS = {"carry-kernel": {"exact": ["num"]}}
+#: the kernel-vs-oracle diff INSIDE one checkout: the carry's slots against the fp64 inter term's, PER SLOT under each
+#: output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
+KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference", {"num": "CARRY_NUM"})
 
 
 #: THE BACKWARD'S BUDGET. The oracle side runs `naive_rola` forward AND backward in fp64, and autograd retains the
@@ -174,7 +180,7 @@ KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference",
 #: a peak above nine times that -- `flat-small-dense`, 1.0 GiB of retained state, could not run under a 9 GiB cap, and
 #: the run over every oracle-tier cell was killed by the host. A surface that runs the backward therefore admits only
 #: the cells whose retained state is under this budget, stated here so the excluded cells are a consequence a reader can
-#: compute and not a run that died. The forward alone is graded on every oracle-tier cell by the carry reference.
+#: compute and not a run that died.
 RETAINED_STATE_BUDGET = 512 * 2**20
 BACKWARD_SURFACES = ("oracle",)
 
@@ -210,18 +216,18 @@ def _sides(g, env: Env, facts: dict) -> dict:
 
 
 def _kernel_vs_oracle(g, env: Env, sides: dict):
-    """The carry kernel against the fp64 reference, in this checkout: the clause rule per output kind."""
+    """The carry against the fp64 inter term, in this checkout: the clause rule per output kind."""
     from rola_devtools.diff import diff, side
 
     kernel_surface, reference_executor, kinds = KERNEL_VS_ORACLE
     outputs = load(Path(env.cwd) / "tests" / "oracle" / "tolerances.py")
     nodes = cell_nodes(g, surface_cells(kernel_surface))
     reference = side(g, "side/carry-reference", env=env, executor=reference_executor, cells=nodes,
-                     code=_code(*SIDE_CODE), binds="rola", holds={"host_cpu": "all"})
+                     code=_code(*SIDE_CODE), binds="rola", holds={"gpu": "all"})
     per_quantity = {q: {"clauses": [list(c) for c in outputs[k].clauses], "rtol": outputs[k].rtol,
                         "envelope_from": f"{q}_envelope"} for q, k in kinds.items()}
-    #: RECORDED, not a build failure: the verdict is stored per cell, red cells included (an arm the binary does not
-    #: ship is red by decision until kernel work ships it), and the rest of the build measures on
+    #: RECORDED, not a build failure: the verdict is stored per cell, red cells included (a carve the binary has no arm
+    #: for is red by decision until kernel work ships it), and the rest of the build measures on
     return diff(g, "diff/carry-vs-oracle", left=sides[kernel_surface], right=reference, strategy="per-slot",
                 params={"per_quantity": per_quantity}, minimum=len(nodes), on_difference="record")
 

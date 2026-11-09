@@ -76,15 +76,14 @@ def test_packed_router_logits_matches_fp64_oracle_support(seed):
     ).to("cuda", torch.float32).eval()
     for p in layer.parameters():
         p.requires_grad_(False)
-    producer = layer.routes
     routing = resolved_routing_from_topology(layer.topology)
     h = torch.randn(1, _LENGTH, _HIDDEN, device="cuda", dtype=torch.float32)
 
     #: THE ROUTING COLUMNS ALONE. `route_W`'s trailing span is the side gain's, and the
     #: support this gate counts flips in is a threshold on routing logits only.
-    route_W = producer.route_W[:, :, :routing.packed_router_width]
-    route_bias = (None if producer.route_bias is None
-                  else producer.route_bias[:, :routing.packed_router_width])
+    route_W = layer.route_W[:, :, :routing.packed_router_width]
+    route_bias = (None if layer.route_bias is None
+                  else layer.route_bias[:, :routing.packed_router_width])
     read_logits, write_logits = packed_router_logits(
         h, route_W, routing, route_bias=route_bias)
     read64, write64 = packed_router_logits_reference(

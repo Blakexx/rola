@@ -1,0 +1,20 @@
+"""THE VENDORED LIBRARIES AS THE GRAPH'S INPUTS (their pins: each tree's PIN.json; docs/build.md)."""
+
+load("//bazel:defs.bzl", "include_root", "tree_part")
+
+package(default_visibility = ["//visibility:public"])
+
+#: the whole vendored tree, which rule 5 hashes against its pin
+filegroup(
+    name = "cutlass_tree",
+    srcs = glob(["cutlass/**"]),
+)
+
+include_root(
+    name = "cutlass",
+    hdrs = glob(["cutlass/include/**"]),
+    roots = ["cutlass/include"],
+)
+
+#: this package's part of the tree the checks read
+tree_part()

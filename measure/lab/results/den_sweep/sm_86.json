@@ -1,0 +1,379 @@
+{
+ "experiment": "den_sweep",
+ "question": "the carry's window-aligned denominator depends only on routing (den(t) = the read leaf product against the write mass of the windows before t's -- tests/oracle/reference.py), and the same product against the mass of F = m x the writing token's value scale is num(t), with num / den bounding every readout channel of t; a pass running beside the carry could hand its readout both, a common unit and each token's bound. At 8 CTAs a head (64 level-S rows x 128 level-R digits each, 16 warps), what do they cost a window on the cells' own routing, against the carry?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "529f2e792c98385e1628ee8b6b676f40951d9259",
+  "dirty": true
+ },
+ "reps": 7,
+ "date": "2026-10-07T00:05:18+00:00",
+ "utilization_before": 0,
+ "inputs": {
+  "flagship-alt-k4-L16384.den": "1783223648686754",
+  "flagship-alt-k16-L16384.den": "e1c7c7b530551afd",
+  "flagship-cohort-k16-L16384.den": "fc811e580532ff4a",
+  "flagship-dense-L16384.den": "caffd988b78a2fab",
+  "cells.txt": "8bdd4793cfb0590a"
+ },
+ "results": [
+  {
+   "lab": "result",
+   "name": "flagship-alt-k4-L16384 (8 CTAs a head)",
+   "unit": "cycles a window",
+   "samples": [
+    12721.911133,
+    12729.915039,
+    12733.083984,
+    12728.049805,
+    12722.313477,
+    12720.25,
+    12719.503906
+   ],
+   "median": 12722.313477,
+   "min": 12719.503906,
+   "max": 12733.083984,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k4-L16384 (8 CTAs a head) / den alone",
+   "unit": "cycles a window",
+   "samples": [
+    8459.958008,
+    8445.852539,
+    8449.642578,
+    8450.823242,
+    8462.539062,
+    8446.396484,
+    8450.620117
+   ],
+   "median": 8450.620117,
+   "min": 8445.852539,
+   "max": 8462.539062,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k4-L16384 (8 CTAs a head) / writes alone",
+   "unit": "cycles a window",
+   "samples": [
+    8841.692383,
+    8831.283203,
+    8835.956055,
+    8829.331055,
+    8832.240234,
+    8832.77832,
+    8833.130859
+   ],
+   "median": 8832.77832,
+   "min": 8829.331055,
+   "max": 8841.692383,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k4-L16384 (8 CTAs a head) / neither",
+   "unit": "cycles a window",
+   "samples": [
+    4417.889648,
+    4417.77832,
+    4417.121094,
+    4414.591797,
+    4412.693359,
+    4416.033203,
+    4414.131836
+   ],
+   "median": 4416.033203,
+   "min": 4412.693359,
+   "max": 4417.889648,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k16-L16384 (8 CTAs a head)",
+   "unit": "cycles a window",
+   "samples": [
+    29415.774414,
+    29367.882812,
+    29410.74707,
+    29376.31543,
+    29399.516602,
+    29400.837891,
+    29397.470703
+   ],
+   "median": 29399.516602,
+   "min": 29367.882812,
+   "max": 29415.774414,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k16-L16384 (8 CTAs a head) / den alone",
+   "unit": "cycles a window",
+   "samples": [
+    16445.442383,
+    16439.335938,
+    16446.134766,
+    16435.583984,
+    16440.709961,
+    16453.782227,
+    16440.011719
+   ],
+   "median": 16440.709961,
+   "min": 16435.583984,
+   "max": 16453.782227,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-alt-k16-L16384 (8 CTAs a head) / writes alone",
+   "unit": "cycles a window",
+   "samples": [
+    18131.669922,
+    18108.99707,
+    18140.044922,
+    18125.500977,
+    18106.692383,
+    18106.820312,
+    18152.475586
+   ],
+   "median": 18125.500977,
+   "min": 18106.692383,
+   "max": 18152.475586,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-cohort-k16-L16384 (8 CTAs a head)",
+   "unit": "cycles a window",
+   "samples": [
+    35349.146484,
+    35320.961914,
+    35354.640625,
+    35373.823242,
+    35341.216797,
+    35319.858398,
+    35327.458984
+   ],
+   "median": 35341.216797,
+   "min": 35319.858398,
+   "max": 35373.823242,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-cohort-k16-L16384 (8 CTAs a head) / den alone",
+   "unit": "cycles a window",
+   "samples": [
+    19885.625,
+    19894.710938,
+    19913.864258,
+    19898.072266,
+    19914.241211,
+    19906.438477,
+    19907.291016
+   ],
+   "median": 19906.438477,
+   "min": 19885.625,
+   "max": 19914.241211,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-cohort-k16-L16384 (8 CTAs a head) / writes alone",
+   "unit": "cycles a window",
+   "samples": [
+    22692.321289,
+    22717.714844,
+    22655.946289,
+    22666.356445,
+    22715.057617,
+    22702.248047,
+    22702.988281
+   ],
+   "median": 22702.248047,
+   "min": 22655.946289,
+   "max": 22717.714844,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-dense-L16384 (8 CTAs a head, dense form)",
+   "unit": "cycles a window",
+   "samples": [
+    68845.583984,
+    76294.000977,
+    75319.668945,
+    68918.738281,
+    68863.501953,
+    68928.442383,
+    68885.022461
+   ],
+   "median": 68918.738281,
+   "min": 68845.583984,
+   "max": 76294.000977,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "flagship-dense-L16384 (8 CTAs a head, dense form) / den alone",
+   "unit": "cycles a window",
+   "samples": [
+    23943.349609,
+    23939.142578,
+    23931.955078,
+    23934.749023,
+    23956.594727,
+    23928.711914,
+    23937.852539
+   ],
+   "median": 23937.852539,
+   "min": 23928.711914,
+   "max": 23956.594727,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "flagship-dense-L16384 (8 CTAs a head, dense form) / writes alone",
+   "unit": "cycles a window",
+   "samples": [
+    45800.797852,
+    45774.902344,
+    45848.086914,
+    45848.671875,
+    45819.131836,
+    45806.246094,
+    45802.194336
+   ],
+   "median": 45806.246094,
+   "min": 45774.902344,
+   "max": 45848.671875,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void den_sweep::sweep_dense<(int)2>(int, den_sweep::DensePool, float *, long long *, int *)": {
+   "regs": 96,
+   "ops": {
+    "FMUL": 66,
+    "LOP3.LUT": 57,
+    "LDS": 34,
+    "IMAD.SHL.U32": 32,
+    "HMMA.16816.F32": 32,
+    "IMAD.MOV.U32": 31,
+    "BRA": 24,
+    "IADD3": 22,
+    "IMAD": 19,
+    "CS2R": 18,
+    "LDSM.16.MT88.4": 18,
+    "F2FP.PACK_AB": 16
+   }
+  },
+  "void den_sweep::sweep_dense<(int)1>(int, den_sweep::DensePool, float *, long long *, int *)": {
+   "regs": 124,
+   "ops": {
+    "FFMA": 81,
+    "IMAD.MOV.U32": 69,
+    "HADD2.F32": 64,
+    "PRMT": 64,
+    "LOP3.LUT": 39,
+    "HMNMX2": 32,
+    "IADD3": 25,
+    "IMAD.SHL.U32": 22,
+    "BRA": 17,
+    "STS": 16,
+    "LDS.64": 16,
+    "IMMA.16832.U8.U8": 16
+   }
+  },
+  "void den_sweep::sweep_dense<(int)0>(int, den_sweep::DensePool, float *, long long *, int *)": {
+   "regs": 127,
+   "ops": {
+    "LOP3.LUT": 81,
+    "FFMA": 81,
+    "FMUL": 74,
+    "IMAD.MOV.U32": 71,
+    "HADD2.F32": 64,
+    "PRMT": 64,
+    "IMAD": 49,
+    "IMAD.SHL.U32": 42,
+    "IADD3": 41,
+    "LDS": 34,
+    "HMNMX2": 32,
+    "HMMA.16816.F32": 32
+   }
+  },
+  "void den_sweep::sweep<(int)3>(int, den_sweep::Pool, float *, long long *, int *)": {
+   "regs": 29,
+   "ops": {
+    "LOP3.LUT": 30,
+    "IADD3": 26,
+    "IMAD.SHL.U32": 24,
+    "BRA": 23,
+    "IMAD.MOV.U32": 19,
+    "SHF.R.S32.HI": 18,
+    "LDS": 18,
+    "STS": 16,
+    "IMAD": 13,
+    "LEA": 12,
+    "LEA.HI.X": 11,
+    "ISETP.GE.AND": 9
+   }
+  },
+  "void den_sweep::sweep<(int)2>(int, den_sweep::Pool, float *, long long *, int *)": {
+   "regs": 87,
+   "ops": {
+    "LOP3.LUT": 85,
+    "IMAD.MOV.U32": 66,
+    "FMUL": 66,
+    "IMAD.SHL.U32": 42,
+    "IADD3": 38,
+    "IMAD": 35,
+    "BRA": 33,
+    "SHF.R.U32.HI": 24,
+    "STS": 24,
+    "LDS": 23,
+    "SHF.R.S32.HI": 21,
+    "F2FP.PACK_AB": 20
+   }
+  },
+  "void den_sweep::sweep<(int)1>(int, den_sweep::Pool, float *, long long *, int *)": {
+   "regs": 96,
+   "ops": {
+    "IMAD.MOV.U32": 84,
+    "LOP3.LUT": 68,
+    "IADD3": 59,
+    "FFMA": 45,
+    "BRA": 32,
+    "HADD2.F32": 32,
+    "PRMT": 32,
+    "LDS": 29,
+    "IMAD.SHL.U32": 26,
+    "IMAD": 23,
+    "ISETP.GE.AND": 22,
+    "SHF.R.S32.HI": 21
+   }
+  },
+  "void den_sweep::sweep<(int)0>(int, den_sweep::Pool, float *, long long *, int *)": {
+   "regs": 128,
+   "ops": {
+    "IMAD.MOV.U32": 112,
+    "LOP3.LUT": 108,
+    "FMUL": 74,
+    "IADD3": 72,
+    "FFMA": 45,
+    "IMAD": 44,
+    "BRA": 43,
+    "IMAD.SHL.U32": 36,
+    "PRMT": 36,
+    "LDS": 34,
+    "HADD2.F32": 32,
+    "ISETP.GE.AND": 29
+   }
+  }
+ }
+}

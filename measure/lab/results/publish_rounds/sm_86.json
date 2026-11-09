@@ -1,0 +1,369 @@
+{
+ "experiment": "publish_rounds",
+ "question": "on the even carve the fold's warps own 4 level-R digits x 32 level-S x 32 channels (fp32, 128 registers) and the readout's 4 level-S x 32 level-R x 32 channels (f16 B fragments, 64 registers), so each window's publish is a cross-warp transpose of 32K values. The write slots fill the shared memory a whole publish (64 KB) would need; in four rounds of 16 KB (one level-S quarter, two readout warps' slices each), single or double buffered under mbarriers, what does it cost against publishing it whole?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "48566cd9d47847834ec50dd6527eb3d3fb3937db",
+  "dirty": true
+ },
+ "reps": 7,
+ "date": "2026-10-06T01:56:34+00:00",
+ "utilization_before": 1,
+ "results": [
+  {
+   "lab": "result",
+   "name": "no publish / dense window / 0 KB",
+   "unit": "cycles a window",
+   "samples": [
+    96609.0515,
+    96609.734687,
+    96609.734687,
+    96609.696187,
+    96609.721937,
+    96609.744063,
+    96609.710562
+   ],
+   "median": 96609.721937,
+   "min": 96609.0515,
+   "max": 96609.744063,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "whole, barriers / dense window / 64 KB",
+   "unit": "cycles a window",
+   "samples": [
+    99455.635188,
+    99456.904125,
+    99457.371687,
+    99460.538625,
+    99460.041875,
+    99458.476375,
+    99460.135375
+   ],
+   "median": 99458.476375,
+   "min": 99455.635188,
+   "max": 99460.538625,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "whole, mbarrier / dense window / 64 KB",
+   "unit": "cycles a window",
+   "samples": [
+    99476.078938,
+    99476.888812,
+    99478.667688,
+    99476.416375,
+    99476.207688,
+    107894.704375,
+    99477.470937
+   ],
+   "median": 99476.888812,
+   "min": 99476.078938,
+   "max": 107894.704375,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "rounds, one buffer / dense window / 16 KB",
+   "unit": "cycles a window",
+   "samples": [
+    100554.102,
+    100551.212063,
+    100553.14625,
+    100554.107063,
+    101963.119187,
+    105842.127875,
+    100552.768063
+   ],
+   "median": 100554.102,
+   "min": 100551.212063,
+   "max": 105842.127875,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "rounds, two buffers / dense window / 32 KB",
+   "unit": "cycles a window",
+   "samples": [
+    105379.29675,
+    99969.927688,
+    99970.838062,
+    99969.0275,
+    111134.082063,
+    99969.969375,
+    99970.297063
+   ],
+   "median": 99970.297063,
+   "min": 99969.0275,
+   "max": 111134.082063,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "no publish / sparse window / 0 KB",
+   "unit": "cycles a window",
+   "samples": [
+    24356.372375,
+    24356.380125,
+    24356.373875,
+    24356.3815,
+    24356.368625,
+    24356.35775,
+    24356.411625
+   ],
+   "median": 24356.373875,
+   "min": 24356.35775,
+   "max": 24356.411625,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "whole, barriers / sparse window / 64 KB",
+   "unit": "cycles a window",
+   "samples": [
+    25748.092,
+    31234.576063,
+    25749.072062,
+    25679.1545,
+    31564.937313,
+    28286.281375,
+    25750.453625
+   ],
+   "median": 25750.453625,
+   "min": 25679.1545,
+   "max": 31564.937313,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "whole, mbarrier / sparse window / 64 KB",
+   "unit": "cycles a window",
+   "samples": [
+    26020.8835,
+    26020.722125,
+    26020.849063,
+    26020.8135,
+    26021.695063,
+    26020.685313,
+    26021.062938
+   ],
+   "median": 26020.849063,
+   "min": 26020.685313,
+   "max": 26021.695063,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "rounds, one buffer / sparse window / 16 KB",
+   "unit": "cycles a window",
+   "samples": [
+    26848.844437,
+    26849.4175,
+    26850.763625,
+    26850.253875,
+    26850.208625,
+    26849.045812,
+    26849.660062
+   ],
+   "median": 26849.660062,
+   "min": 26848.844437,
+   "max": 26850.763625,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "rounds, two buffers / sparse window / 32 KB",
+   "unit": "cycles a window",
+   "samples": [
+    26326.129375,
+    26325.380625,
+    26323.370937,
+    26324.351188,
+    26326.741938,
+    26325.859062,
+    26323.679313
+   ],
+   "median": 26325.380625,
+   "min": 26323.370937,
+   "max": 26326.741938,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void publish_rounds::window<(int)4, (int)1>(int, long long *, int *)": {
+   "regs": 238,
+   "ops": {
+    "CS2R": 170,
+    "IADD3": 88,
+    "LOP3.LUT": 75,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LDSM.16.MT88.4": 64,
+    "IMAD.MOV.U32": 32,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.IADD": 27,
+    "IMAD": 24,
+    "NOP": 23
+   }
+  },
+  "void publish_rounds::window<(int)3, (int)1>(int, long long *, int *)": {
+   "regs": 237,
+   "ops": {
+    "CS2R": 170,
+    "IADD3": 96,
+    "LOP3.LUT": 95,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LDSM.16.MT88.4": 64,
+    "IMAD.IADD": 43,
+    "IMAD.MOV.U32": 32,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "BRA": 19,
+    "NOP": 18
+   }
+  },
+  "void publish_rounds::window<(int)2, (int)1>(int, long long *, int *)": {
+   "regs": 220,
+   "ops": {
+    "CS2R": 138,
+    "IADD3": 89,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 55,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.MOV.U32": 31,
+    "IMAD.IADD": 17,
+    "LDSM.16.MT88.4": 16,
+    "NOP": 13,
+    "BRA": 12
+   }
+  },
+  "void publish_rounds::window<(int)1, (int)1>(int, long long *, int *)": {
+   "regs": 221,
+   "ops": {
+    "CS2R": 138,
+    "IADD3": 88,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 51,
+    "IMAD.MOV.U32": 33,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.IADD": 17,
+    "LDSM.16.MT88.4": 16,
+    "NOP": 16,
+    "IMAD": 9
+   }
+  },
+  "void publish_rounds::window<(int)0, (int)1>(int, long long *, int *)": {
+   "regs": 156,
+   "ops": {
+    "CS2R": 140,
+    "IADD3": 79,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "LOP3.LUT": 19,
+    "IMAD.MOV.U32": 13,
+    "NOP": 10,
+    "BRA": 6,
+    "S2R": 3,
+    "IMAD": 3,
+    "STS.64": 2,
+    "ISETP.GE.AND": 2
+   }
+  },
+  "void publish_rounds::window<(int)4, (int)0>(int, long long *, int *)": {
+   "regs": 238,
+   "ops": {
+    "CS2R": 170,
+    "IADD3": 88,
+    "LOP3.LUT": 75,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LDSM.16.MT88.4": 64,
+    "IMAD.MOV.U32": 32,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.IADD": 27,
+    "IMAD": 24,
+    "NOP": 23
+   }
+  },
+  "void publish_rounds::window<(int)3, (int)0>(int, long long *, int *)": {
+   "regs": 237,
+   "ops": {
+    "CS2R": 170,
+    "IADD3": 96,
+    "LOP3.LUT": 95,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LDSM.16.MT88.4": 64,
+    "IMAD.IADD": 43,
+    "IMAD.MOV.U32": 32,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "BRA": 19,
+    "NOP": 18
+   }
+  },
+  "void publish_rounds::window<(int)2, (int)0>(int, long long *, int *)": {
+   "regs": 220,
+   "ops": {
+    "CS2R": 138,
+    "IADD3": 89,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 55,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.MOV.U32": 31,
+    "IMAD.IADD": 17,
+    "LDSM.16.MT88.4": 16,
+    "NOP": 13,
+    "BRA": 12
+   }
+  },
+  "void publish_rounds::window<(int)1, (int)0>(int, long long *, int *)": {
+   "regs": 221,
+   "ops": {
+    "CS2R": 138,
+    "IADD3": 88,
+    "F2FP.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 51,
+    "IMAD.MOV.U32": 33,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "IMAD.IADD": 17,
+    "LDSM.16.MT88.4": 16,
+    "NOP": 16,
+    "IMAD": 9
+   }
+  },
+  "void publish_rounds::window<(int)0, (int)0>(int, long long *, int *)": {
+   "regs": 156,
+   "ops": {
+    "CS2R": 140,
+    "IADD3": 79,
+    "HMMA.16816.F32": 32,
+    "HMMA.16816.F16": 32,
+    "LOP3.LUT": 19,
+    "IMAD.MOV.U32": 13,
+    "NOP": 10,
+    "BRA": 6,
+    "S2R": 3,
+    "IMAD": 3,
+    "STS.64": 2,
+    "ISETP.GE.AND": 2
+   }
+  }
+ }
+}

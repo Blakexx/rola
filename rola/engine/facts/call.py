@@ -13,13 +13,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from rola.engine import BackwardNotImplemented, rules
-from rola.engine.facts import manifest
 from rola.engine.facts.operands import operands_of, requires_backward
 
 if TYPE_CHECKING:
-    import torch
-
     from rola.routing.factors import RouteFactors
+    from rola.values import Values
 
 
 def widths_of(routes) -> tuple[int, ...]:
@@ -27,25 +25,33 @@ def widths_of(routes) -> tuple[int, ...]:
     return tuple(level.width for level in routes.topology.levels)
 
 
-def envelope_clauses(routes, decay: Any = None, *, d_v: int) -> tuple:
-    """The facts :func:`rola.engine.rules.envelope.arm_envelope` folds, for this call.
+def prefill_clauses(routes, decay: Any = None, *, d_v: int, stateful: bool = False) -> tuple:
+    """The facts :func:`rola.engine.rules.envelope.prefill_envelope` folds, for this segment: the call's shape,
+    whether the intra reads its widths, the carve's arm where the binary's own census carries it, the scale pass's
+    refusal and whether a state rides the call."""
+    from rola.engine.carve import plan_carve
+    from rola.ops import carry as carry_ops
+    from rola.ops import intra as intra_ops
+    from rola.ops import scale as scale_ops
 
-    `d_v` is the value stream's per-head width, which is a fact about the operand and
-    not about the routing -- the caller reads it off `v` and states it here. The arm
-    is the ArmRule's own verdict: the envelope refuses the ABSENCE of an arm and
-    never re-derives one.
-    """
     widths = widths_of(routes)
-    return (widths, d_v, decay,
-            rules.arm(widths, manifest.chunk_arms()))
+    key = None
+    if len(widths) == 2:
+        try:
+            key = carry_ops.arm_key(plan_carve(tuple(routes.topology.padded_widths), *routes.sparse, d_v))
+        except ValueError:
+            key = None
+        key = key if key is not None and tuple(key) in {tuple(arm) for arm in carry_ops.arms()} else None
+    return (widths, d_v, decay, intra_ops.admits(widths, intra_ops.VALUE_WIDTH),
+            intra_ops.VALUE_WIDTH, key, scale_ops.serves(routes), stateful)
 
 
-def arm_refusal(routes, decay: Any = None, *, d_v: int) -> str | None:
-    """Why the chunk arm refuses this call, or None if it runs."""
-    return rules.arm_envelope(*envelope_clauses(routes, decay, d_v=d_v))
+def arm_refusal(routes, decay: Any = None, *, d_v: int, stateful: bool = False) -> str | None:
+    """Why the prefill kernels refuse this segment, or None if they run."""
+    return rules.prefill_envelope(*prefill_clauses(routes, decay, d_v=d_v, stateful=stateful))
 
 
-def envelope_refusal(routes: RouteFactors, v: torch.Tensor, decay: Any = None) -> str | None:
+def envelope_refusal(routes: RouteFactors, values: Values, decay: Any = None, *, stateful: bool = False) -> str | None:
     """Why the built kernel arm has no arm for this call, or ``None`` if it runs.
 
     THE ONE AUTHORITY on the envelope's CONFIGURATION clauses, so a caller can ask
@@ -57,32 +63,28 @@ def envelope_refusal(routes: RouteFactors, v: torch.Tensor, decay: Any = None) -
     reason = rules.envelope(tuple(routes.topology.unratified_activations), routes.device)
     if reason is not None:
         return reason
-    return arm_refusal(routes, decay, d_v=v.shape[-1])
+    return arm_refusal(routes, decay, d_v=values.d_v, stateful=stateful)
 
 
-def require_envelope(routes: RouteFactors, v: torch.Tensor, decay: Any = None,
+def require_envelope(routes: RouteFactors, values: Values, decay: Any = None,
                      state: Any = None) -> None:
-    """Refuse anything the built arm cannot run. THE FAST-FAIL, in one place.
+    """Refuse anything the built kernels cannot run. THE FAST-FAIL, in one place.
 
     There is no second arm to route to: the fp64 oracle is the executable spec, not a
     fallback, and a caller who wants it calls it (:func:`rola.ops.naive.naive_rola`).
 
-    **THE GRADIENT IS NO LONGER A CLAUSE HERE.** It was, while the operator was
-    forward-only; the two-pass backward is built and gated, so a grad-bearing call
-    now runs. What remains is the CONFIGURATION envelope, which refuses whether or
-    not a gradient is attached, plus one clause that exists only on the grad path:
-    a carried STATE. Training in v1 is stateless -- the state plane is
-    caller-owned and mutated in place, and `d initial_state` is not in the scans --
-    so `state=` and a gradient are mutually exclusive, by name, at the boundary
-    rather than silently.
+    A GRADIENT IS REFUSED, loudly: the prefill has no reverse pass until the native
+    backward is rebuilt, and a forward reached from a grad context must raise rather
+    than sever the graph silently (the layer-dispatch autograd gap).
     """
-    grad = requires_backward(*operands_of(routes, v, decay))
-    stateless = rules.training_envelope(grad, state)
-    if stateless is not None:
-        raise BackwardNotImplemented(stateless)
-    reason = envelope_refusal(routes, v, decay)
+    if requires_backward(*operands_of(routes, values, decay)):
+        raise BackwardNotImplemented(
+            "a RoLA PREFILL carrying a gradient: the prefill has no reverse pass until the native backward is "
+            "rebuilt, and running it would sever the graph silently. Run under torch.no_grad(), freeze the "
+            "operands, or train through the fp64 oracle (rola.ops.naive.naive_rola).")
+    reason = envelope_refusal(routes, values, decay, stateful=state is not None)
     if reason is not None:
         raise NotImplementedError(
-            f"rola_op runs the BUILT envelope only and there is no arm for this call: "
+            f"rola_op runs the BUILT envelope only and there is no kernel for this call: "
             f"{reason}. Nothing else is reachable through this surface "
             "(docs/api.md §1).")

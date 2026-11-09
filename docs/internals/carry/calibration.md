@@ -1,7 +1,7 @@
 # The calibrations: what one operation costs on this card
 
 `measure/harness/bench_carry_calib.py` runs the kernels in `measure/harness/carry_parts/carry_calib.cuh`
-(built into the part harness's module, `ROLA_BUILD_PARTS=1`). Each kernel isolates one cost the
+(built into the part harness's module, `bazel run //:parts_library`). Each kernel isolates one cost the
 carry kernel's parts are made of and runs it back to back on every warp of 80 CTAs, one per SM. The
 host times it under the locked clock. A row is the median launch's seconds, times the clock's cycles
 per second, divided by the operations a warp issued: **cycles an operation a warp**. The rows are
@@ -101,8 +101,8 @@ rows are read off the stamps by `bench_carry_calib.py`'s STAMPED rows). 36 HMMAs
 period of 2,326 with the partners 1,154 apart (p10 328, p90 1,206) -- the pair settles ONE BURST APART, the pipe full
 and handed over at the burst's end; with 18-HMMA bursts, a period of 1,169 with the partners 2,953 apart (p90 4,182):
 the leader keeps the pipe across bursts and the pair drifts whole iterations. A fair scheduler would keep the pair in
-step (the replay's fair rule reads 195 apart); the rule that reproduces the 36-HMMA row is that the tensor pipe goes to
-the warp whose HMMA it took last while that warp has one ready (`tools/replay.py`, `ARBITRATION = "pipe"`). The
+step (a fair rule reads 195 apart); the rule that reproduces the 36-HMMA row is that the tensor pipe goes to
+the warp whose HMMA it took last while that warp has one ready. The
 kernel's own stamps agree: the fold's partners start each chunk's walk a median 1,172 cycles apart.
 THE UNIFORM-DATAPATH AND RECONVERGENCE COSTS (2026-09-19). `redux_chain_1w` (stamped): a chain of `REDUX.OR` into a
 uniform register, the move back (`IMAD.U32`, stall 5, waiting on the reduction's scoreboard) and an add (stall 4) --

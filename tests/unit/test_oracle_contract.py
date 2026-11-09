@@ -37,6 +37,7 @@ from rola.routing.types import (
     SoftmaxActivation,
     Topology,
 )
+from tests.oracle.fixtures import with_gain
 
 _ROUTING = IndependentRouting(
     width=1, read=SoftmaxActivation(), write=SoftmaxActivation())
@@ -71,10 +72,7 @@ def _case(*, decay_on: bool, seed: int = 7):
             operands[f"dial{index}"] = dial
 
     def run(write_override=None):
-        return naive_rola(
-            operands["v"], read, write if write_override is None else write_override,
-            operands["g_write"], topology, decay,
-            output_final_state=True)
+        return naive_rola(operands["v"], read, with_gain(write if write_override is None else write_override, operands["g_write"]), topology, decay, output_final_state=True)
 
     return operands, write, run
 
@@ -174,10 +172,7 @@ def test_both_outputs_are_fp64_whatever_the_inputs_were(dtype):
     read = tuple(lowered[f"read{i}"] for i in range(len(WIDTHS)))
     write = tuple(lowered[f"write{i}"] for i in range(len(WIDTHS)))
     dials = tuple(lowered[f"dial{i}"] for i in range(len(WIDTHS)))
-    y, state = naive_rola(
-        lowered["v"], read, write,
-        lowered["g_write"], topology,
-        LeafMassDecay(dials=dials), output_final_state=True)
+    y, state = naive_rola(lowered["v"], read, with_gain(write, lowered["g_write"]), topology, LeafMassDecay(dials=dials), output_final_state=True)
     assert y.dtype is torch.float64, (
         f"y came back as {y.dtype} for {dtype} inputs; the oracle returns fp64")
     assert state.dtype is torch.float64, f"the final state came back as {state.dtype}"

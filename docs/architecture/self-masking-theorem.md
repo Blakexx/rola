@@ -38,36 +38,37 @@ nothing and *changes* nothing, down to the last bit.
 The normative reference implementation is `rola/ops/naive.py`
 (`naive_rola`, fp64, the eternal spec). Three lines carry the theorem.
 
-**(a) The clock is the write product, not a time counter.** The docstring at
-`rola/ops/naive.py:137` states the spec's definition:
+**(a) The clock is the write levels' shares, not a time counter.** The docstring at
+`rola/ops/naive.py:138` states the spec's definition:
 
 ```
-clock reads (spec §2: ``c[t,s] = stop_gradient(prod_l p_write_stored[...])``);
+``c[t,s] = stop_gradient(prod_l k_l[d_l(s)] / sum_d k_l[d])``
 ```
 
-and the implementation is `:207`:
+and the implementation is `:196`, over each level's share (its row over its own sum,
+0 where the row sums to 0):
 
 ```python
-c = _leaf_product(stored64, strides, N).detach()   # [B,T,H,N]
+c = _leaf_product(shares, strides, N).detach()                # [B,T,H_w,N]
 ```
 
-`c[t,s]` is the same product of per-level write factors that forms `W[t,s]`
-(`:197`, `W = g_write64[..., None] * _leaf_product(write64, strides, N)`), with
-gradient detached. **Therefore `W[t,s] = 0` and `c[t,s] = 0` have the same
-cause** — some level's factor at `s` is an exact zero.
+`W[t,s]` is the product of the same per-level write factors (`:183`,
+`W = _leaf_product(write64, strides, N)`), and a share is zero exactly where its level
+is. **Therefore `W[t,s] = 0` and `c[t,s] = 0` have the same cause** — some level's
+factor at `s` is an exact zero.
 
-**(b) A zero clock is an exact identity survival factor.** `:208`:
+**(b) A zero clock is an exact identity survival factor.** `:197`:
 
 ```python
 keep = torch.pow(1.0 - rate, c)                    # [B,T,H,N]
 ```
 
 `x ** 0 == 1.0` exactly in IEEE arithmetic for every finite `x`, including
-`x = 0`. No rounding, no tolerance. And when `decay is None`, `:203` sets `keep`
+`x = 0`. No rounding, no tolerance. And when `decay is None`, `:189` sets `keep`
 to exact ones unconditionally, so the no-decay path is the same statement
 trivially.
 
-**(c) The update is therefore the identity.** `:219`:
+**(c) The update is therefore the identity.** `:209`:
 
 ```python
 state = keep[:, t, ..., None] * state + W[:, t, ..., None] * deposit_value[:, t, :, None, :]
@@ -86,8 +87,7 @@ line where the theorem could fail to hold.
 
 The property is therefore not asserted about the kernel and hoped for in the
 reference: it is a readable consequence of three lines of the reference, and the
-kernel is gated against that reference. In-tree verification:
-`workflows/research/api-contract-audit.md` §3.9.
+kernel is gated against that reference.
 
 ## 3. Proof by citation — the kernel
 
@@ -95,33 +95,22 @@ The oracle establishes the *semantics*; the kernel has to reproduce the exact
 zero in floating point, which is a separate claim with two load-bearing parts.
 
 **(a) The amplitude is never logged.** The coefficient is built as a direct
-product of staged per-level factors (`build_wt_rows` in the retired tiled
-consumer's `consumer_kernel.cuh`; the chunk arm carried the same product form
-and is itself since retired — `675d6b6`, `docs/internals/DELETIONS.md` — with
-today's carry arm the current instance), so a structurally dead route is an
-exact `0.0f`. The alternative log-space
+product of per-level factors — the fold's write operand is the slot's dense slice
+times the record's coefficient ([`fold.md#step`](../internals/carry/ampere/fold.md#step)),
+and the intra's digit products are integer MMAs — so a structurally dead route is an
+exact zero. The alternative log-space
 lowering — log the factors, select with a binary MMA, exponentiate in the
 epilogue — would turn that zero into `-inf`, and a clamped `-inf` exponentiates
-to `6e-39`, a *small* number rather than a zero. The decision not to take that
-form is recorded, with its arithmetic, at
-the tiled consumer's `intra_panel.md#no-log-space`, retired with that arm
-([`DELETIONS.md`](../internals/DELETIONS.md)); the rule it recorded is the spec's
-and binds every arm.
+to `6e-39`, a *small* number rather than a zero. The rule binds every kernel
+([`guarantees-choices-preferences.md`](guarantees-choices-preferences.md) §1).
 **That is a live instance of a design choice made to keep this theorem true.**
 
 **(b) The other factor is finite by construction.** `0 * finite == 0` exactly;
-`0 * inf == NaN`. The spec's rule-3 read-side format guard
-(`clamp_bf16_finite`, carried by the tiled consumer's `readout_mma.cuh` until P67
-D2 retired that arm) is what kept the multiplicand finite on that narrowing arm.
-On the carry arm (as on the chunk arm before it) the multiplicand is a bf16
-simplex amplitude produced host-side by the entmax activation family
-(`rola/routing/entmax/`) — finite by construction (a simplex output is bounded
-in `[0, 1]`) rather than by a read-side clamp. `carry_kernel.cuh` carries no
-inline restatement of this at the multiply site (comments in this tree live in
-`docs/internals/`, not the source — see the comments-to-docs standard); the
-claim rests on the host-side activation's own finiteness rather than a
-kernel-local guard. The composition is the same one the tiled arm's `build_wt_rows`
-stated: rule 4's
+`0 * inf == NaN`. Every multiplicand a kernel reads is bounded by its format: a u8
+digit, a dense write level's f16 row at most 1 against its row max
+([`liveness_contract.md#max`](../internals/facts/liveness_contract.md#max)), an f16
+value at most 1 against its token's largest channel (`rola/values.py`). Finiteness is
+a property of the bundle's format, not a read-side clamp. So rule 4's
 zero-route annihilation is satisfied *branchlessly and structurally* because the
 coefficient is a product of amplitudes, the factor it multiplies is finite by
 rule 3, and `0 * finite == 0`. **There is no test on the amplitude anywhere on
@@ -136,14 +125,16 @@ untouched states would decay and the update would not be the identity. The whole
 theorem rests on `c` being the *write* product.
 
 This precondition is not luck: mass decay is fixed by the semantics authority
-(`GLA_MASS_DECAY_SPEC.md` §2, the normative state-math spec) and time decay is
-outside the sanctioned design. But the dependency must travel with the theorem,
+(the fp64 oracle's clock, `keep = (1 - rate) ** c` in `rola/ops/naive.py`) and time
+decay is outside the sanctioned design. But the dependency must travel with the theorem,
 because several other decisions now rest on the theorem.
 
 **A second, narrower precondition** is the storage boundary itself. The clock reads
-the STORED write levels -- there is one representation, bf16, and both the oracle and
-the kernel are fed it -- so the theorem holds exactly while the stored representation
-has the **same zero set** as the trained one. A quantization that turned an exact zero
+the STORED write levels -- the bundle's rows, which both the oracle and the kernel are
+fed -- so the theorem holds exactly while the stored representation has the **same zero
+set** as the trained one. A sparse level's zero digit is an exact zero in both; a dense
+level has no zeros at all ([the dense floor](../internals/facts/liveness_contract.md#floor)). A quantization that
+turned an exact zero
 into a denormal, or a nonzero into a zero, would break the coupling in (a) above. That
 is why the solve WRITES the stored form rather than being rounded into it afterwards:
 the exact structural zeros the entmax closed form produces are written as zeros, so the
@@ -166,14 +157,7 @@ the engine's granularity coarsening legal:
 - The **paging atom** is one `MMA_K_QUANTUM`-leaf granule, not the true support
   ([`paging/paging.md`](../internals/paging/paging.md), the atom re-key);
 - **Window unions** over the carry kernel's window tokens are an OR, deliberately
-  coarser than the per-token AND (the `BT` token tile the tiled consumer took this
-  union over, and the chunk arm's super-chunk after it, are both retired; the
-  carry kernel's 512-token window head takes the any-digit OR now —
-  `docs/internals/carry/box.md`);
-- The **block rectangle** is the granularity of a visit: every leaf of the block
-  is resident for the whole visit whether or not the visit's support names it, so a
-  leaf outside the support is read, multiplied by an exactly-zero coefficient, and
-  contributes nothing to either the readout or the fold.
+  coarser than the per-token AND.
 
 The design rule that follows: **granularity is a performance axis, not a
 correctness axis.** Coarsen it with a cost argument alone.
@@ -192,12 +176,12 @@ Two live uses:
   back, which is what makes the paged path *bitwise* equal to the unpaged one
   rather than approximately equal
   ([`paging/paging.md`](../internals/paging/paging.md); gated by
-`tests/integration/test_chunk_paging_equivalence.py`).
+`tests/integration/test_decode_paging.py`).
 - **Untouched rows do not walk.** A row whose writes are all zero is left
   bit-identical, so repeated store/reload cannot drift it. This is what separates
   the *store* count from the *visit* count in the state-precision analysis: the
   store of an untouched leaf is a bitwise identity, so the re-quantization count is
-  the count of actual writes, not of visits (journal, per-leaf visit probe).
+  the count of actual writes, not of visits.
 
 ### (3) TRUSTLESS CAPABILITY FLAGS
 
@@ -208,11 +192,9 @@ nobody else correctness. That licence is what makes a declared-density column a
 legitimate pricing input for any future cost model, and it is exactly the argument the
 membership-authority rule below turns on.
 
-The same reasoning licenses the emission-side `if (out != 0.0f)` skips: adding
-`0.0f` is the identity, so including the term is a no-op and the test is
-over-inclusion-safe in the direction that matters
-(the membership-authority rule, stated for the surviving arm at
-[`carry/carry_kernel.md`](../internals/carry/carry_kernel.md)).
+The same reasoning licenses any emission-side zero skip: adding `0.0f` is the
+identity, so including the term is a no-op and the test is over-inclusion-safe in the
+direction that matters.
 
 **The direction is asymmetric and that asymmetry is the whole content.**
 Over-approximating support is always safe. **Under-approximating it is wrong** —
@@ -227,12 +209,12 @@ breaks this.
 
 | Change | Why the theorem dies |
 |---|---|
-| **An epsilon floor** on routing weights (`max(p, eps)`, or an STE-style relaxed support) | There are no exact zeros left. Every dead route becomes a small live route: the clock ticks, `keep < 1`, untouched states decay, over-fetch changes results, identity-store drifts. Standing ruling: sparsity comes from the activation's exact zeros only — never a floor, never a threshold. |
-| **A log-space amplitude** | `log 0 = -inf`. Either `-inf * 0 = NaN`, or the clamp turns the zero into `6e-39` and the route is no longer dead. The arithmetic is in the retired `intra_panel.md#no-log-space` (`git show c7eaeb9:docs/internals/intra_panel.md`). |
+| **An epsilon floor** on routing weights (`max(p, eps)`, or an STE-style relaxed support) | There are no exact zeros left. Every dead route becomes a small live route: the clock ticks, `keep < 1`, untouched states decay, over-fetch changes results, identity-store drifts. Standing ruling: sparsity comes from the activation's exact zeros only — never a floor, never a threshold. The dense floor is not this: it lifts only a dense level, whose activation has no exact zeros, and a sparse level's zero stays exact ([`liveness_contract.md#floor`](../internals/facts/liveness_contract.md#floor)). |
+| **A log-space amplitude** | `log 0 = -inf`. Either `-inf * 0 = NaN`, or the clamp turns the zero into `6e-39` and the route is no longer dead. |
 | **A non-zero-preserving normalization** — per-state normalization that divides by the state's own magnitude, or any readout of the form `q · S / ‖S‖` | `0/0`. A never-written state has no unit direction, so reading it is undefined rather than inert. The shipped readout is a **global ratio** `Σ r̃ᶜ Nᶜ / (Σ r̃ᶜ dᶜ + ε)` in which the explicit `dᶜ` factor kills the dead leaf in numerator *and* denominator; that structure is what makes the theorem survive normalization at all. |
 | **A mean-style reduction** — averaging over the *live* entries, or any readout whose denominator counts contributors rather than summing their mass | A zero is then not inert; it is a vote for zero. A dead leaf would drag an `O(1)` average down by an amount proportional to how many leaves are dead — data-dependent, silent, and absent from the reference. This is the exact reason the "average over only-written states" variant is classified a **modeling change** rather than an optimization: it alters the dense result too. |
 | **Time decay** in place of mass decay | The exponent is 1 whether or not a write occurred. Untouched states decay. See §4. |
-| **A non-finite multiplicand** — removing rule 3's clamp, or applying it on the arm that does not narrow | `0 * inf = NaN`. The annihilation is `0 * finite`, and "finite" is an enforced property, not an assumption. |
+| **A non-finite multiplicand** — a format that admits an unbounded value where a coefficient or a value is read | `0 * inf = NaN`. The annihilation is `0 * finite`, and "finite" is a property of the format, not an assumption. |
 
 Any proposal in this table is a proposal to change the engine, not to tune it.
 It requires re-deriving every consequence in §5 from scratch.
@@ -249,7 +231,7 @@ kernel**, in which the density declaration selects a code path but membership is
 still decided by the support bits the kernel reads. A future factored feeder that
 let a declaration become execution-affecting — deciding what is fetched *without*
 consulting the realized masks — would step outside the theorem and need its own
-argument. This coupling is flagged in `workflows/research/api-contract-audit.md` §5.4.
+argument.
 
 State it as a rule: **the kernel is self-masking; anything that skips reading the
 masks is outside the theorem.**

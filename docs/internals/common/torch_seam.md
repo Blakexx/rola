@@ -17,7 +17,7 @@ probe of it compiles without the CUDA runtime headers.
 | `STD_TORCH_CHECK(cond, ...)` | the refusal: raises with the arguments streamed into the message (`shape()` prints a shape) |
 | `ROLA_CUDA_CHECK(expr)`, `ROLA_CUDA_LAUNCH_CHECK()` | a CUDA runtime call's status, and the last launch's, refused with the runtime's own error name and string |
 | `current_stream(device)` | the native CUDA stream torch is issuing work on (`accelerator::getCurrentStream(...).nativeHandle()`, torch 2.13) |
-| `current_device()`, `current_device_properties()` | the CUDA runtime's own answers (there is no stable accessor for device properties) |
+| `current_device()` | the CUDA runtime's own answer |
 | `empty_cuda`, `zeros_cuda`, `to_cpu`, `item<T>` | tensor creation on a CUDA device, a host copy, and one element read on the host |
 
 The stable accessors check more than the C++ ones did: `mutable_data_ptr<T>()` refuses a tensor whose dtype is not `T`,

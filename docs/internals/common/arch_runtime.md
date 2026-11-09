@@ -11,40 +11,61 @@ runs on the first launch, reads the device the process is actually holding, and
 refuses if that architecture was never tabulated or if the driver's own numbers
 disagree with the row a compiled derivation was closed over.
 
+<a id="mma-quanta"></a>
+## `mma_quanta(device)`
+
+The device's MMA rates, quanta of 1/256 cycle a scheduler in `denseref::arch::Mma` order, from the binary's
+`kMmaRows` (`hardware.cuh`, generated from `hardware.json`): the row of the device's card's product (`card_of`, the
+one product match: [`select.md#slug`](select.md#slug)), else its architecture's defaults, else null (no rates tabulated). Resolved once a device a process.
+
+<a id="readout-f16"></a>
+## `readout_f16(device)`
+
+THE ACCUMULATION RULE the carry's readout and the intra share: fp16 where the device's fp32-accumulate MMA runs slower
+than its fp16-accumulate one by its `mma_quanta`, fp32 where they are equal or no rates are tabulated. It lives here
+rather than in either kernel because both must choose alike for one call (the inter and intra terms of one sum); each
+entry applies it when its caller passes no form, and `carry_readout_accumulate` reports it
+([`../carry/carry_api.md#carry-readout-accumulate`](../carry/carry_api.md#carry-readout-accumulate)).
+
+<a id="segment-tokens"></a>
+## `segment_tokens(budget, state, per_token, batch, length, device)`
+
+THE LAYER'S SEGMENT LENGTH on `device`'s card: the most whole windows whose working set (`per_token` bytes a
+batch-token at `batch`) fits in `budget` beside `state`, at most the call's `length`; 0 where not one window fits,
+which the layer refuses by name. Segments are whole windows because the window grid is global: a boundary on a window
+boundary moves no pair. The window is the card's, so the length is the binary's answer rather than a Python
+computation over a hardware fact; the working-set model and the budget are the layer's (`docs/api.md` section 4.2).
+
 <a id="check-arch-table"></a>
 ## `check_arch_table()`
 
-Keyed on `denseref::arch::tabulated(cc)` and `denseref::arch::caps_of(cc)`, the same
-table `arch_caps.cuh` declares — there is no second table to drift from the first.
-The check runs once per device per process: a `std::mutex`-guarded `std::set<int>`
-of admitted device ordinals turns every call after the first into a lock and a
-set lookup, so the entries that call it on every invocation do not pay a device
-query per call.
+The current device's card admitted: `(void)current_card()` ([`select.md#card-of`](select.md#card-of)). The admission
+is keyed on `denseref::arch::tabulated(cc)` and `denseref::arch::caps_of(cc)`, the same rows `common/hardware.cuh`
+generates from `common/hardware.json` -- there is no second table to drift from the first -- and runs once a device a
+process (the card is kept).
 
 Three things are asserted, in order:
 
 1. `tabulated(cc)` — the table carries a row for this compute capability at all.
-2. `supported(caps_of(cc))` — the row's REQUIRED capability clauses are all true
-   (an untabulated arch and an unsupported one are different refusals: the first
-   means "measure it and add the row", the second means "this architecture cannot
-   run the baseline no matter what row is added").
-3. The row's `smem_per_sm`, `smem_per_cta_max`, `regs_per_sm` and
+2. The row's `smem_per_sm`, `smem_per_cta_max`, `regs_per_sm` and
    `max_threads_per_sm` equal what `cudaGetDeviceProperties`/`cudaDeviceGetAttribute`
    read off the actual device — every launch shape compiled into the binary was
    derived from the table's numbers, so a disagreement means those shapes are wrong
    for the card that is about to run them, independent of whether the compute
    capability itself is tabulated.
+3. The binary carries the card's build (its product's variant on its architecture): a tabulated architecture this
+   binary was not built for is refused by name, never run on another architecture's image.
 
 ## Where it is called
 
 Every entry point that reaches a kernel launch — the carry forward pass, the SM clock
 read, the liveness pass, the standalone intra forward pass, the entmax and softmax
-routing forward/backward families, and the T=1 decode step and its residency query —
+routing forward/backward families, and the T=1 decode step —
 calls `check_arch_table()` as the first statement of its body.
 `tests/unit/test_closed_world_arch_gate.py` scans the registration translation unit's own
 operator list and asserts this for every entry that is not named as launch-less (an arm
-census, a build stamp, a host-only derivation over the descriptor, a ledger binding, or a
-VMM driver operation).
+census, a build stamp, a host-only derivation over the descriptor, a host query of the card it is asked about -- whose
+`card_of` admits that card -- a ledger binding, or a VMM driver operation).
 
 ## Why its own translation unit
 

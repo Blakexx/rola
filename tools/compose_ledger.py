@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE COMPOSER (KERNEL_STANDARDS §22 (9)): a phase's time attributed to its parts by composition.
 
-    python tools/compose_ledger.py --cells flagship-dense,nl64k-alt-k4 \\
+    bazel run //tools:compose_ledger -- --cells flagship-dense,nl64k-alt-k4 \\
         --ladder readout:stream,loads,drain --ladder fold:pool,ring,loads
-    python tools/compose_ledger.py --cells nl64k-dense --ladder all:fold.pool,fold.ring,fold.loads,readout.stream,readout.loads,readout.drain
+    bazel run //tools:compose_ledger -- --cells nl64k-dense --ladder all:fold.pool,fold.ring,fold.loads,readout.stream,readout.loads,readout.drain
 
 The carry kernel's MMA phases are built from PARTS (`gen_shards.CARRY_PARTS`); a build may stub
-any of them (`ROLA_CARRY_PARTS`): a stub keeps the part's HMMAs -- the same count, atom and
+any of them (the build graph's `--//:carry_parts`): a stub keeps the part's HMMAs -- the same count, atom and
 accumulators -- and drops its other work. A LADDER over a phase builds the kernel with none of
 that phase's parts real (every other part real), then adds the parts back in the order named, one
 rung a build; the last rung is the kernel. The ladder `all` starts with NO part real -- both MMA
@@ -28,7 +28,6 @@ import argparse
 import datetime as dt
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
@@ -48,8 +47,8 @@ NVDISASM = dev_config.cuda_bin("nvdisasm")
 SCRATCH = dev_config.scratch("compose_ledger")
 
 
-def run(cmd: list[str], env: dict | None = None, timeout: int = 3600) -> tuple[int, str]:
-    r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=timeout)
+def run(cmd: list[str], timeout: int = 3600) -> tuple[int, str]:
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout + r.stderr
 
 
@@ -72,12 +71,11 @@ def device_hash(arch: str = "sm_86") -> str:
 
 
 def build(real: tuple[str, ...], trivial: tuple[str, ...] = ()) -> tuple[int, str]:
-    env = dict(os.environ)
-    env.pop("ROLA_BUILD_PARTS", None)
+    """One rung's library, by the build graph: `--//:carry_parts` names its real and trivial parts (`gen_shards`'
+    grammar), and `bazel run` copies the gated library into the checkout, where the instruments read it."""
     items = [x + ("=trivial" if x in trivial else "") for x in real]
-    env["ROLA_CARRY_PARTS"] = ("all" if set(real) == set(gen_shards.CARRY_PARTS) and not trivial
-                               else (",".join(items) or "none"))
-    return run([PY, "-m", "pip", "install", "-e", ".", "--no-build-isolation", "--no-deps", "-q"], env=env, timeout=3600)
+    parts = ("all" if set(real) == set(gen_shards.CARRY_PARTS) and not trivial else (",".join(items) or "none"))
+    return run(["bazel", "run", "--noshow_progress", "//:library", f"--//:carry_parts={parts}"], timeout=3600)
 
 
 def _instrument(args: list[str], timeout: int = 3600) -> dict:
@@ -126,7 +124,7 @@ def census(cell: str, total_cycles: float | None) -> dict:
 
 def registers() -> dict:
     """Peak live registers of the rung's arm (`tools/life_ranges.py --arm 0`, against the rung's parts header)."""
-    doc = _instrument(["tools/life_ranges.py", "--arm", "0", "--source", "csrc/rola/src/carry/carry_kernel.cuh"], 1800)
+    doc = _instrument(["tools/life_ranges.py", "--arm", "0", "--source", "csrc/rola/src/carry/ampere/carry_kernel.cuh"], 1800)
     return {"peak_live": doc.get("peak_live"),
             "by_region": {k: v["peak"] for k, v in doc.get("by_region", {}).items()}} if "peak_live" in doc else doc
 

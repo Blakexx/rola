@@ -3,31 +3,54 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # THE COMMIT GATE, IN THE TREE. `core.hooksPath` points every checkout and every
-# linked worktree here (`python tools/dev.py worktree` and `init` wire it), so the gate is a
+# linked worktree here (`bazel run //:dev_env` wires it), so the gate is a
 # property of the tree rather than of one `.git` directory: a worktree cannot be
 # created without it, and there is no configuration left for a caller to supply.
 #
-# It runs pre-commit's own hook implementation against .pre-commit-config.yaml, so
-# what a commit is checked against is exactly what `pre-commit run --all-files` and
-# .github/workflows/lint.yml run. It runs FROM THE CHECKOUT'S VENV (`git config
-# rola.venv`, which `init` and `worktree` write): requirements.lock pins every gate
-# tool there, so no hook resolves a tool or an interpreter from the host's own python.
+# It runs every check the build graph holds, `bazel test //:gate` (docs/build-graph.md#checks), on the commit as git
+# will write it: the changes to tracked files not staged for it leave the working tree for the run and come back
+# after, and the graph's tree is the commit's index (GIT_INDEX_FILE, which git sets for the hook).
 #
-# FAILING CLOSED IS THE POINT: a missing `pre-commit` refuses the commit rather than
-# letting it through unchecked, because an absent gate that says nothing is
-# indistinguishable from a gate that passed.
+# FAILING CLOSED IS THE POINT: no `bazel` refuses the commit rather than letting it through unchecked, because an
+# absent gate that says nothing is indistinguishable from a gate that passed.
+#
+# QUIET ON PASS: a pass prints the test count; a failure prints each failing check's output.
 set -euo pipefail
 
-venv="$(git config --get rola.venv || true)"
-if [ -z "$venv" ] || [ ! -x "$venv/bin/pre-commit" ]; then
-  echo "pre-commit hook: refusing -- this checkout names no venv carrying the gate's tools (git config rola.venv: '$venv')." >&2
-  echo "  python3 tools/dev.py init   (installs requirements.lock into workspace.base_venv and names it here)" >&2
+if ! command -v bazel >/dev/null 2>&1; then
+  echo "pre-commit hook: refusing -- no \`bazel\` on PATH: \`python3 tools/bootstrap.py\` links the pinned bazelisk" >&2
   exit 1
 fi
-export PATH="$venv/bin:$PATH"
 
-exec pre-commit hook-impl \
-  --config=.pre-commit-config.yaml \
-  --hook-type=pre-commit \
-  --hook-dir "$(cd "$(dirname "$0")" && pwd)" \
-  -- "$@"
+#: the changes not staged for the commit, set aside for the run; a failure to put them back names where they are
+patch="$(git rev-parse --path-format=absolute --git-common-dir)/rola-gate-unstaged.$$.patch"
+git diff --binary --no-color --no-ext-diff --ignore-submodules >"$patch"
+log="$(mktemp)"
+restore() {
+  rm -f "$log"
+  if [ ! -s "$patch" ]; then
+    rm -f "$patch"
+    return
+  fi
+  #: the working tree back to the index first -- nothing a check writes is the author's -- then the author's changes
+  if git checkout -- . && git apply --whitespace=nowarn "$patch"; then
+    rm -f "$patch"
+    return
+  fi
+  echo "pre-commit hook: refusing -- the changes not staged could not be put back; they are in $patch (git apply it)" >&2
+  exit 1
+}
+trap restore EXIT
+if [ -s "$patch" ]; then
+  git checkout -- .
+fi
+
+status=0
+#: a lock the commit's module resolution disagrees with refuses the commit, never rewrites itself (build-graph.md rule 1)
+bazel test --noshow_progress --test_output=errors --lockfile_mode=error --repo_env=GIT_INDEX_FILE //:gate >"$log" 2>&1 \
+  || status=$?
+if [ "$status" -ne 0 ]; then
+  grep -Ev '^(INFO: |Loading|Analyzing|Target |  bazel-bin)' "$log" || true
+fi
+grep -E '^Executed ' "$log" || tail -5 "$log"
+exit "$status"

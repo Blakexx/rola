@@ -1,0 +1,14 @@
+# THE GRAPH'S SETTINGS (docs/build-graph.md). Nothing here names a machine: the machine's own settings (the shared disk
+# and repository caches) come from the dev config, through the front door (bazel/bazel, docs/build-graph.md#front-door).
+
+# the server exits after 15 idle minutes, above the disk cache collector's 5-minute idle delay
+startup --max_idle_secs=900
+
+# no output links in the checkout: `bazel run //:library` copies the library in (docs/build-graph.md#use)
+build --experimental_convenience_symlinks=clean
+
+# the hermetic toolkit is chosen for the build's platform
+build --platforms=//bazel:linux_x86_64
+
+# the shared disk cache's bound (docs/build-graph.md#rules, the space budget)
+common --experimental_disk_cache_gc_max_size=5G

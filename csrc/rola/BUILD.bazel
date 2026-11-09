@@ -1,0 +1,192 @@
+"""THE EXTENSION'S UNITS: every hand-written unit under src/, each generated carry arm unit, the registration unit, the
+generated headers and the device stamp (docs/build-graph.md#compile)."""
+
+load("@rola_env//:flags.bzl", "HOST_CXX_FLAGS", "NVCC_FLAGS")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//bazel:cuda.bzl", "cuda_unit")
+load("//bazel:defs.bzl", "carry_arm_set", "include_root", "rola_headers", "tree_part", "tree_test", "unit_lint_test")
+load(":units.bzl", "CARRY_ARM_COUNT", "CARRY_ARM_UNITS", "HAND_UNITS", "RUNTIME_UNITS")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "units.bzl",
+    "src/common/hardware.json",
+])
+
+#: every source the kernel list reads, and the checked-in generated units
+filegroup(
+    name = "sources",
+    srcs = glob(["src/**"]),
+)
+
+#: the repository's headers come first, so a repository header wins any name collision
+include_root(
+    name = "headers",
+    hdrs = glob(["src/**/*.cuh"]),
+    roots = ["src"],
+)
+
+rola_headers(name = "generated")
+
+#: the device stamp: the digest of every file under src/ but its markdown, as ratify computes it
+genrule(
+    name = "stamp_header",
+    srcs = glob(
+        ["src/**"],
+        exclude = ["src/**/*.md"],
+    ),
+    outs = ["stamp/csrc_stamp.inc"],
+    cmd = "$(execpath @rola_env//:python) $(execpath //tools:csrc_stamp.py) --src csrc/rola/src --out $@",
+    tools = [
+        "//tools:csrc_stamp.py",
+        "@rola_env//:python",
+    ],
+)
+
+cc_library(
+    name = "stamp",
+    hdrs = [":stamp_header"],
+    includes = ["stamp"],
+)
+
+_DEPS = [
+    ":headers",
+    "//csrc/third_party:cutlass",
+    ":generated",
+    "@rola_env//:python_headers",
+    "@rola_env//:torch_headers",
+]
+
+#: the host C++ compiler's identity, an input of every compile: never a header, which a compile prunes when it does not
+#: read it (docs/build-graph.md#rules)
+_HOST_CC = "@host_cc//:identity.txt"
+
+#: the one unit that reads the device stamp, the digest of every source: only it depends on the stamp, so an edit to
+#: one source recompiles that source's unit and this one, not every unit
+_STAMP_UNIT = "src/common/build_stamp.cu"
+
+#: the runtime's units, which an instrument's library links too (//:parts_library)
+cuda_unit(
+    name = "runtime",
+    srcs = RUNTIME_UNITS,
+    copts = NVCC_FLAGS,
+    host_cc = _HOST_CC,
+    deps = _DEPS,
+)
+
+cuda_unit(
+    name = "units",
+    srcs = [unit for unit in HAND_UNITS if unit != _STAMP_UNIT and unit not in RUNTIME_UNITS],
+    copts = NVCC_FLAGS,
+    host_cc = _HOST_CC,
+    deps = _DEPS,
+)
+
+cuda_unit(
+    name = "stamp_unit",
+    srcs = [_STAMP_UNIT],
+    copts = NVCC_FLAGS,
+    host_cc = _HOST_CC,
+    deps = _DEPS + [":stamp"],
+)
+
+[cuda_unit(
+    name = unit.removesuffix(".cu"),
+    srcs = ["src/instantiations/" + unit],
+    copts = NVCC_FLAGS,
+    host_cc = _HOST_CC,
+    deps = _DEPS,
+) for unit in CARRY_ARM_UNITS]
+
+carry_arm_set(
+    name = "carry_arms",
+    rows = CARRY_ARM_COUNT,
+    units = {":" + unit.removesuffix(".cu"): str(arms) for unit, arms in CARRY_ARM_UNITS.items()},
+)
+
+cc_library(
+    name = "registration",
+    srcs = ["rola_api.cpp"],
+    additional_compiler_inputs = [_HOST_CC],
+    alwayslink = True,
+    copts = HOST_CXX_FLAGS,
+    deps = _DEPS + ["//bazel:cuda_headers"],
+)
+
+#: this package's part of the tree the checks read
+tree_part()
+
+#: THIS PACKAGE'S LINTS (docs/build-graph.md#checks): its sources' format and standards rules, its instantiations
+#: against the manifests, and each unit's own compile linted for each ratified architecture
+
+tree_test(
+    name = "clang_format",
+    size = "small",
+    cmd = [
+        "/bin/bash",
+        "-c",
+        "find -L csrc/rola -type f \\( -name '*.cu' -o -name '*.cuh' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \\) " +
+        "-print0 | sort -z | xargs -0 clang-format --style=file --dry-run --Werror",
+    ],
+    data = [
+        "//:.clang-format",
+        ":tracked",
+    ],
+)
+
+tree_test(
+    name = "ast_grep",
+    size = "small",
+    cmd = ["python3", "tools/lint/ast_grep_gate.py"],
+    data = [
+        "//tools/lint:tracked",
+        "//:sgconfig.yml",
+        ":tracked",
+        "//csrc/third_party:tracked",
+    ],
+)
+
+tree_test(
+    name = "unused_instantiations",
+    size = "small",
+    cmd = ["python3", "tools/lint/unused_instantiations.py"],
+    data = [
+        "//tools/lint:tracked",
+        "//tools:manifests",
+        ":tracked",
+    ],
+)
+
+unit_lint_test(
+    name = "clang_tidy_device",
+    size = "small",
+    lint = "device",
+    units = ["//:library"],
+)
+
+unit_lint_test(
+    name = "clang_tidy_host",
+    size = "small",
+    lint = "host",
+    units = ["//:library"],
+)
+
+unit_lint_test(
+    name = "host_warnings",
+    size = "small",
+    lint = "warnings",
+    units = ["//:library"],
+)
+
+test_suite(
+    name = "lints",
+    tests = [
+        ":ast_grep",
+        ":clang_format",
+        ":clang_tidy_device",
+        ":clang_tidy_host",
+        ":host_warnings",
+        ":unused_instantiations",
+    ],
+)

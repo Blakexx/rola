@@ -1,0 +1,307 @@
+{
+ "about": "Every kernel the source defines (tools/kernels.py) and how it meets each obligation: a pointer to the artifact that meets it (a test file, `file::test`, a budget, a sanitizer row of tools/sanitize_oracle.py), {\"exempt\": reason}, or {\"owed\": reason}. Checked by tools/lint/coverage.py, gated as a ratchet: a kernel absent from this file, or a pointer to nothing, fails the commit; owed entries are the backlog, printed with their reasons. Docs: docs/internals/tools/coverage.md",
+ "obligations": {
+  "oracle": "a test grading the kernel against a reference per slot (an fp64 oracle, or a bit-exact model of a discrete function)",
+  "sanitizer": "a row of tools/sanitize_oracle.py's family table whose cell launches the kernel",
+  "budget": "a budget line under tools/budgets/ (KERNEL_STANDARDS \u00a719)",
+  "phases": "a phase ledger the kernel books and a test or tool that reads it (KERNEL_STANDARDS \u00a722)",
+  "ratified": "recorded by the committed manifests (\"manifest\", checked per arch), or owed until the next milestone ratify (KERNEL_STANDARDS \u00a716)",
+  "overlap": "a row of tools/overlap_gate.py timing the kernel on a perf cell against the largest of its floors (KERNEL_STANDARDS \u00a728)"
+ },
+ "kernels": {
+  "carry_kernel": {
+   "oracle": "tests/oracle/test_carry_fold.py::test_the_fold_is_the_reference_per_slot",
+   "sanitizer": "carry",
+   "budget": "tools/budgets/carry.json",
+   "phases": "tools/phase_ledger.py",
+   "ratified": "manifest",
+   "overlap": "carry-alt-k4"
+  },
+  "carry_stamp_kernel": {
+   "oracle": {
+    "owed": "no test reads its stamp against the footprint the source declares, as decode's and intra's are"
+   },
+   "sanitizer": {
+    "exempt": "one thread writes one constant"
+   },
+   "budget": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "phases": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a constant-size stamp or clock read: one tiny launch, no stream to overlap"
+   }
+  },
+  "csrc_stamp_kernel": {
+   "oracle": "tests/unit/test_build_stamp.py",
+   "sanitizer": {
+    "exempt": "one thread writes one constant"
+   },
+   "budget": {
+    "exempt": "a freshness stamp, not a workload"
+   },
+   "phases": {
+    "exempt": "a freshness stamp, not a workload"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a constant-size stamp or clock read: one tiny launch, no stream to overlap"
+   }
+  },
+  "decode_stamp_kernel": {
+   "oracle": "tests/unit/test_decode_capacity.py",
+   "sanitizer": {
+    "exempt": "one thread writes one constant"
+   },
+   "budget": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "phases": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a constant-size stamp or clock read: one tiny launch, no stream to overlap"
+   }
+  },
+  "decode_step_kernel": {
+   "oracle": "tests/oracle/test_decode_vs_oracle.py",
+   "sanitizer": "decode",
+   "budget": {
+    "owed": "no tools/budgets/decode.json: the decode step's budget lines are written on its plan card, not as a gated file"
+   },
+   "phases": "tests/integration/test_decode_phase_ledger.py",
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "factor_backward_kernel": {
+   "oracle": "tests/unit/test_entmax_production.py::test_production_factor_mask_ties_support_values_and_vjp",
+   "sanitizer": {
+    "owed": "no sanitizer row launches it"
+   },
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "factor_forward_kernel": {
+   "oracle": "tests/unit/test_entmax_production.py::test_production_factor_mask_ties_support_values_and_vjp",
+   "sanitizer": {
+    "owed": "no sanitizer row launches it"
+   },
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "facts_pass": {
+   "oracle": "tests/integration/test_facts_pass.py::test_the_lists_are_the_model_bit_for_bit",
+   "sanitizer": "facts",
+   "budget": {
+    "owed": "the line is met and the per-component instructions measured at docs/internals/facts/facts.md#budget; tools/budgets/facts.json lands with an instrument row that runs the facts pass's region ledger (none is declared yet)"
+   },
+   "phases": "tests/integration/test_facts_pass.py::test_a_bound_ledger_books_every_phase_and_changes_nothing",
+   "ratified": "manifest",
+   "overlap": "facts-alt-k4"
+  },
+  "intra_kernel": {
+   "oracle": "tests/integration/test_intra_kernel.py::test_the_intra_is_the_bundle_arithmetic_per_slot",
+   "sanitizer": "intra",
+   "budget": "tools/budgets/intra.json",
+   "phases": "tests/integration/test_intra_kernel.py::test_a_bound_ledger_books_every_phase_and_changes_nothing",
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "produce_kernel": {
+   "oracle": "tests/integration/test_produce_kernel.py::test_the_bundle_matches_the_reference_on_the_kernels_logits",
+   "sanitizer": "produce",
+   "budget": {
+    "owed": "the producer's budget lines are on its plan card; the region ledger's file lands with its optimization pass"
+   },
+   "phases": "tests/integration/test_produce_kernel.py::test_a_bound_ledger_books_every_phase_and_changes_nothing",
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "sm_clock_kernel": {
+   "oracle": {
+    "owed": "no test reads it; measure/executors.py records it with every measurement"
+   },
+   "sanitizer": {
+    "exempt": "a dependent spin on each SM and one timer read; no shared memory, no data between threads"
+   },
+   "budget": {
+    "exempt": "an instrument, not a workload"
+   },
+   "phases": {
+    "exempt": "an instrument, not a workload"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a constant-size stamp or clock read: one tiny launch, no stream to overlap"
+   }
+  },
+  "softmax_backward_kernel": {
+   "oracle": {
+    "owed": "no test grades the softmax level's gradient against a reference"
+   },
+   "sanitizer": {
+    "owed": "no sanitizer row launches it"
+   },
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "softmax_forward_kernel": {
+   "oracle": {
+    "owed": "no test grades the softmax level against a reference (the dense-level tests are self-consistency)"
+   },
+   "sanitizer": {
+    "owed": "no sanitizer row launches it"
+   },
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "stamp_kernel": {
+   "oracle": "tests/integration/test_intra_kernel.py::test_the_loaded_binary_states_the_footprint_it_carries",
+   "sanitizer": {
+    "exempt": "one thread writes one constant"
+   },
+   "budget": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "phases": {
+    "exempt": "a footprint stamp, not a workload"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a constant-size stamp or clock read: one tiny launch, no stream to overlap"
+   }
+  },
+  "union_backward_kernel": {
+   "oracle": {
+    "owed": "no test grades the union solve's gradient against a reference"
+   },
+   "sanitizer": {
+    "owed": "no sanitizer row launches it"
+   },
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "union_forward_kernel": {
+   "oracle": "tests/oracle/test_entmax_cuda_gates.py",
+   "sanitizer": "entmax",
+   "budget": {
+    "owed": "no budget line"
+   },
+   "phases": {
+    "owed": "books no phase ledger"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "owed": "no perf-cell row yet: add one to tools/overlap_gate.py's ROWS (a launch and its cell)"
+   }
+  },
+  "window_plan_kernel": {
+   "oracle": "tests/oracle/test_carry_plan.py::test_the_plans_are_the_model",
+   "sanitizer": "carry",
+   "budget": {
+    "exempt": "a thread's O(1) planning a (batch-head, box class, window): no workload to budget beside the carry it plans"
+   },
+   "phases": {
+    "exempt": "one straight-line step a thread: no phases"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a small launch before the carry on its stream: its cost is the carry's row's"
+   }
+  },
+  "scale_writes": {
+   "oracle": "tests/oracle/test_scale_vs_oracle.py::test_every_byte_is_the_rules_on_the_fp64_bound",
+   "sanitizer": {
+    "owed": "a scale row of tools/sanitize_oracle.py's family table (the pass is new, 2026-11-02)"
+   },
+   "budget": {
+    "owed": "the line is met and measured at docs/internals/scale/scale_kernel.md#writes (tools/overlap_gate.py's rows); tools/budgets/scale.json lands with an instrument row that runs the pass's region ledger (none is declared yet)"
+   },
+   "phases": {
+    "exempt": "one phase a kernel (the window write masses): the pass is three streaming launches, each timed whole"
+   },
+   "ratified": "manifest",
+   "overlap": "scale-writes-alt-k4"
+  },
+  "scale_scan": {
+   "oracle": "tests/oracle/test_scale_vs_oracle.py::test_every_byte_is_the_rules_on_the_fp64_bound",
+   "sanitizer": {
+    "owed": "a scale row of tools/sanitize_oracle.py's family table (the pass is new, 2026-11-02)"
+   },
+   "budget": {
+    "exempt": "a scan of windows x width_S x 8 bytes a head: no floor beyond its launch"
+   },
+   "phases": {
+    "exempt": "one phase a kernel (the windows' prefix): the pass is three streaming launches, each timed whole"
+   },
+   "ratified": "manifest",
+   "overlap": {
+    "exempt": "a scan of windows x width_S x 8 bytes a head: its time is its launch's, under a microsecond of DRAM"
+   }
+  },
+  "scale_reads": {
+   "oracle": "tests/oracle/test_scale_vs_oracle.py::test_every_byte_is_the_rules_on_the_fp64_bound",
+   "sanitizer": {
+    "owed": "a scale row of tools/sanitize_oracle.py's family table (the pass is new, 2026-11-02)"
+   },
+   "budget": {
+    "owed": "the line is met and measured at docs/internals/scale/scale_kernel.md#writes (tools/overlap_gate.py's rows); tools/budgets/scale.json lands with an instrument row that runs the pass's region ledger (none is declared yet)"
+   },
+   "phases": {
+    "exempt": "one phase a kernel (the bytes): the pass is three streaming launches, each timed whole"
+   },
+   "ratified": "manifest",
+   "overlap": "scale-reads-alt-k4"
+  }
+ }
+}

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil, prod
+from typing import NamedTuple
 
 import torch
 
@@ -35,6 +36,85 @@ assert 1 << _LOG2_ATOM_LEAVES == MMA_K_QUANTUM, (
 _ATOM_ROW_MASK = MMA_K_QUANTUM - 1
 
 _ABSENT_PAGE = -1
+
+
+class PageLayout(NamedTuple):
+    """THE STATE PAGE'S BYTE GEOMETRY, the mirror of `csrc/rola/src/common/state_page.cuh`'s `Blocks<DV>`: 16 leaves as
+    ``[16 x DV hi s16][16 x DV lo u8][16 x DV/32 exponent s8][16 mass fp32]``, the mass 16-byte aligned
+    (docs/internals/common/state_page.md#geometry)."""
+
+    hi: int
+    lo: int
+    exp: int
+    mass: int
+    bytes: int
+    groups: int
+
+
+def page_layout(d_v: int) -> PageLayout:
+    if d_v % 32:
+        raise ValueError(f"a channel group is 32 channels, so d_v is a multiple of 32; got {d_v}")
+    groups, rows = d_v // 32, MMA_K_QUANTUM
+    lo = rows * d_v * 2
+    exp = lo + rows * d_v
+    mass = (exp + rows * groups + 15) & ~15
+    return PageLayout(hi=0, lo=lo, exp=exp, mass=mass, bytes=mass + rows * 4, groups=groups)
+
+
+#: The s24 mantissa's bound and the smallest group exponent, the kernel's own (`state_page.cuh`).
+_MANTISSA_MAX = (1 << 23) - 1
+_EXP_MIN = -126
+
+
+def encode_pages(logical: torch.Tensor) -> torch.Tensor:
+    """A logical ``[..., 16, d_v + 1]`` fp32 page block in the STORED int8 state format, ``[..., page_bytes]`` uint8.
+
+    Per leaf and 32-channel group: the exponent ``e = max(k - 23, -126)`` from the group's largest magnitude
+    ``f * 2^k``, the value rounded once to the s24 mantissa ``m = round(v / 2^e)`` held inside s24, stored as its
+    high s16 (``m >> 8``) and low u8 (``m & 255``) bytes; the mass as fp32. The kernel's arithmetic, bit for bit
+    (docs/internals/common/state_page.md#codec).
+    """
+    _refuse_ragged(logical)
+    d_v = logical.shape[-1] - 1
+    layout = page_layout(d_v)
+    pages = logical.reshape(-1, MMA_K_QUANTUM, d_v + 1).float()
+    values = pages[..., :d_v].reshape(-1, MMA_K_QUANTUM, layout.groups, 32)
+    amax = values.abs().amax(-1)
+    _, k = torch.frexp(amax)
+    #: an all-zero group stores exponent zero, so a zero page is all zero bytes, the arena's fresh page.
+    e = torch.where(amax == 0, torch.zeros_like(k), (k - 23).clamp_min(_EXP_MIN))
+    m = torch.round(torch.ldexp(values, -e.unsqueeze(-1))).clamp(-_MANTISSA_MAX, _MANTISSA_MAX)
+    m = m.to(torch.int32).reshape(-1, MMA_K_QUANTUM, d_v)
+    out = torch.zeros((pages.shape[0], layout.bytes), dtype=torch.uint8, device=pages.device)
+    out[:, layout.hi:layout.lo] = (m >> 8).to(torch.int16).reshape(pages.shape[0], -1).view(torch.uint8)
+    out[:, layout.lo:layout.exp] = (m & 0xFF).to(torch.uint8).reshape(pages.shape[0], -1)
+    out[:, layout.exp:layout.exp + MMA_K_QUANTUM * layout.groups] = (
+        e.to(torch.int8).reshape(pages.shape[0], -1).view(torch.uint8))
+    out[:, layout.mass:] = pages[..., d_v].contiguous().view(torch.uint8).reshape(pages.shape[0], -1)
+    return out.reshape(*logical.shape[:-2], layout.bytes)
+
+
+def decode_pages(stored: torch.Tensor, d_v: int, *, hi_only: bool = False) -> torch.Tensor:  #: reserved: hi_only is the gates' read-only reconstruction (tests/integration/test_decode_fold.py)
+    """The inverse view: stored ``[..., page_bytes]`` uint8 pages as the logical ``[..., 16, d_v + 1]`` fp32 -- every
+    leaf-channel ``(hi << 8 | lo) * 2^e`` and the mass; ``hi_only`` reads what a READ-ONLY load reconstructs, the hi
+    plane alone (``lo`` taken as zero). ORACLE AND BRIDGE ONLY: a measured path never rejoins a page on the host
+    (docs/internals/common/state_page.md#codec)."""
+    layout = page_layout(d_v)
+    if stored.dtype is not torch.uint8 or stored.shape[-1] != layout.bytes:
+        raise ValueError(f"a d_v={d_v} state page is {layout.bytes} uint8 bytes; got {stored.dtype} "
+                         f"{tuple(stored.shape)}")
+    pages = stored.reshape(-1, layout.bytes)
+    count = pages.shape[0]
+    hi = pages[:, layout.hi:layout.lo].contiguous().view(torch.int16).to(torch.int32)
+    lo = pages[:, layout.lo:layout.exp].to(torch.int32) * (0 if hi_only else 1)
+    e = pages[:, layout.exp:layout.exp + MMA_K_QUANTUM * layout.groups].contiguous().view(torch.int8)
+    #: an s24 mantissa and a power of two are both exact in fp32, and so is their product above the subnormals.
+    m = ((hi << 8) | lo).reshape(count, MMA_K_QUANTUM, layout.groups, 32).float()
+    values = torch.ldexp(m, e.to(torch.int32).reshape(count, MMA_K_QUANTUM, layout.groups, 1))
+    out = torch.empty((count, MMA_K_QUANTUM, d_v + 1), dtype=torch.float32, device=stored.device)
+    out[..., :d_v] = values.reshape(count, MMA_K_QUANTUM, d_v)
+    out[..., d_v] = pages[:, layout.mass:].contiguous().view(torch.float32)
+    return out.reshape(*stored.shape[:-1], MMA_K_QUANTUM, d_v + 1)
 
 
 def to_split_planes(logical: torch.Tensor) -> torch.Tensor:
@@ -68,7 +148,7 @@ def _refuse_dtype(state: torch.Tensor) -> None:
         raise ValueError(
             f"a state page is fp32 words split into bf16 planes, so the pack and the "
             f"gather run on float32; got {state.dtype}. Convert AFTER the gather, never "
-            f"before it (docs/internals/state.md#split-planes)")
+            f"before it (docs/internals/common/state_page.md#split)")
 
 
 def _refuse_ragged(state: torch.Tensor) -> None:
@@ -379,12 +459,15 @@ class PageArena:
     """
 
     def __init__(self, *, widths: tuple[int, ...], BC: int, cols: int, BH: int,
-                 device: torch.device, extent_atoms: int | None = None,
-                 backing: str = "auto", pool_slack: float = 0.0) -> None:
+                 device: torch.device,
+                 extent_atoms: int | None = None,  #: reserved: the tests shrink the extent to reach its boundary
+                 backing: str = "auto",  #: reserved: the tests force each backing on a host that selects VMM
+                 pool_slack: float = 0.0) -> None:
         N = prod(widths)
         self.widths = tuple(widths)
         self.BC = int(BC)
         self.cols = int(cols)
+        self.page_bytes = page_layout(self.cols - 1).bytes
         self.BH = int(BH)
         self.N = int(N)
         self.keying = AtomKeying(N=self.N, cols=self.cols, BH=self.BH)
@@ -429,11 +512,9 @@ class PageArena:
     def _allocate(self) -> None:
         self._page_table = torch.full((self.BH, self.keying.atoms_per_bh), _ABSENT_PAGE,
                                       dtype=torch.int32, device=self.device)
-        #: ``[slots, MMA_K_QUANTUM, cols]`` -- exactly the shape
-        #: :meth:`AtomKeying.address` indexes, so the address expression and the
-        #: allocation cannot disagree about what a slot is. Under the VMM backing the
-        #: view spans the whole RESERVED extent and :attr:`state` bounds it to the mapped
-        #: prefix; the base pointer is the reservation's and never moves.
+        #: ``[slots, page_bytes]`` uint8 -- one int8-format page a slot (`page_layout`). Under the VMM backing
+        #: the view spans the whole RESERVED extent and :attr:`state` bounds it to the mapped prefix; the base
+        #: pointer is the reservation's and never moves.
         if self.backing == "vmm":
             from rola.ops._ext import extension
 
@@ -441,22 +522,17 @@ class PageArena:
                 device=self.device.index if self.device.index is not None
                 else torch.cuda.current_device(),
                 dense_limit_pages=self.logical_pages,
-                page_rows=MMA_K_QUANTUM,
-                page_cols=self.cols,
+                page_rows=1,
+                page_cols=self.page_bytes // 4,
                 target_chunk_bytes=(C_VMM_CHUNK_BYTES if C_VMM_CHUNK_BYTES is not None
                                     else _vmm_probe(self.device)["allocation_granularity"]))
-            self._value_base = self._owner.base()
+            self._value_base = self._owner.base().view(torch.uint8).reshape(-1, self.page_bytes)
         else:
-            self._value_base = torch.zeros(
-                (self.logical_pages, MMA_K_QUANTUM, self.cols),
-                dtype=torch.float32, device=self.device)
+            self._value_base = torch.zeros((self.logical_pages, self.page_bytes), dtype=torch.uint8,
+                                           device=self.device)
         self._pool_slots = torch.empty((self.BH, self.pool_capacity), dtype=torch.int32,
                                        device=self.device)
         self._pool_cursor = torch.zeros(self.BH, dtype=torch.int32, device=self.device)
-        #: The device's own claim, read by the walk until the step folds it into the
-        #: table. Sized like the table because that is what it indexes.
-        self._pool_map = torch.full((self.BH, self.keying.atoms_per_bh), _ABSENT_PAGE,
-                                    dtype=torch.int32, device=self.device)
         self._cursor_host = torch.empty(self.BH, dtype=torch.int32,
                                         pin_memory=self.device.type == "cuda")
         self._reserve_pool()
@@ -501,7 +577,7 @@ class PageArena:
 
     @property
     def state(self) -> torch.Tensor:
-        """``[slots, MMA_K_QUANTUM, cols]`` -- what the consumer indexes.
+        """``[slots, page_bytes]`` uint8 -- what the consumer indexes.
 
         Bounded to :attr:`mapped_pages`, which is the whole pool under the dense bridge
         and the driver's mapped prefix under the VMM backing. The leading extent is a
@@ -546,10 +622,10 @@ class PageArena:
         return int((self._page_table >= 0).sum())
 
     def dense_bytes(self) -> int:
-        return self.BH * self.N * self.cols * 4
+        return self.BH * self.keying.atoms_per_bh * self.page_bytes
 
     def allocated_bytes(self) -> int:
-        return self.allocated_pages * MMA_K_QUANTUM * self.cols * 4
+        return self.allocated_pages * self.page_bytes
 
     @property
     def committed_bytes(self) -> int:
@@ -667,7 +743,7 @@ class PageArena:
         """The PLANNED-EXACT-ASYNC admission, from the atom condensation.
 
         ``atom_bitmap`` is ``[BH, atoms_per_bh]`` bool -- the per-leaf write set
-        condensed to the atom quantum, as :func:`rola.engine.facts.planes.atom_bits` publishes it. It
+        condensed to the atom quantum, as :func:`rola.engine.facts.liveness.page_bits` folds it. It
         is the EXACT set of atoms this call touches on the write side, so the pool is
         SIZED rather than grown and there is nothing for an allocator to discover.
 
@@ -727,11 +803,6 @@ class PageArena:
         """``[BH]`` int32 -- pool slots each batch-head has spent."""
         return self._pool_cursor if self.pool_capacity else None
 
-    @property
-    def pool_map(self) -> torch.Tensor | None:
-        """``[BH, atoms_per_bh]`` int32 -- the device's claim, before the fold."""
-        return self._pool_map if self.pool_capacity else None
-
     def pool_headroom(self) -> int:
         """Pool slots the THINNEST batch-head still has. A host read, at leisure.
 
@@ -788,21 +859,19 @@ class PageArena:
     # -- the dense bridge OUT, crossed explicitly (docs/internals/paging/paging.md#backings) ------------
 
     def materialize(self) -> torch.Tensor:
-        """Gather the committed atoms back into a dense ``[BH, N, cols]`` state.
+        """Gather the committed atoms back into a dense ``[BH, N, cols]`` fp32 state.
 
-        The explicit bridge OUT, and the hi||lo GATHER as well: the pages hold
-        split bf16 planes, so the logical fp32 view is rejoined here and nowhere on a
-        measured path. Allocating ``[BH, N, cols]`` is precisely what paging exists to
-        avoid, so this is for oracle comparison and for the existing dense cache
-        contract only.
+        The explicit bridge OUT, and the page DECODE as well (`decode_pages`): the logical fp32 view is formed
+        here and nowhere on a measured path. Allocating ``[BH, N, cols]`` is precisely what paging exists to
+        avoid, so this is for oracle comparison only.
         """
         present = self._page_table >= 0
         index = self._page_table.long().clamp_min(0).reshape(-1)
         gathered = self._value_base.index_select(0, index).view(
-            self.BH, self.keying.atoms_per_bh, MMA_K_QUANTUM, self.cols)
+            self.BH, self.keying.atoms_per_bh, self.page_bytes)
         dense = torch.zeros_like(gathered)
         dense[present] = gathered[present]
-        return from_split_planes(dense).reshape(self.BH, self.N, self.cols)
+        return decode_pages(dense, self.cols - 1).reshape(self.BH, self.N, self.cols)
 
 
 class _NullContext:
@@ -820,9 +889,13 @@ __all__ = [
     "AtomKeying",
     "ExtentAllocator",
     "PageArena",
+    "PageLayout",
     "PagingResult",
     "bytes_equal",
+    "decode_pages",
+    "encode_pages",
     "from_split_planes",
+    "page_layout",
     "to_split_planes",
     "vmm_supported",
 ]

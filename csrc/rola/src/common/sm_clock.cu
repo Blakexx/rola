@@ -3,6 +3,7 @@
 // See docs/internals/common/sm_clock.md
 
 #include "common/arch_runtime.cuh"
+#include "common/select.cuh"
 #include "common/torch_seam.cuh"
 
 namespace rola {
@@ -37,7 +38,7 @@ __global__ void sm_clock_kernel(long long spin, unsigned long long* out) {
 double sm_clock_ghz(int64_t spin_cycles) {
   check_arch_table();
   auto out = zeros_cuda({3}, Dtype::Long);
-  const int sms = current_device_properties().multiProcessorCount;
+  const int sms = current_card().sms;
   clockdet::sm_clock_kernel<<<sms, 128, 0, current_stream()>>>(
       (long long)spin_cycles,
       reinterpret_cast<unsigned long long*>(out.mutable_data_ptr<int64_t>()));

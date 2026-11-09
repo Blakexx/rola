@@ -24,7 +24,7 @@ def padded_level_width(width: int, *, floor: int = PADDED_LEVEL_FLOOR) -> int:
     ``floor`` ("dissolves the D=1/N<32 corner -- a toy state pads to one warp
     with dead slots"); a ``b_l`` already a power of two at or above ``floor`` is its
     own answer, so an already-ideal model pays nothing through this function (though
-    the producer still calls it, uniformly -- KERNEL_STANDARDS §R9: a structure branch
+    the producer still calls it, uniformly -- CONSTITUTION §R9: a structure branch
     is a derived fact, never a data-dependent shortcut).
     """
     if type(width) is not int or width < 1:

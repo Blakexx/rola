@@ -1,0 +1,92 @@
+"""THE GRAPH'S OWN MACHINERY: the target platform, the environment's builder, the flag emitter, the header generator
+and the record writer, the CUDA runtime's headers, and the sources their actions read (docs/build-graph.md)."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load(":defs.bzl", "cuda_root", "tree_part")
+
+package(default_visibility = ["//visibility:public"])
+
+#: the one target platform the graph builds for, and the hermetic toolkit's selector
+platform(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+#: THE CUDA RUNTIME'S HEADERS, without its libraries: the units' runtime (the library links the runtime itself). The
+#: components rules_cuda's runtime target carries for CUDA 13 (its own `cuda_headers` names a component CUDA 13 lacks),
+#: and CCCL's libraries under `include/cccl`, the root an installed toolkit's nvcc.profile adds.
+cc_library(
+    name = "cuda_headers",
+    deps = [
+        "@cuda//:cccl_headers",
+        "@cuda//:crt_headers",
+        "@cuda//:cub",
+        "@cuda//:cudart_headers",
+        "@cuda//:libcudacxx",
+        "@cuda//:nvcc_headers",
+        "@cuda//:thrust",
+    ],
+)
+
+#: the CUDA root clang's front end reads, for the unit lints and the editor
+cuda_root(
+    name = "cuda_root",
+    cudart = "@cuda//:cudart_headers",
+    curand = "@cuda_tools//:curand_headers",
+)
+
+exports_files([
+    "cuda_compile.py",
+    "flags.py",
+    "gates.py",
+    "headers.py",
+    "record.py",
+])
+
+#: what the SASS gate reads: the tree's tools (the gate and the modules it imports), its budgets, and every kernel the
+#: source defines (a kernel no cubin carries is red)
+filegroup(
+    name = "gate_sources",
+    srcs = [
+        "//csrc/rola:sources",
+        "//tools:budgets",
+        "//tools:python_sources",
+    ],
+)
+
+#: what `tools/gen_shards.py` and `measure/hardware.py` read: the arm declarations and the hardware table
+filegroup(
+    name = "generator_sources",
+    srcs = [
+        "//:measure/__init__.py",
+        "//:measure/hardware.py",
+        "//:measure/hw_profile.py",
+        "//csrc/rola:src/common/hardware.json",
+        "//tools:gen_shards.py",
+        "//tools:manifests/decode_set.json",
+        "//tools:manifests/shipped_set.json",
+    ],
+)
+
+#: what the build gates and the record read: the ratified manifests and toolchain records, the vendored tree, the
+#: checked-in generated units, the version
+filegroup(
+    name = "record_sources",
+    srcs = [
+        "//:rola/__init__.py",
+        "//csrc/rola:units.bzl",
+        "//csrc/rola:sources",
+        "//csrc/third_party:cutlass_tree",
+        "//tools:build_record.py",
+        "//tools:kernels.py",
+        "//tools:manifests_cu13",
+        "//tools:toolchain_records",
+        "//tools:toolchains.py",
+    ],
+)
+
+#: this package's part of the tree the checks read
+tree_part()

@@ -1,30 +1,27 @@
 # `docs/internals/` — the source mirror
 
-One markdown file here per source file under `csrc/rola/`, at the same relative
-path minus the `src/` component the mirror does not repeat
-(`csrc/rola/src/decode/decode.cuh` → `docs/internals/decode/decode.md`;
-`csrc/rola/src/paging/vmm_owner.cu` → `docs/internals/paging/vmm_owner.md`). A `.cu`
-and its `.cuh` share one doc, since they are one component. The source families —
-`chunk/`, `decode/`, `entmax/`, `paging/` — therefore appear here as the same
-directories.
+**Two mirror roots.** One markdown file here per source file under `csrc/rola/`, at the same relative path minus the
+`src/` component the mirror does not repeat (`csrc/rola/src/decode/decode.cuh` → `docs/internals/decode/decode.md`;
+`csrc/rola/rola_api.cpp` → `docs/internals/rola_api.md`); a `.cu` and its `.cuh` share one doc, since they are one
+component. And one page a Python module group the kernels' host side is built from: `engine/` mirrors `rola/engine/`
+(the package, the rule layer, the carve planner, the two DAGs), `state.md` mirrors `rola/_state.py`, `paging/paging.md`
+mirrors `rola/ops/paging.py` and `padding.md` mirrors `rola/ops/padding.py`. `tools/` mirrors `tools/`, one page a
+script with something to say ([the tools map](tools/README.md)).
 
-The mirror rule runs SOURCE → DOC, so a deleted source leaves an orphan doc that
-no test catches. Deleting the doc with the source is therefore part of deleting
-the source, and the removal is recorded in `DELETIONS.md` like any other.
+**Exemptions, stated.** A directory of GENERATED sources — `csrc/rola/src/instantiations/`, the per-arm carry units —
+is documented by its own README instead of one page a file, and the lint checks that exemption rather than granting it
+([`docs/testing.md`](../testing.md#the-documentation-gates)). `carry/calibration.md` mirrors no source: it holds the
+calibration rows `measure/harness/bench_carry_calib.py` writes.
 
-## Why this directory exists
+The mirror rule runs SOURCE → DOC, so a deleted source leaves an orphan doc unless the doc is deleted with it: deleting
+the doc is part of deleting the source, and the removal is recorded in `DELETIONS.md` like any other.
 
-Every measured constraint has to be recorded where a reader meets it before
-editing — a forgotten constraint is a rung failure — and a kernel body is not
-that place: reasons written at the line they constrain invert the file, and a
-kernel body carrying them runs to 61% comment lines. The two artifacts are
-therefore separate. **Code carries structure; this tree carries reasons.**
+## What stays in the source
 
-What stays in the source:
-
-- a file-header block: what the file is, what it owns, where its reasons live;
-- a block before an important declaration: what it is and what it means;
-- a **hazard stub** at a site where a mechanical edit silently changes results.
+Code carries structure; this tree carries reasons (the comment rule:
+[`KERNEL_STANDARDS.md#comment-density`](../KERNEL_STANDARDS.md#comment-density)). What stays in the source is a
+file-header block, a block before an important declaration, and a **hazard stub** at a site where a mechanical edit
+silently changes results.
 
 A hazard stub is one line, no prose, no numbers beyond its anchor id:
 
@@ -68,24 +65,4 @@ the truth.
 extraction (2026-08-01): those name commits of the retired pre-extraction fork and
 resolve in no published repository ([`docs/provenance.md`](../provenance.md)).**
 
-## What this tree does not hold, and where it is
-
-The mirror rule runs source → doc, so a family with no sources here has no pages
-here. The carry family's pre-clean-slate body (the window body, the channel-split
-body, the two-scan backward) was deleted from this branch whole in the 2026-08-30
-rebuild (`DELETIONS.md`); its pages went with it, and the old bodies are readable
-on the `k35-final` branch tip, which is never edited again and is the parity
-reference the rebuild is graded against. The carry family's pages HAVE come back,
-one page per source file, as the rebuild (F-P) landed a new body under
-`csrc/rola/src/carry/`: `docs/internals/carry/*` mirrors it today. What is still
-missing on this branch is what `docs/ARCHITECTURE.md` §6.1 and §6.2 state gets
-built and in what order, and what is knowingly missing in the meantime is a row in
-[`docs/open-work.md`](../open-work.md).
-
-## Where the other docs live
-
-| Directory | Holds |
-|---|---|
-| `docs/internals/` | per-source-file reasons (this tree) |
-| `docs/architecture/` | the permanent decision record: the choices that shaped the design and why they were made |
-| `docs/` (top level) | operator-facing: build, bringup, testing, ratification, provenance |
+The map of every other document is [`docs/README.md`](../README.md).

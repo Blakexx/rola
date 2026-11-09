@@ -58,49 +58,26 @@ def _reference(hidden, weight, bias, heads):
         hidden.shape[0] * heads, hidden.shape[1], weight.shape[2] * weight.shape[3])
 
 
-def _expected_read(hidden, write_hidden, weight, bias, routing, expected_write, heads):
-    if write_hidden is hidden:
-        read_W, read_bias = _full_read(weight, bias, routing)
-        return _reference(hidden, read_W, read_bias, heads)
-    if not routing.untied_levels:
-        return expected_write
-    read_bias = None if bias is None else bias[:, routing.D:]
-    untied = _reference(hidden, weight[:, :, routing.D:], read_bias, heads)
-    slots = {level: slot for slot, level in enumerate(routing.untied_levels)}
-
-    def block(source, position):
-        width = routing.branches[0]
-        return source[:, :, position * width:(position + 1) * width]
-
-    return torch.cat([
-        block(untied, slots[level]) if level in slots else block(expected_write, level)
-        for level in range(routing.D)
-    ], dim=2)
-
-
 @pytest.mark.parametrize("untied_levels", [(), (0, 1, 2), (0, 2)])
-@pytest.mark.parametrize("distinct_write_stream", [False, True])
-def test_packed_router_matches_separate_projection_and_gradients(untied_levels, distinct_write_stream):
+def test_packed_router_matches_separate_projection_and_gradients(untied_levels):
     torch.manual_seed(31)
     batch, length, heads, levels, hidden, branch = 2, 5, 2, 3, 7, 4
     routing = _routing_for_untied(levels, untied_levels, branch)
     h = torch.randn(batch, length, hidden, dtype=torch.float32, requires_grad=True)
-    h_w = torch.randn_like(h, requires_grad=True) if distinct_write_stream else None
     route_W = torch.randn(heads, hidden, routing.packed_router_width, requires_grad=True)
     route_bias = torch.randn(heads, routing.packed_router_width, requires_grad=True)
 
     read_logits, write_logits = packed_router_logits(
-        h, route_W, routing, route_bias=route_bias, h_w=h_w)
+        h, route_W, routing, route_bias=route_bias)
     weight, bias = _slots(route_W, route_bias, routing, branch)
-    write_hidden = h if h_w is None else h_w
-    expected_write = _reference(write_hidden, weight[:, :, :levels], bias[:, :levels], heads)
-    expected_read = _expected_read(
-        h, write_hidden, weight, bias, routing, expected_write, heads)
+    expected_write = _reference(h, weight[:, :, :levels], bias[:, :levels], heads)
+    read_W, read_bias = _full_read(weight, bias, routing)
+    expected_read = _reference(h, read_W, read_bias, heads)
     torch.testing.assert_close(read_logits, expected_read, rtol=0, atol=0)
     torch.testing.assert_close(write_logits, expected_write, rtol=0, atol=0)
 
     loss = read_logits.square().mean() + 0.7 * write_logits.square().mean()
-    gradient_inputs = (h, route_W, route_bias) + (() if h_w is None else (h_w,))
+    gradient_inputs = (h, route_W, route_bias)
     gradients = torch.autograd.grad(loss, gradient_inputs, allow_unused=True)
     expected_loss = expected_read.square().mean() + 0.7 * expected_write.square().mean()
     expected_gradients = torch.autograd.grad(
@@ -165,15 +142,6 @@ def test_packed_router_rejects_rank4_head_count_mismatch():
         packed_router_logits(torch.randn(1, 2, 1, 3), route_W, routing)
 
 
-def test_packed_router_rejects_mismatched_write_hidden():
-    routing = _routing_for_untied(2, (), 2)
-    route_W = torch.randn(2, 3, routing.packed_router_width)
-    h = torch.randn(1, 2, 3)
-
-    with pytest.raises(ValueError, match="shape and device"):
-        packed_router_logits(h, route_W, routing, h_w=torch.randn(1, 3, 3))
-
-
 @pytest.mark.parametrize("untied_levels", [(), (0, 1, 2)])
 def test_uniform_tie_state_returns_read_write_views_of_one_projection(untied_levels):
     routing = _routing_for_untied(3, untied_levels, 2)
@@ -186,9 +154,7 @@ def test_uniform_tie_state_returns_read_write_views_of_one_projection(untied_lev
 
 @pytest.mark.parametrize("untied_levels", [(), (0,), (0, 1, 2)])
 @pytest.mark.parametrize("with_bias", [False, True])
-@pytest.mark.parametrize("split_stream", [False, True])
-def test_the_two_projection_layouts_are_one_gemm_and_agree_at_the_bit(
-        untied_levels, with_bias, split_stream):
+def test_the_two_projection_layouts_are_one_gemm_and_agree_at_the_bit(untied_levels, with_bias):
     """P73 S5: `token_major=True` returns `[B, T, H, W]` instead of `[B*H, T, W]`.
 
     TWO claims, and they are separate. **The numbers are the same bytes**: a column of
@@ -206,8 +172,7 @@ def test_the_two_projection_layouts_are_one_gemm_and_agree_at_the_bit(
     numbers.
 
     Swept over the three tie states (which decide whether the two sides are one GEMM,
-    two, or a concatenation), the bias (a different broadcast per layout), and the split
-    read/write stream.
+    two, or a concatenation) and the bias (a different broadcast per layout).
     """
     from rola.routing.projection import _packed_router_logits
 
@@ -215,13 +180,12 @@ def test_the_two_projection_layouts_are_one_gemm_and_agree_at_the_bit(
     heads, batch, tokens, hidden = 3, 2, 5, 4
     routing = _routing_for_untied(3, untied_levels, 2)
     h = torch.randn(batch, tokens, hidden)
-    h_w = torch.randn(batch, tokens, hidden) if split_stream else None
     route_W = torch.randn(heads, hidden, routing.packed_router_width)
     route_bias = torch.randn(heads, routing.packed_router_width) if with_bias else None
 
     def project(token_major):
         return _packed_router_logits(
-            h, route_W, routing, route_bias=route_bias, h_w=h_w,
+            h, route_W, routing, route_bias=route_bias,
             projection_dtype=torch.float32, token_major=token_major)
 
     #: the third return is the gain span, absent here (`gain_columns` defaults to 0).

@@ -2,6 +2,8 @@
 
 Mirrors `tools/burst_gate.py` and `tools/sass_control.py`; the `burst` instrument of every suite
 run. KERNEL_STANDARDS §23 states the rule; this is the gate that holds it on the compiled code.
+`--kernel` names the function it reads where the cubin holds several (a carry arm: the carry and
+its plan pass): offsets restart in every function, so each is read alone.
 
 <a id="control"></a>
 ## The control words
@@ -42,9 +44,14 @@ producer's latency the placed distance did not cover, each dependence named
 (`SHFL@52->HFMA2@55: 17`). It is the load-gap reading: the fold's pair loop admits 58 cycles of it
 in 1,170 of pipe time and is pipe-bound anyway.
 
-The floors (`tools/budgets/burst_floors.json`) are a ratchet: `--write-floors` records every
-loop's occupancy, and a later build that reads lower is red. The loops: every `Burst::run`, and
-`--loop FILE:FUNCTION` for a rolled loop kept under the same floor (the readout's box loop).
+This is a READING of the loops `--loop FILE:FUNCTION` names. The gate on the same model is the SASS gate's STEP
+COVER (KERNEL_STANDARDS §32): every innermost MMA loop of every kernel, found by its backward branch rather than by
+name -- innermost among the loops that issue MMAs: a loop inside it that issues none (a shared fp32 add's
+compare-and-swap spin on sm_80/86, an mbarrier wait, a one-trip guard) is part of its body, read once -- held at a
+line and its debts at their floors (`tools/budgets/step_floors.json`). Until 2026-11-01 any backward branch inside
+hid a loop: the den's and the fp16 intra's steps were never read. The floors this gate kept
+named two loops (`frag_mma`, `readout_tile`) the carry's rebuild deleted; nothing failed, and they were removed
+2026-10-16 with the rule that a target the tree no longer has is red.
 
 <a id="registers"></a>
 ## Registers
@@ -84,8 +91,8 @@ fold's mass on the FMA pipe at -11% paired; the form measured +3% on the fragmen
 That second point still misses under the fitted model (2,133 modelled against 2,223 measured for the
 form, 2,400 against 2,159 for the reference), so the fold's fragment is bound by something the probe
 does not exercise, and the per-line stall census of the two forms is the measurement that names it.
-Until it does: the floors are ratchets on the alone reading (a form that reads lower than the last is
-refused), the paired reading is advisory, and no form is budgeted from the model.
+Until it does: the floors are ratchets on the alone reading (the SASS gate's step floors: a build that reads
+lower than its last is refused), the paired reading is advisory, and no form is budgeted from the model.
 
 Forms read this way (2026-09-18): the two-box readout on the burst primitive, alone 73% then 81% under
 the first model after the gate named its two exposed dependences (a list-byte load and a four-load XOR

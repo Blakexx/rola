@@ -1,0 +1,29 @@
+"""THE PART HARNESS'S DRIVER (KERNEL_STANDARDS section 22): the calibration kernels, compiled as the extension's units
+are with `-lineinfo` for the ledgers; `//:parts_library` links them with the runtime's units (`//csrc/rola:runtime`).
+Never shipped."""
+
+load("@rola_env//:flags.bzl", "NVCC_FLAGS")
+load("//bazel:cuda.bzl", "cuda_unit")
+load("//bazel:defs.bzl", "tree_part")
+
+cuda_unit(
+    name = "carry_parts",
+    srcs = ["carry_parts.cu"],
+    hdrs = ["carry_calib.cuh"],
+    copts = NVCC_FLAGS + ["-lineinfo"],
+    host_cc = "@host_cc//:identity.txt",
+    visibility = ["//:__pkg__"],
+    deps = [
+        "//csrc/rola:generated",
+        "//csrc/rola:headers",
+        "//csrc/third_party:cutlass",
+        "@rola_env//:python_headers",
+        "@rola_env//:torch_headers",
+    ],
+)
+
+#: the step signatures its probes keep on purpose, which the SASS gate reads (//:parts_library)
+exports_files(["kept_signatures.json"])
+
+#: this package's part of the tree the checks read
+tree_part()

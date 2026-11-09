@@ -1,35 +1,25 @@
-// csrc/rola/src/carry/carry_arm_abi.cuh -- ONE ARM'S ABI: pointers and scalars only, so a
-// per-arm translation unit never parses the torch headers the seam needs.
-// See docs/internals/carry/carry.md
+// carry_arm_abi.cuh -- ONE ARM'S ABI, no torch headers. see docs/internals/carry/carry_arm_abi.md
 #pragma once
 
 #include <cuda_runtime.h>
 
-#include "carry/params.cuh"
+#include "carry/carry.cuh"
 
 namespace rola::carry {
 
-//: One arm's census, as the device build reports it -- see docs/internals/carry/carry.md#census
-struct ArmCensus {
-  int regs;
-  int spill_stores;
-  int spill_loads;
-  int local_bytes;
-  int smem_bytes;
-  int max_threads;
-  int binary_version;
-  int threads;
-  int box_leaves;
-  int atoms;
-  int boxes;
-  int state_elems;
-  int read_bytes;
-  int pool_bytes;
+//: ONE ARM'S FORM on the current device's card. -- see docs/internals/carry/carry_arm_abi.md#form
+struct CarryForm {
+  int smem_bytes, area, read_row, write_row, read_list_group, write_list_group;
 };
 
-#define ROLA_CARRY_ARM_DECLARE(I_, D_, DV_, W_)                                      \
-  cudaError_t carry_arm_forward_##I_(const CarryParams& p, int owners, int bh,        \
-                                     cudaStream_t stream);                            \
+//: ONE ARM'S CENSUS, as the device build reports it. -- see docs/internals/carry/carry_arm_abi.md#census
+struct ArmCensus {
+  int regs, local_bytes, max_threads, binary_version;
+  CarryForm form;
+};
+
+#define ROLA_CARRY_ARM_DECLARE(I_, FR_, FF_, RR_, RF_, CH_, SS_)                                  \
+  cudaError_t carry_arm_forward_##I_(const CarryParams& p, int boxes, int bh, cudaStream_t stream); \
   ArmCensus carry_arm_census_##I_();
 
 }  // namespace rola::carry

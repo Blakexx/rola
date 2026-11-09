@@ -22,7 +22,8 @@ from rola.ops.paging import (
     ExtentAllocator,
     PageArena,
     bytes_equal,
-    to_split_planes,
+    encode_pages,
+    page_layout,
 )
 
 _DEVICE = torch.device("cpu")
@@ -35,7 +36,7 @@ _BCS = [16, 64, 32]
 _BC_IDS = ["BC16-instantiated", "BC64-instantiated", "BC32-FAKE"]
 
 
-def _arena(widths=(8, 16), BC=64, cols=4, BH=2, **kwargs):
+def _arena(widths=(8, 16), BC=64, cols=33, BH=2, **kwargs):
     return PageArena(widths=widths, BC=BC, cols=cols, BH=BH, device=_DEVICE, **kwargs)
 
 
@@ -77,13 +78,13 @@ def test_every_stored_object_is_BC_invariant(BC):
     only ``N``, ``cols`` and ``MMA_K_QUANTUM``. A single
     ``BC``-keyed survivor would show up here as a shape that moved with ``BC``.
     """
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     arena = _arena(widths=widths, BC=BC, cols=cols, BH=BH)
     N = prod(widths)
     assert tuple(arena.page_table.shape) == (BH, N // MMA_K_QUANTUM)
-    assert tuple(arena.state.shape) == (arena.logical_pages, MMA_K_QUANTUM, cols)
+    assert tuple(arena.state.shape) == (arena.logical_pages, page_layout(cols - 1).bytes)
     assert arena.logical_pages == BH * N // MMA_K_QUANTUM
-    assert arena.dense_bytes() == BH * N * cols * 4
+    assert arena.dense_bytes() == BH * (N // MMA_K_QUANTUM) * page_layout(cols - 1).bytes
     assert arena.atoms_per_owner == BC // MMA_K_QUANTUM
 
 
@@ -99,7 +100,7 @@ def test_two_sequences_at_alternating_BC_produce_bit_identical_residency():
     Before the re-key this test could not even be written: the two arenas had different
     table SHAPES.
     """
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     N = prod(widths)
     generator = torch.Generator().manual_seed(4)
     atoms = torch.rand((BH, N // MMA_K_QUANTUM), generator=generator) < 0.4
@@ -139,7 +140,7 @@ def test_planned_exact_sizes_the_pool_to_the_popcount_and_zeroes_what_it_admits(
     is a fresh state; the pool is deliberately pre-dirtied here so a missing zero-init
     cannot pass.
     """
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     N = prod(widths)
     arena = _arena(widths=widths, BC=BC, cols=cols, BH=BH)
     arena.state.fill_(7.0)
@@ -150,16 +151,16 @@ def test_planned_exact_sizes_the_pool_to_the_popcount_and_zeroes_what_it_admits(
     touched = int(atoms.sum())
     assert result.allocated_pages == touched
     assert result.realized_owners == touched
-    assert result.allocated_bytes == touched * MMA_K_QUANTUM * cols * 4
+    assert result.allocated_bytes == touched * page_layout(cols - 1).bytes
     assert (arena.page_table >= 0).sum() == touched
     assert torch.equal(arena.page_table >= 0, atoms)
-    assert float(arena.state[:touched].abs().max()) == 0.0, (
+    assert int(arena.state[:touched].max()) == 0, (
         "an admitted slot kept stale bytes; a fresh atom must read as a fresh state")
 
 
 def test_a_continuation_keeps_what_it_already_holds_and_a_fresh_call_does_not():
     """The ``fresh=`` contract, unchanged by the re-key. No implicit third option."""
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     N = prod(widths)
     arena = _arena(widths=widths, cols=cols, BH=BH)
     first = torch.zeros((BH, N // MMA_K_QUANTUM), dtype=torch.bool)
@@ -243,7 +244,7 @@ def test_an_owners_atoms_land_contiguous_in_the_common_case():
     One owner's ``QPO`` atoms admitted in one call must take consecutive slots, because
     that is what lets a CTA resolve ONE base at startup instead of ``QPO`` lookups.
     """
-    widths, BC, cols, BH = (8, 16), 64, 4, 1
+    widths, BC, cols, BH = (8, 16), 64, 33, 1
     N = prod(widths)
     arena = _arena(widths=widths, BC=BC, cols=cols, BH=BH)
     atoms = torch.zeros((BH, N // MMA_K_QUANTUM), dtype=torch.bool)
@@ -271,21 +272,21 @@ def test_a_fully_resident_arena_materializes_the_canonical_leaf_order(BC):
     assuming an identity mapping, which keeps the claim about the LAYOUT rather than
     about the allocator's cursor.
     """
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     N = prod(widths)
     arena = _arena(widths=widths, BC=BC, cols=cols, BH=BH)
     dense = torch.arange(BH * N * cols, dtype=torch.float32).reshape(BH, N, cols)
     arena.plan_exact(torch.ones((BH, N // MMA_K_QUANTUM), dtype=torch.bool))
     arena.state.index_copy_(
         0, arena.page_table.reshape(-1).long(),
-        to_split_planes(dense.reshape(BH * N // MMA_K_QUANTUM, MMA_K_QUANTUM, cols)))
+        encode_pages(dense.reshape(BH * N // MMA_K_QUANTUM, MMA_K_QUANTUM, cols)))
     assert bytes_equal(arena.materialize(), dense)
     assert arena.allocated_pages == arena.logical_pages
 
 
 def test_materialize_leaves_unmapped_atoms_as_zeros():
     """An atom with no slot reads as a ZERO state, not as whatever a slot held."""
-    widths, cols, BH = (8, 16), 4, 1
+    widths, cols, BH = (8, 16), 33, 1
     N = prod(widths)
     arena = _arena(widths=widths, cols=cols, BH=BH)
     arena.state.fill_(3.0)
@@ -301,7 +302,7 @@ def test_materialize_leaves_unmapped_atoms_as_zeros():
 
 def test_the_atom_condensation_shape_is_checked_rather_than_broadcast():
     """A caller handing the OWNER condensation instead of the ATOM one must fail loudly."""
-    widths, cols, BH = (8, 16), 4, 2
+    widths, cols, BH = (8, 16), 33, 2
     arena = _arena(widths=widths, cols=cols, BH=BH)
     owners = torch.zeros((BH, prod(widths) // arena.BC), dtype=torch.bool)
     with pytest.raises(ValueError, match="atom condensation"):

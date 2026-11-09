@@ -23,9 +23,13 @@
 
 #ifdef __CUDACC__
 #include <cub/warp/warp_merge_sort.cuh>
+#include <cub/warp/warp_reduce.cuh>
+#include <cub/warp/warp_scan.cuh>
 #include <cuda/std/type_traits>
 #include <cuda/std/utility>
 #include <cuda_bf16.h>
+
+#include "common/hardware.cuh"
 #endif
 
 namespace rola {
@@ -40,8 +44,23 @@ constexpr int WORD_TOKENS = 32;
 constexpr int BLOCK_WARPS = 4;
 constexpr int WARP_SIZE = 32;
 constexpr int BLOCK_THREADS = BLOCK_WARPS * WARP_SIZE;
-//: With `BLOCK_THREADS`, this is `__launch_bounds__(128, 8)`: a 64-register target -- see docs/internals/entmax/entmax.md#minblockspersm
-constexpr int MIN_BLOCKS_PER_SM = 8;
+//: THE SOLVES' REGISTER TARGET a thread: 64, and the backward's a width class -- 72 where a thread holds 8 items' two
+//: terms across its reduction. -- see docs/internals/entmax/entmax.md#residency
+constexpr int kForwardRegs = 64;
+
+constexpr int backward_regs(int ipt) { return ipt == 8 ? 72 : kForwardRegs; }
+
+//: THE SOLVES' PLAN at build `B`: the blocks an SM their register targets fit in the card's registers, each launch
+//: bound's residency. -- see docs/internals/entmax/entmax.md#residency
+template <::denseref::arch::Build B>
+struct EntmaxPlan {
+  static constexpr int kRegsPerSm = ::denseref::arch::traits_of(B).caps.regs_per_sm;
+  static constexpr int kMinBlocks = kRegsPerSm / (BLOCK_THREADS * kForwardRegs);
+
+  static constexpr int backward_min_blocks(int ipt) {
+    return kRegsPerSm / (BLOCK_THREADS * backward_regs(ipt));
+  }
+};
 
 //: `(stream, stream2, token, col, tile, lane)` -- ONE address expression serves -- see docs/internals/entmax/entmax.md#strides-2
 struct Strides {
@@ -199,6 +218,153 @@ template <int LW>
 __device__ __forceinline__ unsigned logical_warp_mask() {
   return (LW == WARP_SIZE) ? 0xffffffffu
                            : (((1u << LW) - 1u) << (((threadIdx.x % WARP_SIZE) / LW) * LW));
+}
+
+//: The overflow-free read-write difference: two opposite-sign finite extrema -- see docs/internals/entmax/entmax.md#overflow-free-delta-2
+__device__ __forceinline__ float overflow_free_delta(float r, float w, bool* saturated) {
+  const float kMax = 3.4028234663852886e38f;
+  const float kHalfMax = 1.7014117331926443e38f;
+  bool rneg = r < 0.0f;
+  bool opposite = rneg != (w < 0.0f);
+  float rmag = fabsf(r), wmag = fabsf(w);
+  float hi = fmaxf(rmag, wmag), lo = fminf(rmag, wmag);
+  float room = kMax - hi;
+  float mag = hi + fminf(lo, room);
+  float opp = rneg ? -mag : mag;
+  float same = (opposite ? 0.0f : r) - (opposite ? 0.0f : w);
+  if (saturated) *saturated = opposite && (hi > kHalfMax) && (lo > room);
+  return opposite ? opp : same;
+}
+
+//: log(sigmoid(-delta)) == -softplus(delta), finite for every finite input. `log1pf` -- see docs/internals/entmax/entmax.md#logwritegate
+__device__ __forceinline__ float log_write_gate(float delta) {
+  return -(fmaxf(delta, 0.0f) + log1pf(expf(-fabsf(delta))));
+}
+
+//: THE ALPHA-ENTMAX THRESHOLD (alpha 1.5 or 2) of one row held striped: `valid` marks its `valid_count` members,
+//: shifted in place by the row max; tau is relative to that shift. -- see docs/internals/entmax/entmax.md#threshold
+template <int LW, int IPT, bool ALPHA15>
+__device__ __forceinline__ float threshold(float (&z)[IPT], uint32_t valid, int valid_count,
+                                           int lane, unsigned lmask, char* slot,
+                                           int logical_in_warp) {
+  using WarpScanP = cub::WarpScan<Pair, LW>;
+  using WarpRedF = cub::WarpReduce<float, LW>;
+  using WarpRedU = cub::WarpReduce<unsigned long long, LW>;
+  static_assert(sizeof(typename WarpScanP::TempStorage) <= 4, "WarpScan must be shfl-only");
+  static_assert(sizeof(typename WarpRedF::TempStorage) <= 4, "WarpReduce must be shfl-only");
+  static_assert(sizeof(typename WarpRedU::TempStorage) <= 4, "WarpReduce must be shfl-only");
+  typename WarpScanP::TempStorage scan_store;
+  typename WarpRedF::TempStorage red_store;
+  typename WarpRedU::TempStorage redu_store;
+  const bool has_valid = valid_count > 0;
+
+  float local_max = -INFINITY, local_min = INFINITY;
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    if ((valid >> i) & 1u) {
+      local_max = fmaxf(local_max, z[i]);
+      local_min = fminf(local_min, z[i]);
+    }
+  }
+  float row_max = WarpRedF(red_store).Reduce(local_max, Max());
+  row_max = __shfl_sync(lmask, row_max, 0, LW);
+  row_max = has_valid ? row_max : 0.0f;
+  float row_min = WarpRedF(red_store).Reduce(local_min, Min());
+  row_min = __shfl_sync(lmask, row_min, 0, LW);
+
+  //: A finite row-relative sentinel keeps padded lanes strictly below every real -- see docs/internals/entmax/entmax.md#near-line-161
+  const float sentinel = has_valid ? (row_min - row_max) - 1.0f : -1.0f;
+  float keys[IPT];
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    const bool member = (valid >> i) & 1u;
+    z[i] = member ? z[i] - row_max : 0.0f;
+    keys[i] = member ? z[i] : sentinel;
+  }
+  //: A sort is a PERMUTATION, so striped input is fine and the blocked output is what -- see docs/internals/entmax/entmax.md#near-line-165
+  RowSort<LW, IPT>::sort(keys, lane, lmask, slot, logical_in_warp);
+
+  Pair local_sum{0.0f, 0.0f};
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    local_sum.p += keys[i];
+    local_sum.q += keys[i] * keys[i];
+  }
+  Pair carry;
+  WarpScanP(scan_store).ExclusiveScan(local_sum, carry, Pair{0.0f, 0.0f}, PairAdd());
+
+  int best_col = -1;
+  float best_tau = 0.0f;
+  float run_p = carry.p, run_q = carry.q;
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    run_p += keys[i];
+    run_q += keys[i] * keys[i];
+    const int rank = lane * IPT + i;
+    const float k = (float)(rank + 1);
+    float tau_c;
+    bool cand;
+    if (ALPHA15) {
+      const float disc = run_p * run_p - k * (run_q - 4.0f);
+      tau_c = (run_p - sqrtf(fmaxf(disc, 0.0f))) / k;
+      cand = (rank < valid_count) && (disc >= 0.0f) && (keys[i] > tau_c);
+    } else {
+      tau_c = (run_p - 1.0f) / k;
+      cand = (rank < valid_count) && (keys[i] > tau_c);
+    }
+    if (cand) {
+      best_col = rank;
+      best_tau = tau_c;
+    }
+  }
+  //: ONE reduction selects the greatest valid k AND carries its tau: the column in the -- see docs/internals/entmax/entmax.md#packedkey
+  unsigned long long packed_key = ((unsigned long long)(uint32_t)(best_col + 1) << 32)
+                                  | (unsigned long long)__float_as_uint(best_tau);
+  packed_key = WarpRedU(redu_store).Reduce(packed_key, Max());
+  packed_key = __shfl_sync(lmask, packed_key, 0, LW);
+  const int chosen = (int)(uint32_t)(packed_key >> 32) - 1;
+  return chosen >= 0 ? __uint_as_float((uint32_t)(packed_key & 0xffffffffu)) : 0.0f;
+}
+
+//: THE UNION'S WRITE SIDE: `delta` in, the logit difference; out, the write weights -- the support's log-values plus
+//: the write gate, normalized over the row. -- see docs/internals/entmax/entmax.md#union-write
+//: `kFast`: the logarithms, exponentials and quotient on the special-function unit.
+template <int LW, int IPT, bool kFast = false>
+__device__ __forceinline__ void union_write(const float (&values)[IPT], float (&delta)[IPT],
+                                            uint32_t support, unsigned lmask) {
+  using WarpRedF = cub::WarpReduce<float, LW>;
+  typename WarpRedF::TempStorage red_store;
+  float local_lw = -INFINITY;
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    const bool sup = (support >> i) & 1u;
+    const float gate = kFast ? -(fmaxf(delta[i], 0.0f) + __logf(1.0f + __expf(-fabsf(delta[i]))))
+                             : log_write_gate(delta[i]);
+    delta[i] = sup ? (kFast ? __logf(values[i]) : logf(values[i])) + gate : -INFINITY;
+    if (sup) local_lw = fmaxf(local_lw, delta[i]);
+  }
+  float max_lw = WarpRedF(red_store).Reduce(local_lw, Max());
+  max_lw = __shfl_sync(lmask, max_lw, 0, LW);
+  const bool has_mass = max_lw > -INFINITY;
+  const float safe_max = has_mass ? max_lw : 0.0f;
+  float local_den = 0.0f;
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    const bool sup = (support >> i) & 1u;
+    const float shifted = delta[i] - safe_max;
+    delta[i] = (sup && has_mass) ? (kFast ? __expf(shifted) : expf(shifted)) : 0.0f;
+    local_den += delta[i];
+  }
+  float den = WarpRedF(red_store).Reduce(local_den, Sum());
+  den = __shfl_sync(lmask, den, 0, LW);
+  const bool has_weight = den > 0.0f;
+  const float safe_den = has_weight ? den : 1.0f;
+#pragma unroll
+  for (int i = 0; i < IPT; ++i) {
+    const bool sup = (support >> i) & 1u;
+    delta[i] =
+        (sup && has_weight) ? (kFast ? __fdividef(delta[i], safe_den) : delta[i] / safe_den) : 0.0f;
+  }
 }
 
 //: THE PER-LAUNCH LEVEL TABLE. It travels in the kernel's PARAMETER space (448 -- see docs/internals/entmax/entmax.md#max-batched-levels

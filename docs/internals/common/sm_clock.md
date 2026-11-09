@@ -7,8 +7,8 @@ Mirrors `csrc/rola/src/common/sm_clock.cu` (`sm_clock_ghz`) and its use in
 
 The driver reports one SM clock on this host whatever the silicon runs at: through WSL,
 `nvidia-smi` says 1950 MHz while the carry kernel measures at 1.965 GHz in one stretch and
-1.665 GHz in another (`clock64` against `%globaltimer` inside the kernel, journal section
-37), and clocks cannot be locked from WSL. On 2026-09-08 the state was found to be the
+1.665 GHz in another (`clock64` against `%globaltimer` inside the kernel), and clocks cannot be locked from WSL. On
+  2026-09-08 the state was found to be the
 BOOST GOVERNOR'S: it moves the clock with power. A light all-SM spin lifted the clock and
 the same kernel, the same commit, measured 6.45 ms and 5.92 ms either side of it; a heavy
 dense matmul before the reps did not lift it (the card meets its power cap). Every harness
@@ -44,7 +44,7 @@ locks at start, proves the lock with the device read, unlocks on every exit path
 REFUSES a row whose measured clock is off the lock by more than 1%. Without a clock the
 run is UNLOCKED: rows carry their measured clock, print `UNLOCKED`, and the ledger keeps
 `clock_locked = false`, as it keeps `dirty`. The harness names no operating
-system; `python tools/dev.py clock --mhz N` is the one-time host setup that does: under WSL
+system; `bazel run //:clock -- --mhz N` is the one-time host setup that does: under WSL
 it registers the two elevated tasks with hidden launchers (one administrator prompt) and
 proves the round trip, on Linux it writes the `sudo -n nvidia-smi` commands and prints the
 sudoers line, elsewhere it says the host cannot lock.

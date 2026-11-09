@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE CLOSED-WORLD RUNTIME ARCH REFUSAL, checked where it can be checked.
 
-``setup.py``'s rule R4 forbids *a launch on a device whose arch was never measured*.
+The closed-world rule R4 forbids *a launch on a device whose arch was never measured*.
 Unlike the build-time rules it cannot be enforced at build time, because the device is
 not present then; it is enforced in C++ by a pair of clauses, and this file gates that
 the pair is intact.
 
 **THE PAIR.** The compile-time half is ``csrc/rola/src/common/arch_caps.cuh``'s
-``static_assert(tabulated(kArch))``, which fixes the capability row every arm's staging
-depth, CTA target and shared-memory fit was DERIVED from. The runtime half is
+``static_assert(tabulated(kArch))``, which fixes the capability row every plan's sizes are
+DERIVED from (its shared memory, its registers). The runtime half is
 ``check_arch_table()``, which refuses -- on the first launch, per device -- an
 architecture the table has no row for, or a row the driver disagrees with. Neither half
 can substitute for the other: a derivation is only as good as the facts it was closed
@@ -39,9 +39,12 @@ import re
 import pytest
 import torch
 
+from tests.oracle.fixtures import with_gain
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SRC = REPO / "csrc" / "rola" / "src"
 ARCH_CAPS = SRC / "common" / "arch_caps.cuh"
+HARDWARE = SRC / "common" / "hardware.cuh"
 
 #: THE ENTRY LIST IS THE REGISTRATION TRANSLATION UNIT'S OWN. Every operator the extension
 #: offers is an ``m.impl`` here and nowhere else, so a family cannot join the library
@@ -57,7 +60,7 @@ DEVICE_TUS = tuple(sorted(SRC.glob("*/*.cu")))
 #: does launch acquires an exemption.
 _LAUNCHLESS = {
     "carry_arms": "reads the built arm set out of compile-time constants",
-    "intra_arms": "reads the built arm set out of compile-time constants",
+    "intra_footprint": "a host derivation over the widths; no device work",
     "rola_decode_arms": "reads the built arm set out of compile-time constants",
     "carry_build_stamp": "returns a compiled-in stamp",
     "intra_build_stamp": "returns a compiled-in stamp",
@@ -67,6 +70,7 @@ _LAUNCHLESS = {
     "carry_sub_boxes": "a host derivation over the descriptor; no device work",
     "rola_decode_capacity": "a host derivation over the descriptor; no device work",
     "rola_decode_producer_width_mirror": "returns a compiled-in width",
+    "segment_tokens": "a host query of the card it is asked about (card_of admits it); no device work",
     "vmm_create": "a driver allocation, not a kernel launch",
     "vmm_probe": "a driver capability probe, not a kernel launch",
     "vmm_release": "drops the registry's reference to a driver allocation",
@@ -78,7 +82,15 @@ _LAUNCHLESS = {
     "vmm_facts": "reads a driver allocation's bookkeeping",
     "carry_census": "a cudaFuncGetAttributes query of the compiled arms, not a kernel launch",
     "carry_ledger_bind": "binds the device buffer the next carry launch adds into; issues no launch",
-    "carry_trace_bind": "binds the device buffer the next carry launch stamps into; issues no launch",
+    "carry_probe_bind": "binds the device buffer the next carry launch writes its final state into; issues no launch",
+    "carry_capture_bind": "binds the host buffer the next carry launch copies its operand block into; issues no launch",
+    "carry_capture_bytes": "returns a compiled-in size",
+    "rola_decode_ledger_bind": "binds the device buffer the next decode step books into; issues no launch",
+    "rola_produce_ledger_bind": "binds the device buffer the next producer launch books into; issues no launch",
+    "rola_facts_ledger_bind": "binds the device buffer the next facts pass books into; issues no launch",
+    "rola_intra_ledger_bind": "binds the device buffer the next intra launch books into; issues no launch",
+    "device_card": "admits the device's card (the closed-world checks, common/select.cu) and reads it; no device work",
+    "intra_block_rows": "the device's build's walk, read on the host; no device work",
 }
 
 
@@ -102,7 +114,8 @@ def test_the_entry_surfaces_are_declared_where_this_gate_looks():
 def test_the_compile_time_half_is_a_table_and_a_static_assert():
     """``tabulated()`` gates the compiling target, and nothing softens it."""
     text = ARCH_CAPS.read_text()
-    assert "constexpr bool tabulated(int cc)" in text
+    assert "constexpr bool tabulated(int cc)" in HARDWARE.read_text()
+    assert '#include "common/hardware.cuh"' in text
     assert re.search(r"static_assert\(\s*tabulated\(kArch\)", text), (
         "arch_caps.cuh no longer fails the BUILD on an untabulated compile target; "
         "that is half of the closed-world arch rule and it is not optional")
@@ -113,16 +126,20 @@ def _check_arch_table_definitions() -> list[pathlib.Path]:
 
 
 def test_the_runtime_half_refuses_an_untabulated_architecture():
-    """``check_arch_table()`` keys on ``tabulated`` and on the driver's own numbers."""
+    """``check_arch_table()`` admits the device's card, and the admission (``common/select.cu``'s ``admit``) keys on
+    ``tabulated``, on the driver's own numbers and on the builds the binary carries."""
     defs = _check_arch_table_definitions()
     assert len(defs) == 1, (
         f"check_arch_table has {len(defs)} definitions "
         f"({[str(p.relative_to(REPO)) for p in defs]}); it needs exactly one -- a second "
         f"copy is a second thing that can drift from the capability table it checks, and "
         f"none at all is the runtime half of the closed-world arch rule missing")
-    text = defs[0].read_text()
-    body = text[text.index("void check_arch_table() {"):]
+    assert "void check_arch_table() { (void)current_card(); }" in defs[0].read_text(), (
+        "the runtime half is the card's admission, one definition of it")
+    text = (REPO / "csrc" / "rola" / "src" / "common" / "select.cu").read_text()
+    body = text[text.index("Card admit(int device) {"):]
     body = body[:body.index("\n}\n") + 3]
+    assert "carried(build)" in body, "the admission refuses a device whose build the binary does not carry"
     assert "arch::tabulated(cc)" in body, (
         "the runtime half must refuse an arch the TABLE does not carry -- an unbuilt "
         "ARM and an untabulated ARCHITECTURE are different refusals")
@@ -165,25 +182,28 @@ def test_this_device_is_tabulated_and_the_gate_admits_it():
 
     A gate that only ever refuses is indistinguishable from a gate that is never
     reached, so the admitted case is asserted too -- and asserted through a real entry,
-    because the entry is where the call site is. The liveness pass is that entry: it is
-    the one surviving family whose launch takes no arm and no state, so what this cell
-    exercises is the gate and nothing else.
+    because the entry is where the call site is. The facts pass is that entry: its
+    launch takes no arm and no state, so what this cell exercises is the gate and
+    nothing else.
     """
-    from rola.engine.facts import liveness as lv
-    from rola.ops.liveness import liveness_words
+    from rola.ops import facts as facts_ops
+    from rola.routing.factors import RouteFactors
+    from rola.routing.types import OpaqueRouting, Topology
+    from rola.values import Values
 
     major, minor = torch.cuda.get_device_capability()
     cc = major * 100 + minor * 10
     rows = re.search(r"constexpr bool tabulated\(int cc\) \{\s*return ([^;]+);",
-                     ARCH_CAPS.read_text(), re.S).group(1)
+                     HARDWARE.read_text(), re.S).group(1)
     assert f"cc == {cc}" in rows, (
         f"this device is compute capability {major}.{minor}, which the capability table "
         "does not carry -- the refusal is then the correct behaviour, and this row is "
         "the one that must be added")
     widths, L = (16, 16), 32
-    plane = torch.zeros(1, L, sum(widths), dtype=torch.bfloat16, device="cuda")
-    plane[..., 0] = 1.0
-    layout = lv.LivenessLayout(D=len(widths), B=widths, L=L)
-    statics = lv.side_statics(layout, (False,) * layout.D, layout.B)
-    words = liveness_words(plane, plane, layout, statics, statics)
+    levels = tuple(torch.ones(1, L, 1, width, device="cuda") for width in widths)
+    routes = RouteFactors.from_levels(Topology(levels=tuple(OpaqueRouting(width=w) for w in widths)), levels, with_gain(levels, torch.ones(1, L, 1, device="cuda")), sparse=((False, True), (True, False)))
+    layout = facts_ops.call_layout(routes)
+    words = facts_ops.facts(routes, Values.from_projection(torch.ones(1, L, 1, 8, device="cuda")), layout,
+                            *facts_ops.call_statics(routes, layout),
+                            facts_ops.ListsForm(read_row=64, read_list_group=32, write_list_group=32)).words
     assert words.shape[0] == 1

@@ -15,19 +15,17 @@ come from `CARRY_ARMS`.
 **THE MEMBERSHIP IS A DECLARATION, THE ENUMERATION IS THIS FILE.** The rows
 themselves live in `tools/manifests/shipped_set.json` -- the declared shipped set,
 as DATA -- and this module reads, refuses and enumerates them.  A shipped set is a
-statement about the PRODUCT (which `(D, DV, warps_per_cta)` a wheel carries), so it
+statement about the PRODUCT (which carve operation plans a wheel carries), so it
 is reviewable on its own and readable without importing anything; what a row MEANS,
 which translation unit carries it, what the selection header and the ratification's
-shard block say about it, is code and lives here.  `setup.py`'s post-build check
-re-reads the declaration and asserts the table still matches it.
+shard block say about it, is code and lives here.  The library's arm gate
+(`bazel/gates.py`) re-reads the declaration and asserts the table still matches it.
 
-**THE LIST IS EMPTY ON THIS LINE.** The carry family's kernels are deleted and the
-stats passes with them (card C, `development/queue/C_CLEAN_SLATE.md`), so the
-declaration declares no arm and this generator emits NO file: there is no arm, no
-per-arm unit and no instantiation directory.  What survives is the BUILD's contract
--- the table, its final `(D, DV, warps_per_cta)` key, the shipped/test split, the
-selection header and the arm set `arm_switch` dispatches over -- because `setup.py`
-and `tools/ratify.py` speak it on every run whether or not a row exists.
+**THE KEY IS THE CARVE'S OPERATION-PLAN PAIR.** A carry arm is what a CTA compiles: the fold's and the readout's
+warp tiles (dense rows a warp, and how many dense levels form each operand), the box's channel extent and whether
+the fold's lists are the readout's digits (the hand-off's form). The box's per-level extents, the depth and the
+widths are runtime addressing, so one arm serves every
+declaration whose planner picks its plans (docs/internals/engine/rules.md#carve).
 
 The generated files are CHECKED IN, not built: what is reviewed is what compiles
 (closed-world codegen policy). `--check` regenerates into memory and diffs, which is
@@ -35,9 +33,9 @@ what CI and `tools/lint/lint_standards.py` run.
 
 Usage:
 
-    python tools/gen_shards.py --write      # regenerate the tree
-    python tools/gen_shards.py --check      # regenerate into memory and diff (CI)
-    python tools/gen_shards.py --self-test  # prove the declaration reader refuses
+    bazel run //tools:gen_shards -- --write      # regenerate the tree
+    bazel run //tools:gen_shards -- --check      # regenerate into memory and diff (CI)
+    bazel run //tools:gen_shards -- --self-test  # prove the declaration reader refuses
 """
 from __future__ import annotations
 
@@ -45,32 +43,33 @@ import argparse
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
-from rola_devtools.locks import host
-
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]
 OUT_DIR = ROOT / "csrc" / "rola" / "src" / "instantiations"
 
 #: THE DECLARED SHIPPED SET, AS DATA.  The arm table below is READ from this
 #: file, never written here: a shipped set is a DECLARATION about the product -- which
-#: (D, DV, warps_per_cta) a user's wheel carries -- and a declaration that can only be
+#: carve operation plans a user's wheel carries -- and a declaration that can only be
 #: read by importing a code module is one a reviewer, a packager and the post-build
 #: check each have to execute to see.  As data it is diffable, reviewable in a pull
 #: request on its own, and readable by a tool that must not import anything (the 14th
 #: extension-trap form: a repo tool reads the repo's files, it does not import the
-#: package to learn a fact about the repo).  `setup.py`'s post-build check asserts the
+#: package to learn a fact about the repo).  The library's arm gate asserts the
 #: table this module exposes still MATCHES the declaration, which is what makes the
 #: two independent statements rather than one restated twice.
 SHIPPED_SET_JSON = ROOT / "tools" / "manifests" / "shipped_set.json"
 
-#: THE GENERATED (NEVER CHECKED IN) SELECTION HEADER .  `setup.py` and
-#: `tools/ratify.py` each write `GENERATED_DIR / CARRY_SELECTION_INC` for their own
-#: run's arm scope, unconditionally overwriting whatever is there, before compiling
-#: any translation unit that includes it.  See `carry_selection_header`.
+#: THE GENERATED (NEVER CHECKED IN) SELECTION HEADER .  `tools/ratify.py`'s compile path writes
+#: `GENERATED_DIR / CARRY_SELECTION_INC` for its run's arm scope on every run, before compiling any translation
+#: unit that includes it; the graph's header action writes the same text into its own output, which
+#: `bazel run //:library` copies here.  See `carry_selection_header`.
 GENERATED_DIR = ROOT / "build" / "generated"
 CARRY_SELECTION_INC = "carry_selection.inc"
 CARRY_PARTS_INC = "carry_parts.inc"
+BUILDS_INC = "builds.inc"
+
 
 #: THE CARRY KERNEL'S PARTS (the composer's switches, KERNEL_STANDARDS §22 (9)): each names a
 #: part of an MMA phase that a measurement build may replace by a STUB -- the part's HMMAs kept
@@ -87,43 +86,70 @@ BANNER = "// GENERATED by tools/gen_shards.py -- do not edit, regenerate.\n"
 # (what a row means, which translation unit carries it, what the selection header and
 # the manifest block say about it) and the declaration owns the MEMBERSHIP.
 #
-# A row is `(D, DV, warps_per_cta)` -- the routing depth, the value width and the CTA's
-# warp count.  That is the whole key (KERNEL_STANDARDS §R11/§R16); the mode word, the stream counts and the
-# park bit are RUNTIME, not arm axes, and the window and chunk are the descriptor's.
-#
-# THE DECLARATION IS EMPTY: the carry family has no kernels, so no arm is declared,
-# there is no per-arm translation unit to generate, and every scope resolves to nothing.
-# The table and the selection header it feeds are the BUILD's contract rather than the
-# body's -- they describe the key and stay callable at zero rows -- so they hold the
-# shape a body arrives into.
+# A row is `ARM_KEY`: the fold's dense rows a warp and its operand's factor count, the readout's the same, the
+# box's channel extent and whether both sides list the same level. That is the whole key: the box's per-level
+# extents, the depth and the widths are the carve descriptor's, runtime addressing.
 
 
 #: THE KEY, NAMED ONCE.  The declaration declares it, every refusal below quotes it,
 #: and `arm_switch`'s generated set is built from it in the same order.
-ARM_KEY: tuple[str, ...] = ("D", "DV", "warps_per_cta")
+ARM_KEY: tuple[str, ...] = ("fold_rows", "fold_factors", "read_rows", "read_factors", "channels", "same_split")
+
+
+@dataclass(frozen=True)
+class ArmFamily:
+    """A KERNEL'S DECLARED INSTANTIATION MATRIX, the form every kernel with declaration arms plugs in by: its key, its
+    declaration, the generated header a build's selection of it is written to, and who includes that header
+    (docs/internals/tools/gen_shards.md#families)."""
+
+    name: str
+    key: tuple[str, ...]
+    manifest: Path
+    header: str
+    includer: str
+    #: why the key is the whole key, quoted by the re-keyed refusal
+    key_note: str
+
+
+CARRY = ArmFamily("carry", ARM_KEY, SHIPPED_SET_JSON, CARRY_SELECTION_INC,
+                  "the per-arm TUs and the carry dispatch TU",
+                  "an arm is the carve's operation-plan pair, and the box's per-level extents are runtime addressing "
+                  "(docs/internals/engine/rules.md#carve)")
+DECODE = ArmFamily("decode", ("d_v", "levels", "decay"), ROOT / "tools" / "manifests" / "decode_set.json",
+                   "decode_selection.inc", "csrc/rola/src/decode/decode.cu",
+                   "a decode arm is its value width, its depth and whether it decays; everything else is the step's "
+                   "runtime operands (docs/internals/decode/decode.md#decode-arm-0)")
+FAMILIES = (CARRY, DECODE)
 
 
 class ShippedSetError(SystemExit):
     """A declaration this generator refuses, with the field named.
 
-    A `SystemExit` because every consumer (`setup.py`, `tools/ratify.py`, the lints,
+    A `SystemExit` because every consumer (the graph's actions, `tools/ratify.py`, the lints,
     this CLI) wants the same outcome from a malformed declaration -- stop, with the
     reason on stdout -- and none of them has a recovery for it.
     """
 
 
 def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
-    """The declaration, READ AND REFUSED FIELD BY FIELD.
+    """The carry family's declaration (`_load_arm_set`)."""
+    return _load_arm_set(CARRY, path)
+
+
+def _load_arm_set(fam: ArmFamily, path: Path | None = None) -> dict:
+    """A family's declaration, READ AND REFUSED FIELD BY FIELD.
 
     Everything this checks is a way the declaration could be wrong that the build
     would otherwise discover as a compile error inside a generated file, or not at
     all: an unknown axis value, a duplicate row, a row in both lists, a row spelled
     out of canonical order (which would silently RENUMBER every arm index the
-    selection header, the per-arm units and `ROLA_CARRY_ARMS` name).
+    selection header, the per-arm units and `--//:carry_arms` name).
     """
+    path = fam.manifest if path is None else path
+    ARM_KEY = fam.key
     if not path.exists():
         raise ShippedSetError(
-            f"no declared shipped set at {path}. The carry family's arm table is a "
+            f"no declared shipped set at {path}. The {fam.name} family's arm table is a "
             f"DECLARATION, not a literal in this module; there is nothing to fall "
             f"back to.")
     try:
@@ -136,16 +162,15 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
             f"{path.name} declares schema {blob.get('schema')!r}; this generator "
             f"reads schema 2 (one `shipped` list: every declared arm is built and shipped). A schema bump is a deliberate re-read of every "
             f"consumer, never a silent widening.")
-    if blob.get("family") != "carry":
+    if blob.get("family") != fam.name:
         raise ShippedSetError(
             f"{path.name} declares family {blob.get('family')!r}; this file is the "
-            f"CARRY family's declaration.")
+            f"{fam.name.upper()} family's declaration.")
     if blob.get("key") != list(ARM_KEY):
         raise ShippedSetError(
             f"{path.name} declares the key {blob.get('key')!r}, but an arm is keyed "
-            f"{list(ARM_KEY)} and nothing else (KERNEL_STANDARDS §R11: MO, the stream "
-            f"counts and the park bit are runtime; the window and chunk are the "
-            f"descriptor's). Re-key the declaration or amend the law first.")
+            f"{list(ARM_KEY)} and nothing else: {fam.key_note}. Re-key the declaration or amend the design "
+            f"first.")
 
     domains = blob.get("domains")
     if not isinstance(domains, dict) or sorted(domains) != sorted(ARM_KEY):
@@ -192,7 +217,7 @@ def _load_shipped_set(path: Path = SHIPPED_SET_JSON) -> dict:
         raise ShippedSetError(
             f"{path.name}: the rows are not in canonical order. An arm's INDEX is "
             f"named by the selection header, by the per-arm translation units and by "
-            f"ROLA_CARRY_ARMS, so it must be a property of the declaration and not of "
+            f"ROLA_{fam.name.upper()}_ARMS, so it must be a property of the declaration and not of "
             f"where a row was typed. Write the rows sorted:\n"
             f"    {[list(r) for r in canonical]}")
 
@@ -205,14 +230,21 @@ _DECLARED = _load_shipped_set()
 
 #: THE ARM TABLE, in declaration order.  `CARRY_ARMS[i]` is arm `i` everywhere.
 CARRY_ARMS: tuple = _DECLARED["rows"]
+#: THE DECODE FAMILY'S, the same way (`DECODE`).
+DECODE_ARMS: tuple = _load_arm_set(DECODE)["rows"]
+
+
+def rows_of(fam: ArmFamily) -> tuple:
+    """A family's declared rows, by name (the self-test swaps the carry's table in place)."""
+    return {"carry": CARRY_ARMS, "decode": DECODE_ARMS}[fam.name]
 
 
 def declaration_matches_table() -> list[str]:
     """RE-READ the declaration and compare it to this module's table.
 
     The point of the round trip is that the two statements are independent: the table
-    was built at import time from the file as it was THEN, and the post-build check
-    (`setup.py`) asks the question again against the file as it is NOW, after a build
+    was built at import time from the file as it was THEN, and the library's arm gate
+    (`bazel/gates.py`) asks the question again against the file as it is NOW, after a build
     that may have run for an hour. It is also the only check that fires when something
     mutates the table after import.
     """
@@ -229,7 +261,7 @@ def carry_kernel_key(row) -> tuple:
 
     Two rows that key the same are ONE kernel and share a file; emitting one kernel
     from two objects is the state `tools/ratify.py` refuses by name.  On the final key
-    a row IS its kernel: `(D, DV, warps_per_cta)` selects a body and nothing else does.
+    a row IS its kernel: the operation-plan pair selects a body and nothing else does.
     """
     return tuple(row)
 
@@ -275,12 +307,24 @@ def shard_manifest_block() -> dict:
     return out
 
 
+def write_builds(archs) -> None:
+    """Write `build/generated/builds.inc` for these architectures: the builds the binary carries
+    (`measure/hardware.py`'s `builds_header`; docs/internals/common/select.md#carried)."""
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from measure import hardware
+
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    (GENERATED_DIR / BUILDS_INC).write_text(hardware.builds_header([str(a) for a in archs]))
+
+
 def carry_parts_header(parts, trivial) -> str:
-    """THE GENERATED (never checked in) PARTS HEADER: `ROLA_CARRY_PARTS` as a bit mask over
-    `CARRY_PARTS` (bit i: part i real), and `ROLA_CARRY_TRIVIAL` (bit i: a real part i named `=trivial` in its
+    """THE GENERATED (never checked in) PARTS HEADER: `ROLA_CARRY_PARTS`, the parts `--//:carry_parts` makes real, as a
+    bit mask over `CARRY_PARTS` (bit i: part i real), and `ROLA_CARRY_TRIVIAL` (bit i: a real part i named `=trivial` in its
     TRIVIAL form -- its loads and stores from fixed addresses, no dependence, no waits), written
     on every build and every ratify run (a composer's mask left behind must never reach a gate).
-    Included only by `carry/carry_kernel.cuh`."""
+    Included only by `carry/ampere/carry_kernel.cuh`."""
     bad = sorted((set(parts) | set(trivial)) - set(CARRY_PARTS))
     if bad:
         raise ValueError(f"carry_parts_header: no such part(s) {bad}; the parts are {CARRY_PARTS}")
@@ -297,63 +341,68 @@ def carry_parts_header(parts, trivial) -> str:
 
 
 def carry_selection_header(arms) -> str:
-    """THE GENERATED (never checked in) SELECTION HEADER.
+    """The carry family's selection header (`selection_header`), from `--//:carry_arms`."""
+    return selection_header(CARRY, CARRY_ARMS, arms)
 
-    Renders `#define ROLA_CARRY_BUILT 1` plus one `#define ROLA_CARRY_BUILD_<i> 1`
-    per index in `sorted(set(arms))`. Written by `setup.py` (from `ROLA_CARRY_ARMS`)
-    and by `tools/ratify.py` (from the shipped set or a `--carry-arms`/`--arm` scope)
-    to `GENERATED_DIR / CARRY_SELECTION_INC` on every run, UNCONDITIONALLY
-    OVERWRITING whatever is there -- never accumulated across runs. Included ONLY by
-    the carry family's checked-in arm include (the per-arm TUs and the carry dispatch
-    TU reach it through that one file), never by anything else, so no other translation
-    unit's argv or included content depends on the selection.
 
-    An empty selection (`arms == []`) still emits the `ROLA_CARRY_BUILT` sentinel
-    and zero `ROLA_CARRY_BUILD_<i>` lines: a build that selects nothing must still
-    satisfy the dispatch TU's include-guard, not silently omit it.
+def decode_selection_header(arms) -> str:
+    """The decode family's selection header (`selection_header`), from `--//:decode_arms`."""
+    return selection_header(DECODE, DECODE_ARMS, arms)
 
-    IT ALSO CARRIES THE ARM SET `arm_switch` DISPATCHES OVER -- the X-macro
-    `ROLA_CARRY_ARM_SET_X(F)`, one `F(index, D, DV, warps_per_cta)` per SELECTED row in
-    index order, with `ROLA_CARRY_ARM_COUNT` (how many this build carries) beside
-    `ROLA_CARRY_ARM_DECLARED` (how many the declaration declares). Both counts, because
+
+def selection_header(fam: ArmFamily, rows, arms) -> str:
+    """THE GENERATED (never checked in) SELECTION HEADER of a family.
+
+    Renders `#define ROLA_<FAMILY>_BUILT 1` plus one `#define ROLA_<FAMILY>_BUILD_<i> 1`
+    per index in `sorted(set(arms))`. Written by the graph's header action (from `--//:<family>_arms`)
+    and by `tools/ratify.py`'s compile path (from the declared set or a scope)
+    to `GENERATED_DIR / fam.header` on every run, REPLACING whatever is there -- never accumulated across runs. Included ONLY by
+    the family's own units (`fam.includer`), so no other translation unit's argv or included content depends on the
+    selection -- a `-D` would reach every unit's argv and rebuild the whole extension on a subset change.
+
+    An empty selection (`arms == []`) still emits the `ROLA_<FAMILY>_BUILT` sentinel
+    and zero `ROLA_<FAMILY>_BUILD_<i>` lines: a build that selects nothing must still
+    satisfy the includer's guard, not silently omit it.
+
+    IT ALSO CARRIES THE ARM SET the host dispatches over -- the X-macro
+    `ROLA_<FAMILY>_ARM_SET_X(F)`, one `F(index, <the row's key fields>)` per SELECTED row in
+    index order, with `ROLA_<FAMILY>_ARM_COUNT` (how many this build carries) beside
+    `ROLA_<FAMILY>_ARM_DECLARED` (how many the declaration declares). Both counts, because
     the host refusal has to tell "your wheel does not carry that arm" from "nothing
     builds that arm in any configuration" -- which is an iteration build's subset against an arm nobody declared.
     """
-    n = len(CARRY_ARMS)
+    n = len(rows)
+    name = fam.name.upper()
     bad = sorted({i for i in arms if not 0 <= i < n})
     if bad:
-        raise ValueError(f"carry_selection_header: no such carry arm(s) {bad}; "
+        raise ValueError(f"{fam.name}_selection_header: no such {fam.name} arm(s) {bad}; "
                          f"the list has {n} rows (0..{n - 1})")
     picked = sorted(set(arms))
     out = [BANNER,
-           "// the CARRY ARM SELECTION for this build/ratify run. NEVER\n",
-           "// CHECKED IN; regenerated by setup.py (from ROLA_CARRY_ARMS) and by\n",
-           "// tools/ratify.py (from the shipped set or --arm scope) on every run.\n",
-           "// Included only by the per-arm TUs and the carry dispatch TU.\n",
-           "#define ROLA_CARRY_BUILT 1\n"]
+           f"// the {name} ARM SELECTION for this build/ratify run. NEVER\n",
+           f"// CHECKED IN; regenerated by the graph (from --//:{fam.name}_arms) and by\n",
+           "// tools/ratify.py's compile path (from the declared set or its scope) on every run.\n",
+           f"// Included only by {fam.includer}.\n",
+           f"#define ROLA_{name}_BUILT 1\n"]
     for i in picked:
-        out.append(f"#define ROLA_CARRY_BUILD_{i} 1\n")
-    out.append("\n// THE ARM SET, for common/arm_switch.cuh: one F(i, D, DV, "
-               "warps_per_cta)\n// per BUILT arm, in index order. See "
-               "docs/internals/common/arm_switch.md\n")
-    out.append(f"#define ROLA_CARRY_ARM_COUNT {len(picked)}\n")
-    out.append(f"#define ROLA_CARRY_ARM_DECLARED {n}\n")
-    body = " \\\n".join(
-        f"  F({i}, {CARRY_ARMS[i][0]}, {CARRY_ARMS[i][1]}, {CARRY_ARMS[i][2]})"
-        for i in picked)
+        out.append(f"#define ROLA_{name}_BUILD_{i} 1\n")
+    out.append(f"\n// THE ARM SET, for the host's dispatch: one F(i, {', '.join(fam.key)})\n"
+               "// per BUILT arm, in index order. See docs/internals/tools/gen_shards.md#families\n")
+    out.append(f"#define ROLA_{name}_ARM_COUNT {len(picked)}\n")
+    out.append(f"#define ROLA_{name}_ARM_DECLARED {n}\n")
+    body = " \\\n".join(f"  F({i}, {', '.join(str(v) for v in rows[i])})" for i in picked)
     if body:
-        out.append("#define ROLA_CARRY_ARM_SET_X(F) \\\n" + body + "\n")
+        out.append(f"#define ROLA_{name}_ARM_SET_X(F) \\\n" + body + "\n")
     else:
-        out.append("//: NO ARM IS BUILT: the X-macro expands to nothing, "
-                   "`ROLA_CARRY_ARM_COUNT` is 0,\n"
-                   "//: and `arm_switch` refuses every call by naming the empty set. "
-                   "That is the\n//: honest state of a family with no kernels, not a hole.\n"
-                   "#define ROLA_CARRY_ARM_SET_X(F)\n")
+        out.append(f"//: NO ARM IS BUILT: the X-macro expands to nothing, `ROLA_{name}_ARM_COUNT` is 0,\n"
+                   "//: and the host's dispatch refuses every call by naming the empty set. That is the\n"
+                   "//: honest state of a family with no kernels, not a hole.\n"
+                   f"#define ROLA_{name}_ARM_SET_X(F)\n")
     return "".join(out)
 
 
 def carry_sources() -> list:
-    """`{arm index -> the generated file that carries it}`, for `setup.py`."""
+    """`{arm index -> the generated file that carries it}`, for the unit list (`tools/kernels.py`'s `arm_units`)."""
     tu = carry_tu_of()
     return {i: f"carry_arm_{tu[i]}.cu" for i in range(len(CARRY_ARMS))}
 
@@ -375,7 +424,7 @@ def carry_arm_unit(owner: int, members: list[int]) -> str:
     for i in members:
         row = CARRY_ARMS[i]
         out.append(f"#if defined(ROLA_CARRY_BUILD_{i})\n")
-        out.append(f"ROLA_CARRY_ARM_DEFINE({i}, {row[0]}, {row[1]}, {row[2]})\n")
+        out.append(f"ROLA_CARRY_ARM_DEFINE({i}, {', '.join(str(v) for v in row)})\n")
         out.append("#endif\n")
     out.append("\n}  // namespace rola::carry\n")
     return "".join(out)
@@ -397,12 +446,178 @@ def generated() -> dict[str, str]:
     return out
 
 
-_BUILT_LINE_RE = re.compile(r"^#define ROLA_CARRY_BUILT 1$")
-_ARM_LINE_RE = re.compile(r"^#define ROLA_CARRY_BUILD_(\d+) 1$")
+#: THE GRAPH'S VIEW OF THE UNITS: `tools/kernels.py`'s hand-written units and each generated carry unit with the arms
+#: it carries, loaded by `csrc/rola/BUILD.bazel` so the graph compiles the kernel list's units and an arm subset only
+#: the units it names. Checked in and checked like the generated units themselves.
+UNITS_BZL = ROOT / "csrc" / "rola" / "units.bzl"
+
+
+def units_bzl() -> str:
+    """`csrc/rola/units.bzl`: `HAND_UNITS` (the kernel list's, relative to csrc/rola), `RUNTIME_UNITS` (those of them
+    the runtime's, `kernels.runtime_units`), `CARRY_ARM_UNITS` (each generated unit's file and the arm indices it
+    carries) and `CARRY_ARM_COUNT` (the declared rows)."""
+    import kernels
+
+    def listed(paths):
+        return "".join(f'    "{p.relative_to(OUT_DIR.parents[1]).as_posix()}",\n' for p in paths)
+
+    hand = listed(kernels.hand_units(OUT_DIR.parent))
+    runtime = listed(kernels.runtime_units(OUT_DIR.parent))
+    rows = "".join(f'    "carry_arm_{owner}.cu": {members},\n' for owner, members in carry_groups().items())
+    return ('"""GENERATED by tools/gen_shards.py -- do not edit, regenerate (`python tools/gen_shards.py --write`)."""\n\n'
+            f"#: the hand-written units (tools/kernels.py's hand_units)\nHAND_UNITS = [\n{hand}]\n\n"
+            f"#: the runtime's units among them (tools/kernels.py's runtime_units)\nRUNTIME_UNITS = [\n{runtime}]\n\n"
+            f"#: each generated carry unit and the arm indices it carries\nCARRY_ARM_UNITS = {{\n{rows}}}\n\n"
+            f"#: the declared carry arms\nCARRY_ARM_COUNT = {len(CARRY_ARMS)}\n")
+
+
+def family_arms(fam: ArmFamily, value: str, knob: str) -> list[int]:
+    """A family's arm scope from a build's spec (indices into its declared rows, or `all`); an empty spec is every
+    row."""
+    rows = rows_of(fam)
+    spec = value.replace(",", " ").split()
+    if not spec:
+        return list(range(len(rows)))
+    n = len(rows)
+    out: list[int] = []
+    for tok in spec:
+        if tok == "all":
+            out += list(range(n))
+            continue
+        try:
+            i = int(tok)
+        except ValueError:
+            raise SystemExit(f"{knob}: {tok!r} is not an arm index or 'all'") from None
+        if not 0 <= i < n:
+            raise SystemExit(f"{knob}: no such {fam.name} arm {i}; the list has {n} rows (0..{n - 1})")
+        out.append(i)
+    return sorted(set(out))
+
+
+def carry_parts_spec(spec: str, knob: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The carry kernel's REAL parts for a build's spec and, of those, the TRIVIAL ones (the composer's switches): every
+    part for `all` or an empty spec, none for `none`, else a comma list of `CARRY_PARTS` names, an item `part=trivial`
+    naming a real part built in its trivial form (its memory instructions issued, its dependence or structure removed).
+    A subset or a trivial part makes the build an ITERATION build."""
+    spec = spec.strip()
+    if spec in ("", "all"):
+        return CARRY_PARTS, ()
+    if spec == "none":
+        return (), ()
+    items = [x for x in spec.replace(" ", "").split(",") if x]
+    names = tuple(x.split("=")[0] for x in items)
+    trivial = tuple(x.split("=")[0] for x in items if x.endswith("=trivial"))
+    bad = sorted(set(names) - set(CARRY_PARTS)) + [x for x in items if "=" in x and not x.endswith("=trivial")]
+    if bad:
+        raise SystemExit(f"{knob}: no such part(s) {bad}; the parts are {CARRY_PARTS}, an item `part` or "
+                         "`part=trivial`")
+    return names, trivial
+
+
+def check_generated(want: dict[str, str] | None = None) -> list[str]:
+    """The checked-in generated files (the per-arm units, `csrc/rola/units.bzl`) are the ones the arm list produces, and
+    the selection headers' schemas hold: the findings, empty when they do. A generated file that disagrees with its
+    generator is an arm list nobody wrote."""
+    want = generated() if want is None else want
+    bad = []
+    on_disk = ({p.name for p in OUT_DIR.iterdir() if p.is_file() and p.name != ".gitkeep"} if OUT_DIR.is_dir() else set())
+    for name in sorted(on_disk - set(want)):
+        bad.append(f"    {name}: on disk, not generated")
+    for name, text in sorted(want.items()):
+        path = OUT_DIR / name
+        if not path.exists():
+            bad.append(f"    {name}: missing")
+        elif path.read_text() != text:
+            bad.append(f"    {name}: differs from the generated content")
+    if not UNITS_BZL.is_file() or UNITS_BZL.read_text() != units_bzl():
+        bad.append(f"    {UNITS_BZL.relative_to(ROOT)}: missing or differs from the generated content")
+    if bad:
+        return ["FAIL  the checked-in instantiation shards do not match the arm list in tools/gen_shards.py:", *bad,
+                "", "    bazel run //tools:gen_shards -- --write"]
+    selection_bad = [b for fam in FAMILIES for b in _check_selection_schema(fam, rows_of(fam))]
+    if selection_bad:
+        return ["FAIL  the selection headers' schema self-test failed (the generated selection header is never "
+                "checked in, so this asserts the generator directly):", *selection_bad]
+    return []
+
+
+def check_built_arm_table(header: str | None, want: list[int]) -> list[str]:
+    """The built arm table against the declared shipped set, as three statements of one set: the generator's table
+    still matches the declaration (re-read now); the selection header the build compiled against names exactly the
+    arms the build selected; and its counts and members are those rows. `header` is that header's text. The findings,
+    empty when all three hold."""
+    bad = declaration_matches_table()
+    if bad:
+        return [f"the carry arm table does not match the declared shipped set at {SHIPPED_SET_JSON}:", *bad]
+    if header is None:
+        return ["the build has no carry selection header: the per-arm units compiled against something else"]
+    named = sorted(int(m) for m in re.findall(r"^#define ROLA_CARRY_BUILD_(\d+) 1$", header, re.MULTILINE))
+    if named != list(want):
+        return [f"the selection header names carry arms {named}, the build selected {list(want)}: the binary carries "
+                "the header's set and not the build's"]
+    count = re.search(r"^#define ROLA_CARRY_ARM_COUNT (\d+)$", header, re.MULTILINE)
+    declared = re.search(r"^#define ROLA_CARRY_ARM_DECLARED (\d+)$", header, re.MULTILINE)
+    if count is None or declared is None:
+        return ["the selection header carries no ROLA_CARRY_ARM_COUNT/ROLA_CARRY_ARM_DECLARED: `arm_switch` has no "
+                "set to dispatch over and no way to tell an unbuilt arm from an undeclared one"]
+    if int(count.group(1)) != len(want) or int(declared.group(1)) != len(CARRY_ARMS):
+        return [f"the selection header declares {count.group(1)} built / {declared.group(1)} declared arms; the build "
+                f"selected {len(want)} of {len(CARRY_ARMS)} declared"]
+    members = sorted(tuple(int(x) for x in m.split(", ")) for m in re.findall(r"^  F\(([\d, ]+)\)", header,
+                                                                                re.MULTILINE))
+    if members != sorted((i,) + tuple(CARRY_ARMS[i]) for i in want):
+        return [f"the arm set names {members}, which is not the build's rows of the declaration"]
+    return []
+
+
+#: THE COVERAGE SWEEP'S PROBE, run in its own interpreter against a built extension LOADED BY PATH: the fact wanted is
+#: a property of that artifact, and `import rola` would resolve through whatever the environment has installed
+_ARM_SWEEP_PROBE = """
+import importlib.util, json, sys
+from pathlib import Path
+import torch  # noqa: F401 -- the extension links against it and must load first
+name = Path(sys.argv[1]).name.split(".")[0]  # the module's init symbol is PyInit_<name>
+spec = importlib.util.spec_from_file_location(name, sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)  # loading the library registers torch.ops.rola
+print(json.dumps([list(row) for row in torch.ops.rola.carry_arms()]))
+"""
+
+
+def sweep_binary(python: str, so: Path, want: list[int], cwd: Path, env: dict | None = None) -> int:
+    """R9's fourth layer, host side: the binary is asked what it carries (`python`, an interpreter with torch, loads
+    it by path in `cwd`), and the answer must be exactly the rows the build selected -- the generator, the selection
+    header and the binary are three statements of one set. The count swept; raises on any difference."""
+    import subprocess
+
+    proc = subprocess.run([python, "-c", _ARM_SWEEP_PROBE, str(so)], capture_output=True, text=True, cwd=str(cwd),
+                          env=env)
+    if proc.returncode != 0:
+        raise RuntimeError(f"the arm coverage sweep could not load {so}:\n{proc.stderr}")
+    got = sorted(tuple(row) for row in json.loads(proc.stdout))
+    expect = sorted(tuple(CARRY_ARMS[i]) for i in want)
+    if got != expect:
+        raise RuntimeError(f"{so.name} reports the carry arms {[list(r) for r in got]}, the build selected "
+                           f"{[list(r) for r in expect]}: a binary that cannot name what it carries cannot refuse "
+                           "what it does not")
+    return len(got)
+
+
+def is_iteration(carry_arms, decode_arms, parts, trivial, archs, ratified) -> bool:
+    """A build whose carry or decode arms, carry parts or architectures are not the shipped set is an ITERATION build:
+    never a wheel, never ratified, and self-identifying (docs/build.md#iteration). A build carrying MORE than the shipped
+    rows is one too: the manifest ratifies the shipped set, whichever direction a binary differs in."""
+    return (set(carry_arms) != set(range(len(CARRY_ARMS))) or set(decode_arms) != set(range(len(DECODE_ARMS)))
+            or set(parts) != set(CARRY_PARTS) or bool(trivial) or set(archs) != set(ratified))
 
 
 def _check_carry_selection_schema() -> list[str]:
-    """Self-test for `carry_selection_header`.
+    """`_check_selection_schema` on the carry family."""
+    return _check_selection_schema(CARRY, CARRY_ARMS)
+
+
+def _check_selection_schema(fam: ArmFamily, rows) -> list[str]:
+    """Self-test for a family's `selection_header`.
 
     The generated selection header is never checked into the tree, so `--check`
     cannot diff it against a file on disk the way it does the instantiation
@@ -411,59 +626,60 @@ def _check_carry_selection_schema() -> list[str]:
     the empty-selection edge case.
     """
     bad: list[str] = []
+    up = fam.name.upper()
+    built_re = re.compile(rf"^#define ROLA_{up}_BUILT 1$")
+    arm_re = re.compile(rf"^#define ROLA_{up}_BUILD_(\d+) 1$")
     cases = {
-        "all": list(range(len(CARRY_ARMS))),
-        "shipped": list(range(len(CARRY_ARMS))),
+        "all": list(range(len(rows))),
+        "shipped": list(range(len(rows))),
         "empty": [],
     }
     for name, arms in cases.items():
-        text = carry_selection_header(arms)
+        text = selection_header(fam, rows, arms)
         #: THE SELECTION LINES ONLY. The header also carries the arm SET (checked
         #: by `_check_arm_set_schema` below), so a bare `#define` filter would count
         #: those and read every well-formed header as malformed.
         lines = [l for l in text.splitlines()
-                 if l.startswith("#define ROLA_CARRY_BUILT")
-                 or l.startswith("#define ROLA_CARRY_BUILD_")]
+                 if l.startswith(f"#define ROLA_{up}_BUILT")
+                 or l.startswith(f"#define ROLA_{up}_BUILD_")]
         want_n = 1 + len(arms)
         if len(lines) != want_n:
-            bad.append(f"    carry_selection_header({name}): {len(lines)} #define "
+            bad.append(f"    {fam.name}_selection_header({name}): {len(lines)} #define "
                        f"lines, expected {want_n} (1 + {len(arms)} arms)")
             continue
-        if not _BUILT_LINE_RE.match(lines[0]):
-            bad.append(f"    carry_selection_header({name}): first #define line "
-                       f"{lines[0]!r} is not the ROLA_CARRY_BUILT sentinel")
+        if not built_re.match(lines[0]):
+            bad.append(f"    {fam.name}_selection_header({name}): first #define line "
+                       f"{lines[0]!r} is not the ROLA_{up}_BUILT sentinel")
             continue
         seen: list[int] = []
         malformed = []
         for line in lines[1:]:
-            m = _ARM_LINE_RE.match(line)
+            m = arm_re.match(line)
             if not m:
                 malformed.append(line)
             else:
                 seen.append(int(m.group(1)))
         if malformed:
-            bad.append(f"    carry_selection_header({name}): malformed #define "
+            bad.append(f"    {fam.name}_selection_header({name}): malformed #define "
                        f"line(s): {malformed}")
             continue
         if len(seen) != len(set(seen)):
-            bad.append(f"    carry_selection_header({name}): duplicate arm index "
+            bad.append(f"    {fam.name}_selection_header({name}): duplicate arm index "
                        f"in {seen}")
             continue
         if set(seen) != set(arms):
-            bad.append(f"    carry_selection_header({name}): named indices "
+            bad.append(f"    {fam.name}_selection_header({name}): named indices "
                        f"{sorted(set(seen))} != requested {sorted(set(arms))}")
             continue
-        bad += _check_arm_set_schema(name, arms, text)
+        bad += _check_arm_set_schema(fam, rows, name, arms, text)
     return bad
 
 
-_COUNT_RE = re.compile(r"^#define ROLA_CARRY_ARM_COUNT (\d+)$", re.MULTILINE)
-_DECLARED_RE = re.compile(r"^#define ROLA_CARRY_ARM_DECLARED (\d+)$", re.MULTILINE)
-_SET_MEMBER_RE = re.compile(r"^  F\((\d+), (\d+), (\d+), (\d+)\)", re.MULTILINE)
+_SET_MEMBER_RE = re.compile(r"^  F\(([\d, ]+)\)", re.MULTILINE)
 
 
-def _check_arm_set_schema(name: str, arms, text: str) -> list[str]:
-    """`ROLA_CARRY_ARM_SET_X` names EXACTLY the selected rows, with their key.
+def _check_arm_set_schema(fam: ArmFamily, rows, name: str, arms, text: str) -> list[str]:
+    """`ROLA_<FAMILY>_ARM_SET_X` names EXACTLY the selected rows, with their key.
 
     The X-macro is what `arm_switch`'s generated set is built from, so a set that
     disagrees with the selection would give the host dispatch a different matrix from
@@ -471,24 +687,25 @@ def _check_arm_set_schema(name: str, arms, text: str) -> list[str]:
     which is the drift shape this generator exists to prevent.
     """
     bad = []
+    up = fam.name.upper()
     picked = sorted(set(arms))
-    count = _COUNT_RE.search(text)
-    declared = _DECLARED_RE.search(text)
+    count = re.search(rf"^#define ROLA_{up}_ARM_COUNT (\d+)$", text, re.MULTILINE)
+    declared = re.search(rf"^#define ROLA_{up}_ARM_DECLARED (\d+)$", text, re.MULTILINE)
     if count is None or int(count.group(1)) != len(picked):
-        bad.append(f"    carry_selection_header({name}): ROLA_CARRY_ARM_COUNT is "
+        bad.append(f"    {fam.name}_selection_header({name}): ROLA_{up}_ARM_COUNT is "
                    f"{count.group(1) if count else 'absent'}, expected {len(picked)}")
-    if declared is None or int(declared.group(1)) != len(CARRY_ARMS):
-        bad.append(f"    carry_selection_header({name}): ROLA_CARRY_ARM_DECLARED is "
+    if declared is None or int(declared.group(1)) != len(rows):
+        bad.append(f"    {fam.name}_selection_header({name}): ROLA_{up}_ARM_DECLARED is "
                    f"{declared.group(1) if declared else 'absent'}, expected "
-                   f"{len(CARRY_ARMS)}")
-    if "#define ROLA_CARRY_ARM_SET_X(F)" not in text:
-        bad.append(f"    carry_selection_header({name}): no ROLA_CARRY_ARM_SET_X, so "
+                   f"{len(rows)}")
+    if f"#define ROLA_{up}_ARM_SET_X(F)" not in text:
+        bad.append(f"    {fam.name}_selection_header({name}): no ROLA_{up}_ARM_SET_X, so "
                    f"a translation unit including this header would not compile")
         return bad
-    members = [tuple(int(x) for x in m) for m in _SET_MEMBER_RE.findall(text)]
-    want = [(i,) + tuple(CARRY_ARMS[i]) for i in picked]
+    members = [tuple(int(x) for x in m.split(", ")) for m in _SET_MEMBER_RE.findall(text)]
+    want = [(i,) + tuple(rows[i]) for i in picked]
     if members != want:
-        bad.append(f"    carry_selection_header({name}): ROLA_CARRY_ARM_SET_X names "
+        bad.append(f"    {fam.name}_selection_header({name}): ROLA_{up}_ARM_SET_X names "
                    f"{members}, expected {want}")
     return bad
 
@@ -499,15 +716,14 @@ def _check_arm_set_schema(name: str, arms, text: str) -> list[str]:
 _DECLARATION_MUTANTS: tuple[tuple[str, dict, str], ...] = (
     ("schema bump", {"schema": 3}, "schema"),
     ("wrong family", {"family": "decode"}, "family"),
-    ("re-keyed", {"key": ["D", "DV"]}, "keyed"),
-    ("domain missing a field", {"domains": {"D": [1], "DV": [64]}}, "domains"),
-    ("empty domain", {"domains": {"D": [], "DV": [64], "warps_per_cta": [8]}},
-     "non-empty list"),
-    ("row of the wrong width", {"shipped": [[2, 64]]}, "as 3 integers"),
-    ("value outside its domain", {"shipped": [[2, 48, 8]]},
-     "not in the declared domain"),
-    ("a row declared twice", {"shipped": [[2, 64, 8], [2, 64, 8]]}, "declared twice"),
-    ("rows out of canonical order", {"shipped": [[2, 64, 8], [1, 64, 8]]},
+    ("re-keyed", {"key": ["fold_rows", "read_rows"]}, "keyed"),
+    ("domain missing a field", {"domains": {"fold_rows": [32], "read_rows": [32]}}, "domains"),
+    ("empty domain", {"domains": {"fold_rows": [], "fold_factors": [1], "read_rows": [32], "read_factors": [1],
+                                  "channels": [32], "same_split": [0]}}, "non-empty list"),
+    ("row of the wrong width", {"shipped": [[32, 1]]}, "as 6 integers"),
+    ("value outside its domain", {"shipped": [[48, 1, 32, 1, 32, 0]]}, "not in the declared domain"),
+    ("a row declared twice", {"shipped": [[32, 1, 32, 1, 32, 0], [32, 1, 32, 1, 32, 0]]}, "declared twice"),
+    ("rows out of canonical order", {"shipped": [[32, 1, 32, 1, 32, 1], [32, 1, 32, 1, 32, 0]]},
      "canonical order"),
     ("a missing list", {"shipped": None}, "no `shipped` list"),
 )
@@ -552,20 +768,37 @@ def _self_test() -> int:
             except ShippedSetError:
                 pass
 
+    #: THE DECODE FAMILY'S READER refuses by the same rules, with its own key (`DECODE`)
+    dbase = json.loads(DECODE.manifest.read_text())
+    with tempfile.TemporaryDirectory(prefix="rola_decode_set_") as tmp:
+        path = Path(tmp) / "decode_set.json"
+        for name, patch, needle in (("wrong family", {"family": "carry"}, "family"),
+                                    ("re-keyed", {"key": ["d_v", "levels"]}, "keyed"),
+                                    ("value outside its domain", {"shipped": [[48, 1, 0]]}, "not in the declared domain")):
+            path.write_text(json.dumps({**copy.deepcopy(dbase), **patch}))
+            try:
+                _load_arm_set(DECODE, path)
+            except ShippedSetError as exc:
+                if needle not in str(exc):
+                    bad.append(f"    decode {name}: refused, but the message does not name {needle!r}: {exc}")
+                continue
+            bad.append(f"    decode {name}: ACCEPTED. The reader must refuse it.")
+    bad += _check_selection_schema(DECODE, DECODE_ARMS)
+
     #: A SYNTHETIC TABLE, installed on the module for the render checks only. The
     #: live declaration is empty, so nothing else in this file ever exercises a row.
     global CARRY_ARMS
     saved = CARRY_ARMS
-    CARRY_ARMS = ((1, 64, 8), (2, 64, 8), (2, 128, 4))
+    CARRY_ARMS = ((32, 1, 32, 1, 32, 0), (32, 1, 32, 1, 32, 1), (128, 2, 128, 2, 64, 1))
     try:
         bad += _check_carry_selection_schema()
         text = carry_selection_header([0, 2])
         for want in ("#define ROLA_CARRY_ARM_COUNT 2",
                      "#define ROLA_CARRY_ARM_DECLARED 3",
-                     "  F(0, 1, 64, 8)", "  F(2, 2, 128, 4)"):
+                     "  F(0, 32, 1, 32, 1, 32, 0)", "  F(2, 128, 2, 128, 2, 64, 1)"):
             if want not in text:
                 bad.append(f"    the rendered arm set is missing {want!r}")
-        if "  F(1, 2, 64, 8)" in text:
+        if "  F(1, 32, 1, 32, 1, 32, 1)" in text:
             bad.append("    the rendered arm set names arm 1, which this scope "
                        "does not build")
         block = shard_manifest_block()
@@ -592,7 +825,7 @@ def _self_test() -> int:
         print("SELF-TEST FAILED:")
         print("\n".join(bad))
         return 1
-    print(f"self-test OK  {len(_DECLARATION_MUTANTS)} declaration mutants refused by "
+    print(f"self-test OK  {len(_DECLARATION_MUTANTS)} carry and 3 decode declaration mutants refused by "
           f"name, a missing declaration refused, and the selection header, arm set "
           f"and shard block render a 3-row table")
     return 0
@@ -618,9 +851,11 @@ def main() -> int:
     want = generated()
     if a.write:
         #: THE GENERATED TREE, INCLUDING THE SELECTION HEADER, IS ONE SHARED
-        #: OUTPUT (LOCKS brief item 3): `tools/ratify.py` writes the same
-        #: `CARRY_SELECTION_INC` path unconditionally on every build, so this
+        #: OUTPUT: `tools/ratify.py`'s compile path writes the same
+        #: `CARRY_SELECTION_INC` path unconditionally on every run, so this
         #: CLI's own `--write` must not interleave with that write either.
+        from rola_devtools.locks import host
+
         with host.file_lock("carry_selection_header"):
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             for name in sorted({p.name for p in OUT_DIR.iterdir() if p.is_file()}):
@@ -629,37 +864,18 @@ def main() -> int:
                     print(f"removed stale {name}")
             for name, text in sorted(want.items()):
                 (OUT_DIR / name).write_text(text)
-        print(f"wrote {len(want)} files to {OUT_DIR.relative_to(ROOT)}")
+            UNITS_BZL.write_text(units_bzl())
+        print(f"wrote {len(want)} files to {OUT_DIR.relative_to(ROOT)}, and {UNITS_BZL.relative_to(ROOT)}")
         return 0
 
-    bad = []
-    on_disk = ({p.name for p in OUT_DIR.iterdir() if p.is_file() and p.name != ".gitkeep"}
-               if OUT_DIR.is_dir() else set())
-    for name in sorted(on_disk - set(want)):
-        bad.append(f"    {name}: on disk, not generated")
-    for name, text in sorted(want.items()):
-        path = OUT_DIR / name
-        if not path.exists():
-            bad.append(f"    {name}: missing")
-        elif path.read_text() != text:
-            bad.append(f"    {name}: differs from the generated content")
+    bad = check_generated(want)
     if bad:
-        print("FAIL  the checked-in instantiation shards do not match the arm "
-              "list in tools/gen_shards.py:")
         print("\n".join(bad))
-        print("\n    python tools/gen_shards.py --write")
-        return 1
-
-    selection_bad = _check_carry_selection_schema()
-    if selection_bad:
-        print("FAIL  carry_selection_header's schema self-test failed (the "
-              "generated selection header is never checked in, so this asserts "
-              "the generator directly):")
-        print("\n".join(selection_bad))
         return 1
 
     print(f"shards OK  {len(want)} generated files match the {len(CARRY_ARMS)}-row "
-          "arm list; carry_selection_header schema OK")
+          "arm list; the selection headers' schemas OK for "
+          + ", ".join(f"{fam.name} ({len(rows_of(fam))} rows)" for fam in FAMILIES))
     return 0
 
 

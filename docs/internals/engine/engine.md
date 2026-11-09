@@ -6,7 +6,7 @@ is and how its pieces connect; the code is the authoritative statement of how ea
 body works. What is DECIDED from facts is [the rule layer's page](rules.md).
 
 Symbols: `B` batch, `T` tokens, `H` heads, `D` routing depth, `N` leaf count, `d_v`
-value width, `C` chunk tokens, `BC` owner block, `BH = B*H`.
+value width, `BC` the carry's box in leaves (the arena's allocation extent), `BH = B*H`.
 
 ## <a id="the-three-bands"></a>1. What the engine is
 
@@ -14,25 +14,25 @@ One structure carries every kernel family from a call's raw inputs to its launch
 arguments:
 
 ```
-Context  ->  DAG  ->  Plan  ->  execute(plan)
+Context  ->  DAG  ->  launch
 ```
 
-* a **Context** (`ChunkContext`) is a frozen record of the RAW inputs — the routing
-  bundle, `v`, the decay dial, the state, the expert overrides. Nothing derived.
+* a **Context** (`PrefillContext`, `DecodeContext`) is a frozen record of the RAW
+  inputs — the routing bundle, the values, the decay dial, the state, the expert
+  overrides. Nothing derived.
 * a **DAG** is an ordered tuple of declared nodes in THREE BANDS. Band 1 nodes may
   launch and may allocate, and produce FACTS: what is true about this call. Band 2
   nodes are RULES — pure host folds from facts to decisions, which launch nothing and
   allocate nothing ([`rules.md`](rules.md)). They are interleaved, not phased.
-* a **Plan** is band 3: the DAG's terminal fact set — the rules' verdicts plus
-  references to the terminal tensor facts, and no third kind of field.
-* `execute(plan)` reads the plan and nothing else. A launch site that decides
-  anything is the condition this engine exists to remove.
+* a **Plan** is band 3 where a family has one: the rules' verdicts plus references to
+  the terminal tensor facts, and no third kind of field (`plan.py`'s `DecodePlan`,
+  which the decode DAG's `step` node launches).
+* the launch node reads its plan or its facts and decides nothing. A launch site that
+  decides anything is the condition this engine exists to remove.
 
-Five conventions used to produce launch configuration and derived device state
-independently, agreeing by hand rather than by construction: the facade's longhand
-host order, the chunk seam's ad-hoc argument threading, the decode geometry object,
-the state's residency entry, and the arena's side-stream/event pattern. The engine is
-those five under one declaration.
+The engine puts under one declaration what would otherwise be five conventions agreeing
+by hand: the facade's host order, the prefill seam's argument threading, the decode
+geometry object, the state's residency entry, and the arena's side-stream/event pattern.
 
 ## <a id="the-split-rule"></a>2. What lives where
 
@@ -45,11 +45,13 @@ it at all:
 * `rola/engine/` (the ROOT) — the SHARED CORE, which belongs to no domain: the DAG
   framework (`runner.py` — `Node`, `node`, `rule`, `run`, `validate_dag`,
   `validate_capturable`), the value types, the pins a caller may set over axes the op
-  decides — `PlanOverrides` — and the refusal every no-backward clause raises —
+  decides — `PlanOverrides` — the carry's carve — `Carve`, `SidePlan` — and the
+  refusal every no-backward clause raises —
   `BackwardNotImplemented` — (`types.py`), and the per-family plans (`plan.py`).
 * `rola/engine/facts/` — band 1, BODIES INCLUDED. The packing and the write-atom
-  bitmap (`planes.py`), the build's arm censuses (`manifest.py`), the operand list
-  (`operands.py`), the adapters that read those facts off a routing bundle and the
+  bitmap (`planes.py`), the liveness words and their folds (`liveness.py`), the facts
+  pass's list model (`lists.py`), the operand list (`operands.py`), the adapters that read those facts off a routing
+  bundle and the
   envelope authority they fold into — `envelope_refusal` and `require_envelope`
   (`call.py`) — and the declared nodes over them (`nodes.py`). A fact primitive is not
   a wrapper that defers its logic elsewhere; the primitive IS here.
@@ -93,7 +95,7 @@ The runner is the whole execution model:
 ## <a id="masks"></a>4. Masks, and why not per-fact bools
 
 Specialization is per CALL CLASS, and the set is CLOSED AT FOUR: `M1`
-prefill-stateless and `M2` prefill-stateful for the chunk family, `M3` decode-dense and
+prefill-stateless and `Mask.M2` prefill-stateful for the prefill family, `Mask.M3` decode-dense and
 `M4` decode-paged for the decode family. Each family has its own MaskRule over its own
 facts — `mask` folds `CallClass`'s four bits, `decode_mask` folds the one bit a decode
 step has — and a mask earns its name only by selecting a DIFFERENT node set. A growth
@@ -101,9 +103,8 @@ step does not: it is `M4` walked twice around an admission
 ([`decode_dag.md` §1](decode_dag.md#the-two-masks)).
 
 A bool per fact would be `2^n` specializations of everything downstream, so intra-mask
-variation is carried as a null plan FIELD instead — `read_mass is None`,
-`state_in is None`, a dense step's `page_table is None` — which is free and costs no
-hot-loop register.
+variation is carried as a null plan FIELD instead — `state_in is None`, a dense step's
+`page_table is None` — which is free and costs no hot-loop register.
 
 ## <a id="the-suppliable-set"></a>5. The suppliable set is closed
 
@@ -136,7 +137,7 @@ Node metadata declares the discipline the arena implements:
   wiring ([`decode_dag.md` §6](decode_dag.md#reference-only)).
 
 Where a Join sits is a correctness fact, not a scheduling preference: see
-[the chunk DAG's page](chunk_dag.md#the-join).
+[the prefill DAG's page](prefill_dag.md).
 
 ## <a id="memoization"></a>7. Memoization is a node attribute
 
@@ -161,23 +162,17 @@ inherits nothing through a cache (`docs/internals/state.md` §9.1).
 `tests/unit/test_facts_memo.py` drives every shipped `per_state` node with a state that
 raises on any attribute read, so the property is proven per node rather than declared.
 
-There is a third kind and it is deliberately NOT a node attribute: a PRIMITIVE whose
-answer is a function of the loaded binary rather than of any fact declares its own
-caching, at the primitive. `rola/engine/facts/manifest.py`'s two census reads are the
-whole of that class — `chunk_arms()` is `functools.cache`d — and
-the reason it cannot be `pure_of` is structural rather than stylistic: the census node
-has no `needs` to key a memo by, and four of the five sites that read the census are
-direct calls from `facts/call.py` and `facts/planes.py` that no node memo reaches. The
-cached values are immutable (a tuple and a `frozenset`) because a shared value a
-caller could mutate would not be a fact, and `.cache_clear()` is the escape hatch a
-test that scripts a manifest uses.
+A PRIMITIVE whose answer is a function of the loaded binary rather than of any fact is
+not a node and no node memo reaches it: the binary's arm census (`rola.ops.carry.arms`) is
+read by the envelope adapter in `facts/call.py` at each call. The intra's admitted widths are not one: they are a law
+over the widths and the value width (`rola.ops.intra.admits`).
 
 ## <a id="refusals"></a>8. Refusals are one call at the head
 
 Each kernel family has ONE `validate_context(ctx)`, run immediately after the context
 is built and before any fact node. It consolidates the operand-type refusals, the
-configuration envelope, the suppliable-set closure and the reverse pass's narrower
-arm matrix. Scattering preconditions across the DAG would allow a refusal three
+configuration envelope, the gradient refusal and the suppliable-set closure. Scattering preconditions across the DAG
+would allow a refusal three
 launches in, with the operands already consumed; one call at the head makes that
 unreachable by construction.
 
@@ -188,13 +183,13 @@ The envelope half of that call is `facts/call.py`'s `require_envelope`, and it i
 reached DOWNWARD: the engine composes the rule layer's clauses over its own adapters
 and the facade calls the engine, never the reverse. `envelope_refusal` beside it is the
 same composition without the raise, which is what lets a caller ask before calling —
-`rola.expert` re-exports it as the public address (`docs/api.md` §4.1), and that
+`rola.expert` re-exports it as the public address (`docs/api.md` §5), and that
 re-export is the only direction the dependency runs.
 
 `PlanOverrides` is the same statement from the other end. A pin is a VALUE a rule
 folds — `rules/paging.py` reads it and returns a bool — so it is engine vocabulary and
 `types.py` is where it is defined; `rola.expert` re-exports it as the marked door
-(`docs/api.md` §6). NO MODULE UNDER `rola/engine/` IMPORTS `rola.interface` OR
+(`docs/api.md` §5). NO MODULE UNDER `rola/engine/` IMPORTS `rola.interface` OR
 `rola.expert`, at import time or inside a body: a deferred import in a function body
 hides an inversion from the import graph without removing it, so the rule layer holds
 none.
@@ -202,37 +197,19 @@ none.
 ## <a id="the-plan"></a>9. What a plan may hold
 
 A host field is some rule's verdict; a tensor field is a reference to a terminal
-fact. **No plan field may be `O(N * L)`.** The two-pass reverse pass rebuilds the
-state and replays the schedule from the union table rather than from per-chunk
-snapshots, and that claim is a property of the plan's field list rather than an
-accident of what the forward happened to keep.
+fact. **No plan field may be `O(N * L)`**: a plan is held for as long as its call is,
+so a field added for one launch's convenience is retained with it.
 
-That rule is load-bearing in a way it was not before the backward's ctx became a
-plan REFERENCE: a grad-bearing call now keeps the whole plan alive until the reverse
-pass runs, so a field added for the forward's convenience is retained for free.
-The gate that walked the retained plans field by field, holding each to a closed form and
-refusing a field it had no term for BY NAME, went with the tiled consumer's backward. The
-rebuild's backward owes its own (card C, C-b): a retained set nothing walks is a retained
-set that grows.
-
-Two facts are also OPERANDS and the engine does not pretend otherwise: the union
-table is read by the consumer kernel as its schedule and by the block bitmap as data,
-and the state-out plane is both a launch argument and the call's result.
-
-A plan is also not always a walk's OUTPUT. The backward family's plan is its INPUT —
-the forward's, held by reference — because the reverse pass finds no facts of its own
-(the backward DAG left with the K31 deletion batch; baseline = tag `baseline/pre-k31`).
+A fact can also be an OPERAND, and the engine does not pretend otherwise: the
+state-out plane is both a launch argument and the call's result.
 
 ## <a id="neutrality"></a>10. The neutrality gate
 
-A host refactor that claims neutrality is answerable to a capture of what the extension
-RETURNED — `y`, the state plane and the facts themselves — off a fixed cell set, compared
-with `torch.equal` across two trees. Recording the returned objects rather than re-deriving
-them is what makes the comparison independent of whatever host structure produced the launch
-arguments. `y` is the one exception, and only where the topology spans more than one owner
-block: its fan-in is an fp32 atomic reduction, so it is held to the reassociation bound
-instead.
-
-The tool that did this went with the tiled consumer. ITS SUCCESSOR IS THE DIFF NODE: two
-executors, the cells, a comparison strategy and an expectation, so "against `HEAD~1`" is a
-second checkout the suite's root already composes rather than a second tool.
+A host refactor that claims neutrality is answerable to what the extension RETURNED —
+`y`, the state plane and the facts themselves — off a fixed cell set, compared across
+two checkouts. Comparing the returned objects rather than re-deriving them is what
+makes the comparison independent of whatever host structure produced the launch
+arguments. The mechanism is the diff node
+([`docs/measurement.md`](../../measurement.md#the-build-everything-declared-a-run-pruned-by-label)):
+two sides, the cells, a rule and an expectation, so "against `HEAD~1`" is a second
+checkout the suite's root already composes rather than a second tool.

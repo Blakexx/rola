@@ -1,0 +1,143 @@
+"""THE BUILD GRAPH'S MODULE: its rule sets and the hermetic CUDA toolkit it declares (docs/build-graph.md)."""
+
+module(name = "rola")
+
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+bazel_dep(name = "rules_cc", version = "0.2.28")
+bazel_dep(name = "rules_python", version = "2.4.6")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+bazel_dep(name = "rules_cuda", version = "0.3.0")
+bazel_dep(name = "rules_oci", version = "2.3.0")
+bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "tar.bzl", version = "0.7.0")
+
+#: THE GRAPH'S SHARED MACHINERY, rola-devtools' module: its environment extension and generic rules, at the public
+#: commit this tree is tested with -- the one pin of rola-devtools (tools/bootstrap.py reads it for a machine with no
+#: checkout). A machine with the checkout builds against it instead: the front door overrides this pin with it.
+bazel_dep(name = "rola_devtools", version = "0.1.0")
+git_override(
+    module_name = "rola_devtools",
+    commit = "0de14d22d66f57fd0d34ba26698d5fe9db771a9b",
+    remote = "https://github.com/Blakexx/rola-devtools.git",
+)
+
+#: THE CUDA TOOLKIT, HERMETIC: NVIDIA's redistributable components at the toolchain pin's version
+#: (tools/toolchains/cu13.json: release 13.0, nvcc V13.0.48), fetched once into the repository cache.
+cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+cuda.redist_json(
+    name = "cuda_13_0_0",
+    #: the compiler and what it reads, nothing more (rules_cuda's short names): NVIDIA's whole redistributable set is
+    #: 4.7 GB, these ~75 MB
+    components = [
+        "cccl",
+        "crt",
+        "cudart",
+        "culibos",
+        "nvcc",
+        "nvvm",
+    ],
+    #: redistrib_13.0.0.json's own digest: the component versions it names (nvcc 13.0.48, cuobjdump 13.0.39) are the pin
+    sha256 = "fe6a86b54450d03ae709123a52717870c49046d65d45303ce585c7aa8a83a217",
+    version = "13.0.0",
+)
+cuda.toolkit(name = "cuda")
+use_repo(cuda, "cuda")
+
+#: THE GRAPH'S ENVIRONMENT (rola-devtools' environment extension, docs/build-graph.md#environment): the pinned uv; the
+#: Python environment built from requirements.lock into the shared store, rola-devtools from its module's source, the
+#: graph's compile flags and facts from bazel/flags.py; the pinned linker and clang-tidy; the host C++ compiler's and
+#: devices' identities; the checkout's tracked files; the pinned CUDA toolkit and cuRAND's headers
+environment = use_extension("@rola_devtools//bazel:environment.bzl", "environment")
+environment.pinned(
+    name = "uv",
+    build_file = "//bazel:uv.BUILD",
+    #: uv and the Python it installs, rola-devtools' pin: every RoLA workspace's environment is built by the same
+    pin = "@rola_devtools//pins:uv_pin.json",
+)
+environment.python(
+    name = "rola_env",
+    build_file = "//bazel:env.BUILD",
+    index_from = "//tools:toolchains/cu13.json",
+    lock = "//:requirements.lock",
+    post = "//bazel:flags.py",
+    post_args = ["//tools:toolchains/cu13.json"],
+    post_env = ["ROLA_NVCC_THREADS"],
+    uv = "@uv//:uv",
+    uv_pin = "@rola_devtools//pins:uv_pin.json",
+    #: the flags' sources, and the manifests whose architectures are the build's defaults
+    watch = [
+        "//tools:build_flags.py",
+        "//tools:toolchains.py",
+    ],
+    watch_trees = ["//tools:manifests/cu13/sm_86.json"],
+)
+environment.pinned(
+    name = "mold",
+    build_file = "//bazel:mold.BUILD",
+    pin = "//tools:mold_pin.json",
+)
+environment.pinned(
+    name = "clang_tidy",
+    build_file = "//bazel:clang_tidy.BUILD",
+    pin = "//tools:clang_tidy_pin.json",
+)
+environment.host_cc(name = "host_cc")
+environment.host_gpu(name = "host_gpu")
+environment.tree(name = "rola_tree")
+environment.cuda_toolkit(
+    name = "cuda_tools",
+    #: cuRAND's headers, the graph's alone: its libraries are not the graph's
+    beside = {"libcurand": "curand"},
+    build_file = "//bazel:cuda_tools.BUILD",
+    delete = ["curand/lib"],
+    pin = "//tools:cuda_toolkit_pin.json",
+)
+use_repo(environment, "clang_tidy", "cuda_tools", "host_cc", "host_gpu", "mold", "rola_env", "rola_tree", "uv")
+
+#: THE DEVBOX IMAGE (docs/setup.md#the-devbox-image): a thin wrapper around the bootstrap. Its base carries what a host
+#: supplies itself before the graph -- Ubuntu 22.04 with git, gcc, python3 and curl -- a Docker Official Image by digest
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "devbox_base",
+    digest = "sha256:12415f057b11a5d155b7262cfdc9e6cb4127a3cf1f5a447e063e41b9c176b70e",
+    image = "index.docker.io/library/buildpack-deps",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "devbox_base", "devbox_base_linux_amd64")
+
+#: its OS packages, pinned: resolved against Ubuntu's archive on the base image's day, every .deb by digest
+apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
+apt.sources_list(
+    architectures = ["amd64"],
+    components = [
+        "main",
+        "universe",
+    ],
+    suites = [
+        "jammy",
+        "jammy-updates",
+        "jammy-security",
+    ],
+    types = ["deb"],
+    uris = ["https://snapshot.ubuntu.com/ubuntu/20261027T000000Z"],
+)
+apt.install(
+    dependency_set = "devbox",
+    packages = [
+        "clang-tools-14",
+        "fd-find",
+        "graphviz",
+        "jq",
+        "less",
+        "sqlite3",
+        "universal-ctags",
+        "vim",
+    ],
+    suites = [
+        "jammy",
+        "jammy-updates",
+        "jammy-security",
+    ],
+)
+use_repo(apt, "devbox")

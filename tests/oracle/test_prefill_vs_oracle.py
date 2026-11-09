@@ -1,260 +1,119 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""THE COMBINED OPERATOR against the canonical fp64 oracle.
+"""THE OP AGAINST THE fp64 ORACLE: `rola.interface.rola_op`'s output and its handed-back state, per slot.
 
-THE REFERENCE IS `rola.ops.naive.naive_rola` DIRECTLY, and that is the point of this
-file. Each family's own conformance would pass on two different window grids; here the
-two kernels run as one call and the whole answer is compared against the recurrence
-itself, so a window-grid disagreement, a double-counted diagonal or a dropped tile pair
-has nowhere to hide.
+THE REFERENCE IS `rola.ops.naive.naive_rola` DIRECTLY, on the bundle's own dequantized levels and values -- the op gate
+compares on the same quantized inputs the kernels read (ruling 2026-09-26). The facts pass, the carry, the den pass,
+the intra and the epilogue run as one call and the whole answer is compared against the recurrence itself, so a
+window-grid disagreement, a double-counted diagonal or a dropped tile pair has nowhere to hide.
 
-RED BY DESIGN (card `development/queue/C_CLEAN_SLATE.md`, "TEST-DRIVEN"): a cell whose
-carry arm this line does not build yet fails, by name. The window is no longer a cell's to name -- the axis law made ``W`` a kernel constant (`rola.ops.carry.WINDOW`) and the intra family's
-arm must be built at the same number, because the two kernels run ONE grid. Neither is
-``(k, m)``: the box is derived at launch from the descriptor and the launch shape.
+RED BY PLAN (ruling 2026-09-29): a cell outside the built envelope fails by its refusing clause -- a carve no carry
+arm carries, depth three or four, a value width other than 64, a carried state. The rule's own teeth
+and the decomposition's non-vacuity run no kernel.
 
-Symbols, each at first use: ``D`` = routing depth, ``B_l`` = level ``l``'s padded digit
-count, ``N = prod_l B_l`` = leaf capacity, ``DV`` = the padded value width, ``L`` =
-tokens, ``BH`` = batch times heads, ``W`` = the kernel's fixed window, ``modes`` = the
-per-level support-mode DECLARATION the intra's zero certificate reads (a statement about
-the routing, never a switch: an undeclared side reads all-ones and cannot move a number).
+Symbols: ``W`` the window, ``L`` tokens, ``y`` the op's output ``[B, T, H, d_v]``.
 """
 from __future__ import annotations
 
 import pytest
 import torch
 
-from measure.cells import carry_cells, conservative_activity, descriptor, launch, liveness_words, realize
-from rola.ops import carry as carry_ops
-from rola.ops import intra as intra_ops
-from rola.ops.constants import READOUT_EPS
-from rola.ops.paging import bytes_equal
-from rola.ops.prefill import prefill
-from rola.routing.types import IndependentRouting, SoftmaxActivation, Topology
-from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, canonical_from_plane, oracle_run, relative
-from tests.oracle.tolerances import BF16_RTOL, PREFILL_READOUT, PREFILL_STATE
+import rola
+from measure.cells import by_name, carry_cells, realize
+from measure.subjects import bundle_of
+from rola.interface import rola_op
+from rola.ops.window import window_of
+from tests.oracle import reference
+from tests.oracle.fixtures import assert_slots_close, oracle_run
+from tests.oracle.tolerances import PREFILL_READOUT, PREFILL_STATE
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
 
-#: THE TOPOLOGY EACH DEPTH'S INTRA ARM IS INSTANTIATED AT, ``D -> B_l``. A combined cell
-#: needs BOTH families at its topology; one only the carry carries is an inter-only cell.
-INTRA_TOPOLOGY = {2: intra_ops.LEVEL_WIDTH, 3: intra_ops.LEVEL_WIDTH_DEEP3,
-                  4: intra_ops.LEVEL_WIDTH_DEEP4}
-
-#: The registry's cells the combined operator can run: the dense backing, a fresh state,
-#: the shipped value width, and a topology both families carry. A cell whose carry arm no
-#: build carries yet, or whose window is partial, stays selected and red (TEST-DRIVEN).
-CELLS = tuple(c for c in carry_cells(tier="oracle")
-              if c.backing == "dense" and c.state == "fresh" and c.dv == 64
-              and len(set(c.widths)) == 1
-              and INTRA_TOPOLOGY.get(c.D) == c.widths[0])
+#: every oracle cell a fresh call can run: a carried cell's entry state reaches the op through a chained call
+CELLS = tuple(c for c in carry_cells(tier="oracle") if c.state == "fresh")
 IDS = [c.name for c in CELLS]
 
 
-def modes_of(spec):
-    """The cell's DRAW as the intra's per-level declaration.
-
-    ``alt``/``cohort`` alternate the sparse side by level (even write-sparse, odd
-    read-sparse); ``both`` is sparse on both sides at level zero; ``dense`` declares
-    nothing. It is DERIVED from the draw rather than carried in the record because the
-    declaration IS a statement about the draw, and two places to state one fact is the
-    drift shape this family has already paid for once.
-    """
-    if spec.draw == "dense":
-        return (intra_ops.DENSE_BOTH,) * spec.D
-    if spec.draw == "both":
-        return tuple(intra_ops.BOTH_SPARSE if level == 0 else intra_ops.DENSE_BOTH
-                     for level in range(spec.D))
-    return tuple(intra_ops.READ_SPARSE if level % 2 else intra_ops.WRITE_SPARSE
-                 for level in range(spec.D))
+def operands(spec, tokens: slice = slice(None)):
+    """``(routes, values)``: the cell's draw over ``tokens`` in the format the kernels read."""
+    routes, values, _layout, _statics = bundle_of(spec, realize(spec), tokens)
+    return routes, values
 
 
-def fresh_plane(spec, bh: int = 1):
-    """the plane a fresh sequence hands out: the op allocates none."""
-    from rola.ops.prefill import _descriptor
+def oracle(routes, values, entry=None):
+    """`tests.oracle.fixtures.oracle_run` on the bundle's own operands, chained from ``entry``."""
+    read, write = routes.dequantized()
+    return oracle_run(values.dequantized().double(), tuple(x.double() for x in read), tuple(x.double() for x in write), routes.topology, entry=entry)
 
-    return carry_ops.state_plane(_descriptor(list(spec.widths), spec.dv, bh), bh)
-
-
-def call(spec, state_in=None):
-    """One combined call on the FINAL surface: no window, no ``(k, m)``, no carve."""
-    drawn = realize(spec)
-    return drawn, prefill(drawn.read, drawn.write, drawn.gain, drawn.v, spec.widths,
-                          modes=modes_of(spec),
-                          sread=intra_ops.pack_support(drawn.read),
-                          swrite=intra_ops.pack_support(drawn.write),
-                          state_in=state_in,
-                          state_out=fresh_plane(spec) if state_in is None else state_in)
-
-
-def oracle(drawn, state_in=None):
-    """The fp64 recurrence on the cell's draw, with each slot's envelope (`tests.oracle.fixtures.oracle_run`)."""
-    read, write, gain, v = drawn.doubles()
-    routing = IndependentRouting(width=1, read=SoftmaxActivation(),
-                                 write=SoftmaxActivation())
-    topo = Topology(levels=tuple(routing.at(w) for w in drawn.cell.widths))
-    return oracle_run(v, read, write, gain, topo, entry=state_in)
-
-
-def readout(num, den, spec):
-    """``[BH, L, DV]`` / ``[BH, L]`` seen as the oracle's ``[B, L, H, DV]``."""
-    y = num / (den[..., None].double() + READOUT_EPS)
-    return y.reshape(1, 1, spec.tokens, spec.dv).permute(0, 2, 1, 3)
-
-
-# ------------------------------------------- the grid, and the surface it runs on
-
-def test_the_two_kernels_run_one_window_grid():
-    """``W`` IS A CONSTANT AND IT IS SHARED. The carry's window left the surface at K50;
-    the intra's is still an arm axis, so what must hold is that the intra family is BUILT
-    at the carry's constant. If it were not, the combined operator would have no grid and
-    the cells below would be comparing two different decompositions."""
-    built = (intra_ops.WINDOW, intra_ops.WINDOW_WIDE, intra_ops.WINDOW_SMALL)
-    assert carry_ops.WINDOW in built, (
-        f"the carry's fixed window {carry_ops.WINDOW} is not among the intra family's "
-        f"built windows {built}; one operator needs one grid")
-
-
-def test_the_combined_operator_reaches_the_carry_launch_surface():
-    """THE ONE CONTRACT ITEM THIS FILE STILL OWES (recorded at C1c): the combined
-    operator's carry leg must go through `rola.ops.carry.carry_forward`.
-
-    `rola.ops.prefill` still names the pre-C0 bindings directly, so its carry calls are
-    written against a signature the extension no longer carries and against axes K50
-    deleted. The cells below therefore fail at prefill's own seam rather than at the
-    kernel boundary -- a different fact reported as the same red. Re-pointing those three
-    call sites is what makes this file's reds the ONE reason the carry oracle tier
-    already reports."""
-    import inspect
-
-    from rola.ops import prefill as prefill_mod
-
-    body = inspect.getsource(prefill_mod)
-    stale = [name for name in ("carry_forward_inter", "carry_backward_inter")
-             if name in body]
-    assert not stale, (
-        f"rola/ops/prefill.py still calls {stale} directly; the combined operator's "
-        f"carry leg is rola.ops.carry.carry_forward/carry_backward, which is the only "
-        f"place the descriptor, the geometry block, the liveness words and the launch "
-        f"shape are checked")
-
-
-# ------------------------------------------------- the arithmetic, cell by cell
 
 @pytest.mark.parametrize("spec", CELLS, ids=IDS)
-def test_prefill_matches_the_fp64_oracle(spec):
-    drawn, (num, den, plane) = call(spec)
-    ref = oracle(drawn)
-    assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
-                       what=f"{spec.name} readout")
-    shape = (1, spec.N, spec.dv + 1)
-    assert_slots_close(canonical_from_plane(plane), ref.state.reshape(shape), output=PREFILL_STATE,
-                       envelope=ref.state_envelope.reshape(shape), what=f"{spec.name} state")
-    del num, den, plane, ref
-    torch.cuda.empty_cache()
+def test_the_op_matches_the_fp64_oracle(spec):
+    """``y`` of a stateless call, every token and channel, against the recurrence's readout and its envelope."""
+    routes, values = operands(spec)
+    y, state = rola_op(routes, values)
+    assert state is None
+    want = oracle(routes, values)
+    assert_slots_close(y, want.y, output=PREFILL_READOUT, envelope=want.y_envelope, what=f"{spec.name} y")
 
 
-def test_the_per_slot_rule_fails_what_a_global_max_passes():
-    """The rule the cells above are graded in has to be able to fail (docs/testing.md).
-
-    A global max grades every slot against the largest one, so a slot below the band's share of it can be anything at
-    all. On the kernel's own readout: every slot under one percent of the largest ZEROED, which the global form passes
-    by construction and the per-slot rule must fail, and the shared planted errors (a wiped median slot, the smallest
-    slots past their allowance).
-    """
-    spec = next(c for c in CELLS if c.name == "flagship-dense")
-    drawn, (num, den, _plane) = call(spec)
-    ref = oracle(drawn)
-    y_ref, y_env = ref.y, ref.y_envelope
-    y = readout(num, den, spec).double()
-    assert_planted_errors_fail(y, y_ref, output=PREFILL_READOUT, envelope=y_env, what=f"{spec.name} readout")
-    small = y_ref.abs() < 0.99 * BF16_RTOL * float(y_ref.abs().max())
-    zeroed = torch.where(small, torch.zeros_like(y), y)
-    assert bool(small.any()) and relative(zeroed, y_ref) < BF16_RTOL, (
-        f"zeroing the small slots moved the global form to {relative(zeroed, y_ref):.3e}; the premise is that it "
-        "passes this mutant")
-    with pytest.raises(AssertionError, match="slots are off the oracle"):
-        assert_slots_close(zeroed, y_ref, output=PREFILL_READOUT, envelope=y_env,
-                           what="the readout with its small slots zeroed")
+@pytest.mark.parametrize("spec", CELLS, ids=IDS)
+def test_the_op_hands_back_the_fp64_state(spec):
+    """A stateful call binds the state and hands back the recurrence's final state, leaf by leaf in canonical order
+    (`RoLAState.materialize`), against the oracle's and its envelope."""
+    routes, values = operands(spec)
+    state = rola.state()
+    rola_op(routes, values, state=state)
+    want = oracle(routes, values)
+    assert_slots_close(state.materialize(), want.state, output=PREFILL_STATE, envelope=want.state_envelope,
+                       what=f"{spec.name} state")
 
 
 def test_a_chained_call_equals_one_long_call():
-    """THE STATE IS THE WHOLE CONTRACT of a chunked prefill: two calls over the halves,
-    the first's ``state_out`` seeding the second, must be the one long call. The split
-    sits on a WINDOW line, which is where a chunk boundary is legal at all -- the window
-    grid is global, so a split inside a window would ask the second call to carry pairs
-    neither term owns.
+    """THE STATE IS THE WHOLE CONTRACT of a chunked prefill: two calls over the halves, one state between them, give
+    the long call's readout and final state, each against the oracle's one long run."""
+    spec = by_name("flagship-alt-k4-L4096")
+    half = spec.tokens // 2
+    state = rola.state()
+    ys = [rola_op(*operands(spec, part), state=state)[0] for part in (slice(0, half), slice(half, spec.tokens))]
+    routes, values = operands(spec)
+    want = oracle(routes, values)
+    assert_slots_close(torch.cat(ys, dim=1), want.y, output=PREFILL_READOUT, envelope=want.y_envelope,
+                       what="chained y")
+    assert_slots_close(state.materialize(), want.state, output=PREFILL_STATE, envelope=want.state_envelope,
+                       what="chained state")
 
-    THE STATE IS BIT-IDENTICAL and that is the claim that matters: an owner writes its
-    own leaves and nothing reduces across CTAs there. The OUTPUT is not, and cannot be:
-    ``num``/``den`` are accumulated by a RED at the top, so the order the owners'
-    contributions land in is the scheduler's -- for the whole call as much as for the
-    chain. Agreement to fp32 rounding is what a reordered fp32 sum can promise, and it is
-    far tighter than the bf16 band."""
-    spec = next(c for c in CELLS if c.draw == "dense")
-    drawn = realize(spec)
-    modes = modes_of(spec)
-    sread = intra_ops.pack_support(drawn.read)
-    swrite = intra_ops.pack_support(drawn.write)
-    whole = prefill(drawn.read, drawn.write, drawn.gain, drawn.v, spec.widths,
-                    modes=modes, sread=sread, swrite=swrite, state_out=fresh_plane(spec))
 
-    cut = carry_ops.WINDOW
-    words = cut // intra_ops.WORD_TOKENS
-    head = prefill(tuple(x[:, :cut] for x in drawn.read),
-                   tuple(x[:, :cut] for x in drawn.write), drawn.gain[:, :cut],
-                   drawn.v[:, :cut], spec.widths, modes=modes, sread=sread[:, :words],
-                   swrite=swrite[:, :words], state_out=fresh_plane(spec))
-    tail = prefill(tuple(x[:, cut:] for x in drawn.read),
-                   tuple(x[:, cut:] for x in drawn.write), drawn.gain[:, cut:],
-                   drawn.v[:, cut:], spec.widths, modes=modes,
-                   sread=sread[:, words:].contiguous(),
-                   swrite=swrite[:, words:].contiguous(), state_in=head[2], state_out=head[2])
-
-    assert bytes_equal(tail[2], whole[2])
-    num = torch.cat((head[0], tail[0]), dim=1)
-    den = torch.cat((head[1], tail[1]), dim=1)
-    assert relative(num, whole[0]) < 1e-5
-    assert relative(den, whole[1]) < 1e-5
-    ref = oracle(drawn)
-    assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
-                       what="the chained readout")
+def test_the_per_slot_rule_fails_what_a_global_max_passes():
+    """The rule the cells are graded in can fail (docs/testing.md): a small slot moved by a hundredth of the readout's
+    largest magnitude passes a global max-relative test at 2% and fails per slot."""
+    routes, values = operands(by_name("flagship-alt-k4"))
+    want = oracle(routes, values)
+    planted = want.y.clone()
+    i = int(torch.argmin(want.y.abs().flatten()))
+    planted.view(-1)[i] += 0.01 * float(want.y.abs().max())
+    assert float((planted - want.y).abs().max()) <= 0.02 * float(want.y.abs().max())
+    with pytest.raises(AssertionError, match="off the oracle"):
+        assert_slots_close(planted, want.y, output=PREFILL_READOUT, envelope=want.y_envelope, what="planted")
 
 
 def test_the_intra_term_is_actually_present():
-    """NON-VACUITY. The carry alone must NOT pass the oracle gate: if it did, every cell
-    above would be testing the carry and calling it the operator. This is also the one
-    cell in this file that drives the carry LAUNCH SURFACE directly, so it is where the
-    combined operator's carry leg and the kernel boundary are the same call."""
-    spec = next(c for c in CELLS if c.draw == "dense")
-    drawn = realize(spec)
-    desc = descriptor(spec)
-    shape = launch()
-    num, den = carry_ops.carry_forward(
-        carry_ops.route_planes(drawn.read, drawn.write, drawn.gain),
-        drawn.v.permute(0, 2, 1, 3).reshape(1, spec.tokens, spec.dv).contiguous(),
-        descriptor=desc, geometry=carry_ops.geometry_block(desc, shape),
-        liveness=liveness_words(drawn, desc), activity=conservative_activity(desc, 1, "cuda"),
-        launch=shape, state_out=carry_ops.state_plane(desc, 1))
-    ref = oracle(drawn)
-    with pytest.raises(AssertionError, match="slots are off the oracle"):
-        assert_slots_close(readout(num, den, spec), ref.y, output=PREFILL_READOUT, envelope=ref.y_envelope,
-                           what="the inter term alone")
+    """NON-VACUITY: the inter term alone fails the op's gate on a multi-window cell, so a call that dropped the intra
+    (or the carry) could not pass. Runs no kernel."""
+    routes, values = operands(by_name("flagship-alt-k4"))
+    read, write = routes.dequantized()
+    num, den, _ = reference.inter_reference(tuple(x.double() for x in read), tuple(x.double() for x in write), values.dequantized().double(), routes.topology.widths, window_of())
+    want = oracle(routes, values)
+    with pytest.raises(AssertionError, match="off the oracle"):
+        assert_slots_close(num / (den[..., None] + 1e-5), want.y, output=PREFILL_READOUT, envelope=want.y_envelope,
+                           what="inter alone")
 
 
-def test_the_combined_operator_refuses_what_it_has_no_kernel_for():
-    """The refusal is STRUCTURAL, and stating it is how a gap stays a gap rather than
-    becoming a host-side second code path: a topology only the carry family carries is an
-    inter-only cell, and the combined entry says so instead of half-serving it."""
-    spec = next(c for c in CELLS if c.draw == "dense")
-    drawn = realize(spec)
-    with pytest.raises(ValueError, match="level width"):
-        prefill(drawn.read, drawn.write, drawn.gain, drawn.v, (64, 64),
-                modes=modes_of(spec), sread=intra_ops.pack_support(drawn.read),
-                swrite=intra_ops.pack_support(drawn.write))
-    #: A width another depth ships is not this depth's: depth 3's 16 passes a check that asks
-    #: membership in every depth's widths, and then the kernel refuses the support words' shape.
-    with pytest.raises(ValueError, match="at depth 2"):
-        prefill(drawn.read, drawn.write, drawn.gain, drawn.v, (16, 16),
-                modes=modes_of(spec), sread=intra_ops.pack_support(drawn.read),
-                swrite=intra_ops.pack_support(drawn.write))
+def test_the_op_refuses_what_it_has_no_kernel_for():
+    """THE REFUSAL IS STRUCTURAL: a decay, which the prefill envelope does not carry, is refused by name before any
+    kernel runs."""
+    from rola.routing.types import LeafMassDecay
+
+    routes, values = operands(by_name("flagship-alt-k4"))
+    dials = tuple(torch.full((routes.write_heads, w), 0.5, device="cuda") for w in routes.topology.widths)
+    with pytest.raises((NotImplementedError, ValueError), match="decay"):
+        rola_op(routes, values, LeafMassDecay(dials=dials))

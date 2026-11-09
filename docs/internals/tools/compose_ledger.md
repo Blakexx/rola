@@ -1,13 +1,13 @@
 # `tools/compose_ledger.py` — a phase's time attributed to its parts by composition
 
 KERNEL_STANDARDS §22 (9). The carry kernel's MMA phases are built from parts that a build may stub
-(`docs/internals/carry/carry_kernel.md#parts`). A LADDER over a phase builds the kernel with none of
+(`docs/internals/carry/ampere/parts.md`). A LADDER over a phase builds the kernel with none of
 that phase's parts real and every other part real, then adds the phase's parts back in the order
 named, one rung a build; the last rung is the kernel itself.
 
-    python tools/compose_ledger.py --cells flagship-dense,nl64k-alt-k4 \
+    bazel run //tools:compose_ledger -- --cells flagship-dense,nl64k-alt-k4 \
         --ladder readout:stream,loads,drain --ladder fold:pool,ring,loads
-    python tools/compose_ledger.py --cells nl64k-dense,nl64k-alt-k4 \
+    bazel run //tools:compose_ledger -- --cells nl64k-dense,nl64k-alt-k4 \
         --ladder all:fold.pool,fold.ring,fold.loads,readout.stream,readout.loads,readout.drain
 
 The ladder `all` (2026-09-18, from Blake's "make a dummy kernel where bursts are guaranteed to be fully
@@ -16,7 +16,7 @@ kernel's own structure, its walks, polls and phase changes alone -- the floor th
 reaches on this card -- and adds every part back in the order named, so each part's cost is read
 against a base where every burst is covered by construction.
 
-A rung item is `part` (real) or `part=trivial`: the part in its TRIVIAL form (`part=trivial` in `ROLA_CARRY_PARTS`, the
+A rung item is `part` (real) or `part=trivial`: the part in its TRIVIAL form (`part=trivial` in the graph's `--//:carry_parts`, the
 third mode beside real and stub), its memory instructions issued but its dependence or structure removed,
 so a part named trivial then real gives two rungs: stub to trivial is its traffic, trivial to real its
 chains and waits. The forms (`carry_kernel.cuh`, the `k*Trivial` constants): the fills copy a dense

@@ -17,7 +17,9 @@ import torch
 
 from rola.ops import carry as carry_ops
 from rola.ops.naive import naive_rola
-from rola.ops.paging import from_split_planes, to_split_planes
+from rola.ops.paging import decode_pages, encode_pages
+from rola.routing.factors import RouteFactors
+from rola.values import Values
 from tests.oracle import tolerances
 
 
@@ -41,84 +43,118 @@ def simplex(shape, k_tok, gen, device, live=None):
     return x / x.sum(-1, keepdim=True)
 
 
-class Cell:
-    """One realized cell. ``widths`` is the topology, ``k_tok`` the routing draw."""
+def reordered_close(got, want) -> bool:
+    """Is ``got`` the same step's readout as ``want`` up to the order its partials were summed?
 
-    def __init__(self, widths, T, k_tok=None, seed=0, d_v=64, B=1, H=1,
-                 device="cuda", state_in=False, support=1.0):
-        gen = torch.Generator(device=device).manual_seed(seed)
-        self.widths, self.T, self.d_v, self.B, self.H = tuple(widths), T, d_v, B, H
-        self.N = math.prod(widths)
-        shape = (B, T, H)
-        self.support = support
-        live = tuple(max(1, int(w * support)) for w in widths)
-        self.read = tuple(simplex(shape + (w,), k_tok, gen, device, live=lv)
-                          for w, lv in zip(widths, live))
-        self.write = tuple(simplex(shape + (w,), k_tok, gen, device, live=lv)
-                           for w, lv in zip(widths, live))
-        self.g_write = torch.rand(*shape, device=device, dtype=torch.float64,
-                                  generator=gen) + 0.5
-        self.v = torch.randn(*shape, d_v, device=device, dtype=torch.float64, generator=gen)
-        #: THE OPERAND PLANES ARE bf16: the bytes a kernel entry reads (`owner_rows` takes them).
-        self.read_bf = tuple(t.to(torch.bfloat16) for t in self.read)
-        self.write_bf = tuple(t.to(torch.bfloat16) for t in self.write)
-        self.state_in = None
-        if state_in:
-            self.state_in = 0.1 * torch.randn(B * H, self.N, d_v + 1, device=device,
-                                              dtype=torch.float64, generator=gen)
-
-
-def canonical_from_plane(plane):
-    """A ``[BH, N/16, 16, cols]`` state plane as ``[BH, N, cols]`` CANONICAL.
-
-    The kernel's plane IS the atom-major view of the canonical one in the STORED
-    split-plane form, so this is the hi||lo gather and a reshape. It stays a NAMED step because the assertion it feeds is the family's
-    final-state gate, and a leaf-order error must surface at a named seam rather than as
-    noise inside a comparison.
+    A decode step adds its warps' partials into a batch-head's sums atomically, in the order the
+    work queue hands out positions (docs/internals/decode/decode.md#queue-finish), so two runs of
+    one step agree to fp32 reordering of a sum over the step's leaves, not to the bit: relative
+    ``2^-14`` and absolute ``2^-16`` of the readout's largest magnitude.
     """
-    return from_split_planes(plane).reshape(plane.shape[0], -1, plane.shape[-1])
+    scale = float(want.abs().max()) or 1.0
+    return bool(torch.allclose(got, want, rtol=2.0 ** -14, atol=scale * 2.0 ** -16))
 
 
-def plane_from_canonical(canonical, bh: int = 1):
-    """A ``[BH, N, cols]`` CANONICAL state as the stored ``[BH, N/16, 16, cols]`` split planes: `canonical_from_plane`
-    inverted, so a drawn entry state is the plane a kernel entry reads."""
-    return to_split_planes(canonical.float().reshape(bh, -1, 16, canonical.shape[-1]))
+def assert_reordered_close(got, want, what: str) -> None:
+    """:func:`reordered_close`, as a gate."""
+    worst = float((got - want).abs().max())
+    assert reordered_close(got, want), f"{what}: off by up to {worst:.3g} beyond summation reordering"
+
+
+def with_gain(write, g_write):
+    """A fixture's write levels with its drawn gain folded into level 0, as a producer folds its own
+    (docs/CONSTITUTION.md#r23): ``W = g prod_l k_l`` either way, and each level's share is unchanged."""
+    write = tuple(write)
+    return (write[0] * g_write[..., None].to(write[0].dtype), *write[1:])
+
+
+def step_bundles(v, read, write, topology):
+    """Floating step operands in the internal format: ``(RouteFactors, Values)`` as the framework's epilogue writes
+    them (u8 rows, f16 values). A drawn level with exact zeros is declared SPARSE, as a production whose activation
+    has exact zeros is, so its zeros stay exact rather than reading as the dense floor
+    (docs/internals/facts/liveness_contract.md#floor). Every side has a dense level (docs/api.md section 2.1): a side
+    whose drawn levels ALL have zeros declares the ALTERNATING level dense (the read side's level 0, the write side's
+    level 1, level 0 at depth one) -- the producer's floor then lifts that level's zeros -- and keeps the others
+    sparse."""
+    sparse = tuple(tuple(bool((level == 0).any()) for level in side) for side in (read, write))
+    depth = len(read)
+    sparse = tuple(flags if not all(flags) else tuple(i != dense for i in range(depth))
+                   for flags, dense in zip(sparse, (0, 1 % depth)))
+    routes = RouteFactors.from_levels(topology, tuple(t.float() for t in read), tuple(t.float() for t in write),
+                                      sparse=sparse)
+    return routes, Values.from_projection(v.float())
+
+
+def bundle_operands(routes, values):
+    """What the kernel is handed, in fp64 -- the op oracle's inputs: ``(v, read, write)``, the bundle's levels as
+    stored (docs/api.md section 2.1)."""
+    read, write = routes.dequantized()
+    return values.dequantized().double(), tuple(r.double() for r in read), tuple(w.double() for w in write)
+
+
+def state_pages(logical):
+    """A logical ``[..., N, d_v + 1]`` state as its stored int8-format pages ``[BH, N/16, page_bytes]``: every leading
+    axis folds into the batch-head axis the decode kernel indexes (`rola.ops.paging.encode_pages`)."""
+    n, cols = logical.shape[-2], logical.shape[-1]
+    return encode_pages(logical.float().reshape(-1, n // 16, 16, cols))
+
+
+def logical_state(pages, d_v: int):
+    """Stored pages ``[BH, N/16, page_bytes]`` as the logical ``[BH, N, d_v + 1]`` fp32 state (`decode_pages`)."""
+    return decode_pages(pages, d_v).reshape(pages.shape[0], -1, d_v + 1)
+
+
+def state_quantum(state):
+    """Each slot's storage quantum under the int8 state format, ``2^e`` with ``e = max(k - 23, -126)`` from its (leaf,
+    32-channel group)'s largest magnitude ``f * 2^k``; zero on the fp32 mass column (`encode_pages`)."""
+    d_v = state.shape[-1] - 1
+    groups = state[..., :d_v].double().reshape(*state.shape[:-1], d_v // 32, 32)
+    amax = groups.abs().amax(-1, keepdim=True)
+    _, k = torch.frexp(amax)
+    quantum = torch.ldexp(torch.ones_like(groups), (k - 23).clamp_min(-126).expand_as(groups))
+    quantum = torch.where(amax == 0, torch.zeros_like(quantum), quantum)
+    return torch.cat([quantum.reshape(*state.shape[:-1], d_v), torch.zeros_like(state[..., d_v:]).double()], -1)
+
+
+def state_rounded(state):
+    """THE DECLARED STORE, in fp64: every leaf-channel rounded once to its group's s24 quantum (`state_quantum`), the
+    mass untouched -- what the decode kernel's store does to a row it writes, so a chained oracle that applies it after
+    each step is the kernel's declared arithmetic (`oracle-two-purposes-doctrine`: a fidelity gate mirrors it)."""
+    quantum = state_quantum(state)
+    d_v = state.shape[-1] - 1
+    out = state.double().clone()
+    q = quantum[..., :d_v]
+    out[..., :d_v] = torch.where(q == 0, out[..., :d_v],
+                                 torch.round(out[..., :d_v] / q.clamp_min(2.0 ** -149)).clamp(-(2 ** 23 - 1), 2 ** 23 - 1) * q)
+    return out.to(state.dtype)
 
 
 def built_arms() -> set:
-    """`{(D, DV, warps_per_cta)}` -- what THIS binary carries.
+    """The carry arm keys THIS binary carries (`rola.ops.carry.arm_key`).
 
     `arms()` is the binary's own answer (`rola.ops.carry.arms()`), so this is a fact
-    about the `.so` under test and never about the source tree that produced it. EMPTY
-    on this line: C0 cleared the carry family, G4 refills the table and C3 builds the
-    bodies (card `development/queue/C_CLEAN_SLATE.md`).
+    about the `.so` under test and never about the source tree that produced it.
     """
     return {tuple(row) for row in carry_ops.arms()}
 
 
 def assert_fresh_binary():
-    """DEVICE-SIDE, because a path or hash check cannot catch an extension trap.
-
-    THERE IS NO SUCH FACT FOR THE CARRY FAMILY ON THIS LINE: it has no device code, so
-    the stamp entry refuses rather than returning a stale or invented census, and this
-    helper propagates that refusal instead of substituting a weaker check for it
-    (`extension-trap-device-side-check`). C3-K0 restores the fact and this assertion
-    with it.
-    """
+    """DEVICE-SIDE, because a path or hash check cannot catch an extension trap: the carry family's build stamp is
+    a fact only a built kernel produces (`rola.ops.carry.build_stamp`)."""
     return carry_ops.build_stamp()
 
 
 def allowances(reference, output, envelope=None, derived_atol=0.0):
     """Each slot's allowed error under `output` (`tolerances.Output`), and which term sets it: a clause ``(r, a)`` fails
     a slot whose relative AND absolute errors both pass it, so under clause ``i`` a slot of size ``s = |oracle|`` may be
-    off by ``max(r·s, a + derived_atol)``; a multilinear output adds its envelope term ``rtol·envelope``; the allowance
-    is the smallest. Returns ``(allowance, binding)``, ``binding`` the index of the tightest clause per slot, or
+    off by ``max(r·s, a + derived_atol)``; a multilinear output adds its envelope term ``rtol·envelope + derived_atol``
+    (a declared upstream error adds to whichever budget binds); the allowance is the smallest. Returns ``(allowance, binding)``, ``binding`` the index of the tightest clause per slot, or
     ``len(clauses)`` where the envelope binds."""
     s = reference.double().abs()
     terms = [torch.clamp(r * s, min=a + derived_atol) for r, a in output.clauses]
     if output.rtol is not None:
         assert envelope is not None, f"{output.name} is multilinear: its gate states the envelope"
-        terms.append(output.rtol * envelope.double())
+        terms.append(output.rtol * envelope.double() + derived_atol)
     else:
         assert envelope is None, f"{output.name} states no envelope budget, so a gate cannot hand it one"
     if not terms:
@@ -135,7 +171,7 @@ def assert_slots_close(actual, reference, *, output, what, envelope=None, derive
     Rounding each term costs a share of that term's size whether or not the terms cancel, so a slot that is small
     because its terms cancel keeps their rounding, and a slot that is small because its terms are small keeps nothing.
     ``derived_atol`` is an absolute term the caller derives and states (an upstream seam's declared error), added to
-    every clause's atol, never a loosened constant. A slot whose allowance is zero must be exactly zero; a slot that is
+    every clause's atol and to the envelope term, never a loosened constant. A slot whose allowance is zero must be exactly zero; a slot that is
     not finite on either side fails. The failure names how many slots failed and the worst one: its error over its
     allowance, and the clause or envelope that set the allowance.
     """
@@ -168,7 +204,7 @@ class OracleRun(NamedTuple):
     state_envelope: torch.Tensor
 
 
-def oracle_run(v, read_levels, write_levels, g_write, topology, decay=None, entry=None) -> OracleRun:
+def oracle_run(v, read_levels, write_levels, topology, decay=None, entry=None) -> OracleRun:
     """`rola.ops.naive.naive_rola`, with the same recurrence run on ``|v|`` beside it: every weight is non-negative, so
     that run's slots are the sums of the term sizes. ``entry`` is None (a fresh state), a state of the caller's own
     (its envelope is ``|entry|``) or a previous `OracleRun`, whose state and envelope a chain continues. A readout
@@ -177,9 +213,8 @@ def oracle_run(v, read_levels, write_levels, g_write, topology, decay=None, entr
         state, envelope = entry.state, entry.state_envelope
     else:
         state, envelope = entry, None if entry is None else entry.double().abs()
-    y, out = naive_rola(v, read_levels, write_levels, g_write, topology, decay, initial_state=state,
-                        output_final_state=True)
-    y_magnitudes, out_envelope = naive_rola(v.abs(), read_levels, write_levels, g_write, topology, decay,
+    y, out = naive_rola(v, read_levels, write_levels, topology, decay, initial_state=state, output_final_state=True)
+    y_magnitudes, out_envelope = naive_rola(v.abs(), read_levels, write_levels, topology, decay,
                                             initial_state=envelope, output_final_state=True)
     return OracleRun(y, out, y_magnitudes + y.abs(), out_envelope)
 

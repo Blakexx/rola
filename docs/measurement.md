@@ -6,14 +6,14 @@ stored with its provenance. This document is what that sentence means.
 | layer | where | answers |
 |---|---|---|
 | cells | rola-devtools' central registry `rola_devtools.cells` (rola's reading: `measure/cells/`) | WHAT is measured: an input, named once for every package, with its draw, seed and proven regime |
-| subjects | `measure/subjects.py`, `bench/provider.py` (rola's runner) | WHICH launch is timed on a cell, at which LEVEL, each arm's dials, its untimed reset, and which cells this binary cannot run |
+| subjects | `measure/subjects.py`, `measure/provider.py` (rola's runner) | WHICH launch is timed on a cell, at which LEVEL, each arm's dials, its untimed reset, and which cells this binary cannot run |
 | declarations | `declare.py` (this checkout's targets), rola-bench's `declare.py` (checkouts composed) | WHAT RUNS: the build, the instruments, the timing registrations and sessions, the stores, as targets of `rola_devtools.build` |
 | method | rola-devtools' `rola_devtools.timing` (`measure_timing`) | HOW: interleaved call by call, one call at a time, in a fresh random order each rep |
-| preconditions | the targets' requirements (`rola_devtools.build.resources`), `bench/provider.py` | what the box and the binary must be first |
+| preconditions | the targets' requirements (`rola_devtools.build.resources`), `measure/provider.py` | what the box and the binary must be first |
 | statistics | rola-devtools' `rola_devtools.verdict` | whether a difference is real |
 | record | `rola_results` (the measurements store) | where a number lives afterwards, and which stored samples are a baseline |
 
-rola measures itself with `python -m rola_devtools.build run declare.py:all`; rola-bench's root loads this file from each
+rola measures itself with `bazel run //:measure -- run declare.py:all`; rola-bench's root loads this file from each
 checkout it compares, declares every checkout's targets beside its attention reference, and times them in shared
 sessions. Both are one method: a number taken either way is the same measurement.
 
@@ -47,10 +47,10 @@ Not a checklist: the requirements a target holds and the runner's setup do each 
 
 | step | what happens |
 |---|---|
-| GPU lock | a session holds `gpu: all` (`rola_devtools.build.resources`): `/tmp/rola_gpu.lock` exclusive through `gpu_lock()` (`rola_devtools.locks.gpu`), taken by the build system for the whole session and handed to the entry workers as the lock-held marker, so a self-locking tool a target starts does not wait on it. Nothing is wrapped in an external `flock` on the same path, which self-deadlocks (per-open-file-description semantics: the wrapper's lock blocks the tool's own `flock` call forever). `host.gpu_lock` in the dev config names the path (host and containers share it). |
+| GPU lock | a session holds `gpu: all`: the GPU lock exclusive through `gpu_lock()`, taken by the build system for the whole session and handed to the entry workers as the lock-held marker, so a self-locking tool a target starts does not wait on it. The lock's rules are [`testing.md#running-it`](testing.md#running-it)'s. |
 | clock lock | a session holds `clock: 1`: the host's own lock (`rola_devtools.locks.clock`, the dev config's `clock.json`), proven by this binary's clock read (`register_clock_reader`) before the first call and after the last; a session whose read is off the lock fails. A host without one runs unlocked, and the session records its reads. |
 | binary identity | building an arm asks the device for the subject's family stamp and refuses the arm without it: a path or a hash passes against a stale extension, a device-side fact does not. |
-| extension identity | `import rola` must resolve inside the entry's own checkout, or the arm is refused: an editable install in a shared venv otherwise answers with another tree's kernel while the record carries this tree's commit. |
+| extension identity | `import rola` must resolve inside the entry's own checkout, or the arm is refused: a venv that names another checkout (an editable install in a shared venv, or another checkout's own venv) otherwise answers with that tree's kernel while the record carries this tree's commit. |
 | tree identity | every stored sample carries each checkout's commit and the sha256 of its tracked diff; a dirty tree is stamped, not refused. |
 
 ## The three levels, and what a comparison may cross
@@ -58,28 +58,75 @@ Not a checklist: the requirements a target holds and the runner's setup do each 
 Blake, 2026-09-15: the LAYER holds the projections and produces the routing (RoLA's analogue of QKV); the OP takes those
 bare operands and a state and produces the next state and the readout -- the facts, the paging, the packing and the
 kernels; a KERNEL runs its own launches and nothing around them. Every subject states the level it prices
-(`Subject.level`) and every sample records it, so a reading pairs entries of ONE level and `python -m rola_results
-verdict` refuses a pair of two. A comparison between this library and another is therefore a LAYER comparison: RoLA's
+(`Subject.level`) and every sample records it, so a reading pairs entries of ONE level and
+`bazel run //:results -- verdict` refuses a pair of two.
+A comparison between this library and another is therefore a LAYER comparison: RoLA's
 own layer against attention's, because RoLA's number includes the state its capacity buys.
 
-What this line can measure today: the KERNEL level (`carry_forward`, `intra_forward`, `carry_intra` -- the carry and the
-intra as one operator over facts the caller built -- `liveness_pass`, `entmax_solve`) and one OP-level path
+What this line can measure today: the KERNEL level (`carry_forward`, `intra_forward`, `facts_pass`, `entmax_solve`) and one OP-level path
 (`decode_step`, through the engine's decode DAG, which runs the facts pass and commits the pages it writes). There is no
-op-level prefill and no layer subject: `rola.interface.rola_op` refuses on prefill since the box-native rebuild deleted
-the shipped chunk consumer, so the chunk DAG has no live path to time. The flash reference is a layer entry, and until a
+op-level prefill subject and no layer subject: `rola.interface.rola_op` walks the prefill DAG, whose carry leg is not
+yet
+wired to the rebuilt carry ([`open-work.md`](open-work.md)). The flash reference is a layer entry, and until a
 RoLA layer runs beside it, a session that holds both is two levels measured in one place, not a comparison.
 
 ## The reference
 
 Every reported carry number sits beside FlashAttention at the same point, measured in the
 same interleaved, clock-locked session: rola-bench's attention entry
-(`rola_bench/measure/attention.py`) on the group's QKV cell, causal, one head of
-width `dv`, `L` tokens, bf16, through torch's flash backend: Dao's FlashAttention-2 compiled
-into torch, or FA3 (Hopper) and FA4 (Blackwell) once `torch.nn.attention.activate_flash_attention_impl`
-registers them. The backend is forced, so torch refuses a call flash cannot take rather than
-timing its math or memory-efficient backend, and the entry records torch's version and the
-implementation. The capacity-fair point is `N = L`; a cell states its `L`. The layer
-comparison is the inter term plus the intra term against that one number.
+(`rola_bench/measure/attention.py`) on the group's QKV cell, causal, width `dv`, bf16, through torch's flash
+backend: Dao's FlashAttention-2 compiled into torch, or FA3 (Hopper) and FA4 (Blackwell) once
+`torch.nn.attention.activate_flash_attention_impl` registers them. The backend is forced, so torch refuses a call
+flash cannot take rather than timing its math or memory-efficient backend, and the entry records torch's version and
+the implementation.
+
+<a id="incremental"></a>
+THE INCREMENTAL CELL is the headline (Blake, 2026-10-18): the time to process `c` NEW tokens given `T` tokens already
+absorbed, for a model of state count `N`. FlashAttention's `c` queries attend over a KV cache of `T + c` keys,
+bottom-right causal (the entry's `context` parameter); RoLA's layer runs the `c` tokens' producer, facts pass, carry
+from its `N`-leaf state and intra. FlashAttention's cost grows with `T`; RoLA's does not once its state holds the
+history, so the comparison is a grid -- `T` in {0, 4K, 16K, 64K, 256K, 1M} by `c` in {1, 512, 4K, 16K}, the model's
+hidden width and heads stated -- never one number. Each side's per-call overhead is in its time: FlashAttention's KV
+read and launch; RoLA's state load and store (its HBM round trip, ~12.6 MB a head at `N` 64K), launch, partial last
+window and wave quantization.
+
+AT LAYER LEVEL, WITH BOTH SIDES' PROJECTIONS: FlashAttention's QKV projection of the `c` tokens (the entry's `hidden`:
+one cuBLAS GEMM for every head, the library's own form) against RoLA's producer (its routing, gain and values: 1,088
+columns a head against QKV's 192), so a number is what a user pays. The output projection is the same on both sides and
+is in neither.
+
+`N = L` -- `T = 0`, `c = L`, the whole sequence from zero tokens -- is the grid's whole-sequence case and the
+capacity-fair point a single-length cell states (`N = L`); it averages FlashAttention over contexts from 0 to `L` and
+holds one RoLA call's overheads, so it is never quoted alone. Until RoLA's carry starts from a stored state (the
+segment boundary), RoLA's side of the grid is projected from the labs, the producer's floor and the state's bytes, each
+number labelled projected.
+
+<a id="quoting"></a>
+## Quoting a comparison
+
+- THE BASELINE is attention over its KV cache (and wide monolith layers), whose state grows with the context -- not
+  single-state linear attention: the method's case is a bounded state against a growing cache, and at `N`
+  proportional to `L` the state stays under the cache while its key width is small, so that regime's problem is
+  compute, which the activation's sparsity decouples (the user's framing, 2026-07-01).
+- CAPACITY-FAIR POINTS (Blake, 2026-08-01): a gap is never quoted from a cell where RoLA holds `N` states while
+  FlashAttention attends over `L < N` tokens -- attention is quadratic in `L` and RoLA flat in it at fixed `N`, so the
+  cell charges RoLA capacity rent at short-context prices. Headline figures put measured points at capacity-fair
+  `(N, L)`, FlashAttention run at `L = N`, and share one x-axis, addressing capacity; an `L < N` cell extrapolates
+  per-token latency only.
+- EVERY RATIO CARRIES ITS LABELS (Blake, 2026-10-24): the card, the level (op or layer), the depth and the sparsity.
+  The headline is end-to-end layer time with the op-level number beside it, at a head at scale, depths 1-4 shown; a
+  GeForce op-level ratio is never the headline.
+- THE OPERATING POINT `N ~ sqrt(L)` is quoted beside `N = L`, never instead (Blake, 2026-10-31: "sqrt(L) is context,
+  not the bar"); `N = L` stays a target the kernel must do well at.
+- AT SCALE (Blake, 2026-07-30: "we should be testing the large regime too"): every performance-bearing change is timed
+  on at least one at-scale cell (`N >= 65536`, the largest `L` that fits) at both ends of density
+  (`KERNEL_STANDARDS.md#s21`). The small cell is the SMOKE cell, never "flagship"; a conclusion drawn on toy cells
+  alone is labelled cell-bound. A small state is a depth-1 cell (Blake, 2026-09-14: "If you want small, just use depth
+  1"), never a sub-floor depth-2 rung.
+- RECORDS FOLLOW THE DECLARATION: when a refactor changes what a record means, the change is re-baselined and the old
+  records deleted rather than kept readable through compatibility code (Blake, 2026-09-15: "its ok to just delete old
+  records if its too much work to maintain compatability"); what was deleted is said, and anything large is archived
+  outside the store first.
 
 ## The stopwatch
 
@@ -92,22 +139,32 @@ There is one, it is named, and its name travels with every number.
 | `ncu` | a counter, or a duration taken under profiling conditions: replayed, caches flushed, base clocks |
 
 **A comparison across two of them is refused, not warned about.** The gap is not
-noise; it is the launch and sync cost one instrument includes. Measured on this box
-(RTX 3080 Ti, sm_86, 30 interleaved reps per instrument):
-
-| cell | `cuda_events` | `perf_counter` | ratio |
-|---|---:|---:|---:|
-| `topo-D2-w64x64-BC64` global | 0.0725 ms | 0.2942 ms | 4.06× |
-| `atscale-L2048-BC16` global | 12.8251 ms | 13.4350 ms | 1.05× |
-
-The host cost is roughly constant (0.22 ms here), so it is nearly the whole
-measurement on a sub-millisecond cell and a rounding error at scale. The
-`ncu` duration for the same small cell reads 0.0906 ms — 25 % above the event time —
-which is why an ncu duration is a third instrument and not a cross-check on the
-first two.
+noise; it is the launch and sync cost one instrument includes: roughly constant on this
+box (~0.22 ms, RTX 3080 Ti), so nearly the whole measurement on a sub-millisecond cell
+and a rounding error at scale. An `ncu` duration reads above the event time (25 % on a
+small cell), which is why it is a third instrument and not a cross-check on the first
+two.
 
 Every timed entry names its stopwatch (`Timed.instrument`; rola's arms time with `cuda_events`), and a session refuses
 entries that name two.
+
+<a id="comparing-two-builds"></a>
+## Comparing two builds
+
+A change is judged against its baseline in ONE session: the baseline checkout (a worktree at the old commit, built,
+with its venv) is a reference of rola-bench's suite, and the run is pruned to the timing sessions and their stores:
+
+```bash
+python -m rola_devtools.build run declare.py:suite \
+    --arg target=worktree:<new checkout>,venv:<its venv> --arg references='worktree:<baseline>,venv:<its venv>' \
+    --only 'store/session/*'
+```
+
+Each session interleaves both checkouts' entries call by call at the locked clock (above), so the ratio between them
+is read from one session's samples (`bazel run //:results -- verdict`). Times from two separate runs are never
+compared, and an unlocked clock's are never read at all (KERNEL_STANDARDS §32.7): this host's sustained clock has two
+states ~17% apart (the method, above), larger than the effects a change is judged on. One launch's cycles each under `ncu`
+(`sm__cycles_elapsed.max`) compare two builds without a session where the question is one kernel's cycles.
 
 ## The flagging rule: three gates, all must fire
 
@@ -130,55 +187,45 @@ and gives, per round, each member's median, their RATIO and their DIFFERENCE.
 `insufficient_data` is a distinct answer from `no_regression` everywhere: the first says the design cannot decide, the
 second says it decided.
 
-**THE SPREAD IS THE SPREAD OF THE QUANTITY JUDGED — measured corrections, not preferences.** A baseline once recorded
-from one session's reps, on the chunk arm (tag `baseline/pre-k31`), put 17 of 44 arms over their limit on the same
-binary a minute later: reps taken back to back on one warm fixture spread less than a comparison that crosses processes.
-The verdict then derived its limit from a reference's medians across sessions, which carried the host's drift instead
-(two clock states ~17 % apart). What is judged now is the paired ratio inside one session, so the limit is that ratio's
-own round-to-round spread, drift both members share cancels in it, and the one thing the ratio crosses that its spread
+**THE SPREAD IS THE SPREAD OF THE QUANTITY JUDGED.** Reps taken back to back on one warm fixture spread less than a
+comparison that crosses processes (a limit taken from one session's reps flagged most arms of an unchanged binary a
+minute later), and a reference's medians across sessions carry the host's drift (two clock states ~17 % apart). What
+is judged is the paired ratio inside one session, so the limit is that ratio's own round-to-round spread, drift both
+members share cancels in it, and the one thing the ratio crosses that its spread
 cannot see -- two worker processes -- is the null gate's.
 
-**AND NEVER A SPREAD SMALLER THAN THE STOPWATCH RESOLVES.** Two arms once sat over their limit on an unchanged binary,
-both with a recorded spread of exactly `0.0000 ms`: the device-event timer quantizes, a small kernel's calls land on the
-same value, and the limit sits at the median the next tick exceeds. The spread used is `max(IQR, resolution)`, where the
+**AND NEVER A SPREAD SMALLER THAN THE STOPWATCH RESOLVES.** The device-event timer quantizes, so a small kernel's calls
+can land on one value, a recorded spread of `0.0000 ms`, and a limit at the median the next tick exceeds. The spread
+used is `max(IQR, resolution)`, where the
 resolution is the smallest gap between the distinct values one member's samples hold, relative to the reference's
 median -- measured on every judgement, because it is a property of the stopwatch and the box -- and the verdict says
 when it bound (`floored_at_resolution`).
 
 ## Which samples are judged
 
-    python -m rola_results verdict --reference LABEL [--candidate LABEL] [--cell C] [--arm A] [--json]
+    bazel run //:results -- verdict --reference LABEL [--candidate LABEL] [--cell C] [--arm A] [--json]
 
 reads the stored timing sessions (the `timing_members` and `timing_samples` views). In every session that timed the
 reference label's arm on a cell, each other label's member of that arm on that cell is paired with it and judged inside
 the session. A unit is the arm, the cell, the two labels and the code each ran (commit and tracked diff); its sessions,
 oldest first, are the runs, and the newest is judged. Nothing is stored: a verdict is a reading of the records, taken
-again whenever it is asked for. `python -m rola_results dashboard --out FILE --reference LABEL` is one run as a page.
+again whenever it is asked for. `bazel run //:results -- dashboard --out FILE --reference LABEL` is one run as a page.
 
 ## SASS
 
-`python tools/ratify.py` and `python tools/sass_bodies.py` are the instruments. Both binaries in a
-comparison no longer need to have been built at the same path (P19,
-`docs/build.md`'s path-trap section) — they must agree on `ratify.SASS_HASH_VERSION`,
-which `--compare` checks and refuses on mismatch.
+`bazel run //:ratify` and `bazel run //tools:sass_bodies` are the instruments. Two binaries in a
+comparison may be built at different paths ([`build.md#kernel-identity`](build.md#kernel-identity)); they must agree
+on `ratify.SASS_HASH_VERSION`, which `--compare` checks and refuses on mismatch.
 
 **Measuring a kernel's register DEMAND at a bound it does not ship at** is a
 scratch-tree edit — copy the tree, change the `__launch_bounds__` CTA argument at
-the instantiation, run `python tools/ratify.py --census` there, read the spill
-column — and never a flag on the shipped tool. `--force-ctas` was that flag; it
-was deleted once nothing in `csrc/` read its macro, because a tool that
-can force a bound is a tool that can ratify one.
-
-## The sanitizer gap
-
-No sanitizer measurement has been taken of the carry family. `compute-sanitizer` runs a kernel under conditions no timing
-instrument reproduces, so it is a third instrument like `ncu` and needs its own refusal rules and record shape before a
-number from it enters the record. Named here because an undelivered item named is not a delivered one.
+the instantiation, run `bazel run //:ratify -- --census` there, read the spill
+column — and never a flag on the shipped tool, because a tool that can force a
+bound is a tool that can ratify one.
 
 ## What is deliberately not here
 
-* **A second method.** The in-process A/B driver, and later tools/compare.py and the interleaving driver, were deleted
-  once the declared build system timed the same subjects (`docs/internals/DELETIONS.md`): two methods are how a harness
+* **A second method.** The declared build system is the one way a subject is timed: two methods are how a harness
   comes to disagree with itself.
 * **A committed SQLite database.** A binary blob has no diff and cannot be reviewed in a landing. Any query artifact is
   derived and ignored — see the record below, which is exactly this design.
@@ -187,9 +234,11 @@ number from it enters the record. Named here because an undelivered item named i
 
 ## The build: everything declared, a run pruned by label
 
-A checkout's `declare.py` declares EVERY target it has -- its build, its machine facts, each instrument over the cells
-sized for measurement (`tier` probe or both), its timing arms, its diff sides and its own kernel-vs-oracle diff, the
-oracle tier as one node -- and takes no selector. Which of it a build runs is pruned at the CLI by LABEL, which knows
+A checkout's `declare.py` declares EVERY target it has -- its build (the build graph's `bazel run //:library`, run
+every build: Bazel's cache is its key, and the library's digest, its output, keys every target that reads the binary),
+its machine
+facts, each instrument over the cells sized for measurement (`tier` probe or both), its timing arms, its diff sides
+and its own kernel-vs-oracle diff, the oracle tier as one node -- and takes no selector. Which of it a build runs is pruned at the CLI by LABEL, which knows
 nothing of cells, groups or instruments: `--only 'rola/phases'` runs that instrument and what it needs, `--skip
 '*/timeline'` drops that instrument and everything that reads it. A node whose code, binary and inputs have not changed
 is a cache hit and does not run. A full run of rola-bench's suite over one checkout is seven minutes (measured
@@ -204,19 +253,37 @@ a DIFF is two sides under one named rule -- `bit-identical`, the per-slot clause
 `support-equal` -- with a claim (`expect` same or different) and a consequence (a build failure or a recorded verdict).
 A side proves which checkout's library it imported; a comparison that compared fewer quantities than it declared, or a
 cell only one side could produce, refuses rather than passes; a cell both sides refuse is listed and not counted. Inside
-one checkout the carry kernel is diffed against the fp64 reference per slot under each output kind's clauses
-(`rola/diff/carry-vs-oracle`); across checkouts rola-bench pairs each surface a checkout exposes (`SURFACES`: the fp64
-oracle, the producer reference, the carry kernel) under ITS rule for the surface (`RULES`) -- the oracle
-bit-identical, the producer support-equal, the kernel per slot at twice the reassociation the checkout states
-(`NUMERICS`: the readout fan-in is an fp32 atomic reduction and is not bit-reproducible run to run), stored at
-`diff/<surface>`. Verdicts are stored, tensors never.
+Across checkouts rola-bench pairs each surface a checkout exposes (`SURFACES` in `declare.py`: the fp64 oracle and the
+producer reference) under ITS rule for the surface (`RULES`) -- the oracle bit-identical, the producer support-equal --
+stored at `diff/<surface>`. Verdicts are stored, tensors never. The carry kernel has no diff surface and no
+kernel-vs-oracle diff: its oracle obligation is owed (`tools/coverage.json`).
+
+## <a id="instruments"></a>The instruments
+
+Each is a target of `declare.py` (`INSTRUMENTS`), run per cell where it reads a launch, its output stored beside the
+timing session:
+
+| target | tool | what it reads |
+|---|---|---|
+| `sass` | `tools/sass_gate.py` | the build's SASS signatures (KERNEL_STANDARDS §20) |
+| `registers` | [`tools/life_ranges.py`](internals/tools/life_ranges.md) | peak live registers per source region |
+| `phases` | [`tools/phase_ledger.py`](internals/tools/phase_ledger.md) | the kernel's phase clock on a cell |
+| `counters` | [`tools/pipe_counters.py`](internals/tools/pipe_counters.md) | the profiler's pipe and resource counters |
+| `census` | [`tools/stall_census.py`](internals/tools/stall_census.md) | every warp-stall sample, by source line |
+| `timeline` | [`tools/pipe_timeline.py`](internals/tools/pipe_timeline.md) | the pipes' activity over a launch |
+| `counters-intra`, `census-intra` | the same tools' `--kernel` ([`tools/kernel_targets.py`](internals/tools/kernel_targets.md)) | the intra's launches, on the cells of 16K tokens and more |
+| `roofline` | `tools/roofline.py` | the intra's time beside the device's u8 IMMA ceiling |
+| `oracle-tier` | the oracle battery | the counts, the failed cases, the margins |
+
+A question about the machine itself, rather than a shipped kernel, is a lab experiment ([`lab/`](lab/README.md)).
 
 ## The measurements record: `rola_results`
 
 Every measuring tool stores what it measured through one library, `rola_results`, in the rola-results repository:
-`store.root` in the dev config (default `rola-results` beside the checkouts; the container mounts it at
-`/workspace/store`), importable from every interpreter `tools/dev.py init` provisions. A result measured in any
-worktree, host or container lands in that one repository, visible to every other at once.
+`store.root` in the dev config (default `rola-results` beside the checkouts), importable from every interpreter
+`bazel run //:init` provisions. A result measured in any worktree of a machine lands in that one repository, visible
+to every other at once; the devbox container has its own clone (`docs/setup.md#the-devbox-image`), whose records
+reach another machine's by git (`bazel run //:results -- commit`, then a push and a pull).
 
 A tool opens a store at its OWN LOCATION and hands it the SEMANTICS of what it measured -- the inputs its numbers
 depend on, reduced to identities (a commit and its tracked diff, a binary's manifest or file digest, the cells, the
@@ -234,20 +301,20 @@ and a timing only compares within the session that interleaved it.
 | `calibration` | `measure/harness/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline.scale` | `tools/pipe_timeline.py --calibrate` | the cell, the binary and the calibration's composition | the plateau the tool reads back as later runs' scale |
 | `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |
-| `environment` | `tools/dev.py container check` | the environment key | the proofs |
+| `environment` | `bazel run //:container_check` | the devbox image's digest | the steps, each timed, and the cold start |
 | `rola/oracle-tier` | a store target over the tier node | the tier's code, the binary, the environment | the counts, the failed cases, the margins |
-| `rola/carry-vs-oracle`, `diff/<surface>` | a store target over a diff node | both sides' semantics and the rule | the verdict per cell and quantity, never a tensor |
+| `diff/<surface>` | a store target over a diff node | both sides' semantics and the rule | the verdict per cell and quantity, never a tensor |
 
 Reading across runs is a join, never a parser: `instrument_metrics` is every number every instrument recorded in
 long form (run, cell, dotted metric, value), `diff_cells` every stored diff's verdict per cell and quantity, and
-`python -m rola_results instruments --baseline RUN` is one run's numbers beside another's as deltas; the dashboard
+`bazel run //:results -- instruments --baseline RUN` is one run's numbers beside another's as deltas; the dashboard
 (`--baseline RUN`) renders the same. Which run is the baseline, like which label is the reference, is the reader's.
 
-A tool run by another tool stores nothing (`--no-record`): the caller keeps the output in its own record. `python -m
-rola_results sql "..."` queries every location through a derived SQLite index beside the records (`history` and
-`latest` for one location; views flatten the stored outputs, and the rola-results README lists them with the last,
-history, compare and baseline questions as SQL); `python -m rola_results verdict` is the regression judgement above; `python
-tools/dev.py store commit -m <message>` commits the records
-(`python -m rola_results commit`), after the repository's own check that every key recomputes from its semantics and
-every output exists. Pushing is the owner's act. The record kept before the library -- the per-run JSONL, the perf
+A tool run by another tool stores nothing (`--no-record`): the caller keeps the output in its own record.
+`bazel run //:results -- sql "..."` queries every location through a derived SQLite index beside the records
+(`history` and `latest` for one location; views flatten the stored outputs, and the rola-results README lists them
+with the last, history, compare and baseline questions as SQL); `bazel run //:results -- verdict` is the regression
+judgement above; `bazel run //:results -- commit -m <message>` commits the records, after the repository's own check
+that every key recomputes from its semantics and every output exists. Pushing is the owner's act.
+The record kept before the library -- the per-run JSONL, the perf
 ledger, the ledger and composer reports -- left the store for the owner's archive (`docs/internals/DELETIONS.md`).

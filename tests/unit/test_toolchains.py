@@ -12,7 +12,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-import ratify  # noqa: E402
 import toolchains  # noqa: E402
 
 A = "ptxas: NVIDIA (R) Ptx optimizing assembler Cuda compilation tools, release 13.0, V13.0.48 Build x_0"
@@ -35,9 +34,9 @@ def declared(tmp_path, monkeypatch):
 
 
 def _record(ptxas, major=13):
-    return {"ptxas": ptxas, "cuda_major": major, "torch_index": f"https://download.pytorch.org/whl/cu{major}0",
-            "container": {"base_image": f"nvidia/cuda:{major}.0.0-devel-ubuntu22.04@sha256:{'a' * 64}",
-                          "packages": [f"cuda-nvcc-{major}-0={major}.0.1-1"]}}
+    return {"ptxas": ptxas, "readers": {"cuobjdump": f"cuobjdump {major}", "nvdisasm": f"nvdisasm {major}"},
+            "sanitizer": f"compute-sanitizer {major}",
+            "cuda_major": major, "torch_index": f"https://download.pytorch.org/whl/cu{major}0"}
 
 
 def test_the_assembler_selects_its_record_whitespace_normalized(declared):
@@ -64,9 +63,7 @@ def test_two_records_for_one_assembler_are_refused(declared):
 
 @pytest.mark.parametrize("record", [{"ptxas": A, "cuda_major": 13}, {**_record(A), "extra": 1},
                                     {**_record(A), "cuda_major": "13"},
-                                    {**_record(A), "container": {"base_image": "x", "packages": ["cuda-nvcc-13-0"]}},
-                                    {**_record(A), "container": {"base_image": "nvidia/cuda:13.0.0-devel-ubuntu22.04",
-                                                                 "packages": ["cuda-nvcc-13-0=13.0.48-1"]}}])
+                                    {**_record(A), "readers": {"cuobjdump": "cuobjdump 13"}}])
 def test_a_malformed_record_is_refused(declared, record):
     declared(bad=record)
     with pytest.raises(toolchains.ToolchainError):
@@ -80,12 +77,3 @@ def test_torch_of_another_cuda_major_is_refused_naming_the_index(declared):
     for torch_cuda in ("12.4", None):
         with pytest.raises(toolchains.ToolchainError, match="whl/cu130"):
             toolchains.torch_pairing(toolchain, torch_cuda)
-
-
-def test_a_build_directory_another_toolkit_wrote_is_not_reused(tmp_path, monkeypatch):
-    ninja = tmp_path / "build.ninja"
-    monkeypatch.setattr(ratify, "NINJA_FILE", ninja)
-    monkeypatch.setattr(ratify.dev_config, "cuda_home", lambda: str(tmp_path / "cuda-13.0"))
-    for toolkit, reused in (("cuda-13.0", True), ("cuda-12.4", False)):
-        ninja.write_text(f"nvcc = /x/nvcc\ncuda_cflags = -I{tmp_path / toolkit}/include -O3\ncuda_post_cflags = -O3\n")
-        assert (ratify._ninja_cuda_template() is not None) is reused

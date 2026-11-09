@@ -1,0 +1,193 @@
+{
+  "schema": {
+    "mma": ["hmma_f16_f32", "hmma_f16_f16", "hmma_bf16_f32", "imma_u8_s8_k32"],
+    "latency": ["ffma", "lds", "ldsm", "hmma"],
+    "shared": ["store", "store_wavefront", "copy_bypass", "copy_access", "global_read", "global_fill"],
+    "pipe": ["alu", "fma", "fma_fp16", "fmaheavy", "xu"],
+    "global": ["l2_line", "red_request"],
+    "taxed": ["fp32", "half2", "hmax2", "add_xor", "imad", "lop3", "prmt", "fmnmx", "lds", "cvt_f32_f16x2", "cvt_u32_f32", "cvt_f16_f32"],
+    "caps": [
+      {"name": "cc", "type": "int", "kind": "IDENTITY", "doc": "compute capability x10, e.g. 860"},
+      {"name": "bf16_cvt_packed", "type": "bool", "kind": "INSTRUCTION", "doc": "two fp32 -> one b32 of two bf16, one instruction"},
+      {"name": "reg_transpose_b16", "type": "bool", "kind": "INSTRUCTION", "doc": "an 8x8 b16 tile spread across the MMA unit's own registers is transposed IN PLACE. see docs/internals/common/arch_caps.md#reg-transpose-b16"},
+      {"name": "bf16_simd_arith", "type": "bool", "kind": "INSTRUCTION", "doc": "elementwise bf16 arithmetic on a packed pair (`mul.rn.bf16x2`). see docs/internals/common/arch_caps.md#bf16-simd-arith"},
+      {"name": "bf16_simd_fma", "type": "bool", "kind": "INSTRUCTION", "doc": "FUSED elementwise bf16 arithmetic on a packed pair (`fma.rn.bf16x2`). see docs/internals/common/arch_caps.md#bf16-simd-fma"},
+      {"name": "smem_per_sm", "type": "int", "kind": "FACT", "doc": "`cudaDevAttrMaxSharedMemoryPerMultiprocessor`"},
+      {"name": "smem_per_cta_max", "type": "int", "kind": "FACT", "doc": "opt-in dynamic maximum, one CTA"},
+      {"name": "regs_per_sm", "type": "int", "kind": "FACT", "doc": ""},
+      {"name": "max_threads_per_sm", "type": "int", "kind": "FACT", "doc": ""}
+    ]
+  },
+  "arch": {
+    "sm_80": {
+      "build": {"family": "ampere", "window": 1024},
+      "caps": {"bf16_cvt_packed": true, "reg_transpose_b16": true, "bf16_simd_arith": false, "bf16_simd_fma": true, "smem_per_sm": 167936, "smem_per_cta_max": 166912, "regs_per_sm": 65536, "max_threads_per_sm": 2048},
+      "rates": {
+        "schedulers": {"cycles": 4, "documented": "CUDA C++ Programming Guide, compute capability 8.x: four warp schedulers an SM"},
+        "issue": {"cycles": 1, "documented": "CUDA C++ Programming Guide, compute capability 8.x: a scheduler issues one instruction a clock"},
+        "wavefront": {"cycles": 1, "documented": "CUDA C++ Programming Guide, shared memory: 32 banks of 32 bits a clock"},
+        "atomic": {"cycles": 2.003, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+        "atomic_wavefront": {"cycles": 1.0, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+        "shared": {
+          "store": {"cycles": 2.003, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "store_wavefront": {"cycles": 1.143, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "copy_bypass": {"cycles": 0.5, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "copy_access": {"cycles": 5.336, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "global_read": {"cycles": 1.194, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "global_fill": {"cycles": 0.389, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"}
+        },
+        "global": {
+          "l2_line": {"cycles": 7.122, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"},
+          "red_request": {"cycles": 4.849, "announced": "the RTX 3080 Ti's (sm_86) measured value; unmeasured on sm_80"}
+        },
+        "pipe": {
+          "alu": {"cycles": 2, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.0: 64 results a clock an SM for 32-bit integer add, compare, logic and shift -- 16 lanes a scheduler"},
+          "fma": {"cycles": 2, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.0: 64 results a clock an SM for 32-bit floating-point add, multiply and fma -- 16 lanes a scheduler"},
+          "fma_fp16": {"cycles": 1, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.0: 256 results a clock an SM for 16-bit floating-point fma -- a half2 instruction on 32 lanes a scheduler"},
+          "fmaheavy": {"cycles": 2, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.0: 64 results a clock an SM for 32-bit integer multiply and multiply-add -- 16 lanes a scheduler"},
+          "xu": {"cycles": 8, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.0: 16 results a clock an SM for special functions and 32-bit conversions -- 4 lanes a scheduler"}
+        },
+        "mma": {
+          "hmma_f16_f32": {"cycles": 8, "documented": "A100 whitepaper: 312 dense FP16/BF16 tensor TFLOPS at either accumulate, 624 dense INT8 TOPS, 108 SMs at 1410 MHz"},
+          "hmma_f16_f16": {"cycles": 8, "documented": "A100 whitepaper: 312 dense FP16/BF16 tensor TFLOPS at either accumulate, 624 dense INT8 TOPS, 108 SMs at 1410 MHz"},
+          "hmma_bf16_f32": {"cycles": 8, "documented": "A100 whitepaper: 312 dense FP16/BF16 tensor TFLOPS at either accumulate, 624 dense INT8 TOPS, 108 SMs at 1410 MHz"},
+          "imma_u8_s8_k32": {"cycles": 8, "documented": "A100 whitepaper: 312 dense FP16/BF16 tensor TFLOPS at either accumulate, 624 dense INT8 TOPS, 108 SMs at 1410 MHz"}
+        }
+      }
+    },
+    "sm_86": {
+      "build": {"family": "ampere", "window": 512},
+      "note": "local dev (GA102)",
+      "caps": {"bf16_cvt_packed": true, "reg_transpose_b16": true, "bf16_simd_arith": false, "bf16_simd_fma": true, "smem_per_sm": 102400, "smem_per_cta_max": 101376, "regs_per_sm": 65536, "max_threads_per_sm": 1536},
+      "rates": {
+        "schedulers": {"cycles": 4, "documented": "CUDA C++ Programming Guide, compute capability 8.x: four warp schedulers an SM"},
+        "issue": {"cycles": 1, "documented": "CUDA C++ Programming Guide, compute capability 8.x: a scheduler issues one instruction a clock"},
+        "wavefront": {"cycles": 1.001, "measured": "smem_rates", "row": "ldmatrix.x4, 4 wavefronts a warp / 8 warps", "on": "rtx3080ti"},
+        "atomic": {"cycles": 2.003, "measured": "smem_rates", "row": "red.shared.add, a lane a bank, 1 wavefront a warp / 8 warps", "on": "rtx3080ti"},
+        "atomic_wavefront": {"cycles": 1.0, "measured": "smem_rates", "row": "red.shared.add, four lanes a bank, 4 wavefronts a warp / 8 warps", "on": "rtx3080ti"},
+        "shared": {
+          "store": {"cycles": 2.003, "measured": "smem_rates", "row": "st.shared.u32, 1 wavefront a warp / 8 warps", "on": "rtx3080ti"},
+          "store_wavefront": {"cycles": 1.143, "measured": "smem_rates", "row": "st.shared.v4, 4 wavefronts a warp / 8 warps", "on": "rtx3080ti"},
+          "copy_bypass": {"cycles": 0.5, "measured": "smem_rates", "row": "pipe cycles a 128 B: cp.async.cg into shared memory, L2 hits", "on": "rtx3080ti"},
+          "copy_access": {"cycles": 5.336, "measured": "smem_rates", "row": "pipe cycles a 128 B: cp.async.ca into shared memory, L2 hits", "on": "rtx3080ti"},
+          "global_read": {"cycles": 1.194, "measured": "smem_rates", "row": "pipe cycles a 128 B: ld.global.nc.v4, L1 hits", "on": "rtx3080ti"},
+          "global_fill": {"cycles": 0.389, "measured": "smem_rates", "row": "pipe cycles a 128 B a load from L2 adds over an L1 hit (ld.global.cg less ld.global.nc)", "on": "rtx3080ti"}
+        },
+        "global": {
+          "l2_line": {"cycles": 7.122, "measured": "smem_rates", "row": "cycles a 128 B from L2: cp.async.cg alone, every SM streaming", "on": "rtx3080ti"},
+          "red_request": {"cycles": 4.849, "measured": "drain", "row": "alt-k4: cycles a line request, every SM draining", "on": "rtx3080ti"}
+        },
+        "pipe": {
+          "alu": {"cycles": 2, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.6: 64 results a clock an SM for 32-bit integer add, compare, logic and shift -- 16 lanes a scheduler"},
+          "fma": {"cycles": 1, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.6: 128 results a clock an SM for 32-bit floating-point add, multiply and fma -- 32 lanes a scheduler"},
+          "fma_fp16": {"cycles": 1, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.6: 256 results a clock an SM for 16-bit floating-point fma -- a half2 instruction on 32 lanes a scheduler"},
+          "fmaheavy": {"cycles": 2, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.6: 64 results a clock an SM for 32-bit integer multiply and multiply-add -- 16 lanes a scheduler"},
+          "xu": {"cycles": 8, "documented": "CUDA C++ Programming Guide, arithmetic instruction throughput, compute capability 8.6: 16 results a clock an SM for special functions and 32-bit conversions -- 4 lanes a scheduler"}
+        },
+        "mma": {
+          "hmma_f16_f32": {"cycles": 16, "documented": "GA102 whitepaper Table 3: RTX A6000, 84 SMs at 1800 MHz, 154.8 dense FP16 tensor TFLOPS with FP32 accumulate"},
+          "hmma_f16_f16": {"cycles": 16, "documented": "GA102 whitepaper Table 3: RTX A6000, 84 SMs at 1800 MHz, 154.8 dense FP16 tensor TFLOPS with FP16 accumulate"},
+          "hmma_bf16_f32": {"cycles": 16, "documented": "GA102 whitepaper Table 3: RTX A6000, 84 SMs at 1800 MHz, 154.8 dense BF16 tensor TFLOPS with FP32 accumulate"},
+          "imma_u8_s8_k32": {"cycles": 16, "documented": "GA102 whitepaper Table 3: RTX A6000, 84 SMs at 1800 MHz, 309.7 dense INT8 tensor TOPS"}
+        },
+        "latency": {
+          "ffma": {"cycles": 4.0, "measured": "issue_latency", "row": "FFMA / latency", "on": "rtx3080ti"},
+          "lds": {"cycles": 23.0, "measured": "issue_latency", "row": "LDS.32 (address from the load) / latency", "on": "rtx3080ti"},
+          "ldsm": {"cycles": 29.0, "measured": "issue_latency", "row": "LDSM.x4 (address from the load) / latency", "on": "rtx3080ti"},
+          "hmma": {"cycles": 24.0, "measured": "issue_latency", "row": "fp16-accumulate HMMA.16816 on one accumulator / latency", "on": "rtx3080ti"}
+        }
+      }
+    },
+    "sm_87": {
+      "build": {"family": "ampere", "window": 512},
+      "caps": {"bf16_cvt_packed": true, "reg_transpose_b16": true, "bf16_simd_arith": false, "bf16_simd_fma": true, "smem_per_sm": 167936, "smem_per_cta_max": 166912, "regs_per_sm": 65536, "max_threads_per_sm": 1536}
+    },
+    "sm_89": {
+      "build": {"family": "ampere", "window": 512},
+      "caps": {"bf16_cvt_packed": true, "reg_transpose_b16": true, "bf16_simd_arith": false, "bf16_simd_fma": true, "smem_per_sm": 102400, "smem_per_cta_max": 101376, "regs_per_sm": 65536, "max_threads_per_sm": 1536}
+    },
+    "sm_90": {
+      "build": {"family": "hopper"},
+      "note": "TABULATED, NOT BUILT; see docs/internals/common/arch_caps.md#caps-of-note-l147",
+      "caps": {"bf16_cvt_packed": true, "reg_transpose_b16": true, "bf16_simd_arith": true, "bf16_simd_fma": true, "smem_per_sm": 233472, "smem_per_cta_max": 232448, "regs_per_sm": 65536, "max_threads_per_sm": 2048}
+    }
+  },
+  "product": {
+    "a100": {
+      "arch": "sm_80",
+      "device": "NVIDIA A100-SXM4-80GB",
+      "note": "the rented A100; every A100 memory and interconnect variant is this product (the slug cuts at the first -)"
+    },
+    "rtx3080ti": {
+      "arch": "sm_86",
+      "device": "NVIDIA GeForce RTX 3080 Ti",
+      "note": "GeForce runs fp32-accumulate tensor math at half the fp16-accumulate rate (GA102 whitepaper Table 9: the RTX 3090 at 71 against 142 dense TFLOPS)",
+      "rates": {
+        "mma": {
+          "hmma_f16_f32": {"cycles": 32.132, "measured": "tensor_tax", "row": "hmma f16->f32 / alone"},
+          "hmma_f16_f16": {"cycles": 16.131, "measured": "tensor_tax", "row": "hmma f16->f16 / alone"},
+          "hmma_bf16_f32": {"cycles": 32.132, "measured": "tensor_tax", "row": "hmma bf16->f32 / alone"},
+          "imma_u8_s8_k32": {"cycles": 16.134, "measured": "tensor_tax", "row": "imma u8.s8 k32 / alone"}
+        },
+        "tax": {
+          "hmma_f16_f32": {
+            "fp32": {"cycles": 0.506, "measured": "tensor_tax", "row": "hmma f16->f32 / ffma"},
+            "half2": {"cycles": 0.213, "measured": "tensor_tax", "row": "hmma f16->f32 / hfma2"},
+            "hmax2": {"cycles": 0.161, "measured": "tensor_tax", "row": "hmma f16->f32 / hmax2"},
+            "add_xor": {"cycles": 0.715, "measured": "tensor_tax", "row": "hmma f16->f32 / add + xor (iadd3 or imad.iadd, lop3)"},
+            "imad": {"cycles": 0.103, "measured": "tensor_tax", "row": "hmma f16->f32 / imad"},
+            "lop3": {"cycles": 0.056, "measured": "tensor_tax", "row": "hmma f16->f32 / lop3"},
+            "prmt": {"cycles": 0.052, "measured": "tensor_tax", "row": "hmma f16->f32 / prmt"},
+            "fmnmx": {"cycles": 0.058, "measured": "tensor_tax", "row": "hmma f16->f32 / fmnmx"},
+            "lds": {"cycles": 0.535, "measured": "tensor_tax", "row": "hmma f16->f32 / lds"},
+            "cvt_f32_f16x2": {"cycles": 0.057, "measured": "tensor_tax", "row": "hmma f16->f32 / f32->f16x2"},
+            "cvt_u32_f32": {"cycles": 0.046, "measured": "tensor_tax", "row": "hmma f16->f32 / u32->f32"},
+            "cvt_f16_f32": {"cycles": 0.077, "measured": "tensor_tax", "row": "hmma f16->f32 / f16->f32"}
+          },
+          "hmma_f16_f16": {
+            "fp32": {"cycles": 1.008, "measured": "tensor_tax", "row": "hmma f16->f16 / ffma"},
+            "half2": {"cycles": 0.482, "measured": "tensor_tax", "row": "hmma f16->f16 / hfma2"},
+            "hmax2": {"cycles": 0.437, "measured": "tensor_tax", "row": "hmma f16->f16 / hmax2"},
+            "add_xor": {"cycles": 1.203, "measured": "tensor_tax", "row": "hmma f16->f16 / add + xor (iadd3 or imad.iadd, lop3)"},
+            "imad": {"cycles": 0.188, "measured": "tensor_tax", "row": "hmma f16->f16 / imad"},
+            "lop3": {"cycles": 0.219, "measured": "tensor_tax", "row": "hmma f16->f16 / lop3"},
+            "prmt": {"cycles": 0.219, "measured": "tensor_tax", "row": "hmma f16->f16 / prmt"},
+            "fmnmx": {"cycles": 0.219, "measured": "tensor_tax", "row": "hmma f16->f16 / fmnmx"},
+            "lds": {"cycles": 0.845, "measured": "tensor_tax", "row": "hmma f16->f16 / lds"},
+            "cvt_f32_f16x2": {"cycles": 0.219, "measured": "tensor_tax", "row": "hmma f16->f16 / f32->f16x2"},
+            "cvt_u32_f32": {"cycles": 0.168, "measured": "tensor_tax", "row": "hmma f16->f16 / u32->f32"},
+            "cvt_f16_f32": {"cycles": 0.127, "measured": "tensor_tax", "row": "hmma f16->f16 / f16->f32"}
+          },
+          "hmma_bf16_f32": {
+            "fp32": {"cycles": 0.506, "measured": "tensor_tax", "row": "hmma bf16->f32 / ffma"},
+            "half2": {"cycles": 0.218, "measured": "tensor_tax", "row": "hmma bf16->f32 / hfma2"},
+            "hmax2": {"cycles": 0.161, "measured": "tensor_tax", "row": "hmma bf16->f32 / hmax2"},
+            "add_xor": {"cycles": 0.713, "measured": "tensor_tax", "row": "hmma bf16->f32 / add + xor (iadd3 or imad.iadd, lop3)"},
+            "imad": {"cycles": 0.103, "measured": "tensor_tax", "row": "hmma bf16->f32 / imad"},
+            "lop3": {"cycles": 0.056, "measured": "tensor_tax", "row": "hmma bf16->f32 / lop3"},
+            "prmt": {"cycles": 0.052, "measured": "tensor_tax", "row": "hmma bf16->f32 / prmt"},
+            "fmnmx": {"cycles": 0.058, "measured": "tensor_tax", "row": "hmma bf16->f32 / fmnmx"},
+            "lds": {"cycles": 0.534, "measured": "tensor_tax", "row": "hmma bf16->f32 / lds"},
+            "cvt_f32_f16x2": {"cycles": 0.057, "measured": "tensor_tax", "row": "hmma bf16->f32 / f32->f16x2"},
+            "cvt_u32_f32": {"cycles": 0.046, "measured": "tensor_tax", "row": "hmma bf16->f32 / u32->f32"},
+            "cvt_f16_f32": {"cycles": 0.079, "measured": "tensor_tax", "row": "hmma bf16->f32 / f16->f32"}
+          },
+          "imma_u8_s8_k32": {
+            "fp32": {"cycles": 0.976, "measured": "tensor_tax", "row": "imma u8.s8 k32 / ffma"},
+            "half2": {"cycles": 0.411, "measured": "tensor_tax", "row": "imma u8.s8 k32 / hfma2"},
+            "hmax2": {"cycles": 0.381, "measured": "tensor_tax", "row": "imma u8.s8 k32 / hmax2"},
+            "add_xor": {"cycles": 1.593, "measured": "tensor_tax", "row": "imma u8.s8 k32 / add + xor (iadd3 or imad.iadd, lop3)"},
+            "imad": {"cycles": 0.123, "measured": "tensor_tax", "row": "imma u8.s8 k32 / imad"},
+            "lop3": {"cycles": 0.15, "measured": "tensor_tax", "row": "imma u8.s8 k32 / lop3"},
+            "prmt": {"cycles": 0.15, "measured": "tensor_tax", "row": "imma u8.s8 k32 / prmt"},
+            "fmnmx": {"cycles": 0.15, "measured": "tensor_tax", "row": "imma u8.s8 k32 / fmnmx"},
+            "lds": {"cycles": 0.967, "measured": "tensor_tax", "row": "imma u8.s8 k32 / lds"},
+            "cvt_f32_f16x2": {"cycles": 0.15, "measured": "tensor_tax", "row": "imma u8.s8 k32 / f32->f16x2"},
+            "cvt_u32_f32": {"cycles": 0.168, "measured": "tensor_tax", "row": "imma u8.s8 k32 / u32->f32"},
+            "cvt_f16_f32": {"cycles": 0.104, "measured": "tensor_tax", "row": "imma u8.s8 k32 / f16->f32"}
+          }
+        }
+      }
+    }
+  }
+}

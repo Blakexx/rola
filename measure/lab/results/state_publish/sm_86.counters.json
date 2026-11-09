@@ -1,0 +1,114 @@
+{
+ "experiment": "state_publish",
+ "question": "each window the owner CTA publishes its fold state to its readout: the fold's warps own 8 R-lists x all 16 S-digits (fp32 C fragments, 128 registers a thread), the readout's warps own 2 S-digits x all 64 R-leaves (f16 A fragments, 64 registers), so the publish is a cross-warp transpose of 1024 leaves x 32 channels through shared memory. What does it cost alone, how much of a dense and a sparse window does it expose, and does it hide under the boundary's other work (the read pool's fill, the lists' integer chains and barriers)?",
+ "arch": "sm_86",
+ "git": {
+  "sha": "ac09a1d42a6328a2aa43b0ef12b896c0e1554795",
+  "dirty": false
+ },
+ "date": "2026-10-04T21:18:24+00:00",
+ "metrics": [
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum",
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum",
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum",
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum"
+ ],
+ "kernels": {
+  "void window<0, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16384080.0
+  },
+  "void window<0, 0, 1>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 8192080.0
+  },
+  "void window<1, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 80.0
+  },
+  "void window<2, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16384080.0
+  },
+  "void window<2, 0, 1>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 8192080.0
+  },
+  "void window<3, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 80.0
+  },
+  "void window<4, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16384080.0
+  },
+  "void window<5, 0, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8207082.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16399162.0
+  },
+  "void window<6, 0, 1>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 41.5,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8320000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 8192121.5
+  },
+  "void window<1, 1, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 80.0
+  },
+  "void window<2, 1, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16384080.0
+  },
+  "void window<2, 1, 1>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 8192080.0
+  },
+  "void window<3, 1, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 80.0
+  },
+  "void window<4, 1, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16384080.0
+  },
+  "void window<5, 1, 0>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 8203100.5,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8192000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 16395180.5
+  },
+  "void window<6, 1, 1>(int, const unsigned char *, long long *, int *)": {
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 0.0,
+   "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 3366.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 8320000.0,
+   "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 8195446.0
+  }
+ }
+}

@@ -1,0 +1,142 @@
+{
+ "experiment": "read_step",
+ "question": "where a warp of the per-list readout step spends its time, by instruction class and stall reason (ncu SourceCounters warp-state samples over the step loop)",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "git": "44be2660+dirty",
+ "date": "2026-10-07T19:01:22+00:00",
+ "command": "ncu --kernel-name-base demangled -k 'regex:read<\\(int\\)M, \\(int\\)0, \\(int\\)8, \\(int\\)16>' -c 1 --section SourceCounters --section WarpStateStats --page source --print-source sass --csv <lab binary> --reps 1",
+ "kernels": {
+  "read<12, 0, 8, 16>": {
+   "samples": 188662,
+   "share": {
+    "other": {
+     "selected": 0.0513,
+     "wait": 0.0437,
+     "not_selected": 0.0135,
+     "math": 0.0095,
+     "short_sb": 0.0062,
+     "dispatch": 0.0032,
+     "no_inst": 0.0005,
+     "branch_resolving": 0.0003,
+     "long_sb": 0.0001
+    },
+    "alu": {
+     "selected": 0.0582,
+     "wait": 0.0179,
+     "not_selected": 0.0125,
+     "math": 0.0063,
+     "short_sb": 0.0048,
+     "dispatch": 0.0041,
+     "no_inst": 0.0002
+    },
+    "load": {
+     "selected": 0.0157,
+     "wait": 0.0078,
+     "not_selected": 0.0029,
+     "dispatch": 0.0017,
+     "mio": 0.0009,
+     "no_inst": 0.0001
+    },
+    "half": {
+     "selected": 0.0212,
+     "wait": 0.0104,
+     "math": 0.0088,
+     "not_selected": 0.006,
+     "dispatch": 0.0049,
+     "no_inst": 0.0
+    },
+    "mma": {
+     "math": 0.2819,
+     "wait": 0.1121,
+     "not_selected": 0.0669,
+     "selected": 0.0212,
+     "dispatch": 0.0046,
+     "short_sb": 0.0023,
+     "long_sb": 0.0001
+    },
+    "fp32": {
+     "selected": 0.0794,
+     "short_sb": 0.0179,
+     "wait": 0.0104,
+     "math": 0.0093,
+     "not_selected": 0.0079,
+     "dispatch": 0.0059,
+     "no_inst": 0.0009
+    },
+    "atomic": {
+     "wait": 0.0307,
+     "selected": 0.0192,
+     "not_selected": 0.0102,
+     "mio": 0.0039,
+     "dispatch": 0.0026,
+     "no_inst": 0.0
+    }
+   }
+  },
+  "read<19, 0, 8, 16>": {
+   "samples": 185460,
+   "share": {
+    "other": {
+     "selected": 0.0606,
+     "wait": 0.0248,
+     "not_selected": 0.0207,
+     "math": 0.0112,
+     "dispatch": 0.0094,
+     "short_sb": 0.004,
+     "no_inst": 0.0001
+    },
+    "load": {
+     "selected": 0.0163,
+     "not_selected": 0.0038,
+     "wait": 0.0034,
+     "mio": 0.0026,
+     "dispatch": 0.0025,
+     "no_inst": 0.0
+    },
+    "alu": {
+     "selected": 0.0829,
+     "wait": 0.0521,
+     "not_selected": 0.0264,
+     "math": 0.0188,
+     "short_sb": 0.012,
+     "dispatch": 0.0098,
+     "no_inst": 0.0001
+    },
+    "half": {
+     "math": 0.0271,
+     "selected": 0.0216,
+     "not_selected": 0.0121,
+     "dispatch": 0.0049,
+     "wait": 0.0011,
+     "short_sb": 0.0002
+    },
+    "mma": {
+     "math": 0.2643,
+     "wait": 0.0392,
+     "not_selected": 0.038,
+     "selected": 0.0217,
+     "dispatch": 0.0044,
+     "long_sb": 0.0002,
+     "short_sb": 0.0
+    },
+    "fp32": {
+     "selected": 0.0848,
+     "math": 0.0145,
+     "not_selected": 0.0134,
+     "dispatch": 0.0099,
+     "short_sb": 0.0095,
+     "wait": 0.0091,
+     "no_inst": 0.0
+    },
+    "atomic": {
+     "wait": 0.0247,
+     "selected": 0.0195,
+     "not_selected": 0.0123,
+     "dispatch": 0.0034,
+     "mio": 0.0028
+    }
+   }
+  }
+ }
+}

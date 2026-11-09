@@ -3,6 +3,8 @@
 // See docs/internals/common/burst.md
 #pragma once
 
+#include "common/ops.cuh"
+
 namespace rola::burst {
 
 __device__ __forceinline__ uint32_t after(uint32_t x, uint32_t y) {
@@ -29,12 +31,14 @@ struct Burst {
       mma(a, b, i + 1);
       mma(b, a, i + 2);
     }
-    if (i + 1 < end) {
+    const bool odd = i + 1 >= end;
+#pragma unroll 1
+    for (int n = denseref::ops::once(!odd); n > 0; --n) {
       mma(a, b, i + 1);
       last(b, a);
-    } else {
-      last(a, b);
     }
+#pragma unroll 1
+    for (int n = denseref::ops::once(odd); n > 0; --n) last(a, b);
   }
 };
 

@@ -8,7 +8,7 @@ a second implementation. A commit may not add a work code. The ones the tree sti
 most of them in the deletions ledger and the open-work list, whose rows need to say what each change DID rather than
 which stage did it -- prose work, not a substitution -- and the rest in test and tool docstrings.
 
-    python tools/lint/work_codes.py
+    bazel run //tools/lint:work_codes
 """
 from __future__ import annotations
 

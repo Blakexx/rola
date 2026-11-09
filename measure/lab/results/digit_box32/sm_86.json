@@ -1,0 +1,289 @@
+{
+ "experiment": "digit_box32",
+ "question": "`digit_box.cu`'s question for the 32 x 32 box, its image in two parts (the whole 64 KB does not fit beside the rest on sm_86).",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "a static image, free-running / 32 lists x 32 digits / alt-k4",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the two-part hand-off / 32 lists x 32 digits / alt-k4",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the readout alone / 32 lists x 32 digits / alt-k4",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the fold alone / 32 lists x 32 digits / alt-k4",
+   "reason": "an isolation: the fold's state is not read out"
+  },
+  {
+   "lab": "check",
+   "variant": "a static image, free-running / 32 lists x 32 digits / thinned 1/16",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the two-part hand-off / 32 lists x 32 digits / thinned 1/16",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the readout alone / 32 lists x 32 digits / thinned 1/16",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the fold alone / 32 lists x 32 digits / thinned 1/16",
+   "reason": "an isolation: the fold's state is not read out"
+  }
+ ],
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "7938fc7118c8d7435af802dedb697f25c0577c7a",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-12T20:59:51+00:00",
+ "utilization_before": 1,
+ "inputs": {
+  "alt/fold/read.bin": "22be80f5cd72112c",
+  "alt/fold/entries_m.bin": "d50187e09a7ac5cc",
+  "alt/fold/heads_m.bin": "864b1b00446c25f1",
+  "alt/fold/entries_n.bin": "922179ed2bee9b54",
+  "alt/fold/heads_n.bin": "49e36908eda3f9cf",
+  "alt/fold/banks.json": "7ee735ba2c249aab",
+  "alt/read.bin": "22be80f5cd72112c",
+  "alt/entries_m.bin": "d50187e09a7ac5cc",
+  "alt/heads_m.bin": "864b1b00446c25f1",
+  "alt/entries_n.bin": "922179ed2bee9b54",
+  "alt/heads_n.bin": "49e36908eda3f9cf",
+  "alt/banks.json": "7ee735ba2c249aab",
+  "thin/fold/read.bin": "9dbf6c36e1369ea3",
+  "thin/fold/entries_m.bin": "79a5c2d4ec8cf220",
+  "thin/fold/heads_m.bin": "7afb65ab7f25b580",
+  "thin/fold/entries_n.bin": "99fc12351e2c7183",
+  "thin/fold/heads_n.bin": "9f9d35fe840e0059",
+  "thin/fold/banks.json": "57091c0ccebc1af7",
+  "thin/read.bin": "51caed642efae2e1",
+  "thin/entries_m.bin": "adec563d100f1491",
+  "thin/heads_m.bin": "9efd29e65c661679",
+  "thin/entries_n.bin": "8b4bb0dc2d0e4ddb",
+  "thin/heads_n.bin": "0683bec6a4ec3917",
+  "thin/banks.json": "cdc5fdb443fac9e4"
+ },
+ "results": [
+  {
+   "lab": "result",
+   "name": "a static image, free-running / 32 lists x 32 digits / alt-k4",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    3930.851172,
+    3928.893359,
+    3927.722656,
+    3926.367969,
+    3931.505859
+   ],
+   "median": 3928.893359,
+   "min": 3926.367969,
+   "max": 3931.505859,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the two-part hand-off / 32 lists x 32 digits / alt-k4",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    5926.156641,
+    5927.411328,
+    5925.15625,
+    5925.574609,
+    5925.719141
+   ],
+   "median": 5925.719141,
+   "min": 5925.15625,
+   "max": 5927.411328,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the readout alone / 32 lists x 32 digits / alt-k4",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    2127.351953,
+    2128.183203,
+    2133.989062,
+    2133.137891,
+    2127.162109
+   ],
+   "median": 2128.183203,
+   "min": 2127.162109,
+   "max": 2133.989062,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the fold alone / 32 lists x 32 digits / alt-k4",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    1940.079688,
+    1939.484766,
+    1937.252734,
+    1939.024609,
+    1940.737109
+   ],
+   "median": 1939.484766,
+   "min": 1937.252734,
+   "max": 1940.737109,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a static image, free-running / 32 lists x 32 digits / thinned 1/16",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    1694.594531,
+    1695.047266,
+    1693.053516,
+    1693.312891,
+    1694.281641
+   ],
+   "median": 1694.281641,
+   "min": 1693.053516,
+   "max": 1695.047266,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the two-part hand-off / 32 lists x 32 digits / thinned 1/16",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    3476.381641,
+    3475.839453,
+    3474.562109,
+    3474.648047,
+    3475.144531
+   ],
+   "median": 3475.144531,
+   "min": 3474.562109,
+   "max": 3476.381641,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the readout alone / 32 lists x 32 digits / thinned 1/16",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    936.395703,
+    937.052344,
+    936.770313,
+    937.515234,
+    937.394141
+   ],
+   "median": 937.052344,
+   "min": 936.395703,
+   "max": 937.515234,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the fold alone / 32 lists x 32 digits / thinned 1/16",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    843.271094,
+    843.765234,
+    842.144141,
+    842.851562,
+    843.328516
+   ],
+   "median": 843.271094,
+   "min": 842.144141,
+   "max": 843.765234,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void digit_box::box<(int)3>(read_image::Lists, read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 170,
+   "ops": {
+    "IMAD.MOV.U32": 211,
+    "FADD": 128,
+    "HMMA.1688.F32": 96,
+    "LOP3.LUT": 93,
+    "MOV": 81,
+    "IADD3": 52,
+    "HMUL2": 48,
+    "SHFL.IDX": 36,
+    "SHF.R.S32.HI": 28,
+    "BRA": 28,
+    "LDSM.16.MT88.4": 24,
+    "SHF.R.U32.HI": 23
+   }
+  },
+  "void digit_box::box<(int)2>(read_image::Lists, read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 87,
+   "ops": {
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 82,
+    "IMAD": 57,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 45,
+    "LEA.HI": 42,
+    "LEA": 37,
+    "SHFL.IDX": 36,
+    "SHF.R.S32.HI": 29,
+    "IMAD.MOV.U32": 28
+   }
+  },
+  "void digit_box::box<(int)4>(read_image::Lists, read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 212,
+   "ops": {
+    "IMAD.MOV.U32": 261,
+    "LOP3.LUT": 189,
+    "FADD": 128,
+    "HMMA.1688.F32": 96,
+    "FFMA": 96,
+    "IMAD": 89,
+    "SHFL.IDX": 72,
+    "IADD3": 70,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMUL2": 48,
+    "HMMA.16816.F32.BF16": 48
+   }
+  },
+  "void digit_box::box<(int)0>(read_image::Lists, read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 208,
+   "ops": {
+    "IMAD.MOV.U32": 231,
+    "LOP3.LUT": 157,
+    "FADD": 128,
+    "FFMA": 96,
+    "HMMA.1688.F32": 96,
+    "MOV": 77,
+    "IMAD": 77,
+    "IADD3": 72,
+    "SHFL.IDX": 72,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "HMUL2": 48
+   }
+  }
+ }
+}

@@ -6,8 +6,9 @@ occupancy, computed from its SASS alone -- the control bits ptxas wrote into eve
 (stall count, yield, the scoreboard barriers it sets and waits on, the reuse flags) and a latency
 table from this card's calibrations -- for one warp and for two warps sharing a scheduler.
 
-    python tools/pipe_sim.py --arm 0 --loop common/burst.cuh:run [--warps 1|2] [--sm-warps 8] [--iterations 6] [--trace]
-    python tools/pipe_sim.py --calibrate rola_cu13/_C_parts.abi3.so      # the model against the probe's rows
+    bazel run //tools:pipe_sim -- --arm 0 --loop common/burst.cuh:run [--warps 1|2] [--sm-warps 8]
+        [--iterations 6] [--trace]
+    bazel run //tools:pipe_sim -- --calibrate rola_cu13/_C_parts.abi3.so   # the model against the probe's rows
 
 THE MODEL. A warp issues in order. Instruction i issues at the latest of: the previous issue
 plus the previous instruction's stall count; the completion of every scoreboard barrier its wait
@@ -31,8 +32,8 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "lint"))
+sys.path.insert(0, str(Path(__file__).absolute().parent))
+sys.path.insert(0, str(Path(__file__).absolute().parents[1] / "tools" / "lint"))
 
 import life_ranges  # noqa: E402
 import sass_control as sc  # noqa: E402
@@ -61,6 +62,9 @@ def simulate(body, warps: int, iterations: int, trace: bool, sm_warps: int = 0) 
     total = min(sm_warps, schedulers * warps)
     pipe_done: list[list[float]] = [[] for _ in range(schedulers)]  #: HMMA completion times a scheduler, in order
     port_busy: list[set[int]] = [set() for _ in range(schedulers)]
+    pipes = MACHINE.get("pipes", {})
+    interference = MACHINE.get("tensor_interference", {})
+    pipe_free: list[dict[str, float]] = [dict.fromkeys(pipes, 0.0) for _ in range(schedulers)]
     mem_free = 0.0  #: when the SM's memory pipe takes its next instruction
     issued = []
     #: every warp starts at once: the probe rows read the same with the pair half a period apart, and the
@@ -78,7 +82,7 @@ def simulate(body, warps: int, iterations: int, trace: bool, sm_warps: int = 0) 
         for b in range(6):
             if (c["wait"] >> b) & 1:
                 ready = max(ready, s["bars"][b])
-        if op == "HMMA":
+        if op in sc.MMA:
             #: a slot in the queue: the pipe executes one and holds `HMMA_QUEUE` behind it
             pending = [d for d in pipe_done[k] if d > ready]
             if len(pending) > HMMA_QUEUE:
@@ -89,17 +93,25 @@ def simulate(body, warps: int, iterations: int, trace: bool, sm_warps: int = 0) 
             #: while the backlog is longer (the profiler's `mio_throttle`), so a warp's loads are taken soon
             #: after they issue and its next loads wait at issue, not at their landing
             ready = max(ready, mem_free - MACHINE["mem_queue"])
+        #: the issue pipe it needs, shared by the scheduler's warps
+        pipe = next((p for p, ops in pipes.items() if op in ops), None)
+        if pipe is not None:
+            ready = max(ready, pipe_free[k][pipe])
         t = int(ready)
         while t in port_busy[k]:
             t += 1
+        if pipe is not None:
+            pipe_free[k][pipe] = t + pipes[pipe][op]
+        if op in interference and pipe_done[k] and pipe_done[k][-1] > t:
+            pipe_done[k][-1] += interference[op]
         #: a global access holds the scheduler's issue port `issue` cycles (its lanes' addresses and data
         #: through the LSU: calibration.md's reduction rows, ~12 a coalesced reduction), other instructions one
         for i in range(MACHINE["issue"].get(op, 1)):
             port_busy[k].add(t + i)
 
-        if op == "HMMA":
+        if op in sc.MMA:
             pipe_done[k] = [d for d in pipe_done[k] if d > t]
-            pipe_done[k].append(max(t, pipe_done[k][-1] if pipe_done[k] else t) + HMMA_PIPE)
+            pipe_done[k].append(max(t, pipe_done[k][-1] if pipe_done[k] else t) + sc.mma_cost(text, MACHINE))
         lat = LATENCY.get(op, LATENCY["DEFAULT"])
         done = t + lat
         if cost:
@@ -122,9 +134,10 @@ def simulate(body, warps: int, iterations: int, trace: bool, sm_warps: int = 0) 
     # steady state: the last two iterations' span on warp 0
     m0 = marks[0]
     period = (m0[-1] - m0[-3]) / 2 if len(m0) >= 3 else (m0[-1] - m0[0]) / max(1, len(m0) - 1)
-    hmmas = sum(1 for _, t, _ in body if sc.opcode(t) == "HMMA")
+    hmmas = sum(1 for _, t, _ in body if sc.opcode(t) in sc.MMA)
+    busy = sum(sc.mma_cost(t, MACHINE) for _, t, _ in body)
     return {"instructions": n, "hmmas": hmmas, "warps": warps, "sm_warps": total, "period": period,
-            "occupancy": hmmas * warps * HMMA_PIPE / period if period else float("nan"), "trace": issued}
+            "occupancy": busy * warps / period if period else float("nan"), "trace": issued}
 
 
 #: the calibration rows the model is read against (`measure/harness/bench_carry_calib.py`): row name -> the probe
@@ -157,7 +170,7 @@ def probe_loops(so: Path) -> dict[tuple[int, int, int], list]:
 
     cubin = [c for c in sass.cubins(so) if "carry_parts" in c.name][0]
     select(sc.machine(cubin))
-    text = subprocess.run(["cuobjdump", "-sass", str(cubin)], capture_output=True, text=True, check=True).stdout
+    text = subprocess.run([sass.tool("cuobjdump"), "-sass", str(cubin)], capture_output=True, text=True, check=True).stdout
     funcs: dict[str, list] = {}
     cur = None
     for line in text.splitlines():
@@ -237,6 +250,8 @@ def main() -> int:
     ap.add_argument("--arch", default=None)
     ap.add_argument("--source", type=Path, default=Path("csrc/rola/src/common/burst.cuh"))
     ap.add_argument("--function", default="run", help="the function whose lines hold the loop")
+    ap.add_argument("--kernel", default=None,
+                    help="the kernel to read, a regex over the cubin's functions (needed where it holds several)")
     ap.add_argument("--warps", type=int, default=0, help="1 or 2; 0 for both")
     ap.add_argument("--sm-warps", type=int, default=0,
                     help="warps on the SM running the loop, sharing its memory pipe (default: the scheduler's)")
@@ -253,9 +268,9 @@ def main() -> int:
     arch = sc.machine(cubin)
     select(arch)
     print(f"machine {arch}: an HMMA holds the pipe {HMMA_PIPE} cycles a scheduler")
-    body = sc.loop_of(cubin, a.source, a.function)
+    body = sc.loop_of(cubin, a.source, a.function, a.kernel)
     print(f"loop of {a.source.name}:{a.function}: {len(body)} instructions, "
-          f"{sum(1 for _, t, _ in body if sc.opcode(t) == 'HMMA')} HMMAs, {body[0][0]:#07x}..{body[-1][0]:#07x}")
+          f"{sum(1 for _, t, _ in body if sc.opcode(t) in sc.MMA)} MMAs, {body[0][0]:#07x}..{body[-1][0]:#07x}")
     for warps in ([a.warps] if a.warps else [1, 2]):
         r = simulate(body, warps, a.iterations, a.trace, sm_warps=a.sm_warps)
         print(f"  {warps} warp(s) a scheduler, {r['sm_warps']} on the SM: period {r['period']:.0f} cycles, "

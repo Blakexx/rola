@@ -1,4 +1,4 @@
-"""The liveness pass's atom fold is the EXACT atom-grain write bitmap.
+"""The facts pass's words, folded to atoms, are the EXACT atom-grain write bitmap.
 
 This is the gate the paging work's first stage exists to pass, and it is the one
 that decides the shape of everything after it. Residency is planned from this
@@ -44,26 +44,34 @@ from math import prod
 import pytest
 import torch
 
+from rola.engine.facts import liveness as lv
 from rola.engine.facts import planes
-from rola.ops._ext import extension
+from rola.ops import facts as facts_ops
 from rola.ops.naive import _leaf_product, _radix_strides
 from rola.ops.paging import MMA_K_QUANTUM
+from rola.routing.factors import RouteFactors
 from rola.routing.types import (
     EntmaxActivation,
     IndependentRouting,
+    OpaqueRouting,
     SoftmaxActivation,
+    Topology,
 )
+from rola.values import Values
+from tests.oracle.fixtures import with_gain
+
+#: the lists' form the facts pass is called in (sm_86's even carry arm); this file reads its words and unions only
+_LISTS = facts_ops.ListsForm(read_row=64, read_list_group=32, write_list_group=32)
 
 pytestmark = [
     pytest.mark.cuda,
     pytest.mark.skipif(not torch.cuda.is_available(), reason="the stats pass is a CUDA kernel"),
 ]
 
-#: The topologies checked, `(D, B)` at one uniform width. The liveness pass takes `D` and
-#: `B_l` at runtime, so every LAWFUL topology is one (`B_l` a power of two at or above 16,
-#: KERNEL_STANDARDS §R13; the seam refuses a narrower level by name). Depths 2-4 are the
-#: sweep the design asks for; the two `D = 1` rows are the flat-routing baselines, the shape
-#: with no upper prefix at all -- the reduction's degenerate carve.
+#: The topologies checked, `(D, B)` at one uniform width. The facts pass takes `D` and
+#: `B_l` at runtime, so every topology is one. Depths 2-4 are the sweep the design asks
+#: for; the two `D = 1` rows are the flat-routing baselines, the shape with no upper prefix
+#: at all -- the reduction's degenerate carve.
 _ARMS = ((1, 64), (1, 256), (2, 16), (2, 64), (3, 16), (4, 16))
 
 #: The support sweep. `1.0` is the dense limit, where every atom is live and the
@@ -91,21 +99,32 @@ def _simplex(shape, p_nonzero, generator):
     return (x / x.sum(-1, keepdim=True)).to(torch.float32)
 
 
-def _pack(write):
-    """`[B,T,H,w] per level -> [B,H,T,sum(widths)]` bf16 -- the seam's packing."""
-    return torch.cat(write, -1).permute(0, 2, 1, 3).to(torch.bfloat16).contiguous()
+def _alternating_sparse(D):
+    """The ALTERNATING declaration (docs/api.md section 2.1), ``(read, write)`` sparse flags a level: read-dense on the
+    even levels, write-dense on the odd ones and, at depth one, on the one level -- every side has a dense level."""
+    return (tuple(level % 2 == 1 for level in range(D)), tuple(level % 2 == 0 and D > 1 for level in range(D)))
 
 
-def _kernel_bitmap(write, widths):
-    packed = _pack(write)
-    #: THE FIXTURE MUST SURVIVE ITS OWN CAST. The kernel reads bf16, the
-    #: references read fp32/fp64; an amplitude that flushed to a bf16 zero would
-    #: make the two disagree about the fixture rather than about the derivation.
-    flat = torch.cat(write, -1)
-    assert torch.equal(flat != 0, flat.to(torch.bfloat16) != 0), (
-        "fixture amplitudes flushed to zero in bf16; the comparison would be "
-        "about the cast, not about the bitmap")
-    return planes.written_atoms(planes.atom_bits(packed, widths))
+def _bundle(write, sparse=None):
+    """The fixture's write levels in the format (both sides the same levels): the rows the facts pass reads, each
+    side's levels sparse or dense as ``sparse`` declares (default the alternating split): a dense level is floored by
+    the quantizer, never zero. The reference reads the bundle's OWN levels (`dequantized`), so a value that rounded to a
+    zero digit (or to the floor) is the same on both legs and the comparison is about the derivation, not the
+    rounding."""
+    B, T, H = write[0].shape[:3]
+    topology = Topology(levels=tuple(OpaqueRouting(width=level.shape[-1]) for level in write))
+    ones = torch.ones((B, T, H), device=write[0].device)
+    sparse = _alternating_sparse(len(write)) if sparse is None else sparse
+    return (RouteFactors.from_levels(topology, write, with_gain(write, ones), sparse=sparse),
+            Values.from_projection(torch.ones((B, T, H, 8), device=write[0].device)))
+
+
+def _kernel_bitmap(routes, values):
+    """The written atoms of the facts pass's words, every level voted from its rows."""
+    layout = facts_ops.call_layout(routes)
+    statics = facts_ops.call_statics(routes, layout)
+    words = facts_ops.facts(routes, values, layout, *statics, _LISTS).words
+    return planes.written_atoms(lv.page_bits(words, layout, *statics))
 
 
 def _oracle_bitmap(write, widths):
@@ -123,8 +142,7 @@ def _fixture(widths, p_nonzero, seed):
     g = torch.Generator(device="cuda").manual_seed(seed)
     read = tuple(_simplex((_B, _T, _H, w), p_nonzero, g) for w in widths)
     write = tuple(_simplex((_B, _T, _H, w), p_nonzero, g) for w in widths)
-    g_write = torch.rand((_B, _T, _H), device="cuda", generator=g)
-    return read, write, g_write
+    return read, write
 
 
 @pytest.mark.parametrize("support", list(_SUPPORTS), ids=list(_SUPPORTS))
@@ -133,9 +151,10 @@ def test_atom_bitmap_is_exact(arm, support):
     """Exact tensor equality against the independent reference, on every built arm."""
     D, B = arm
     widths = (B,) * D
-    _read, write, _g_write = _fixture(widths, _SUPPORTS[support], seed=D * 1000 + B)
-    bits = _kernel_bitmap(write, widths)
-    oracle = _oracle_bitmap(write, widths)
+    _read, write = _fixture(widths, _SUPPORTS[support], seed=D * 1000 + B)
+    routes, values = _bundle(write)
+    bits = _kernel_bitmap(routes, values)
+    oracle = _oracle_bitmap(routes.dequantized()[1], widths)
     assert bits.shape == (_B * _H, prod(widths) // MMA_K_QUANTUM)
     assert torch.equal(bits, oracle), (
         f"kernel and the fp64 leaf-product reference disagree on "
@@ -143,101 +162,50 @@ def test_atom_bitmap_is_exact(arm, support):
 
 
 def test_two_token_cross_product_is_excluded():
-    """THE ADVERSARIAL CELL: two tokens, disjoint live digits per level.
+    """THE ADVERSARIAL CELL: two tokens, disjoint live digits per sparse level.
 
-    At `D = 2, B = 64` leaf `s = d0 * 64 + d1`. Token 0 writes only `(0, 0)`
-    (leaf 0, atom 0); token 1 writes only `(1, 32)` (leaf 96, atom 6). The exact
-    answer is `{0, 6}`. A derivation that ORs over tokens before ANDing over
-    levels also admits `(0, 32)` -> leaf 32 -> atom 2 and `(1, 0)` -> leaf 64 ->
-    atom 4: leaves that were never live at any single token. Those two atoms are
-    named here so the assertion states the trap rather than merely avoiding it.
+    Every side keeps a dense level, so the write side's two SPARSE levels are levels 0 and 1 of a depth-three call and
+    level 2 is the dense one (every digit live, so a leaf's atom is its two sparse digits' and the 16 leaves under
+    them). At `B = (64, 64, 16)` leaf `s = d0 * 1024 + d1 * 16 + d2`. Token 0 writes only `(0, 0)` (atom 0); token 1
+    writes only `(1, 32)` (leaf 1536, atom 96). The exact answer is `{0, 96}`. A derivation that ORs over tokens before
+    ANDing over levels also admits `(0, 32)` -> leaf 512 -> atom 32 and `(1, 0)` -> leaf 1024 -> atom 64: leaves that
+    were never live at any single token. Those two atoms are named here so the assertion states the trap rather than
+    merely avoiding it.
     """
-    widths = (64, 64)
+    widths = (64, 64, 16)
     write = tuple(torch.zeros((1, 2, 1, w), device="cuda", dtype=torch.float32) for w in widths)
     write[0][0, 0, 0, 0] = 1.0
     write[1][0, 0, 0, 0] = 1.0
     write[0][0, 1, 0, 1] = 1.0
     write[1][0, 1, 0, 32] = 1.0
+    write[2][:] = 1.0 / 16
 
-    bits = _kernel_bitmap(write, widths)
+    bits = _kernel_bitmap(*_bundle(write, sparse=((False, True, False), (True, True, False))))
     live = set(torch.nonzero(bits[0]).flatten().tolist())
-    assert live == {0, 6}, f"expected atoms {{0, 6}}, got {sorted(live)}"
-    assert 2 not in live and 4 not in live, (
+    assert live == {0, 96}, f"expected atoms {{0, 96}}, got {sorted(live)}"
+    assert 32 not in live and 64 not in live, (
         "the cross-product atoms are present: the reduction ORed over tokens "
         "before ANDing over levels")
     assert torch.equal(bits, _oracle_bitmap(write, widths))
 
 
-def test_the_bitmap_is_bc_free():
-    """THE PUBLISHED FACT CARRIES NO BLOCK GRAIN, at every built `BC` of a topology.
-
-    The pass that emits the atom rows is templated on `BC` -- it emits the owner
-    block's rows in the same launch -- so the 16-leaf keying of the atom rows is a
-    property of the CODE and this is what holds it: one routing through every built
-    arm, `torch.equal` on the bitmap. A bitmap that moved with `BC` would move
-    residency with the arm, which is the overlap the plan is built to keep.
-    """
-    from rola.engine.facts import manifest as census
-    from rola.engine.types import Mask
-
-    D, B = 2, 64
-    widths = (B,) * D
-    _, write, _ = _fixture(widths, 0.35, seed=4242)
-    packed = _pack(write)
-    bcs = sorted({int(bc) for (c, bc, d, b) in census.chunk_arms() if d == D and b == B})
-    assert len(bcs) > 1, "this topology has one built BC; the claim needs two to vary"
-    first = None
-    for bc in bcs:
-        c = min(int(c) for (c, bc_, d, b) in census.chunk_arms()
-                if d == D and b == B and bc_ == bc)
-        bits = extension().chunk_facts(packed, packed, c, bc, list(widths), Mask.M2,
-                                       True)[1]
-        if first is None:
-            first, first_bc = bits, bc
-            continue
-        assert torch.equal(bits, first), (
-            f"the atom bitmap differs between BC={first_bc} and BC={bc}: the "
-            f"published residency fact has acquired the owner block's grain")
-    assert torch.equal(first.bool(), _oracle_bitmap(write, widths))
-
-
-def test_the_stateless_call_class_cannot_be_asked_for_the_bitmap():
-    """PLANTED: the class and the outputs must agree, or a call gets an unwritten table.
-
-    The stateless variant compiles no atom-grain emission, so asking it for the bitmap
-    is a refusal and never a silently absent fact.
-    """
-    from rola.engine.facts import manifest as census
-    from rola.engine.types import Mask
-
-    D, B = 2, 64
-    widths = (B,) * D
-    _, write, _ = _fixture(widths, 0.35, seed=17)
-    packed = _pack(write)
-    c, bc = next((int(c), int(bc)) for (c, bc, d, b) in census.chunk_arms()
-                 if d == D and b == B)
-    with pytest.raises(RuntimeError, match="stateful call's fact"):
-        extension().chunk_facts(packed, packed, c, bc, list(widths), Mask.M1, True)
-
-
 def test_stats_through_the_host_seam():
-    """`rola.engine.facts.planes.atom_bits` on the packed write plane -- the facade's own path.
-
-    A real producer's `RouteFactors` rather than hand-built tensors, because the
-    permute-and-cast between the bundle's layout and the kernel's is exactly the
-    step a hand-built fixture would skip.
+    """The prefill's own path -- the layout and statics the topology declares, the facts pass, the page fold -- on a
+    real producer's bundle, whose packed rows are exactly the views a hand-built fixture would not make.
     """
     import sys
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
-    from conftest import build_routes
-
-    from rola.routing.producer import union_routing
+    from conftest import alternating_routing, build_layer
 
     torch.manual_seed(0)
-    producer = build_routes(hidden_size=64, num_heads=_H, widths=(16, 16),
-                           routing=union_routing(1)).cuda()
+    layer = build_layer(hidden_size=64, num_heads=_H, widths=(16, 16), routing=alternating_routing(2)).cuda().eval()
     x = torch.randn(_B, _T, 64, device="cuda")
-    routes = producer(x)
-    bits = planes.atom_bits(planes.pack_side(routes.write), routes.topology.widths)
+    with torch.no_grad():
+        routes, values = layer._produce(x)
+    _, write = routes.dequantized()
+    layout = facts_ops.call_layout(routes)
+    statics = facts_ops.call_statics(routes, layout)
+    words = facts_ops.facts(routes, values, layout, *statics, _LISTS).words
+    bits = lv.page_bits(words, layout, *statics)
     assert bits.dtype == torch.uint8 and bits.device.type == "cuda"
-    assert torch.equal(planes.written_atoms(bits), _oracle_bitmap(routes.write, (16, 16)))
+    assert torch.equal(planes.written_atoms(bits), _oracle_bitmap(write, (16, 16)))

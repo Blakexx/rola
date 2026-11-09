@@ -2,11 +2,9 @@
 
 This module is deliberately separate from ``routing.entmax.reference``. The reference is an fp64
 bisection oracle; this module owns the value path every runtime caller takes, and its analytic
-fixed-alpha VJP. It offers the same solve through two plan-level surfaces:
-
-* ``production_routing_factor_levels`` -- dense per-level ``[BH, T, width_l]`` factors, the contract
-  the consumer and its fp64 oracle both consume. This is what the producer calls.
-* ``production_routing_factors`` -- the bf16 tile-major ``RouteDescriptor`` arena ABI.
+fixed-alpha VJP. Its plan-level surface is ``production_routing_factor_levels``: dense per-level
+``[BH, T, width_l]`` factors, the contract the consumer and its fp64 oracle both consume. This is what
+the producer calls.
 
 and through two lowerings of one semantics: hand-CUDA on fp32 CUDA tensors, and the identical
 sorted closed form in torch for the domains the kernels do not cover (CPU, fp64). Neither surface
@@ -32,7 +30,6 @@ from rola.routing.types import (
     EntmaxActivation,
     IndependentRouting,
     ResolvedRouting,
-    RouteDescriptor,
     SoftmaxActivation,
     TiedRouting,
     UnionRouting,
@@ -339,188 +336,10 @@ def _launch_softmax_backward_into_logits(
         [0], [0], _one(d_logits.shape[-1]), bool(accumulate), _heads(d_logits))
 
 
-class _ProductionRoutingArenaFn(torch.autograd.Function):
-    """Own final bf16 arenas and retain their output references for routing VJPs.
-
-    Union alone retains compact fp32 midpoint values and its original logits.
-    """
-
-    @staticmethod
-    def forward(ctx, read_logits, write_logits, routing):
-        n_streams, tokens = _arena_shape(read_logits)
-        if read_logits.shape != write_logits.shape:
-            raise ValueError("read/write routing logits must have identical shapes")
-        if read_logits.dtype not in _SOLVE_LOGIT_DTYPES or write_logits.dtype != read_logits.dtype:
-            raise TypeError(
-                f"production routing arenas require {_SOLVE_LOGIT_DTYPES} logits of one dtype")
-        if not read_logits.is_cuda or not write_logits.is_cuda:
-            raise RuntimeError("production routing arenas are CUDA-only")
-        if read_logits.device != write_logits.device:
-            raise ValueError("read/write routing logits must share one CUDA device")
-        if read_logits.ndim != 3 or read_logits.shape[-1] != routing.packed_logit_width:
-            raise ValueError("routing logits do not match the resolved routing layout")
-
-        fully_shared = all(isinstance(level, TiedRouting) for level in routing.levels)
-        arena_shape = (
-            n_streams,
-            _cdiv(tokens, _ROUTE_TILE_SIZE_VALUE),
-            routing.level_offsets[-1],
-            _ROUTE_TILE_SIZE_VALUE,
-        )
-        read_arena = torch.zeros(arena_shape, dtype=torch.bfloat16, device=read_logits.device)
-        write_arena = read_arena if fully_shared else torch.zeros_like(read_arena)
-        support_words = torch.empty(
-            (n_streams, _cdiv(tokens, _ROUTE_TILE_SIZE_VALUE),
-             sum(width for width, offset in zip(routing.branches, routing.support_offsets) if offset >= 0)),
-            dtype=torch.int32,
-            device=read_logits.device,
-        )
-        empty_launch = n_streams == 0 or tokens == 0
-        heads = _heads(read_logits)
-        #: ONE midpoint plane, packed over the UNION levels alone -- the only levels that
-        #: have one. It is saved whole and sliced in the backward.
-        union_widths = [routing.branches[i] for i, level in enumerate(routing.levels)
-                        if isinstance(level, UnionRouting)]
-        midpoints = torch.empty(
-            (n_streams, tokens, sum(union_widths)), dtype=torch.float32,
-            device=read_logits.device)
-        plan = _Plan()
-        midpoint_offset = 0
-        midpoint_offsets: list[int] = []
-
-        for index, level in enumerate(routing.levels):
-            width = routing.branches[index]
-            logit_offset = routing.level_logit_slice(index).start
-            offset = routing.level_offsets[index]
-            support_offset = routing.support_offsets[index]
-
-            if isinstance(level, UnionRouting):
-                midpoint_offsets.append(midpoint_offset)
-                if not empty_launch:
-                    plan.add("union", level.alpha,
-                             (read_logits, write_logits, midpoints, support_words,
-                              read_arena, write_arena),
-                             width, logit_off=logit_offset, value_off=offset,
-                             midpoint_off=midpoint_offset, support_off=support_offset, heads=heads)
-                midpoint_offset += width
-                continue
-
-            assert isinstance(level, (IndependentRouting, TiedRouting))
-            if empty_launch:
-                continue
-            if isinstance(level, TiedRouting):
-                second = None if fully_shared else write_arena
-                shared_activation = level.activation("write")
-                if isinstance(shared_activation, EntmaxActivation):
-                    plan.add("entmax", shared_activation.alpha,
-                             (write_logits, read_arena, second, support_words), width,
-                             logit_off=logit_offset, value_off=offset,
-                             support_off=support_offset, heads=heads)
-                else:
-                    plan.add("softmax", 0.0, (write_logits, read_arena, second), width,
-                             logit_off=logit_offset, value_off=offset, heads=heads)
-                continue
-
-            for activation, source, output in (
-                (level.read, read_logits, read_arena),
-                (level.write, write_logits, write_arena),
-            ):
-                if isinstance(activation, EntmaxActivation):
-                    plan.add("entmax", activation.alpha, (source, output, None, support_words),
-                             width, logit_off=logit_offset, value_off=offset,
-                             support_off=support_offset, heads=heads)
-                else:
-                    plan.add("softmax", 0.0, (source, output, None), width,
-                             logit_off=logit_offset, value_off=offset, heads=heads)
-
-        plan.issue()
-
-        union_state = (read_logits, write_logits, midpoints) if midpoint_offsets else ()
-        ctx.save_for_backward(read_arena, write_arena, support_words, *union_state)
-        ctx.routing = routing
-        ctx.logits_shape = read_logits.shape
-        ctx.logits_dtype = read_logits.dtype
-        ctx.midpoint_offsets = midpoint_offsets
-        ctx.mark_non_differentiable(support_words)
-        return read_arena, write_arena, support_words
-
-    @staticmethod
-    def backward(ctx, d_read, d_write, _d_support_words):
-        saved = ctx.saved_tensors
-        read_arena, write_arena, support_words = saved[:3]
-        if ctx.midpoint_offsets:
-            read_logits, write_logits, midpoints = saved[3:6]
-        else:
-            read_logits = write_logits = midpoints = None
-        routing = ctx.routing
-        if d_read is None:
-            d_read = torch.zeros_like(read_arena)
-        if d_write is None:
-            d_write = torch.zeros_like(write_arena)
-        d_read_logits = torch.zeros(
-            ctx.logits_shape, dtype=ctx.logits_dtype, device=read_arena.device)
-        d_write_logits = torch.zeros_like(d_read_logits)
-        union_index = 0
-        n_streams, tokens = ctx.logits_shape[:2]
-        if n_streams == 0 or tokens == 0:
-            return d_read_logits, d_write_logits, None
-
-        for index, level in enumerate(routing.levels):
-            width = routing.branches[index]
-            offset = routing.level_offsets[index]
-            read_output = read_arena[:, :, offset:offset + width, :]
-            write_output = write_arena[:, :, offset:offset + width, :]
-            d_read_output = d_read[:, :, offset:offset + width, :]
-            d_write_output = d_write[:, :, offset:offset + width, :]
-            span = routing.level_logit_slice(index)
-            d_read_level = d_read_logits[..., span]
-            d_write_level = d_write_logits[..., span]
-            support_offset = routing.support_offsets[index]
-
-            if isinstance(level, UnionRouting):
-                assert read_logits is not None and write_logits is not None
-                midpoint_offset = ctx.midpoint_offsets[union_index]
-                midpoint = midpoints[:, :, midpoint_offset:midpoint_offset + width]
-                union_index += 1
-                words = support_words[:, :, support_offset:support_offset + width]
-                _launch_union_bwd(
-                    read_logits[..., span], write_logits[..., span],
-                    midpoint, words, read_output, write_output,
-                    d_read_output, d_write_output, d_read_level, d_write_level, level.alpha)
-                continue
-
-            assert isinstance(level, (IndependentRouting, TiedRouting))
-            if isinstance(level, TiedRouting):
-                shared_activation = level.activation("write")
-                if isinstance(shared_activation, EntmaxActivation):
-                    _launch_factor_backward_into_logits(
-                        read_output, d_read_output, d_write_output,
-                        support_words[:, :, support_offset:support_offset + width], d_write_level,
-                        shared_activation.alpha, accumulate=False)
-                else:
-                    _launch_softmax_backward_into_logits(
-                        read_output, d_read_output, d_write_output, d_write_level, accumulate=False)
-                continue
-
-            for activation, output, d_output, target in (
-                (level.read, read_output, d_read_output, d_read_level),
-                (level.write, write_output, d_write_output, d_write_level),
-            ):
-                if isinstance(activation, EntmaxActivation):
-                    _launch_factor_backward_into_logits(
-                        output, d_output, None,
-                        support_words[:, :, support_offset:support_offset + width], target,
-                        activation.alpha, accumulate=False)
-                else:
-                    _launch_softmax_backward_into_logits(
-                        output, d_output, None, target, accumulate=False)
-        return d_read_logits, d_write_logits, None
-
-
 class _ProductionLevelsFn(torch.autograd.Function):
     """Solve a routing plan into per-level dense ``[BH, T, width_l]`` factors.
 
-    Structurally the same plan walk as ``_ProductionRoutingArenaFn`` -- the same
+    The plan walk -- the same
     kernels, the same tied/union dispatch, the same packed support -- against one
     dense plane per side rather than the tile-major arena the earlier chunk ABI took.
 
@@ -915,39 +734,7 @@ def _flat(logits: torch.Tensor) -> torch.Tensor:
         logits.shape[0] * logits.shape[2], logits.shape[1], logits.shape[3])
 
 
-def production_routing_factors(
-    read_logits: torch.Tensor,
-    write_logits: torch.Tensor,
-    routing: ResolvedRouting,
-    *,
-    token_origin: int = 0,
-) -> RouteDescriptor:
-    """Solve a canonical routing plan directly into the RouteDescriptor ABI."""
-    if not isinstance(routing, ResolvedRouting):
-        raise TypeError(f"routing must be ResolvedRouting, got {type(routing).__name__}")
-    if read_logits.shape != write_logits.shape:
-        raise ValueError(
-            "read/write logits must have identical shapes, got "
-            f"{read_logits.shape} and {write_logits.shape}")
-    if type(token_origin) is not int or token_origin < 0:
-        raise ValueError("token_origin must be a nonnegative exact int")
-    if read_logits.ndim != 3 or read_logits.shape[-1] != routing.packed_logit_width:
-        raise ValueError(
-            "routing logits must be [BH, T, packed_logit_width] with packed_logit_width="
-            f"{routing.packed_logit_width}, got {tuple(read_logits.shape)}")
-
-    outputs = _ProductionRoutingArenaFn.apply(read_logits, write_logits, routing)
-    read_values, write_values, support_words = outputs
-    return RouteDescriptor(
-        read_values, write_values, support_words,
-        routing.level_offsets, routing.support_offsets, routing.branches,
-        routing.radix_strides, routing.support_side_flags,
-        token_origin, read_logits.shape[1], routing.topology_stamp,
-    )
-
-
 __all__ = [
     "production_factor",
     "production_routing_factor_levels",
-    "production_routing_factors",
 ]

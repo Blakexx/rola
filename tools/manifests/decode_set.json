@@ -1,0 +1,108 @@
+{
+ "schema": 2,
+ "family": "decode",
+ "key": [
+  "d_v",
+  "levels",
+  "decay"
+ ],
+ "domains": {
+  "d_v": [
+   32,
+   64
+  ],
+  "levels": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "decay": [
+   0,
+   1
+  ]
+ },
+ "shipped": [
+  [
+   32,
+   1,
+   0
+  ],
+  [
+   32,
+   1,
+   1
+  ],
+  [
+   32,
+   2,
+   0
+  ],
+  [
+   32,
+   2,
+   1
+  ],
+  [
+   32,
+   3,
+   0
+  ],
+  [
+   32,
+   3,
+   1
+  ],
+  [
+   32,
+   4,
+   0
+  ],
+  [
+   32,
+   4,
+   1
+  ],
+  [
+   64,
+   1,
+   0
+  ],
+  [
+   64,
+   1,
+   1
+  ],
+  [
+   64,
+   2,
+   0
+  ],
+  [
+   64,
+   2,
+   1
+  ],
+  [
+   64,
+   3,
+   0
+  ],
+  [
+   64,
+   3,
+   1
+  ],
+  [
+   64,
+   4,
+   0
+  ],
+  [
+   64,
+   4,
+   1
+  ]
+ ],
+ "note": "The decode family's arms: d_v x levels x decay, every one built and shipped (docs/internals/decode/decode.md#decode-arm-0). Rows in canonical order: an arm's index is its row's."
+}

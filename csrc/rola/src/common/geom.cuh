@@ -54,6 +54,31 @@ constexpr int kClusterCtas = 1;
 
 constexpr int leaves_per_warp(int dv) { return leaves_per_sm(dv) / warps_per_sm; }
 
+//: THE TALL OWNER SET: half the register file, one 32-channel group a CTA -> 1024 leaves, 128 a warp.
+//: -- see docs/internals/common/geom.md#tall-owner-set
+constexpr int kCtaChannels = 32;
+constexpr int kTallStateFileNumerator = 1;
+constexpr int kTallStateFileDenominator = 2;
+
+constexpr int tall_state_elems_per_sm(const denseref::arch::Caps& c) {
+  return c.regs_per_sm * kTallStateFileNumerator / kTallStateFileDenominator;
+}
+
+constexpr int tall_leaves_per_sm() {
+  return tall_state_elems_per_sm(denseref::arch::kCaps) / kCtaChannels;
+}
+
+constexpr int tall_leaves_per_warp() { return tall_leaves_per_sm() / warps_per_sm; }
+
+//: the CTAs one leaf set takes: one per channel group.
+constexpr int channel_groups(int dv) { return dv / kCtaChannels; }
+
+//: THE TALL OWNER LAW'S TWO SHAPE CONSTANTS (ruled 2026-09-27): the read-dense span is 128 digits, the
+//: drain / fold balance point, and the IMMA's K block is 32 leaves of one read-sparse digit.
+//: -- see docs/internals/common/geom.md#tall-owner-set
+constexpr int kTallDenseSpanBitsMax = 7;
+constexpr int kBlockLeavesBits = 5;
+
 //: A BALANCED BIT SPLIT over `D` levels, remainder INNERMOST-FIRST.
 constexpr int balanced_bits(int bits, int D, int l) {
   return bits / D + (l >= D - bits % D ? 1 : 0);
@@ -94,7 +119,8 @@ constexpr int owner_run_shift(int D, int bc, int l) {
 //: by level IN THE SIDE'S OWN ORDER, outermost first, until the box count reaches the
 //: side's stream count; what remains is that side's WARP SUB-BOX.
 //: -- see docs/internals/common/geom.md#warp-box
-constexpr void carve_sub_bits(int D, int bc, int ns, const int* outer_order, int* bits) {
+constexpr void carve_sub_bits(int D, int bc, int ns, const int* outer_order, int* bits,
+                              bool atom_floor = true) {
   for (int l = 0; l < D; ++l) bits[l] = owner_span_bits(D, bc, l);
   int want = geom_ilog2(ns);
   for (int p = 0; p < D && want > 0; ++p) {
@@ -102,7 +128,7 @@ constexpr void carve_sub_bits(int D, int bc, int ns, const int* outer_order, int
     //: THE INNERMOST DIGITS ARE THE VECTOR WIDTH: the order passes over that level rather
     //: than dividing it below the page rectangle.
     //: -- see docs/internals/common/geom.md#innermost-invariant
-    const int floor_l = (l == D - 1) ? kAtomLeavesBits : 0;
+    const int floor_l = (atom_floor && l == D - 1) ? kAtomLeavesBits : 0;
     const int room = bits[l] - floor_l;
     const int take = room < want ? room : want;
     if (take > 0) {
@@ -112,8 +138,8 @@ constexpr void carve_sub_bits(int D, int bc, int ns, const int* outer_order, int
   }
 }
 
-//: the largest set the generator can return: `D * (D - 1)` shapes at depth four.
-constexpr int kGeomMaxSubBoxes = 12;
+//: the largest set a generator returns: `D * (D - 1)` shapes at depth four, plus the tall read side's block carve.
+constexpr int kGeomMaxSubBoxes = 13;
 
 //: THE COMPILE-TIME SET OF WARP SUB-BOX SHAPES, GENERATED from the owner spans and the
 //: stream count by running the carve over EVERY level order and de-duplicating. A side
@@ -124,7 +150,7 @@ struct SubBoxSet {
   int bits[kGeomMaxSubBoxes][kGeomMaxLevels];
 };
 
-constexpr SubBoxSet sub_boxes(int D, int box_leaves, int workers) {
+constexpr SubBoxSet sub_boxes(int D, int box_leaves, int workers, bool atom_floor = true) {
   SubBoxSet set{};
   set.count = 0;
   int fact = 1;
@@ -142,7 +168,7 @@ constexpr SubBoxSet sub_boxes(int D, int box_leaves, int workers) {
       --avail;
     }
     int b[kGeomMaxLevels] = {0, 0, 0, 0};
-    carve_sub_bits(D, box_leaves, workers, order, b);
+    carve_sub_bits(D, box_leaves, workers, order, b, atom_floor);
     bool seen = false;
     for (int a = 0; a < set.count; ++a) {
       bool eq = true;
@@ -233,6 +259,7 @@ struct SideGeom {
   int sub_bits[kGeomMaxLevels];   //: level -> log2 sv(l)
   int sub_shift[kGeomMaxLevels];  //: level -> the slot index's bit offset
   int grid_bits[kGeomMaxLevels];  //: level -> log2 grid(l) = log2 s(l) - log2 sv(l)
+  int interleave;  //: 0 = a stream owns a RUN of digits, 1 = INTERLEAVED -- geom.md#interleaved-placement
 };
 
 //: THE BLOCK ITSELF -- what the host hands the kernel, by value, once per launch.
@@ -304,9 +331,153 @@ inline void carve_order_of_modes(int D, uint32_t MO, CarveOrder& o) {
 }
 
 //: ONE SIDE'S CARVE; `NS == 1` is the S = 1 point of it. -- see docs/internals/common/geom.md#carve
-inline const char* derive_side(int D, const int* width, const int* span, int bc,
-                               const int* level_at, int NS, SideGeom& g) {
+//: bit `l` set when level `l` is read-DENSE under the mode word.
+inline uint32_t read_dense_mask_of_modes(int D, uint32_t MO) {
+  uint32_t m = 0;
+  for (int l = 0; l < D; ++l)
+    if (geom_detail::mode_group(MO, l, kSideRead) == 0) m |= 1u << l;
+  return m;
+}
+
+//: THE TALL OWNER SPANS (ruled 2026-09-27): each read-dense level takes the wide span, `kTallDenseSpanBitsMax`
+//: bits or its width; the read-sparse levels share the rest one bit a round, innermost first; what a narrow
+//: level cannot hold returns to the dense levels; a topology smaller than the set is ONE owner. Returns the
+//: owner's bits. -- see docs/internals/common/geom.md#tall-owner-set
+inline int tall_owner_span_bits(int D, const int* width_bits, uint32_t dense_mask, int* bits) {
+  int total = 0;
+  for (int l = 0; l < D; ++l) total += width_bits[l];
+  const int cap = geom_ilog2(tall_leaves_per_sm());
+  if (total > cap) total = cap;
+  int sum = 0;
+  for (int l = 0; l < D; ++l) {
+    const bool dense = ((dense_mask >> l) & 1u) != 0u;
+    const int wide = width_bits[l] < kTallDenseSpanBitsMax ? width_bits[l] : kTallDenseSpanBitsMax;
+    bits[l] = dense ? wide : 0;
+    sum += bits[l];
+  }
+  while (sum > total) {
+    int pick = -1;
+    for (int l = 0; l < D; ++l)
+      if (((dense_mask >> l) & 1u) != 0u && bits[l] > 0 && (pick < 0 || bits[l] > bits[pick]))
+        pick = l;
+    if (pick < 0) break;
+    --bits[pick];
+    --sum;
+  }
+  int rem = total - sum;
+  for (int pass = 0; pass < 2; ++pass) {
+    const bool want_dense = pass == 1;
+    bool progress = true;
+    while (rem > 0 && progress) {
+      progress = false;
+      for (int l = D - 1; l >= 0 && rem > 0; --l) {
+        const bool dense = ((dense_mask >> l) & 1u) != 0u;
+        if (dense != want_dense || bits[l] >= width_bits[l]) continue;
+        ++bits[l];
+        --rem;
+        progress = true;
+      }
+    }
+  }
+  return total - rem;
+}
+
+//: THE TOP-DOWN CARVE FROM GIVEN SPAN BITS: divided level by level in the order given, outermost first,
+//: until the stream bits are taken. No floor: the tall form's pages are a CTA-level fact.
+inline void carve_from_bits(int D, const int* span_bits, int ns_bits, const int* outer_order,
+                            int* sub_bits) {
+  for (int l = 0; l < D; ++l) sub_bits[l] = span_bits[l];
+  int want = ns_bits;
+  for (int p = 0; p < D && want > 0; ++p) {
+    const int l = outer_order[p];
+    const int take = sub_bits[l] < want ? sub_bits[l] : want;
+    sub_bits[l] -= take;
+    want -= take;
+  }
+}
+
+//: THE READ SIDE'S BLOCK CARVE (ruled 2026-09-27): a read warp holds one K block -- `kBlockLeavesBits` of dense
+//: leaves, innermost dense level first -- and as many read-sparse digits as its share admits, so its token-major
+//: tile draws from several reader lists. -- see docs/internals/common/geom.md#tall-owner-set
+inline void tall_read_sub_bits(int D, const int* span_bits, int ns_bits, uint32_t dense_mask,
+                               int* sub_bits) {
+  int total = 0;
+  for (int l = 0; l < D; ++l) {
+    total += span_bits[l];
+    sub_bits[l] = 0;
+  }
+  int rest = total - ns_bits;
+  int keep = kBlockLeavesBits < rest ? kBlockLeavesBits : rest;
+  for (int l = D - 1; l >= 0 && keep > 0; --l) {
+    if (((dense_mask >> l) & 1u) == 0u) continue;
+    const int take = span_bits[l] < keep ? span_bits[l] : keep;
+    sub_bits[l] += take;
+    keep -= take;
+    rest -= take;
+  }
+  for (int l = D - 1; l >= 0 && rest > 0; --l) {
+    if (((dense_mask >> l) & 1u) != 0u) continue;
+    const int take = span_bits[l] < rest ? span_bits[l] : rest;
+    sub_bits[l] += take;
+    rest -= take;
+  }
+  for (int l = D - 1; l >= 0 && rest > 0; --l) {
+    const int room = span_bits[l] - sub_bits[l];
+    const int take = room < rest ? room : rest;
+    sub_bits[l] += take;
+    rest -= take;
+  }
+}
+
+//: THE TALL SET'S SUB-BOX SET, generated at runtime from the tall spans: the top-down carve in every level
+//: order, and the read side's block carve. -- see docs/internals/common/geom.md#warp-box-set
+inline SubBoxSet tall_sub_boxes(int D, const int* span_bits, int ns, uint32_t dense_mask) {
+  SubBoxSet set{};
+  set.count = 0;
+  const int ns_bits = geom_ilog2(ns);
+  auto add = [&](const int* b) {
+    for (int a = 0; a < set.count; ++a) {
+      bool eq = true;
+      for (int l = 0; l < D; ++l)
+        if (set.bits[a][l] != b[l]) eq = false;
+      if (eq) return;
+    }
+    if (set.count < kGeomMaxSubBoxes) {
+      for (int l = 0; l < D; ++l) set.bits[set.count][l] = b[l];
+      ++set.count;
+    }
+  };
+  int fact = 1;
+  for (int i = 2; i <= D; ++i) fact *= i;
+  for (int k = 0; k < fact; ++k) {
+    int pool[kGeomMaxLevels] = {0, 1, 2, 3}, order[kGeomMaxLevels] = {0, 0, 0, 0};
+    int rem = k, avail = D;
+    for (int i = 0; i < D; ++i) {
+      int f = 1;
+      for (int j = 2; j <= avail - 1; ++j) f *= j;
+      const int idx = rem / f;
+      rem %= f;
+      order[i] = pool[idx];
+      for (int j = idx; j < avail - 1; ++j) pool[j] = pool[j + 1];
+      --avail;
+    }
+    int b[kGeomMaxLevels] = {0, 0, 0, 0};
+    carve_from_bits(D, span_bits, ns_bits, order, b);
+    add(b);
+  }
+  int blk[kGeomMaxLevels] = {0, 0, 0, 0};
+  tall_read_sub_bits(D, span_bits, ns_bits, dense_mask, blk);
+  add(blk);
+  return set;
+}
+
+//: ONE SIDE FROM ITS CHOSEN SUB-BOX: the order's ranks, the member's slot layout, the stream grid, the ballot
+//: rows. Both span laws end here. -- see docs/internals/common/geom.md#warp-box
+inline const char* derive_side_from(int D, const int* width, const int* span, const int* level_at,
+                                    int NS, bool interleave, const SubBoxSet& set,
+                                    const int* sub_bits, SideGeom& g) {
   if (NS < 1 || (NS & (NS - 1)) != 0) return "a side's stream count is a power of two";
+  g.interleave = interleave ? 1 : 0;
   int named = 0;
   for (int r = 0; r < D; ++r) {
     const int l = level_at[r];
@@ -317,16 +488,6 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
     g.level_at[r] = l;
   }
 
-  //: THE SIDE'S OWN CARVE: its order, walked OUTERMOST FIRST.
-  int outer[kGeomMaxLevels] = {0, 0, 0, 0}, sub_bits[kGeomMaxLevels] = {0, 0, 0, 0};
-  for (int p = 0; p < D; ++p) outer[p] = g.level_at[D - 1 - p];
-  carve_sub_bits(D, bc, NS, outer, sub_bits);
-  int carved = 0;
-  for (int l = 0; l < D; ++l) carved += owner_span_bits(D, bc, l) - sub_bits[l];
-  if (carved != geom_ilog2(NS))
-    return "this carve order cannot reach the side's stream count without dividing the "
-           "innermost level below the page rectangle";
-  const SubBoxSet set = sub_boxes(D, bc, NS);
   g.assign = sb_index(set, D, sub_bits);
   if (g.assign < 0) return "this side's carved sub-box is not a member of the generated set";
   int sub[kGeomMaxLevels] = {1, 1, 1, 1};
@@ -335,6 +496,7 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
     g.sub_shift[l] = sb_shift(set, D, g.assign, l);
     sub[l] = 1 << sub_bits[l];
   }
+
   g.streams = 1;
   g.leaf = 1;
   g.carves = 0;
@@ -350,6 +512,7 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
     if (g.grid[l] > 1) g.carves |= 1 << l;
   }
   if (g.streams != NS) return "the stream grid does not partition the owner's box";
+
   //: THE STREAM INDEX IS READ IN THE SIDE'S OWN ORDER: rank 0 varies fastest.
   int gd = 1;
   for (int r = 0; r < D; ++r) {
@@ -359,6 +522,7 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
     if (g.grid_div_bits[l] < 0) return "a side's stream grid must be a power of two";
     gd *= g.grid[l];
   }
+
   //: THE BALLOT ROWS at this side's own grain: a level spanned whole votes none.
   int pfx = 0;
   for (int l = 0; l < D; ++l) {
@@ -367,6 +531,7 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
     pfx += g.row_g[l];
   }
   g.rows = pfx;
+
   for (int l = D; l < kGeomMaxLevels; ++l) {
     g.rank[l] = l;
     g.level_at[l] = l;
@@ -383,53 +548,92 @@ inline const char* derive_side(int D, const int* width, const int* span, int bc,
   return nullptr;
 }
 
-//: THE ONE DERIVATION; returns nullptr or the REFUSAL's own words. -- see docs/internals/common/geom.md#refusals
+//: THE SHIPPED BODY'S SIDE: its order walked outermost first under the compile-time owner law and the page
+//: floor, its sub-box a member of the compile-time set.
+inline const char* derive_side(int D, const int* width, const int* span, int bc,
+                               const int* level_at, int NS, bool interleave, bool atom_floor,
+                               SideGeom& g) {
+  if (NS < 1 || (NS & (NS - 1)) != 0) return "a side's stream count is a power of two";
+  int outer[kGeomMaxLevels] = {0, 0, 0, 0}, sub_bits[kGeomMaxLevels] = {0, 0, 0, 0};
+  for (int p = 0; p < D; ++p) {
+    const int l = level_at[D - 1 - p];
+    if (l < 0 || l >= D) return "a side's carve order must rank each of its levels exactly once";
+    outer[p] = l;
+  }
+  carve_sub_bits(D, bc, NS, outer, sub_bits, atom_floor);
+  int carved = 0;
+  for (int l = 0; l < D; ++l) carved += owner_span_bits(D, bc, l) - sub_bits[l];
+  if (carved != geom_ilog2(NS))
+    return "this carve order cannot reach the side's stream count without dividing the "
+           "innermost level below the page rectangle";
+  const SubBoxSet set = sub_boxes(D, bc, NS, atom_floor);
+  return derive_side_from(D, width, span, level_at, NS, interleave, set, sub_bits, g);
+}
+
+//: THE ONE DERIVATION; returns nullptr or the REFUSAL's own words. The tall owner set (`bc` = the tall
+//: leaves) takes the mode-dependent span law and the block carve; every other box the compile-time law.
+//: -- see docs/internals/common/geom.md#refusals
 inline const char* derive_carry_geom(int D, const int* width, int bc, int dv,
-                                     const CarveOrder& order, int NSR, int NSW, CarryGeomRT& g) {
+                                     const CarveOrder& order, int NSR, int NSW, bool interleave,
+                                     bool atom_floor, CarryGeomRT& g, uint32_t modes = 0) {
   if (D < 1 || D > kGeomMaxLevels) return "the addressing block is built to depth four";
   if (geom_ilog2(bc) < 0) return "BC must be a power of two";
   if (geom_ilog2(dv) < 0 || dv % 16 != 0) return "the value width is a power of two, sixteen up";
   g.D = D;
-  g.bc = bc;
   if (leaves_per_warp(dv) < 1) return "the value width admits no leaves per warp";
 
+  const bool tall = bc == tall_leaves_per_sm();
+  const uint32_t dense_mask = tall ? read_dense_mask_of_modes(D, modes) : 0u;
+  int width_bits[kGeomMaxLevels] = {0, 0, 0, 0}, span_bits[kGeomMaxLevels] = {0, 0, 0, 0};
   for (int l = 0; l < D; ++l) {
     g.width[l] = width[l];
-    g.span[l] = owner_span(D, bc, l);
-    if (geom_ilog2(g.width[l]) < 0) return "every level width must be a power of two";
+    width_bits[l] = geom_ilog2(g.width[l]);
+    if (width_bits[l] < 0) return "every level width must be a power of two";
+  }
+  int local_bits = 0;
+  if (tall) {
+    local_bits = tall_owner_span_bits(D, width_bits, dense_mask, span_bits);
+  } else {
+    for (int l = 0; l < D; ++l) span_bits[l] = owner_span_bits(D, bc, l);
+    local_bits = geom_ilog2(bc);
+  }
+  g.bc = 1 << local_bits;
+  for (int l = 0; l < D; ++l) {
+    g.span[l] = 1 << span_bits[l];
     //: THE ONE WIDTH LAW THIS SHAPE OWNS -- there is no narrower case to fall back to.
     if (g.width[l] < g.span[l]) return "a level is narrower than the owner box's span there";
   }
   long leaves = 1, owners = 1;
-  int wtot = 0, local_bits = 0, min_width = width[0];
+  int wtot = 0, sum_bits = 0, min_width = width[0];
   for (int l = 0; l < D; ++l) {
     g.grid[l] = g.width[l] / g.span[l];
     g.col_base[l] = wtot;
     wtot += g.width[l];
     leaves *= g.width[l];
     owners *= g.grid[l];
-    local_bits += owner_span_bits(D, bc, l);
+    sum_bits += span_bits[l];
     if (g.width[l] < min_width) min_width = g.width[l];
   }
-  if (local_bits != geom_ilog2(bc)) return "the owner box's spans do not multiply to BC";
+  if (sum_bits != local_bits) return "the owner box's spans do not multiply to BC";
   if (leaves > (long)0x40000000) return "the topology's leaf count does not fit the id space";
   g.wtot = wtot;
   g.owners = (int)owners;
   g.leaves = (int)leaves;
   g.local_bits = local_bits;
   g.min_width = min_width;
-  int wgt = 1, odiv = 1;
+  int wgt = 1, odiv = 1, run = 0;
   for (int l = D - 1; l >= 0; --l) {
     g.weight[l] = wgt;
     g.owner_div[l] = odiv;
     g.owner_div_bits[l] = geom_ilog2(odiv);
     g.grid_bits[l] = geom_ilog2(g.grid[l]);
-    g.span_bits[l] = owner_span_bits(D, bc, l);
-    g.run_shift[l] = owner_run_shift(D, bc, l);
+    g.span_bits[l] = span_bits[l];
+    g.run_shift[l] = run;
     if (g.owner_div_bits[l] < 0 || g.grid_bits[l] < 0)
       return "the owner grid must be a power of two";
     wgt *= g.width[l];
     odiv *= g.grid[l];
+    run += span_bits[l];
   }
   for (int l = D; l < kGeomMaxLevels; ++l) {
     g.width[l] = width[0];
@@ -443,14 +647,44 @@ inline const char* derive_carry_geom(int D, const int* width, int bc, int dv,
     g.span_bits[l] = geom_ilog2(width[0]);
     g.run_shift[l] = 0;
   }
-  if (const char* e = derive_side(D, g.width, g.span, bc, order.level_at[0], NSR, g.r)) return e;
-  if (const char* e = derive_side(D, g.width, g.span, bc, order.level_at[1], NSW, g.w)) return e;
+  if (tall) {
+    if (NSR != NSW) return "the tall owner set carves both sides with the same warps";
+    const int ns_bits = geom_ilog2(NSR);
+    if (ns_bits < 0 || ns_bits > local_bits)
+      return "the tall set's stream count does not fit its owner";
+    const SubBoxSet set = tall_sub_boxes(D, span_bits, NSR, dense_mask);
+    int rsub[kGeomMaxLevels] = {0, 0, 0, 0}, wsub[kGeomMaxLevels] = {0, 0, 0, 0};
+    tall_read_sub_bits(D, span_bits, ns_bits, dense_mask, rsub);
+    int outer[kGeomMaxLevels] = {0, 0, 0, 0};
+    for (int p = 0; p < D; ++p) outer[p] = order.level_at[1][D - 1 - p];
+    carve_from_bits(D, span_bits, ns_bits, outer, wsub);
+    if (const char* e = derive_side_from(D, g.width, g.span, order.level_at[0], NSR, interleave,
+                                         set, rsub, g.r))
+      return e;
+    if (const char* e = derive_side_from(D, g.width, g.span, order.level_at[1], NSW, interleave,
+                                         set, wsub, g.w))
+      return e;
+  } else {
+    if (const char* e = derive_side(D, g.width, g.span, bc, order.level_at[0], NSR, interleave,
+                                    atom_floor, g.r))
+      return e;
+    if (const char* e = derive_side(D, g.width, g.span, bc, order.level_at[1], NSW, interleave,
+                                    atom_floor, g.w))
+      return e;
+  }
   //: a level nobody carves fixes no digit, so its index weight is not part of the map.
   int identical = g.r.assign == g.w.assign ? 1 : 0;
   for (int l = 0; l < D; ++l)
     if (g.r.grid[l] > 1 && g.r.grid_div_bits[l] != g.w.grid_div_bits[l]) identical = 0;
   g.identity_map = identical;
   return nullptr;
+}
+
+//: THE LEVEL DIGIT a stream's slot digit names: stream part high (a run) or low (interleaved).
+//: -- see docs/internals/common/geom.md#interleaved-placement
+__host__ __device__ inline int geom_level_digit(const SideGeom& s, int l, int strm, int dig) {
+  const int part = (strm >> s.grid_div_bits[l]) & (s.grid[l] - 1);
+  return s.interleave ? ((dig << s.grid_bits[l]) + part) : ((part << s.sub_bits[l]) + dig);
 }
 
 //: THE TRANSIT'S ROW MAP: the region is indexed by the OWNER-LOCAL CANONICAL INDEX, so
@@ -463,15 +697,14 @@ __host__ __device__ inline int geom_local_row(const SideGeom& s, int strm, int P
   int row = 0;
   rola::static_for<D>([&](auto Lc) {
     constexpr int l = decltype(Lc)::value;
-    const int off = ((strm >> s.grid_div_bits[l]) & (s.grid[l] - 1)) << s.sub_bits[l];
     const int dig = (P >> s.sub_shift[l]) & ((1 << s.sub_bits[l]) - 1);
-    row += (off + dig) << owner_run_shift(D, BC, l);
+    row += geom_level_digit(s, l, strm, dig) << owner_run_shift(D, BC, l);
   });
   return row;
 }
 
 //: THE READ-ORDER INDEX of an owner-local canonical row: the region's row law, both sides.
-//: -- see docs/internals/carry/carry_kernel.md#read-order
+//: -- see docs/internals/common/geom.md#read-order
 __host__ __device__ inline int geom_read_index(const CarryGeomRT& g, const SideGeom& r, int local) {
   int index = 0;
 #pragma unroll 1
@@ -490,9 +723,8 @@ __host__ __device__ inline int geom_xch_row(const CarryGeomRT& g, const SideGeom
   int row = 0;
 #pragma unroll 1
   for (int l = 0; l < g.D; ++l) {
-    const int off = ((strm >> s.grid_div_bits[l]) & (s.grid[l] - 1)) << s.sub_bits[l];
     const int dig = (P >> s.sub_shift[l]) & ((1 << s.sub_bits[l]) - 1);
-    row += (off + dig) << g.run_shift[l];
+    row += geom_level_digit(s, l, strm, dig) << g.run_shift[l];
   }
   return sb_swizzle(geom_read_index(g, g.r, row));
 }
@@ -506,7 +738,7 @@ __host__ __device__ inline int geom_digit(const CarryGeomRT& g, int O, int local
 }
 
 //: THE CANONICAL LEAF of owner `O`'s local slot, and the atom that holds it.
-//: THE SAME MAP WITH THE DEPTH AND THE OWNER LAW COMPILE-TIME (KERNEL_STANDARDS.md §R12: no runtime trip
+//: THE SAME MAP WITH THE DEPTH AND THE OWNER LAW COMPILE-TIME (CONSTITUTION.md §R12: no runtime trip
 //: count in a register-shaped loop). The kernel knows `D` and `BC` as template
 //: arguments, so the spans and the run shifts are IMMEDIATES here and only the
 //: width-derived terms stay runtime. -- see docs/internals/common/geom.md#canon-leaf

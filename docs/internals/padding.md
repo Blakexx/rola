@@ -4,26 +4,24 @@
 level width `b_l >= 1`, any value width `d_v`) and an op's kernel-facing, PADDED shape
 (a level width a power of two at or above 16, a shipped value width). The two
 rulings ("PADDING AT THE PRODUCER", "d_v PADDING IS ALSO HOST-SIDE") name the
-mechanism; this page states where it actually lives on the `k31/carry-clean` line and
-why it moved there.
+mechanism; this page states where it lives and why.
 
-## Two contracts, kept separate (KERNEL_STANDARDS §R13)
+## Two contracts, kept separate (CONSTITUTION §R13)
 
-**API CONTRACT.** `rola.routing.producer.RouteProducer`'s bundle
+**API CONTRACT.** The layer producer's bundle
 (`RouteFactors`) and `rola.layer.RoLA` stay at the caller's own, unpadded widths --
 `tests/unit/test_api_contract.py` pins this: one tensor shape per declared level, and
 every public tensor a VIEW of the solve's packed layout with zero copy. Padding those
 would break both pins for no reason: nothing downstream of the producer needs a padded
 `RouteFactors` to exist as an object.
 
-**KERNEL CONTRACT.** Every op's call surface -- `rola.ops.carry.carry_forward`,
-`rola.ops.decode.derive_decode_geometry`/`_decode_step`, `rola.ops.intra`'s
-`intra_forward_padded` -- receives the caller's logical tensors and widths directly and
-pads INTERNALLY, once, before touching `box_shape`, the extension, or any launch-facing
-derivation. The kernel itself is never handed a width other than its own; `y` (or
-`num`/`o`) is sliced back to the caller's own `d_v` before it leaves the op.
+**KERNEL CONTRACT.** The two padding seams -- the prefill's carry leg (`rola.ops.prefill`)
+and the decode step (`rola.ops.decode.derive_decode_geometry`/`_decode_step`) -- receive the
+caller's logical tensors and widths and pad INTERNALLY, once, before any launch-facing
+derivation. The kernel itself is never handed a width other than its own; `y` is sliced
+back to the caller's own `d_v` before it leaves the op.
 
-`rola/ops/padding.py`'s three primitives, used identically by all three ops:
+`rola/ops/padding.py`'s primitives, used identically by both seams:
 
 * `pad_routes(levels, padded_widths)` -- per level, `[..., b_l] -> [..., B_l]`, the
   trailing columns exact `0.0`.
@@ -35,7 +33,7 @@ derivation. The kernel itself is never handed a width other than its own; `y` (o
 
 ## Why a zero-pad AFTER the solve is the ruling's mechanism, not an approximation of it
 
-K50 states the mechanism as padding the LOGITS with `-inf` before entmax/softmax. This
+The ruling states the mechanism as padding the LOGITS with `-inf` before entmax/softmax. This
 module pads the SOLVED level with `0.0` after it -- the identical tensor, because both
 softmax and entmax normalize over, and threshold against, only the finite entries of a
 row: an `exp(-inf) == 0.0` addend changes neither a softmax's normalizer nor an
@@ -49,15 +47,10 @@ in a backward pass, and no parameter reads a pad column, so its gradient is exac
 
 ## Per-op scope: not every op pads every axis
 
-* **carry** (`rola.ops.prefill`'s `_descriptor`/`_pack_operands`, the operand-packing
-  seam onto `rola.ops.carry`'s C1c launch surface) pads BOTH axes: every level to
-  `rola.routing.topology.padded_level_width` (next power of two >= 16 -- the
-  box/warp-sub-box register-shape floor), and `v` to the smallest of
-  `rola.ops.carry.SHIPPED_DV` that admits it. The clean-slate rebuild has since landed a
-  real kernel body (`extension().carry_forward`, `docs/internals/carry/carry_kernel.md`), so
-  a lawful padded call now reaches a real launch rather than the deleted extension
-  symbol's absence -- but only at the one arm the shipped set carries (below): a call
-  padded to a `DV` outside it meets the arm-table refusal instead.
+* **the prefill's carry leg** (`rola.ops.prefill`'s `_padded_shape`/`_pack_operands`) pads
+  BOTH axes: every level to `rola.routing.topology.padded_level_width` (next power of two
+  >= 16, the register-shape floor), and `v` to the smallest shipped value width that
+  admits it.
 * **decode** (`rola.ops.decode.derive_decode_geometry`, `_decode_step`) pads ONLY
   `d_v` -> the smallest `DV` its own shipped arm table
   (`rola.ops.decode.arms`, keyed `(DV, D, decay)`) carries at that `(D, decay)`. Its
@@ -65,35 +58,30 @@ in a backward pass, and no parameter reads a pad column, so its gradient is exac
   degenerate to `k = m = 1` for an unfactorable width rather than refusing, and the
   existing `D = 4, B = 8` conformance cell (`tests/oracle/test_decode_vs_oracle.py`)
   is proof this binary already runs a width the carry floor would refuse. Padding
-  levels here would be importing carry's constraint into a kernel that does not have
-  it; an earlier draft of this stage did exactly that and broke that cell, which is
-  how this scope line was found.
-* **intra** (`rola.ops.intra.intra_forward_padded`) pads MORE aggressively than carry:
-  its kernel takes one uniform `level_width` for every level (`intra_forward`'s own
-  `width // levels`), so every level pads to the SAME value -- the shipped width at
-  `(D, window)` read off `rola.ops.intra.arms()` -- not to its own independent next
-  power of two. `v` pads to the single shipped `VALUE_WIDTH`.
+  levels here would import the carry's constraint into a kernel that does not have it.
+* **intra** (`rola.ops.intra.intra_forward`) pads nothing: it reads the bundle's rows
+  where the producer stores them, at their own widths, each level a whole number of
+  16-digit granules up to 256 -- a bundle outside that is refused by the prefill
+  envelope (`rola.ops.intra.admits`), never padded at the seam. The values are the
+  format's 64 channels.
 
 ## Where the shipped sets come from
 
-`rola.ops.carry.SHIPPED_DV` is the carry's declaration, `(32, 64, 128)`: `DV` is a FREE
-AXIS because it is the register shape, and a logical `d_v` outside the set is served by
-padding at the value projection, above this boundary, never by a kernel that masks.
-Decode's and intra's shipped
-sets are read off `arms()` at call time -- the device's own declared matrix -- never a
-literal tuple, because a literal would drift the moment either binary's arm table
-changed and a call would silently pad to a width the loaded `.so` does not carry.
-The carry's own `(D, DV, warps_per_cta)` table now exists and is a ONE-ROW table:
-`tools/gen_shards.py`'s `CARRY_ARMS` is `((2, 64, 8),)`, so of the three declared widths
-`DV = 64` is the only one a call can actually reach today, and the other two are a
-declaration the arm list has not caught up with.
+Decode's shipped value widths are read off `rola.ops.decode.arms()` at call time -- the
+binary's own declared arm set -- never a literal tuple, because a literal would drift the
+moment the binary's arm table changed and a call would silently pad to a width the loaded
+`.so` does not carry. The intra reads one value width, `rola.ops.intra.VALUE_WIDTH`.
+
+The prefill's carry leg pads nothing either: the rebuilt carry takes the value width as
+runtime addressing over the carve's channel extent
+([`engine/rules.md#carve`](engine/rules.md#carve)), and the envelope refuses a carve no
+built arm carries. The stateful band's `box` node still reads `carry_ops.SHIPPED_DV`, which
+the rebuilt `rola.ops.carry` does not define; the envelope refuses a stateful call before
+that node runs, and the node is re-pointed with the carry's state I/O
+([`docs/open-work.md`](../open-work.md) C-e).
 
 ## What this does not do
 
 Nothing here changes `RouteFactors`, `rola.layer.RoLA`, or `rola._state.StateFormat`'s
-seven fields (`docs/internals/state.md#binding`). A caller of the public layer/producer
-surface does not reach any of this yet: `rola.rola_op`'s CUDA arm is deleted pending
-K31 R2, and nothing in `rola.engine`/`rola.layer` reaches `rola.ops.carry` (its own
-module docstring says so). This page describes the OP-LEVEL seam the eventual C3
-kernel work and the eventual layer-to-op wiring both build on, not a feature reachable
-from `rola.RoLA` today.
+fields (`docs/internals/state.md#binding`): the public surface keeps the caller's own
+widths, and padding exists only below the op seams.

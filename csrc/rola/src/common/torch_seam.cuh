@@ -54,12 +54,6 @@ inline cudaStream_t current_stream(int32_t device = -1) {
           .nativeHandle());
 }
 
-inline cudaDeviceProp current_device_properties() {
-  cudaDeviceProp props;
-  ROLA_CUDA_CHECK(cudaGetDeviceProperties(&props, current_device()));
-  return props;
-}
-
 inline torch::stable::Device cuda_device(int32_t index = -1) {
   return torch::stable::Device(torch::headeronly::DeviceType::CUDA,
                                index < 0 ? current_device() : index);

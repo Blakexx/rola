@@ -1,0 +1,3187 @@
+{
+ "experiment": "mma_overlap",
+ "question": "a warp's step is 512 tensor cycles of MMAs plus the chain that makes their operands (ldmatrix, coefficient loads and math, shuffles, a packed product a list); which schedule hides the chain best -- inline (operands at the top of the step) or staged (the next step's operands under this step's MMAs) -- and how does that depend on the warps a scheduler, the MMA kind and how the warps synchronize (free-running, a CTA barrier every pass of 8 steps, or a two-stage mbarrier that lets them drift a pass apart)?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "b8309b3ccfc8f0582ff06d1a1ecb5cb4ec90b0ab",
+  "dirty": false
+ },
+ "reps": 5,
+ "date": "2026-10-04T18:57:18+00:00",
+ "utilization_before": 0,
+ "results": [
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.422212,
+    1.422211,
+    1.422211,
+    1.422209,
+    1.42221
+   ],
+   "median": 1.422211,
+   "min": 1.422209,
+   "max": 1.422212,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.14696,
+    1.146954,
+    1.146957,
+    1.146959,
+    1.146955
+   ],
+   "median": 1.146957,
+   "min": 1.146954,
+   "max": 1.14696,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.44272,
+    1.44272,
+    1.442721,
+    1.442721,
+    1.44272
+   ],
+   "median": 1.44272,
+   "min": 1.44272,
+   "max": 1.442721,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.169048,
+    1.169049,
+    1.169048,
+    1.169049,
+    1.169051
+   ],
+   "median": 1.169049,
+   "min": 1.169048,
+   "max": 1.169051,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.468282,
+    1.468281,
+    1.468281,
+    1.46828,
+    1.468286
+   ],
+   "median": 1.468281,
+   "min": 1.46828,
+   "max": 1.468286,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.204346,
+    1.204348,
+    1.204348,
+    1.204348,
+    1.20435
+   ],
+   "median": 1.204348,
+   "min": 1.204346,
+   "max": 1.20435,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.470731,
+    1.470732,
+    1.470732,
+    1.470733,
+    1.470732
+   ],
+   "median": 1.470732,
+   "min": 1.470731,
+   "max": 1.470733,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 1 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.229122,
+    1.22912,
+    1.229124,
+    1.22912,
+    1.229122
+   ],
+   "median": 1.229122,
+   "min": 1.22912,
+   "max": 1.229124,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.047917,
+    1.047913,
+    1.047917,
+    1.047914,
+    1.047917
+   ],
+   "median": 1.047917,
+   "min": 1.047913,
+   "max": 1.047917,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.609113,
+    1.584014,
+    1.038884,
+    1.038539,
+    1.038538
+   ],
+   "median": 1.038884,
+   "min": 1.038538,
+   "max": 1.609113,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.107164,
+    1.107721,
+    1.107363,
+    1.107458,
+    1.10723
+   ],
+   "median": 1.107363,
+   "min": 1.107164,
+   "max": 1.107721,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.071593,
+    1.071594,
+    1.071593,
+    1.071593,
+    1.071595
+   ],
+   "median": 1.071593,
+   "min": 1.071593,
+   "max": 1.071595,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.047712,
+    1.047846,
+    1.047857,
+    1.047605,
+    1.047846
+   ],
+   "median": 1.047846,
+   "min": 1.047605,
+   "max": 1.047857,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.040554,
+    1.040553,
+    1.040554,
+    1.040554,
+    1.040554
+   ],
+   "median": 1.040554,
+   "min": 1.040553,
+   "max": 1.040554,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.055736,
+    1.0563,
+    1.0563,
+    1.055891,
+    1.0563
+   ],
+   "median": 1.0563,
+   "min": 1.055736,
+   "max": 1.0563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 2 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.058037,
+    1.058037,
+    1.058039,
+    1.058035,
+    1.058035
+   ],
+   "median": 1.058037,
+   "min": 1.058035,
+   "max": 1.058039,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.048342,
+    1.048189,
+    1.048345,
+    1.048297,
+    1.048305
+   ],
+   "median": 1.048305,
+   "min": 1.048189,
+   "max": 1.048345,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.037283,
+    1.037282,
+    1.037281,
+    1.037282,
+    1.037281
+   ],
+   "median": 1.037282,
+   "min": 1.037281,
+   "max": 1.037283,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.083114,
+    1.083055,
+    1.083354,
+    1.083132,
+    1.083053
+   ],
+   "median": 1.083114,
+   "min": 1.083053,
+   "max": 1.083354,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.056401,
+    1.0564,
+    1.056401,
+    1.0564,
+    1.056401
+   ],
+   "median": 1.056401,
+   "min": 1.0564,
+   "max": 1.056401,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.042868,
+    1.042708,
+    1.042717,
+    1.042714,
+    1.042708
+   ],
+   "median": 1.042714,
+   "min": 1.042708,
+   "max": 1.042868,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.065428,
+    1.0651,
+    1.064988,
+    1.065101,
+    1.064989
+   ],
+   "median": 1.0651,
+   "min": 1.064988,
+   "max": 1.065428,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.043796,
+    1.04381,
+    1.043796,
+    1.043391,
+    1.04383
+   ],
+   "median": 1.043796,
+   "min": 1.043391,
+   "max": 1.04383,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 3 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.050263,
+    1.050239,
+    1.050176,
+    1.050275,
+    1.050214
+   ],
+   "median": 1.050239,
+   "min": 1.050176,
+   "max": 1.050275,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.039855,
+    1.039813,
+    1.039859,
+    1.039793,
+    1.039877
+   ],
+   "median": 1.039855,
+   "min": 1.039793,
+   "max": 1.039877,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.040052,
+    1.040053,
+    1.040052,
+    1.040052,
+    1.040052
+   ],
+   "median": 1.040052,
+   "min": 1.040052,
+   "max": 1.040053,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.075759,
+    1.075688,
+    1.075737,
+    1.075674,
+    1.075771
+   ],
+   "median": 1.075737,
+   "min": 1.075674,
+   "max": 1.075771,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.057107,
+    1.057107,
+    1.057108,
+    1.057107,
+    1.057107
+   ],
+   "median": 1.057107,
+   "min": 1.057107,
+   "max": 1.057108,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.078565,
+    1.07872,
+    1.078608,
+    1.078351,
+    1.07872
+   ],
+   "median": 1.078608,
+   "min": 1.078351,
+   "max": 1.07872,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.064692,
+    1.064704,
+    1.064705,
+    1.064705,
+    1.064704
+   ],
+   "median": 1.064704,
+   "min": 1.064692,
+   "max": 1.064705,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.045566,
+    1.045552,
+    1.220281,
+    1.045581,
+    1.045514
+   ],
+   "median": 1.045566,
+   "min": 1.045514,
+   "max": 1.220281,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp16-acc / 4 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.069777,
+    1.069604,
+    1.069719,
+    1.06962,
+    1.069696
+   ],
+   "median": 1.069696,
+   "min": 1.069604,
+   "max": 1.069777,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.231475,
+    1.231564,
+    1.232051,
+    1.231528,
+    1.231473
+   ],
+   "median": 1.231528,
+   "min": 1.231473,
+   "max": 1.232051,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.143467,
+    1.143541,
+    1.143238,
+    1.143645,
+    1.143467
+   ],
+   "median": 1.143467,
+   "min": 1.143238,
+   "max": 1.143645,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.275987,
+    1.275984,
+    1.275997,
+    1.276016,
+    1.275985
+   ],
+   "median": 1.275987,
+   "min": 1.275984,
+   "max": 1.276016,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.151745,
+    1.152004,
+    1.151899,
+    1.151888,
+    1.151749
+   ],
+   "median": 1.151888,
+   "min": 1.151745,
+   "max": 1.152004,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.28028,
+    1.2806,
+    1.280413,
+    1.279975,
+    1.280279
+   ],
+   "median": 1.28028,
+   "min": 1.279975,
+   "max": 1.2806,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.198918,
+    1.197955,
+    1.198838,
+    1.199068,
+    1.198921
+   ],
+   "median": 1.198918,
+   "min": 1.197955,
+   "max": 1.199068,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.267915,
+    1.268001,
+    1.2679,
+    1.26757,
+    1.267692
+   ],
+   "median": 1.2679,
+   "min": 1.26757,
+   "max": 1.268001,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 1 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.135539,
+    1.135545,
+    1.135528,
+    1.135626,
+    1.135609
+   ],
+   "median": 1.135545,
+   "min": 1.135528,
+   "max": 1.135626,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.032178,
+    1.032442,
+    1.0324,
+    1.03258,
+    1.0324
+   ],
+   "median": 1.0324,
+   "min": 1.032178,
+   "max": 1.03258,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.044949,
+    1.045076,
+    1.044832,
+    1.045546,
+    1.04569
+   ],
+   "median": 1.045076,
+   "min": 1.044832,
+   "max": 1.04569,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.077097,
+    1.076418,
+    1.07704,
+    1.07748,
+    1.077367
+   ],
+   "median": 1.077097,
+   "min": 1.076418,
+   "max": 1.07748,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.062382,
+    1.062609,
+    1.06256,
+    1.062616,
+    1.062603
+   ],
+   "median": 1.062603,
+   "min": 1.062382,
+   "max": 1.062616,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.04282,
+    1.042632,
+    1.042737,
+    1.042602,
+    1.042202
+   ],
+   "median": 1.042632,
+   "min": 1.042202,
+   "max": 1.04282,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.053062,
+    1.052937,
+    1.052952,
+    1.052568,
+    1.052888
+   ],
+   "median": 1.052937,
+   "min": 1.052568,
+   "max": 1.053062,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.048128,
+    1.048238,
+    1.047976,
+    1.048307,
+    1.048166
+   ],
+   "median": 1.048166,
+   "min": 1.047976,
+   "max": 1.048307,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 2 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.062204,
+    1.06186,
+    1.061832,
+    1.061873,
+    1.061833
+   ],
+   "median": 1.06186,
+   "min": 1.061832,
+   "max": 1.062204,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.022087,
+    1.022136,
+    1.02217,
+    1.022181,
+    1.022169
+   ],
+   "median": 1.022169,
+   "min": 1.022087,
+   "max": 1.022181,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.037495,
+    1.037504,
+    1.037576,
+    1.037479,
+    1.037532
+   ],
+   "median": 1.037504,
+   "min": 1.037479,
+   "max": 1.037576,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.061373,
+    1.061359,
+    1.061574,
+    1.061595,
+    1.061363
+   ],
+   "median": 1.061373,
+   "min": 1.061359,
+   "max": 1.061595,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.484955,
+    1.057527,
+    1.057526,
+    1.27791,
+    1.057519
+   ],
+   "median": 1.057527,
+   "min": 1.057519,
+   "max": 1.484955,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.061867,
+    1.062849,
+    1.062213,
+    1.061384,
+    1.061769
+   ],
+   "median": 1.061867,
+   "min": 1.061384,
+   "max": 1.062849,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.074134,
+    1.074123,
+    1.074096,
+    1.074118,
+    1.074305
+   ],
+   "median": 1.074123,
+   "min": 1.074096,
+   "max": 1.074305,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.037872,
+    1.037875,
+    1.037859,
+    1.037781,
+    1.037841
+   ],
+   "median": 1.037859,
+   "min": 1.037781,
+   "max": 1.037875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 3 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.039663,
+    1.03967,
+    1.039549,
+    1.03961,
+    1.039562
+   ],
+   "median": 1.03961,
+   "min": 1.039549,
+   "max": 1.03967,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.035228,
+    1.035261,
+    1.035125,
+    1.035229,
+    1.035181
+   ],
+   "median": 1.035228,
+   "min": 1.035125,
+   "max": 1.035261,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.043503,
+    1.043516,
+    1.043365,
+    1.04354,
+    1.389006
+   ],
+   "median": 1.043516,
+   "min": 1.043365,
+   "max": 1.389006,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.067335,
+    1.393733,
+    1.067398,
+    1.067323,
+    1.067319
+   ],
+   "median": 1.067335,
+   "min": 1.067319,
+   "max": 1.393733,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.061652,
+    1.061685,
+    1.061645,
+    1.061703,
+    1.061694
+   ],
+   "median": 1.061685,
+   "min": 1.061645,
+   "max": 1.061703,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.410585,
+    1.065136,
+    1.064786,
+    1.397307,
+    1.065134
+   ],
+   "median": 1.065136,
+   "min": 1.064786,
+   "max": 1.410585,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.076644,
+    1.076833,
+    1.076814,
+    1.076858,
+    1.076848
+   ],
+   "median": 1.076833,
+   "min": 1.076644,
+   "max": 1.076858,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.050875,
+    1.050836,
+    1.051202,
+    1.051136,
+    1.050853
+   ],
+   "median": 1.050875,
+   "min": 1.050836,
+   "max": 1.051202,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32-acc / 4 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.048307,
+    1.048477,
+    1.048316,
+    1.048426,
+    1.048335
+   ],
+   "median": 1.048335,
+   "min": 1.048307,
+   "max": 1.048477,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.484295,
+    1.484293,
+    1.484298,
+    1.484296,
+    1.484295
+   ],
+   "median": 1.484295,
+   "min": 1.484293,
+   "max": 1.484298,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.17299,
+    1.172987,
+    1.172989,
+    1.172985,
+    1.172985
+   ],
+   "median": 1.172987,
+   "min": 1.172985,
+   "max": 1.17299,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.488704,
+    1.488701,
+    1.488701,
+    1.4887,
+    1.488698
+   ],
+   "median": 1.488701,
+   "min": 1.488698,
+   "max": 1.488704,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.189563,
+    1.189562,
+    1.189564,
+    1.189562,
+    1.189562
+   ],
+   "median": 1.189562,
+   "min": 1.189562,
+   "max": 1.189564,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.520525,
+    1.520524,
+    1.520527,
+    1.520523,
+    1.520524
+   ],
+   "median": 1.520524,
+   "min": 1.520523,
+   "max": 1.520527,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.226536,
+    1.226541,
+    1.226541,
+    1.226538,
+    1.22654
+   ],
+   "median": 1.22654,
+   "min": 1.226536,
+   "max": 1.226541,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.52028,
+    1.52028,
+    1.520281,
+    1.52028,
+    1.52028
+   ],
+   "median": 1.52028,
+   "min": 1.52028,
+   "max": 1.520281,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 1 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.238097,
+    1.238094,
+    1.238091,
+    1.238093,
+    1.238095
+   ],
+   "median": 1.238094,
+   "min": 1.238091,
+   "max": 1.238097,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.074622,
+    1.074794,
+    1.074202,
+    1.074728,
+    1.074719
+   ],
+   "median": 1.074719,
+   "min": 1.074202,
+   "max": 1.074794,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.058799,
+    1.0588,
+    1.058799,
+    1.058798,
+    1.058799
+   ],
+   "median": 1.058799,
+   "min": 1.058798,
+   "max": 1.0588,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.124351,
+    1.124353,
+    1.124326,
+    1.124362,
+    1.124371
+   ],
+   "median": 1.124353,
+   "min": 1.124326,
+   "max": 1.124371,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.082144,
+    1.082143,
+    1.082143,
+    1.082144,
+    1.082144
+   ],
+   "median": 1.082144,
+   "min": 1.082143,
+   "max": 1.082144,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.086908,
+    1.086211,
+    1.086093,
+    1.086024,
+    1.086029
+   ],
+   "median": 1.086093,
+   "min": 1.086024,
+   "max": 1.086908,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.066224,
+    1.066221,
+    1.066221,
+    1.066221,
+    1.066222
+   ],
+   "median": 1.066221,
+   "min": 1.066221,
+   "max": 1.066224,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.081597,
+    1.081567,
+    1.081501,
+    1.081592,
+    1.081597
+   ],
+   "median": 1.081592,
+   "min": 1.081501,
+   "max": 1.081597,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 2 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.090158,
+    1.090431,
+    1.386701,
+    1.087717,
+    1.090086
+   ],
+   "median": 1.090158,
+   "min": 1.087717,
+   "max": 1.386701,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.245081,
+    1.057027,
+    1.057141,
+    1.056802,
+    1.05767
+   ],
+   "median": 1.057141,
+   "min": 1.056802,
+   "max": 1.245081,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.055008,
+    1.054989,
+    1.054989,
+    1.054988,
+    1.054989
+   ],
+   "median": 1.054989,
+   "min": 1.054988,
+   "max": 1.055008,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.091733,
+    1.091106,
+    1.0916,
+    1.091512,
+    1.091138
+   ],
+   "median": 1.091512,
+   "min": 1.091106,
+   "max": 1.091733,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.074442,
+    1.074442,
+    1.074442,
+    1.074442,
+    1.074443
+   ],
+   "median": 1.074442,
+   "min": 1.074442,
+   "max": 1.074443,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.066096,
+    1.066151,
+    1.06612,
+    1.066085,
+    1.066126
+   ],
+   "median": 1.06612,
+   "min": 1.066085,
+   "max": 1.066151,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.079226,
+    1.078404,
+    1.078403,
+    1.078404,
+    1.078402
+   ],
+   "median": 1.078404,
+   "min": 1.078402,
+   "max": 1.079226,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.060743,
+    1.060706,
+    1.060719,
+    1.060721,
+    1.060735
+   ],
+   "median": 1.060721,
+   "min": 1.060706,
+   "max": 1.060743,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 3 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.061251,
+    1.06125,
+    1.06125,
+    1.06125,
+    1.06125
+   ],
+   "median": 1.06125,
+   "min": 1.06125,
+   "max": 1.061251,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / inline / free",
+   "unit": "x floor",
+   "samples": [
+    1.057848,
+    1.05785,
+    1.057882,
+    1.057885,
+    1.057799
+   ],
+   "median": 1.05785,
+   "min": 1.057799,
+   "max": 1.057885,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / staged / free",
+   "unit": "x floor",
+   "samples": [
+    1.396969,
+    1.057599,
+    1.21767,
+    1.057609,
+    1.057571
+   ],
+   "median": 1.057609,
+   "min": 1.057571,
+   "max": 1.396969,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / inline / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.089291,
+    1.089418,
+    1.089428,
+    1.08942,
+    1.089467
+   ],
+   "median": 1.08942,
+   "min": 1.089291,
+   "max": 1.089467,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / staged / barrier",
+   "unit": "x floor",
+   "samples": [
+    1.075993,
+    1.075993,
+    1.075993,
+    1.075994,
+    1.075993
+   ],
+   "median": 1.075993,
+   "min": 1.075993,
+   "max": 1.075994,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / inline / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.098562,
+    1.098821,
+    1.098679,
+    1.098741,
+    1.098749
+   ],
+   "median": 1.098741,
+   "min": 1.098562,
+   "max": 1.098821,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / staged / two-stage mbarrier",
+   "unit": "x floor",
+   "samples": [
+    1.083892,
+    1.08399,
+    1.084003,
+    1.083965,
+    1.084003
+   ],
+   "median": 1.08399,
+   "min": 1.083892,
+   "max": 1.084003,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / inline / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.06588,
+    1.065956,
+    1.065909,
+    1.065793,
+    1.065888
+   ],
+   "median": 1.065888,
+   "min": 1.065793,
+   "max": 1.065956,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "int8 / 4 a scheduler / staged / two-stage mbarrier, sleeping",
+   "unit": "x floor",
+   "samples": [
+    1.081084,
+    1.081032,
+    1.081005,
+    1.081108,
+    1.080962
+   ],
+   "median": 1.081032,
+   "min": 1.080962,
+   "max": 1.081108,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void mma_overlap::overlap<(int)2, (int)1, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 92,
+   "ops": {
+    "LOP3.LUT": 260,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 233,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 91,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 92,
+   "ops": {
+    "LOP3.LUT": 260,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 233,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 91,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 92,
+   "ops": {
+    "LOP3.LUT": 260,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 233,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 91,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 92,
+   "ops": {
+    "LOP3.LUT": 260,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 233,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 12,
+    "IMAD.SHL.U32": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 91,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "BRA": 11,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9,
+    "BRA": 8
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)1, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 95,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "IMMA.16832.U8.S8": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)2, (int)0, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "IMMA.16832.U8.S8": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9,
+    "NOP": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 94,
+   "ops": {
+    "LOP3.LUT": 239,
+    "IADD3": 198,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 24,
+    "IMAD": 22,
+    "LDS": 18,
+    "CS2R": 17,
+    "NOP": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 231,
+    "IADD3": 197,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "NOP": 14,
+    "BRA": 13,
+    "IMAD": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 229,
+    "IADD3": 197,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "BRA": 12,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 94,
+   "ops": {
+    "LOP3.LUT": 239,
+    "IADD3": 198,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 24,
+    "IMAD": 22,
+    "LDS": 18,
+    "CS2R": 17,
+    "NOP": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 233,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 226,
+    "IADD3": 196,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "NOP": 14,
+    "IMAD": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 226,
+    "IADD3": 196,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "NOP": 15,
+    "IMAD": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 94,
+   "ops": {
+    "LOP3.LUT": 239,
+    "IADD3": 198,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 24,
+    "IMAD": 22,
+    "LDS": 18,
+    "CS2R": 17,
+    "NOP": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 203,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "NOP": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD.MOV.U32": 13,
+    "BRA": 13,
+    "IMAD": 12
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 12,
+    "BRA": 11,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 94,
+   "ops": {
+    "LOP3.LUT": 239,
+    "IADD3": 198,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 24,
+    "IMAD": 22,
+    "LDS": 18,
+    "CS2R": 17,
+    "NOP": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 203,
+    "PRMT": 129,
+    "CS2R": 34,
+    "HMUL2": 32,
+    "NOP": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD.MOV.U32": 13,
+    "BRA": 13,
+    "IMAD": 12
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 259,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "CS2R": 17
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 232,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 12,
+    "BRA": 11,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 12,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9,
+    "BRA": 8
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)1, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 255,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "SHFL.IDX": 48,
+    "HMMA.16816.F32": 48,
+    "FMUL": 34,
+    "IMAD": 26,
+    "IMAD.MOV.U32": 23,
+    "IMAD.SHL.U32": 17,
+    "CS2R": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)1, (int)0, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "HMMA.16816.F32": 16,
+    "IMAD": 12,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9,
+    "NOP": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 252,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 28,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10,
+    "CS2R": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 251,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "CS2R": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 217,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 14,
+    "IMAD": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 217,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 15,
+    "IMAD": 11,
+    "FMUL": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 252,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 28,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 11,
+    "FMUL": 10,
+    "CS2R": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 251,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 197,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "BRA": 11,
+    "IMAD": 11,
+    "FMUL": 10,
+    "CS2R": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 216,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "FMUL": 10,
+    "CS2R": 10,
+    "NOP": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 216,
+    "IADD3": 196,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 11,
+    "NOP": 11,
+    "FMUL": 10,
+    "CS2R": 10,
+    "IMAD.MOV.U32": 9
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 252,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 28,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 12,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 251,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "BRA": 11,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10,
+    "CS2R": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 220,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "IMAD.MOV.U32": 10,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 220,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "NOP": 11,
+    "IMAD.MOV.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 252,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 28,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 18,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 225,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "NOP": 13,
+    "BRA": 12,
+    "IMAD": 12,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 89,
+   "ops": {
+    "LOP3.LUT": 251,
+    "IADD3": 200,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 29,
+    "IMAD": 26,
+    "IMAD.SHL.U32": 18,
+    "LDS": 17,
+    "STS.128": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 224,
+    "IADD3": 203,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "BRA": 11,
+    "IMAD.SHL.U32": 10,
+    "FMUL": 10,
+    "CS2R": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 220,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "IMAD.MOV.U32": 10,
+    "FMUL": 10,
+    "NOP": 10
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)1, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 90,
+   "ops": {
+    "LOP3.LUT": 234,
+    "IADD3": 199,
+    "PRMT": 129,
+    "HMUL2": 96,
+    "HMMA.16816.F16": 96,
+    "SHFL.IDX": 48,
+    "FMUL": 34,
+    "IMAD.MOV.U32": 27,
+    "IMAD": 25,
+    "STS.128": 16,
+    "LDS.U8": 16,
+    "LDS": 16
+   }
+  },
+  "void mma_overlap::overlap<(int)0, (int)0, (int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 86,
+   "ops": {
+    "LOP3.LUT": 220,
+    "IADD3": 202,
+    "PRMT": 129,
+    "HMUL2": 32,
+    "HMMA.16816.F16": 32,
+    "CS2R": 18,
+    "STS.128": 16,
+    "SHFL.IDX": 16,
+    "IMAD": 12,
+    "NOP": 11,
+    "IMAD.MOV.U32": 10,
+    "FMUL": 10
+   }
+  }
+ }
+}

@@ -11,7 +11,9 @@
 namespace rola {
 namespace decode {
 
-using LatticeScan = cub::BlockScan<int, kDecodeThreads>;
+//: THE STEP'S BLOCK SCAN, over its plan's threads.
+template <int kThreads>
+using LatticeScan = cub::BlockScan<int, kThreads>;
 
 //: THE FOUR PER-LEVEL DIGIT SETS the terms are built from, as the index of one -- see docs/internals/decode/decode_lattice.md#kkindw
 constexpr int kKindW = 0;
@@ -44,41 +46,13 @@ __device__ __forceinline__ uint32_t kind_bits(uint32_t r, uint32_t w, int kind) 
   }
 }
 
-//: One side's DIGIT MASK, one bit per digit of every level, packed level by level. One -- see docs/internals/decode/decode_lattice.md#near-line-53
-template <int D>
-__device__ __forceinline__ void build_digit_mask(const DecodeParams& p, const float* amp,
-                                                 uint32_t* mask) {
-#pragma unroll 1
-  for (int idx = threadIdx.x; idx < p.mask_total; idx += kDecodeThreads) {
-    int l = 0;
-#pragma unroll
-    for (int q = 1; q < D; ++q) {
-      if (idx >= p.mask_off[q]) l = q;
-    }
-    const int base = (idx - p.mask_off[l]) << 5;
-    const int width = p.level_width[l];
-    const float* row = amp + p.level_amp_offset[l];
-    uint32_t v = 0u;
-    const int take = (width - base) < 32 ? (width - base) : 32;
-#pragma unroll 1
-    for (int b = 0; b < take; ++b) {
-      if (row[base + b] != 0.0f) v |= 1u << b;
-    }
-    mask[idx] = v;
-  }
-}
-
 //: Level `l`'s digits `[lo, lo + count)` as one word. `count <= kDecodeMaxSpan` is the -- see docs/internals/decode/decode_lattice.md#levelslice
 __device__ __forceinline__ uint32_t level_slice(const DecodeParams& p, const uint32_t* mask, int l,
                                                 int lo, int count) {
   return extract_bits(mask + p.mask_off[l], p.mask_words[l], lo, count);
 }
 
-__device__ __forceinline__ int ceil_log2_dev(int n) {
-  int bits = 0;
-  while ((1 << bits) < n) ++bits;
-  return bits;
-}
+__device__ __forceinline__ int ceil_log2_dev(int n) { return n <= 1 ? 0 : 32 - __clz(n - 1); }
 
 //: ONE DIGIT'S MEMBERSHIP, as ONE load and a shift. `level_slice` reads two words and -- see docs/internals/decode/decode_lattice.md#maskbit
 __device__ __forceinline__ bool mask_bit(const DecodeParams& p, const uint32_t* mask, int l,
@@ -86,69 +60,61 @@ __device__ __forceinline__ bool mask_bit(const DecodeParams& p, const uint32_t* 
   return ((mask[p.mask_off[l] + (bit >> 5)] >> (static_cast<uint32_t>(bit) & 31u)) & 1u) != 0u;
 }
 
-//: THE OWNER LIVENESS BITMASK: per KIND and level, ONE BIT PER OWNER -- see docs/internals/decode/decode_lattice.md#build-owner-mask
+//: THE OWNER AND DIGIT LISTS, ONE WARP A LEVEL: warp `l < D` ballots level `l`'s owner groups a word at a time and -- see docs/internals/decode/decode_lattice.md#build-lists
 template <int D>
-__device__ __forceinline__ void build_owner_mask(const DecodeParams& p, const uint32_t* mask_r,
-                                                 const uint32_t* mask_w, uint32_t* omask,
-                                                 int32_t* n_o, int32_t* n_d) {
-  const int tid = threadIdx.x;
-  const int lane = tid & 31;
-  const int word = tid >> 5;
-#pragma unroll
-  for (int l = 0; l < D; ++l) {
+__device__ __forceinline__ void build_lists(const DecodeParams& p, const uint32_t* mask_r,
+                                            const uint32_t* mask_w, int32_t* olist, int32_t* dlist,
+                                            int32_t* n_o, int32_t* n_d) {
+  const int lane = threadIdx.x & 31;
+  const int warp = threadIdx.x >> 5;
+  const uint32_t below = (1u << lane) - 1u;
+  if (warp < D) {
+    const int l = warp;
     const int span = p.lat_s[l];
-    uint32_t r = 0u;
-    uint32_t w = 0u;
-    if (tid < p.lat_g[l]) {
-      const int lo = tid * span;
-      r = level_slice(p, mask_r, l, lo, span);
-      w = level_slice(p, mask_w, l, lo, span);
-    }
-    //: HAZARD ballot-uniformity -- docs/internals/decode/decode_lattice.md#ballot-uniformity
-    const bool keep = lane == 0 && word < p.omask_words[l];
-#pragma unroll
-    for (int k = 0; k < kKinds; ++k) {
-      const uint32_t bits = __ballot_sync(0xffffffffu, kind_bits(r, w, k) != 0u);
-      if (keep) {
-        omask[k * p.omask_total + p.omask_off[l] + word] = bits;
-        atomicAdd(&n_o[k * kMaxLevels + l], __popc(bits));
-      }
-    }
-    if (l < D - 1 && tid < p.mask_words[l]) {
-      atomicAdd(&n_d[l], __popc(mask_w[p.mask_off[l] + tid]));
-    }
-  }
-}
+    const int groups = p.lat_g[l];
+    int run[kKinds] = {0, 0, 0, 0};
 
-//: THE COMPACTION, AND IT COSTS ONE `POPC` PER WORD. -- see docs/internals/decode/decode_lattice.md#compact-owner-lists
-template <int D>
-__device__ __forceinline__ void compact_owner_lists(const DecodeParams& p, const uint32_t* omask,
-                                                    const uint32_t* mask_w, int32_t* olist,
-                                                    int32_t* dlist) {
-  const int tid = threadIdx.x;
-  const int w_hi = tid >> 5;
-  const uint32_t below = (1u << (tid & 31)) - 1u;
-#pragma unroll
-  for (int l = 0; l < D; ++l) {
-    if (tid < p.lat_g[l]) {
+#pragma unroll 1
+    for (int base = 0; base < groups; base += 32) {
+      const int g = base + lane;
+      uint32_t r = 0u;
+      uint32_t w = 0u;
+      if (g < groups) {
+        r = level_slice(p, mask_r, l, g * span, span);
+        w = level_slice(p, mask_w, l, g * span, span);
+      }
 #pragma unroll
       for (int k = 0; k < kKinds; ++k) {
-        const uint32_t* wds = omask + k * p.omask_total + p.omask_off[l];
-        if (((wds[w_hi] >> (tid & 31)) & 1u) != 0u) {
-          int rank = __popc(wds[w_hi] & below);
-#pragma unroll 1
-          for (int w = 0; w < w_hi; ++w) rank += __popc(wds[w]);
-          olist[k * p.olist_total + p.olist_off[l] + rank] = tid;
-        }
+        const bool mine = kind_bits(r, w, k) != 0u;
+        const uint32_t bits = __ballot_sync(0xffffffffu, mine);
+        if (mine) olist[k * p.olist_total + p.olist_off[l] + run[k] + __popc(bits & below)] = g;
+        run[k] += __popc(bits);
       }
     }
-    if (l < D - 1 && tid < p.level_width[l] && mask_bit(p, mask_w, l, tid)) {
-      const uint32_t* wds = mask_w + p.mask_off[l];
-      int rank = __popc(wds[w_hi] & below);
-#pragma unroll 1
-      for (int w = 0; w < w_hi; ++w) rank += __popc(wds[w]);
-      dlist[p.dlist_off[l] + rank] = tid;
+
+    if (lane == 0) {
+#pragma unroll
+      for (int k = 0; k < kKinds; ++k) n_o[k * kMaxLevels + l] = run[k];
     }
+  } else if (warp < 2 * D - 1) {
+    const int l = warp - D;
+    //: a level is at most `kDecodeMaxLevelWidth` digits, so its words load together, then rank in order.
+    constexpr int kWords = kDecodeMaxLevelWidth / 32;
+    const uint32_t* words = mask_w + p.mask_off[l];
+    uint32_t bits[kWords];
+#pragma unroll
+    for (int word = 0; word < kWords; ++word)
+      bits[word] = word < p.mask_words[l] ? words[word] : 0u;
+
+    int run = 0;
+#pragma unroll
+    for (int word = 0; word < kWords; ++word) {
+      if (((bits[word] >> lane) & 1u) != 0u) {
+        dlist[p.dlist_off[l] + run + __popc(bits[word] & below)] = (word << 5) + lane;
+      }
+      run += __popc(bits[word]);
+    }
+    if (lane == 0) n_d[l] = run;
   }
 }
 
@@ -194,17 +160,13 @@ __device__ __forceinline__ int term_layout(const DecodeParams& p, const int32_t*
   return (term == 0) ? (1 << acc) : (1 << (acc + p.lat_outer_bits));
 }
 
-//: THE WHOLE TABLE AND THE RETIREMENT BOUND, published once per CTA. -- see docs/internals/decode/decode_lattice.md#publish-term-layout
+//: THE WHOLE TABLE, published once per CTA: each term's fields and unit count. -- see docs/internals/decode/decode_lattice.md#publish-term-layout
 template <int D>
 __device__ __forceinline__ void publish_term_layout(const DecodeParams& p, const int32_t* n_o,
                                                     const int32_t* n_d, int32_t* fld,
-                                                    int32_t* units, int32_t* umax) {
+                                                    int32_t* units) {
   const int t = threadIdx.x;
-  if (t <= D + 1) {
-    const int u = term_layout<D>(p, n_o, n_d, t, fld + t * kMaxLevels);
-    units[t] = u;
-    if (t <= D) atomicMax(umax, u);
-  }
+  if (t <= D + 1) units[t] = term_layout<D>(p, n_o, n_d, t, fld + t * kMaxLevels);
   __syncthreads();
 }
 

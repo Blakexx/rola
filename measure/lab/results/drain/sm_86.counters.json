@@ -1,0 +1,222 @@
+{
+ "experiment": "drain",
+ "question": "what does the readout's drain -- a pass's panel words added into the head's `num` by `red.global.add` at each slot's token, the panel cleared for the next pass's adds -- cost a CTA-window, in today's form and in forms that pair conflict-free slots, clear by exchange or by a 16-byte sweep, and beside a stream's copies?",
+ "arch": "sm_86",
+ "git": {
+  "sha": "b69db512c50f1e88f95e358b253d7c48423fb309",
+  "dirty": true
+ },
+ "date": "2026-10-19T01:45:28+00:00",
+ "metrics": [
+  "lts__t_requests_srcunit_tex_op_red.sum",
+  "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed",
+  "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct",
+  "sm__cycles_elapsed.avg",
+  "smsp__inst_executed.sum"
+ ],
+ "inputs": {
+  "head.bin": "1dcd3b63abc73d6c",
+  "counts.bin": "c5c54b636ec31917",
+  "tokens.bin": "7ec2f8b6b470285c",
+  "num.bin": "6339ed35467053d7",
+  "k16/head.bin": "4ca9dfa1998f2766",
+  "k16/counts.bin": "f9064b72885daeb1",
+  "k16/tokens.bin": "d2f336820e119d03",
+  "k16/num.bin": "a03bbf77bc042a9e",
+  "c16/head.bin": "4ca9dfa1998f2766",
+  "c16/counts.bin": "f8c49e5b8b8fe20e",
+  "c16/tokens.bin": "fbc6ad28a22d890a",
+  "c16/num.bin": "0b6a01fad43b37e2"
+ },
+ "kernels": {
+  "void drain<5, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 0.0,
+   "lts__t_requests_srcunit_tex_op_red.sum": 0.0,
+   "sm__cycles_elapsed.avg": 57927.95,
+   "smsp__inst_executed.sum": 2001728.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  },
+  "void drain<0, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 34.97,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 160939.85,
+   "smsp__inst_executed.sum": 11375680.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<1, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 35.36,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 159244.17,
+   "smsp__inst_executed.sum": 11376320.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<2, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 36.77,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 153390.67,
+   "smsp__inst_executed.sum": 10720960.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.34
+  },
+  "void drain<3, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 36.93,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 152785.9,
+   "smsp__inst_executed.sum": 10884160.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.1
+  },
+  "void drain<6, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 36.63,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 154018.7,
+   "smsp__inst_executed.sum": 10720960.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.12
+  },
+  "void drain<4, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 28.37,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 198832.45,
+   "smsp__inst_executed.sum": 13346880.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.09
+  },
+  "void drain<7, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 17.85,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 315578.0,
+   "smsp__inst_executed.sum": 16787520.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.52
+  },
+  "void drain<8, 0>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 35.49,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1103104.0,
+   "sm__cycles_elapsed.avg": 133628.9,
+   "smsp__inst_executed.sum": 9918464.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  },
+  "void drain<5, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 0.0,
+   "lts__t_requests_srcunit_tex_op_red.sum": 0.0,
+   "sm__cycles_elapsed.avg": 47976.49,
+   "smsp__inst_executed.sum": 1775120.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  },
+  "void drain<0, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 37.04,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 152317.35,
+   "smsp__inst_executed.sum": 11074192.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<1, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 37.27,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 151353.17,
+   "smsp__inst_executed.sum": 11074832.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<2, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 40.88,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 138015.48,
+   "smsp__inst_executed.sum": 10419472.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.25
+  },
+  "void drain<3, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 40.01,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 141001.67,
+   "smsp__inst_executed.sum": 10582672.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.08
+  },
+  "void drain<6, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 40.25,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 140177.17,
+   "smsp__inst_executed.sum": 10419472.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.1
+  },
+  "void drain<4, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 30.0,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 188037.65,
+   "smsp__inst_executed.sum": 13045392.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.11
+  },
+  "void drain<7, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 18.39,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1310720.0,
+   "sm__cycles_elapsed.avg": 306831.12,
+   "smsp__inst_executed.sum": 16486032.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.44
+  },
+  "void drain<8, 1>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 39.51,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1175168.0,
+   "sm__cycles_elapsed.avg": 128026.55,
+   "smsp__inst_executed.sum": 10122416.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  },
+  "void drain<5, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 0.0,
+   "lts__t_requests_srcunit_tex_op_red.sum": 0.0,
+   "sm__cycles_elapsed.avg": 47706.065,
+   "smsp__inst_executed.sum": 1735088.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  },
+  "void drain<0, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 36.11,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 155305.83,
+   "smsp__inst_executed.sum": 10971824.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.24
+  },
+  "void drain<1, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 35.91,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 156189.12,
+   "smsp__inst_executed.sum": 10972464.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.23
+  },
+  "void drain<2, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 36.84,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 152197.15,
+   "smsp__inst_executed.sum": 10321200.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.38
+  },
+  "void drain<3, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 37.52,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 149469.75,
+   "smsp__inst_executed.sum": 10483376.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<6, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 37.43,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 149848.95,
+   "smsp__inst_executed.sum": 10321200.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.15
+  },
+  "void drain<4, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 29.22,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 191886.92,
+   "smsp__inst_executed.sum": 12930736.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.1
+  },
+  "void drain<7, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 18.34,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1302528.0,
+   "sm__cycles_elapsed.avg": 305470.95,
+   "smsp__inst_executed.sum": 16349872.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.47
+  },
+  "void drain<8, 2>(In, long long *)": {
+   "lts__d_atomic_input_cycles_active.avg.pct_of_peak_sustained_elapsed": 40.83,
+   "lts__t_requests_srcunit_tex_op_red.sum": 1171456.0,
+   "sm__cycles_elapsed.avg": 123496.62,
+   "smsp__inst_executed.sum": 10038832.0,
+   "smsp__warp_issue_stalled_lg_throttle_per_warp_active.pct": 0.0
+  }
+ }
+}

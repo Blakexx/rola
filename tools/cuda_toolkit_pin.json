@@ -1,0 +1,26 @@
+{
+    "name": "cuda_toolkit",
+    "role": "the CUDA toolkit the tree's tools outside the graph compile, assemble, disassemble and demangle with (`dev_config.cuda_home()`: ratify's compile path, the binary gates, the lab, the measurement records): NVIDIA's redistributable components at the manifest the graph's toolkit is read by (MODULE.bazel's `cuda.redist_json`, by the same digest), unpacked into one folder, so every box has the same nvcc and ptxas without installing CUDA. Not put on PATH: torch takes its toolkit from the nvcc on PATH without following links.",
+    "upstream": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
+    "version": "13.0.0",
+    "version_string": "Cuda compilation tools, release 13.0, V13.0.48",
+    "manifest_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
+    "manifest_sha256": "fe6a86b54450d03ae709123a52717870c49046d65d45303ce585c7aa8a83a217",
+    "components": [
+        "cuda_cccl",
+        "cuda_crt",
+        "cuda_cudart",
+        "cuda_culibos",
+        "cuda_nvcc",
+        "libnvvm",
+        "cuda_cuxxfilt",
+        "cuda_cuobjdump",
+        "cuda_nvdisasm",
+        "cuda_sanitizer_api"
+    ],
+    "links": {
+        "lib64": "lib"
+    },
+    "archive_root": "cuda_toolkit-13.0.0",
+    "binary_path": "bin/nvcc"
+}

@@ -35,14 +35,14 @@ arches "built" means.
 
 **WIRING.** Run this after `tools/ratify.py`'s own census (`--census`), same
 convention: a compile-only gate, no GPU, no `flock`. `docs/build.md`'s
-"Standards lint" section is where the pre-commit-wired checks are listed;
-add this file's invocation there alongside `lint_standards.py` and
-`run_clang_tidy.sh` when it graduates from stage gate to a wired check.
+"Standards lint" section is where the commit gate's checks are listed;
+add this file there, and to the graph's lints, when it graduates from stage
+gate to a wired check.
 
 Usage (no GPU required -- compile + disassemble only):
 
-    python tools/lint/primitives_census.py
-    python tools/lint/primitives_census.py -v      # print every cell, not just failures
+    bazel run //tools/lint:primitives_census
+    bazel run //tools/lint:primitives_census -- -v      # print every cell, not just failures
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ from ratify import cuda_bin  # noqa: E402
 
 OPS_INCLUDE_DIR = REPO_ROOT / "csrc" / "rola" / "src"
 
-#: BUILT ARCHES -- the non-900 rows `arch_caps.cuh`'s `caps_of()` tabulates
+#: BUILT ARCHES -- the non-900 rows `hardware.cuh`'s `caps_of()` tabulates (generated from `hardware.json`)
 #: (800, 860, 870, 890; see that file's `tabulated()`). This is a COMPILE-only
 #: gate (no GPU, no ratified manifest needed): `nvcc`/`ptxas` accept any of
 #: these as a `-arch=sm_XX` target on this toolchain regardless of which ones
@@ -72,9 +72,8 @@ OPS_INCLUDE_DIR = REPO_ROOT / "csrc" / "rola" / "src"
 #: config, so it compiles every tabulated-and-built row.
 BUILT_ARCHES: list[str] = ["80", "86", "87", "89"]
 
-#: sm_90 is TABULATED (arch_caps.cuh's `caps_of`) but NOT BUILT (no 128-thread
-#: warpgroup `mma`/`load_frag` -- ops.cuh's own consistency `static_assert`
-#: refuses it at `kMmaUnitThreads`). Documented skip, never silently dropped.
+#: sm_90 is TABULATED (hardware.cuh's `caps_of`) but NOT BUILT (the hopper family's
+#: atoms and schedules are not written). Documented skip, never silently dropped.
 TABULATED_NOT_BUILT = ["90"]
 
 #: One probe kernel per audited primitive. Each calls the REAL `ops.cuh`

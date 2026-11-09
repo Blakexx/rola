@@ -10,20 +10,21 @@
 
 namespace {
 
-void probe(const char* label, int D, int dv, int warps) {
-  int index = -1, seen_d = -1, seen_dv = -1, seen_w = -1;
+void probe(const char* label, rola::CarryKey k) {
+  int index = -1, rows = -1, factors = -1, channels = -1, split = -1;
   try {
-    rola::arm_switch<rola::CarryArmSet>(D, dv, warps, [&](auto arm) {
+    rola::arm_switch<rola::CarryArmSet>(k, [&](auto arm) {
       index = decltype(arm)::index;
-      seen_d = decltype(arm)::D;
-      seen_dv = decltype(arm)::DV;
-      seen_w = decltype(arm)::warps_per_cta;
+      rows = decltype(arm)::fold_rows;
+      factors = decltype(arm)::read_factors;
+      channels = decltype(arm)::channels;
+      split = decltype(arm)::same_split;
     });
   } catch (const std::exception& e) {
     std::printf("%s\trefused\t%s\n", label, std::string(e.what()).c_str());
     return;
   }
-  std::printf("%s\tdispatched\t%d\t%d\t%d\t%d\n", label, index, seen_d, seen_dv, seen_w);
+  std::printf("%s\tdispatched\t%d\t%d\t%d\t%d\t%d\n", label, index, rows, factors, channels, split);
 }
 
 }  // namespace
@@ -31,11 +32,12 @@ void probe(const char* label, int D, int dv, int warps) {
 int main() {
   std::printf("count\t%d\t%d\n", rola::CarryArmSet::count, rola::CarryArmSet::declared);
   std::printf("members\t%s\n", rola::CarryArmSet::members().c_str());
-  probe("built_first", 1, 64, 8);
-  probe("built_last", 2, 128, 4);
-  probe("declared_unbuilt", 2, 64, 8);
-  probe("undeclared_depth", 3, 64, 8);
-  probe("undeclared_width", 2, 256, 8);
-  probe("undeclared_warps", 2, 128, 2);
+  probe("built_first", {32, 1, 32, 1, 32, 0});
+  probe("built_last", {128, 2, 128, 2, 64, 1});
+  probe("declared_unbuilt", {32, 1, 32, 1, 32, 1});
+  probe("undeclared_rows", {16, 1, 32, 1, 32, 0});
+  probe("undeclared_channels", {32, 1, 32, 1, 16, 0});
+  probe("undeclared_factors", {32, 1, 32, 3, 32, 0});
+  probe("undeclared_split", {32, 1, 32, 1, 32, 2});
   return 0;
 }

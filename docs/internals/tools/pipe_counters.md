@@ -1,6 +1,6 @@
 # `tools/pipe_counters.py` — the profiler's pipe and resource counters for one launch
 
-KERNEL_STANDARDS §22. One untimed launch of a cell through rola's runner (`measure.provider`'s `oneshot_argv`, the arm a comparison times), under
+KERNEL_STANDARDS §22. One untimed launch of a cell of a kernel family (`--kernel`, `tools/kernel_targets.py`: the carry by default) through rola's runner (`measure.provider`'s `oneshot_argv`, the arm a comparison times), under
 `ncu --metrics` with the counters in `COUNTERS`:
 - HMMAs and instructions executed;
 - scheduler cycles, elapsed and active;
@@ -9,8 +9,9 @@ KERNEL_STANDARDS §22. One untimed launch of a cell through rola's runner (`meas
 - shared-memory wavefronts and bank conflicts on loads and stores;
 - LSU writeback activity, global reduction requests and sectors;
 - DRAM bytes read and written.
+- the standard set [`pipes.py`](pipes.md) prices per card (each pipe's cycles, the binding one).
 
-    python tools/pipe_counters.py flagship-dense --json counters.json [--schedule first]
+    bazel run //tools:pipe_counters -- flagship-dense --json counters.json
 
 The JSON holds every counter's LAUNCH value (`launch`), the counters the profiler did not report (`missing`), and the
 launch's CTA-windows. Nothing derived is stored. A reader divides a sum by `cta_windows` for a unit, and computes

@@ -31,7 +31,7 @@ _STREAMS = ("host", "main", "side")
 def _nvtx_push(name: str) -> None:
     """Open an NVTX range named for the DAG node about to execute.
 
-    Instrumented ONCE here, in the walk every DAG (`chunk_dag`, `decode_dag`,
+    Instrumented ONCE here, in the walk every DAG (`prefill_dag`, `decode_dag`,
     any future family) goes through, rather than per node function — a new
     node needs no opt-in to appear in `nsys`. Guarded so a CPU-only import (no
     CUDA context) never raises: NVTX ranges are a profiling aid, never a

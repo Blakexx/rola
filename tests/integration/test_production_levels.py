@@ -47,11 +47,12 @@ from __future__ import annotations
 
 import pytest
 import torch
-from conftest import fuse_gain_columns, produce_routing, resolved_routing_from_topology
+from conftest import fuse_gain_columns, produce_routing, raw_side_gain, resolved_routing_from_topology
 
-import rola.routing.producer as production_path
+import rola.ops.produce as production_path
+from rola.ops.produce import ProducerPlan, ProducerWeights, route_logits
 from rola.routing.entmax.production import production_routing_factor_levels
-from rola.routing.producer import RouteProducer
+from rola.routing.producer import Routing
 from rola.routing.reference import routing_factor_levels as oracle_factor_levels
 from rola.routing.types import (
     EntmaxActivation,
@@ -194,8 +195,7 @@ def _stress_logits(routing: ResolvedRouting, kind: str, *, device, seed: int) ->
         # softmax is fp32-ill-conditioned -- a conditioning property of the fixture, not
         # of the solve (both production lowerings agree with each other to 2e-7 there,
         # and disagree with fp64 together). Union's extreme-magnitude contract (the
-        # overflow-free delta) is gated at the fp32 maximum by
-        # `test_rola_entmax_production.py::test_production_union_handles_near_max_logits_and_vjp`.
+        # overflow-free delta) is gated at the fp32 maximum by `test_union_is_exact_at_the_fp32_extremes`.
         return base * 5.0
     raise ValueError(kind)
 
@@ -580,8 +580,9 @@ def _producer_topology(alpha: float) -> Topology:
     )
 
 
-#: the fixtures' value width; the topology carries none, so these gates state theirs.
-_D_V = 5
+#: the fixtures' value width; the topology carries none, so these gates state theirs -- one the producer kernel's value
+#: job takes (32, 64, 128 or 256 channels a head), since these gates run it.
+_D_V = 32
 
 
 def _producer_params(topology: Topology, *, dtype, device, sides, B=2, L=48, H=2, dm=16,
@@ -603,7 +604,7 @@ def _producer_params(topology: Topology, *, dtype, device, sides, B=2, L=48, H=2
 
 def _run_producer(params, topology):
     return produce_routing(
-        params["x"], None, params["v"], params["route_W"], None, params["gain_W"],
+        params["x"], params["v"], params["route_W"], None, params["gain_W"],
         params["gain_bias"], topology)
 
 
@@ -659,19 +660,15 @@ def test_the_solve_seam_is_exact_on_the_production_logits(alpha):
     resolved = resolved_routing_from_topology(topology)
     params = _producer_params(topology, dtype=torch.float32, device="cuda", sides=1)
 
-    H, hidden_size, _ = params["route_W"].shape
-    producer = RouteProducer(topology.levels, hidden_size=hidden_size, num_heads=H)
-    parameters = {"route_W": fuse_gain_columns(params["route_W"], params["gain_W"]),
-                  "side_gain.gain_bias": params["gain_bias"]}
-    read_logits, write_logits, _ = _project_under(producer, parameters, params["x"])
+    read_logits, write_logits = _production_logits(topology, params)
     assert read_logits.dtype is torch.bfloat16, (
         "the shipped projection emits bf16 logits; this gate is meaningless against any "
         "other dtype")
 
     kernel_read, kernel_write = production_routing_factor_levels(
-        read_logits, write_logits, producer.routing)
+        read_logits, write_logits, resolved)
     reference_read, reference_write = oracle_factor_levels(
-        _flat64(read_logits), _flat64(write_logits), producer.routing)
+        _flat64(read_logits), _flat64(write_logits), resolved)
 
     for level in range(topology.D):
         if resolved.read_level_can_zero[level]:
@@ -684,27 +681,6 @@ def test_the_solve_seam_is_exact_on_the_production_logits(alpha):
         _assert_levels_match(kernel_write[level], reference_write[level], stored=True)
 
 
-def _project_under(producer, parameters, x):
-    """`RouteProducer._project` alone, under the caller's parameter tensors.
-
-    The seam gate needs the LOGITS the shipped forward computes and nothing that happens
-    after them, so the projection is run as its own module rather than reconstructed --
-    reconstructing it is how a gate ends up measuring a second implementation.
-    """
-    from torch.func import functional_call
-
-    class _Projection(torch.nn.Module):
-        def __init__(self, inner):
-            super().__init__()
-            self.inner = inner
-
-        def forward(self, stream):
-            return self.inner._project(stream, None)
-
-    named = {f"inner.{name}": value for name, value in parameters.items()}
-    return functional_call(_Projection(producer), named, (x,))
-
-
 def _logit_floor(params, read64, write64) -> float:
     """The declared class's bound on the logit error: operand term + output term."""
     x = params["x"].double().abs()
@@ -715,12 +691,14 @@ def _logit_floor(params, read64, write64) -> float:
 
 
 def _production_logits(topology, params):
-    """The `(read, write)` logits the shipped producer computes for these parameters."""
+    """The `(read, write)` logits the shipped producer computes for these parameters: its projection step
+    (`route_logits`), under the caller's parameter tensors -- reconstructing it is how a gate ends up measuring a
+    second implementation."""
     H, hidden_size, _ = params["route_W"].shape
-    producer = RouteProducer(topology.levels, hidden_size=hidden_size, num_heads=H)
-    parameters = {"route_W": fuse_gain_columns(params["route_W"], params["gain_W"]),
-                  "side_gain.gain_bias": params["gain_bias"]}
-    read_logits, write_logits, _ = _project_under(producer, parameters, params["x"])
+    plan = ProducerPlan(routing=Routing(topology.levels), num_heads=H, hidden_size=hidden_size, d_v=8)
+    weights = ProducerWeights(route_W=fuse_gain_columns(params["route_W"], params["gain_W"]), route_bias=None,
+                              gain_bias=params["gain_bias"], v_W=params["x"].new_zeros(0))
+    read_logits, write_logits, _ = route_logits(params["x"], plan, weights)
     return read_logits, write_logits
 
 
@@ -760,7 +738,7 @@ def test_producer_production_path_matches_its_oracle_path(monkeypatch, alpha, ca
 
     read_logits, write_logits = _production_logits(topology, production_params)
     production = _run_producer(production_params, topology)
-    #: The solve is patched WHERE THE PRODUCER RESOLVES IT -- `rola.routing.producer`
+    #: The solve is patched WHERE THE PRODUCER RESOLVES IT -- `rola.ops.produce`
     #: binds the name at import -- so the oracle arm really runs the reference solve.
     monkeypatch.setattr(
         production_path, "production_routing_factor_levels", oracle_factor_levels)
@@ -774,26 +752,32 @@ def test_producer_production_path_matches_its_oracle_path(monkeypatch, alpha, ca
     #: amplitude envelope is `2*dz` on top of the stored form's own tolerance --
     #: ON ROWS WHOSE SUPPORT SET DID NOT MOVE.
     #:
-    #: A row whose support DID move is excluded from the envelope and counted instead,
-    #: and that is not a dodge: `read_simplex()` divides by the row's own mass, so a
-    #: member entering at a raw amplitude of ~0 can normalize to any fraction at all when
-    #: the whole row's mass is comparably small. The bound on such a row is a bound on
-    #: the FLIPPED MASS, which is what the accounting below reports.
+    #: A row whose support DID move is excluded from the envelope and counted instead:
+    #: the bound on such a row is a bound on the FLIPPED MASS, which is what the
+    #: accounting below reports.
     envelope = 2.0 * _logit_floor(production_params, read_logits.double(),
                                   write_logits.double())
+    #: WRITE LEVEL 0 CARRIES THE GAIN (docs/CONSTITUTION.md#r23), so both arms' level 0 is read in units of the
+    #: oracle's own gain `g` (the library's pieces, `raw_side_gain`): the stored tolerance then holds on the
+    #: amplitudes' scale, and the gain's own envelope joins theirs -- `softplus` is 1-Lipschitz and the gain logit
+    #: a column of the SAME projection, so it is off by `dz`, `dz / g` in those units, on an amplitude <= 1.
+    gain = raw_side_gain(oracle_params["x"], oracle_params["route_W"], oracle_params["gain_W"],
+                         oracle_params["gain_bias"], resolved)[..., None].float()
 
     flips = elements = 0
     flipped_mass = 0.0
     for level in range(topology.D):
-        for got, want, zeroable in (
+        level_0_write = (production.write_levels[level] / gain, oracle.write_levels[level] / gain,
+                         resolved.write_level_can_zero[level], envelope + envelope / (2.0 * gain))
+        for got, want, zeroable, extra in (
             (production.read_levels[level], oracle.read_levels[level],
-             resolved.read_level_can_zero[level]),
-            (production.write_levels[level], oracle.write_levels[level],
-             resolved.write_level_can_zero[level]),
+             resolved.read_level_can_zero[level], torch.full_like(gain, envelope)),
+            level_0_write if level == 0 else (production.write_levels[level], oracle.write_levels[level],
+                                              resolved.write_level_can_zero[level], torch.full_like(gain, envelope)),
         ):
-            want = want.to(got.dtype)
+            want, extra = want.to(got.dtype), extra.expand_as(got)
             if not zeroable:
-                _assert_levels_match(got, want, stored=True, extra_atol=envelope)
+                _assert_levels_match(got, want, stored=True, extra_atol=extra)
                 continue
             moved = (got != 0) != (want != 0)
             flips += int(moved.sum())
@@ -802,12 +786,8 @@ def test_producer_production_path_matches_its_oracle_path(monkeypatch, alpha, ca
                                float((want * moved).abs().max()))
             settled = ~moved.any(dim=-1, keepdim=True).expand_as(got)
             _assert_levels_match(got[settled], want[settled], stored=True,
-                                 extra_atol=envelope)
+                                 extra_atol=extra[settled])
 
-    #: `softplus` is 1-Lipschitz and the gain logit is a column of the SAME projection,
-    #: so the gain's envelope is `dz` exactly -- half the amplitudes'.
-    _assert_levels_match(production.g_write, oracle.g_write, extra_atol=envelope / 2.0)
-    assert not hasattr(production, "g_read") and not hasattr(oracle, "g_read")
     with capsys.disabled():
         print(f"\n  FLIP ACCOUNTING alpha={alpha}: {flips} support flips in {elements} "
               f"zero-capable elements ({flips / max(elements, 1):.3e}), greatest flipped "
@@ -986,3 +966,46 @@ def test_the_stored_form_preserves_the_support_exactly(alpha, shape, kind):
             stored_reads[level], exact_reads[level], f"{shape}/{kind} read {level}")
         _assert_support_identical(
             stored_writes[level], exact_writes[level], f"{shape}/{kind} write {level}")
+
+
+@_CUDA
+@pytest.mark.parametrize("alpha", [1.5, 2.0])
+@pytest.mark.parametrize("relationship", ["equal", "opposite"])
+def test_union_is_exact_at_the_fp32_extremes(alpha, relationship):
+    """Union's extreme-magnitude contract, the overflow-free delta: opposite fp32 extrema overflow a raw
+    ``read - write`` while their midpoint stays exactly representable. Values and VJP against the fp64 oracle;
+    at opposite extrema the midpoint is uniform, so every member lands on one side or the other."""
+    near_max = torch.finfo(torch.float32).max if relationship == "opposite" else 1.0e8
+    read = torch.tensor([[[near_max, -near_max, near_max, -near_max]]], device="cuda", dtype=torch.float32)
+    write = -read if relationship == "opposite" else read.clone()
+    routing = ResolvedRouting((UnionRouting(width=4, alpha=alpha),))
+    _check_against_oracle(routing, read, write, label=f"fp32-extremes/{relationship}/{alpha}")
+    production_read = read.detach().clone().requires_grad_()
+    production_write = write.detach().clone().requires_grad_()
+    reads, writes = production_routing_factor_levels(
+        production_read, production_write, routing, stored_dtype=torch.float32)
+    assert torch.isfinite(reads[0]).all() and torch.isfinite(writes[0]).all()
+    if relationship == "opposite":
+        assert ((reads[0] + writes[0]) != 0).all()
+    cotangent = torch.tensor([0.3, -0.8, 1.1, 0.4], device="cuda")
+    vjp = torch.autograd.grad((reads[0] * cotangent).sum() - (writes[0] * cotangent).sum(),
+                              (production_read, production_write))
+    assert torch.isfinite(vjp[0]).all() and torch.isfinite(vjp[1]).all()
+
+
+@_CUDA
+def test_an_empty_call_keeps_the_autograd_contract():
+    """Zero tokens: the levels keep their shapes and dtype, and the backward still reaches both logits."""
+    routings = (
+        ResolvedRouting((IndependentRouting(width=4, read=EntmaxActivation(1.5), write=SoftmaxActivation()),) * 2),
+        ResolvedRouting((UnionRouting(width=4, alpha=2.0),)),
+    )
+    for routing in routings:
+        read = torch.empty(1, 0, routing.packed_logit_width, device="cuda", dtype=torch.float32, requires_grad=True)
+        write = torch.empty_like(read, requires_grad=True)
+        reads, writes = production_routing_factor_levels(read, write, routing, stored_dtype=torch.bfloat16)
+        for level in range(routing.D):
+            assert reads[level].shape == writes[level].shape == (1, 0, routing.branches[level])
+            assert reads[level].dtype == writes[level].dtype == torch.bfloat16
+        (sum(r.float().sum() for r in reads) + sum(w.float().sum() for w in writes)).backward()
+        assert read.grad is not None and write.grad is not None

@@ -13,7 +13,6 @@ def _packed_router_logits(
     routing: ResolvedRouting,
     *,
     route_bias: torch.Tensor | None = None,
-    h_w: torch.Tensor | None = None,
     projection_dtype: torch.dtype,
     token_major: bool = False,
     gain_columns: int = 0,
@@ -72,10 +71,6 @@ def _packed_router_logits(
                 f"got {hidden.shape[2]}")
 
     validate_hidden(h, "h")
-    if h_w is not None:
-        validate_hidden(h_w, "h_w")
-        if h_w.shape != h.shape or h_w.device != h.device:
-            raise ValueError("h_w must match h shape and device")
 
     # THE PARAMETER IS THE PACKED LAYOUT. `route_W` is stored `[H, hidden,
     # packed_router_width]` with each slot owning exactly the `branches[level]` columns
@@ -150,65 +145,23 @@ def _packed_router_logits(
     read_slots = routing.packed_read_slot_lookup
     fully_tied = read_slots == write_slots
 
-    #: THE GAIN RIDES THE READ STREAM'S PROJECTION, in every arm that has one. The gain
-    #: is `f(h)` by definition, so the only arm that cannot fuse it is the one where no
-    #: projection reads `h` at all -- fully tied over SPLIT streams -- and there it pays
-    #: exactly what it paid before.
-    fuse = gain_columns > 0 and (h_w is None or not fully_tied)
-
-    tail = gain_columns if fuse else 0
-
-    def standalone_gain():
-        """The one arm with no projection of `h` to ride: fully tied over SPLIT streams."""
-        if fuse or gain_columns == 0:
-            return None
-        return project(h, *pack_weight((), with_gain=True), trailing=gain_columns)[1]
+    tail = gain_columns
 
     if fully_tied:
         # ONE solve serves both duties, and callers (the arena's `fully_shared`) rely
         # on getting the SAME TENSOR OBJECT back twice.
-        tied_logits, gain_logits = project(
-            h if h_w is None else h_w, *pack_weight(write_slots, with_gain=fuse),
-            trailing=tail)
-        return tied_logits, tied_logits, gain_logits if fuse else standalone_gain()
+        tied_logits, gain_logits = project(h, *pack_weight(write_slots, with_gain=gain_columns > 0),
+                                           trailing=tail)
+        return tied_logits, tied_logits, gain_logits
 
-    if h_w is None:
-        # One stream, so both sides are columns of ONE GEMM. Packed as ONE slot list
-        # rather than two packs concatenated: a fully untied plan's write and read runs
-        # abut, so the merged run is the whole of `route_W` and the GEMM reads the
-        # parameter itself with no gather anywhere on the step.
-        both_weight, both_bias = pack_weight(write_slots + read_slots, with_gain=fuse)
-        both, gain_logits = project(h, both_weight, both_bias, trailing=tail)
-        width = routing.packed_logit_width
-        return both[..., width:], both[..., :width], gain_logits
-
-    # Split read/write streams: the write side is projected from `h_w`, and a TIED level
-    # takes its read logits from that write projection (the write stream is its source),
-    # so only the untied levels are projected from `h`.
-    write_logits, _ = project(h_w, *pack_weight(write_slots))
-    untied = routing.untied_levels
-    if len(untied) == routing.D:
-        read_weight, read_bias = pack_weight(read_slots, with_gain=fuse)
-        read_logits, gain_logits = project(h, read_weight, read_bias, trailing=tail)
-        return read_logits, write_logits, gain_logits
-    untied_weight, untied_bias = pack_weight(
-        tuple(read_slots[level] for level in untied), with_gain=fuse)
-    untied_logits, gain_logits = project(h, untied_weight, untied_bias, trailing=tail)
-    untied_offsets = {}
-    cursor = 0
-    for level in untied:
-        untied_offsets[level] = cursor
-        cursor += routing.branches[level]
-    read_logits = torch.cat(
-        [
-            untied_logits[..., untied_offsets[level]:untied_offsets[level] + routing.branches[level]]
-            if level in untied_offsets
-            else write_logits[..., routing.level_logit_slice(level)]
-            for level in range(routing.D)
-        ],
-        dim=-1,
-    )
-    return read_logits, write_logits, gain_logits
+    # Both sides are columns of ONE GEMM over the one stream. Packed as ONE slot list
+    # rather than two packs concatenated: a fully untied plan's write and read runs
+    # abut, so the merged run is the whole of `route_W` and the GEMM reads the
+    # parameter itself with no gather anywhere on the step.
+    both_weight, both_bias = pack_weight(write_slots + read_slots, with_gain=gain_columns > 0)
+    both, gain_logits = project(h, both_weight, both_bias, trailing=tail)
+    width = routing.packed_logit_width
+    return both[..., width:], both[..., :width], gain_logits
 
 
 def packed_router_logits(
@@ -217,12 +170,10 @@ def packed_router_logits(
     routing: ResolvedRouting,
     *,
     route_bias: torch.Tensor | None = None,
-    h_w: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Project production router logits in fp32."""
     read, write, _ = _packed_router_logits(
-        h, route_W, routing, route_bias=route_bias, h_w=h_w,
-        projection_dtype=torch.float32)
+        h, route_W, routing, route_bias=route_bias, projection_dtype=torch.float32)
     return read, write
 
 
@@ -232,10 +183,8 @@ def packed_router_logits_reference(
     routing: ResolvedRouting,
     *,
     route_bias: torch.Tensor | None = None,
-    h_w: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Project canonical reference router logits in fp64."""
     read, write, _ = _packed_router_logits(
-        h, route_W, routing, route_bias=route_bias, h_w=h_w,
-        projection_dtype=torch.float64)
+        h, route_W, routing, route_bias=route_bias, projection_dtype=torch.float64)
     return read, write

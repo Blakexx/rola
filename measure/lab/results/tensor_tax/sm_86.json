@@ -1,0 +1,2599 @@
+{
+ "experiment": "tensor_tax",
+ "question": "one warp on a scheduler runs an MMA chain while another issues N instructions of one class; how many cycles does each instruction add to the chain?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "39e57bdd3bda62b4659cb7e2e6109462e24478f4",
+  "dirty": false
+ },
+ "reps": 5,
+ "date": "2026-10-04T18:37:12+00:00",
+ "utilization_before": 1,
+ "results": [
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / alone",
+   "unit": "cycles an MMA",
+   "samples": [
+    32.131535,
+    32.131521,
+    32.131517,
+    32.131511,
+    32.131563
+   ],
+   "median": 32.131521,
+   "min": 32.131511,
+   "max": 32.131563,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / fmul",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.505882,
+    0.505881,
+    0.50588,
+    0.505881,
+    0.505882
+   ],
+   "median": 0.505881,
+   "min": 0.50588,
+   "max": 0.505882,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / fmul",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.40806
+   ],
+   "median": 1.40806,
+   "min": 1.40806,
+   "max": 1.40806,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / ffma",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.505882,
+    0.505881,
+    0.50588,
+    0.505881,
+    0.505882
+   ],
+   "median": 0.505881,
+   "min": 0.50588,
+   "max": 0.505882,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / ffma",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.40806
+   ],
+   "median": 1.40806,
+   "min": 1.40806,
+   "max": 1.40806,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / fadd",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.505762,
+    0.505762,
+    0.505769,
+    0.505769,
+    0.505769
+   ],
+   "median": 0.505769,
+   "min": 0.505762,
+   "max": 0.505769,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / fadd",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.408029
+   ],
+   "median": 1.408029,
+   "min": 1.408029,
+   "max": 1.408029,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / hmul2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.213045,
+    0.213449,
+    0.213448,
+    0.213448,
+    0.213448
+   ],
+   "median": 0.213448,
+   "min": 0.213045,
+   "max": 0.213449,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / hmul2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.314854
+   ],
+   "median": 2.314854,
+   "min": 2.314854,
+   "max": 2.314854,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / hfma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.213448,
+    0.213449,
+    0.213448,
+    0.213448,
+    0.213448
+   ],
+   "median": 0.213448,
+   "min": 0.213448,
+   "max": 0.213449,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / hfma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.314917
+   ],
+   "median": 2.314917,
+   "min": 2.314917,
+   "max": 2.314917,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / hadd2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.213448,
+    0.213449,
+    0.213448,
+    0.213448,
+    0.213448
+   ],
+   "median": 0.213448,
+   "min": 0.213448,
+   "max": 0.213449,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / hadd2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.314912
+   ],
+   "median": 2.314912,
+   "min": 2.314912,
+   "max": 2.314912,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / bf16 fma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.213448,
+    0.213449,
+    0.213448,
+    0.213448,
+    0.213448
+   ],
+   "median": 0.213448,
+   "min": 0.213448,
+   "max": 0.213449,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / bf16 fma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.314917
+   ],
+   "median": 2.314917,
+   "min": 2.314917,
+   "max": 2.314917,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / hmax2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.161414,
+    0.161479,
+    0.161479,
+    0.161479,
+    0.161479
+   ],
+   "median": 0.161479,
+   "min": 0.161414,
+   "max": 0.161479,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / hmax2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.408746
+   ],
+   "median": 2.408746,
+   "min": 2.408746,
+   "max": 2.408746,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / add + xor (iadd3 or imad.iadd, lop3)",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.715246,
+    0.715202,
+    0.715202,
+    0.715202,
+    0.715202
+   ],
+   "median": 0.715202,
+   "min": 0.715202,
+   "max": 0.715246,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / add + xor (iadd3 or imad.iadd, lop3)",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.627395
+   ],
+   "median": 2.627395,
+   "min": 2.627395,
+   "max": 2.627395,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / imad",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.103198,
+    0.102603,
+    0.102603,
+    0.102603,
+    0.102603
+   ],
+   "median": 0.102603,
+   "min": 0.102603,
+   "max": 0.103198,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / imad",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.283453
+   ],
+   "median": 2.283453,
+   "min": 2.283453,
+   "max": 2.283453,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / lop3",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.05599,
+    0.05599,
+    0.05599,
+    0.05599,
+    0.05599
+   ],
+   "median": 0.05599,
+   "min": 0.05599,
+   "max": 0.05599,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / lop3",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.40867
+   ],
+   "median": 2.40867,
+   "min": 2.40867,
+   "max": 2.40867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / prmt",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.051715,
+    0.051739,
+    0.051739,
+    0.05174,
+    0.051739
+   ],
+   "median": 0.051739,
+   "min": 0.051715,
+   "max": 0.05174,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / prmt",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.40867
+   ],
+   "median": 2.40867,
+   "min": 2.40867,
+   "max": 2.40867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / fmnmx",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.057797,
+    0.057797,
+    0.057797,
+    0.057797,
+    0.057797
+   ],
+   "median": 0.057797,
+   "min": 0.057797,
+   "max": 0.057797,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / fmnmx",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.40867
+   ],
+   "median": 2.40867,
+   "min": 2.40867,
+   "max": 2.40867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / lds",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.534644,
+    0.535284,
+    0.533222,
+    0.534874,
+    0.534468
+   ],
+   "median": 0.534644,
+   "min": 0.533222,
+   "max": 0.535284,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / lds",
+   "unit": "cycles an instruction",
+   "samples": [
+    9.038484
+   ],
+   "median": 9.038484,
+   "min": 9.038484,
+   "max": 9.038484,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / f32->f16x2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.056781,
+    0.05678,
+    0.05678,
+    0.056779,
+    0.056781
+   ],
+   "median": 0.05678,
+   "min": 0.056779,
+   "max": 0.056781,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / f32->f16x2",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.40867
+   ],
+   "median": 2.40867,
+   "min": 2.40867,
+   "max": 2.40867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / u32->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.046071,
+    0.046072,
+    0.046069,
+    0.04607,
+    0.046071
+   ],
+   "median": 0.046071,
+   "min": 0.046069,
+   "max": 0.046072,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / u32->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.408763
+   ],
+   "median": 2.408763,
+   "min": 2.408763,
+   "max": 2.408763,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f32 / f16->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.077112,
+    0.077108,
+    0.077108,
+    0.077108,
+    0.077108
+   ],
+   "median": 0.077108,
+   "min": 0.077108,
+   "max": 0.077112,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "alone / f16->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    2.314867
+   ],
+   "median": 2.314867,
+   "min": 2.314867,
+   "max": 2.314867,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / alone",
+   "unit": "cycles an MMA",
+   "samples": [
+    16.131134,
+    16.131134,
+    16.131134,
+    16.131134,
+    16.131134
+   ],
+   "median": 16.131134,
+   "min": 16.131134,
+   "max": 16.131134,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / fmul",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962
+   ],
+   "median": 1.007962,
+   "min": 1.007962,
+   "max": 1.007962,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / ffma",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962
+   ],
+   "median": 1.007962,
+   "min": 1.007962,
+   "max": 1.007962,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / fadd",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962,
+    1.007962
+   ],
+   "median": 1.007962,
+   "min": 1.007962,
+   "max": 1.007962,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / hmul2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935
+   ],
+   "median": 0.481935,
+   "min": 0.481935,
+   "max": 0.481935,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / hfma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935
+   ],
+   "median": 0.481935,
+   "min": 0.481935,
+   "max": 0.481935,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / hadd2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935
+   ],
+   "median": 0.481935,
+   "min": 0.481935,
+   "max": 0.481935,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / bf16 fma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935,
+    0.481935
+   ],
+   "median": 0.481935,
+   "min": 0.481935,
+   "max": 0.481935,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / hmax2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.437441,
+    0.437441,
+    0.437441,
+    0.437441,
+    0.437441
+   ],
+   "median": 0.437441,
+   "min": 0.437441,
+   "max": 0.437441,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / add + xor (iadd3 or imad.iadd, lop3)",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.202723,
+    1.202723,
+    1.202723,
+    1.202723,
+    1.202723
+   ],
+   "median": 1.202723,
+   "min": 1.202723,
+   "max": 1.202723,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / imad",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.187572,
+    0.187572,
+    0.187572,
+    0.187572,
+    0.187572
+   ],
+   "median": 0.187572,
+   "min": 0.187572,
+   "max": 0.187572,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / lop3",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604
+   ],
+   "median": 0.218604,
+   "min": 0.218604,
+   "max": 0.218604,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / prmt",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604
+   ],
+   "median": 0.218604,
+   "min": 0.218604,
+   "max": 0.218604,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / fmnmx",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604
+   ],
+   "median": 0.218604,
+   "min": 0.218604,
+   "max": 0.218604,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / lds",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.845104,
+    0.845104,
+    0.845104,
+    0.845104,
+    0.845104
+   ],
+   "median": 0.845104,
+   "min": 0.845104,
+   "max": 0.845104,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / f32->f16x2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604,
+    0.218604
+   ],
+   "median": 0.218604,
+   "min": 0.218604,
+   "max": 0.218604,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / u32->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.168129,
+    0.168129,
+    0.168129,
+    0.168129,
+    0.168129
+   ],
+   "median": 0.168129,
+   "min": 0.168129,
+   "max": 0.168129,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma f16->f16 / f16->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.127375,
+    0.127375,
+    0.127375,
+    0.127375,
+    0.127375
+   ],
+   "median": 0.127375,
+   "min": 0.127375,
+   "max": 0.127375,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / alone",
+   "unit": "cycles an MMA",
+   "samples": [
+    32.131889,
+    32.131864,
+    32.131897,
+    32.131937,
+    32.131824
+   ],
+   "median": 32.131889,
+   "min": 32.131824,
+   "max": 32.131937,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / fmul",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.505767,
+    0.505755,
+    0.505756,
+    0.505755,
+    0.505753
+   ],
+   "median": 0.505755,
+   "min": 0.505753,
+   "max": 0.505767,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / ffma",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.505753,
+    0.505755,
+    0.505756,
+    0.505755,
+    0.505753
+   ],
+   "median": 0.505755,
+   "min": 0.505753,
+   "max": 0.505756,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / fadd",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.50572,
+    0.505718,
+    0.50572,
+    0.505717,
+    0.505691
+   ],
+   "median": 0.505718,
+   "min": 0.505691,
+   "max": 0.50572,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / hmul2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.218236,
+    0.218239,
+    0.21796,
+    0.217993,
+    0.217994
+   ],
+   "median": 0.217994,
+   "min": 0.21796,
+   "max": 0.218239,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / hfma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.217994,
+    0.217992,
+    0.217992,
+    0.217993,
+    0.217994
+   ],
+   "median": 0.217993,
+   "min": 0.217992,
+   "max": 0.217994,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / hadd2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.217994,
+    0.217992,
+    0.217992,
+    0.217993,
+    0.217994
+   ],
+   "median": 0.217993,
+   "min": 0.217992,
+   "max": 0.217994,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / bf16 fma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.217994,
+    0.217992,
+    0.217992,
+    0.217993,
+    0.217994
+   ],
+   "median": 0.217993,
+   "min": 0.217992,
+   "max": 0.217994,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / hmax2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.163238,
+    0.160966,
+    0.161111,
+    0.161265,
+    0.161265
+   ],
+   "median": 0.161265,
+   "min": 0.160966,
+   "max": 0.163238,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / add + xor (iadd3 or imad.iadd, lop3)",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.713075,
+    0.713075,
+    0.713075,
+    5.540452,
+    6.091549
+   ],
+   "median": 0.713075,
+   "min": 0.713075,
+   "max": 6.091549,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / imad",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.103132,
+    0.102538,
+    0.102538,
+    0.102538,
+    0.102538
+   ],
+   "median": 0.102538,
+   "min": 0.102538,
+   "max": 0.103132,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / lop3",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.056824,
+    5.122682,
+    0.055211,
+    0.05545,
+    0.055608
+   ],
+   "median": 0.055608,
+   "min": 0.055211,
+   "max": 5.122682,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / prmt",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.051796,
+    0.051797,
+    0.051797,
+    0.051797,
+    0.051796
+   ],
+   "median": 0.051797,
+   "min": 0.051796,
+   "max": 0.051797,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / fmnmx",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.057713,
+    0.057696,
+    0.057694,
+    0.057696,
+    0.057696
+   ],
+   "median": 0.057696,
+   "min": 0.057694,
+   "max": 0.057713,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / lds",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.534246,
+    0.53437,
+    0.535553,
+    0.534314,
+    0.535194
+   ],
+   "median": 0.53437,
+   "min": 0.534246,
+   "max": 0.535553,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / f32->f16x2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.057054,
+    0.056986,
+    0.056988,
+    0.057016,
+    0.057016
+   ],
+   "median": 0.057016,
+   "min": 0.056986,
+   "max": 0.057054,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / u32->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.046456,
+    0.046456,
+    0.046455,
+    0.046455,
+    0.046456
+   ],
+   "median": 0.046456,
+   "min": 0.046455,
+   "max": 0.046456,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "hmma bf16->f32 / f16->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.07885,
+    0.078861,
+    0.078861,
+    0.078861,
+    0.078861
+   ],
+   "median": 0.078861,
+   "min": 0.07885,
+   "max": 0.078861,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / alone",
+   "unit": "cycles an MMA",
+   "samples": [
+    16.133886,
+    16.133886,
+    16.133886,
+    16.133886,
+    16.133886
+   ],
+   "median": 16.133886,
+   "min": 16.133886,
+   "max": 16.133886,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / fmul",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376
+   ],
+   "median": 0.976376,
+   "min": 0.976376,
+   "max": 0.976376,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / ffma",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376
+   ],
+   "median": 0.976376,
+   "min": 0.976376,
+   "max": 0.976376,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / fadd",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376,
+    0.976376
+   ],
+   "median": 0.976376,
+   "min": 0.976376,
+   "max": 0.976376,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / hmul2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022
+   ],
+   "median": 0.411022,
+   "min": 0.411022,
+   "max": 0.411022,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / hfma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022
+   ],
+   "median": 0.411022,
+   "min": 0.411022,
+   "max": 0.411022,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / hadd2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.408408,
+    0.408408,
+    0.408408,
+    0.408408,
+    0.408408
+   ],
+   "median": 0.408408,
+   "min": 0.408408,
+   "max": 0.408408,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / bf16 fma2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022,
+    0.411022
+   ],
+   "median": 0.411022,
+   "min": 0.411022,
+   "max": 0.411022,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / hmax2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.381193,
+    0.381193,
+    0.381193,
+    0.381193,
+    0.381193
+   ],
+   "median": 0.381193,
+   "min": 0.381193,
+   "max": 0.381193,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / add + xor (iadd3 or imad.iadd, lop3)",
+   "unit": "cycles an instruction",
+   "samples": [
+    1.593021,
+    1.593021,
+    1.593021,
+    1.593021,
+    1.593021
+   ],
+   "median": 1.593021,
+   "min": 1.593021,
+   "max": 1.593021,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / imad",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.122861,
+    0.122861,
+    0.122861,
+    0.122861,
+    0.122861
+   ],
+   "median": 0.122861,
+   "min": 0.122861,
+   "max": 0.122861,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / lop3",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982
+   ],
+   "median": 0.14982,
+   "min": 0.14982,
+   "max": 0.14982,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / prmt",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982
+   ],
+   "median": 0.14982,
+   "min": 0.14982,
+   "max": 0.14982,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / fmnmx",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982
+   ],
+   "median": 0.14982,
+   "min": 0.14982,
+   "max": 0.14982,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / lds",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.967219,
+    0.967219,
+    0.967219,
+    0.967219,
+    0.967219
+   ],
+   "median": 0.967219,
+   "min": 0.967219,
+   "max": 0.967219,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / f32->f16x2",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982,
+    0.14982
+   ],
+   "median": 0.14982,
+   "min": 0.14982,
+   "max": 0.14982,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / u32->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.168218,
+    0.168218,
+    0.168218,
+    0.168218,
+    0.168218
+   ],
+   "median": 0.168218,
+   "min": 0.168218,
+   "max": 0.168218,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "imma u8.s8 k32 / f16->f32",
+   "unit": "cycles an instruction",
+   "samples": [
+    0.10378,
+    0.10378,
+    0.10378,
+    0.10378,
+    0.10378
+   ],
+   "median": 0.10378,
+   "min": 0.10378,
+   "max": 0.10378,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void tensor_tax::tax<(int)3, (int)17>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HADD2.F32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)16>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "I2FP.F32.U32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)15>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "F2FP.PACK_AB": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)14>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.SHL.U32": 32,
+    "LDS": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 15,
+    "NOP": 13,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "IMAD": 5,
+    "ISETP.GE.AND": 5,
+    "SEL": 4
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)13>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "FMNMX": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)12>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "PRMT": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)11>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "LOP3.LUT": 47,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)10>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "IMAD": 35,
+    "CS2R": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMAD.MOV.U32": 10,
+    "IMMA.16832.U8.S8": 8,
+    "MOV": 7,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)9>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.IADD": 32,
+    "CS2R": 20,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 13,
+    "NOP": 10,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)8>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "HMNMX2": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)7>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "HFMA2.BF16_V2": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)6>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "HADD2": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)5>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "HFMA2": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)4>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "HMUL2": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 17,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)3>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "FADD": 32,
+    "CS2R": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMAD.MOV.U32": 10,
+    "IMMA.16832.U8.S8": 8,
+    "MOV": 7,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)2>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "FFMA": 32,
+    "CS2R": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMAD.MOV.U32": 10,
+    "IMMA.16832.U8.S8": 8,
+    "MOV": 7,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)1>(int, int, long long *, int *)": {
+   "regs": 48,
+   "ops": {
+    "FMUL": 32,
+    "CS2R": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 14,
+    "IMAD.MOV.U32": 10,
+    "IMMA.16832.U8.S8": 8,
+    "MOV": 7,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)3, (int)0>(int, int, long long *, int *)": {
+   "regs": 46,
+   "ops": {
+    "CS2R": 20,
+    "LOP3.LUT": 16,
+    "IADD3": 14,
+    "IMAD.MOV.U32": 12,
+    "NOP": 11,
+    "IMMA.16832.U8.S8": 8,
+    "BRA": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "ISETP.GE.AND": 3,
+    "SEL": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)17>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HADD2.F32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)16>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "I2FP.F32.U32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)15>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "F2FP.PACK_AB": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)14>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.SHL.U32": 32,
+    "LDS": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 15,
+    "NOP": 13,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "IMAD": 5,
+    "ISETP.GE.AND": 5,
+    "SEL": 4
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)13>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FMNMX": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)12>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "PRMT": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)11>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)10>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "IMAD": 35,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32.BF16": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)9>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.IADD": 32,
+    "CS2R": 20,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 14,
+    "NOP": 9,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)8>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HMNMX2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)7>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HFMA2.BF16_V2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)6>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HADD2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)5>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HFMA2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)4>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HMUL2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)3>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FADD": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32.BF16": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)2>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FFMA": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32.BF16": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)1>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FMUL": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32.BF16": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)2, (int)0>(int, int, long long *, int *)": {
+   "regs": 46,
+   "ops": {
+    "CS2R": 21,
+    "LOP3.LUT": 16,
+    "IADD3": 14,
+    "IMAD.MOV.U32": 11,
+    "NOP": 11,
+    "HMMA.16816.F32.BF16": 8,
+    "BRA": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "ISETP.GE.AND": 3,
+    "SEL": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)17>(int, int, long long *, int *)": {
+   "regs": 31,
+   "ops": {
+    "HADD2.F32": 32,
+    "IMAD.MOV.U32": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)16>(int, int, long long *, int *)": {
+   "regs": 31,
+   "ops": {
+    "I2FP.F32.U32": 32,
+    "IMAD.MOV.U32": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "NOP": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)15>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "F2FP.PACK_AB": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)14>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.SHL.U32": 32,
+    "LDS": 32,
+    "IMAD.MOV.U32": 20,
+    "IADD3": 15,
+    "NOP": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "IMAD": 5,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)13>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "FMNMX": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)12>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "PRMT": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)11>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)10>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "IMAD": 35,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 12,
+    "MOV": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)9>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.IADD": 32,
+    "IMAD.MOV.U32": 20,
+    "IADD3": 15,
+    "NOP": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)8>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "HMNMX2": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)7>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "HFMA2.BF16_V2": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)6>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "HADD2": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)5>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "HFMA2": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)4>(int, int, long long *, int *)": {
+   "regs": 32,
+   "ops": {
+    "HMUL2": 32,
+    "IMAD.MOV.U32": 22,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)3>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "FADD": 32,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 12,
+    "MOV": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)2>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "FFMA": 32,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 12,
+    "MOV": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)1>(int, int, long long *, int *)": {
+   "regs": 35,
+   "ops": {
+    "FMUL": 32,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 12,
+    "MOV": 10,
+    "HMMA.16816.F16": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "CS2R": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)1, (int)0>(int, int, long long *, int *)": {
+   "regs": 31,
+   "ops": {
+    "IMAD.MOV.U32": 20,
+    "LOP3.LUT": 15,
+    "IADD3": 13,
+    "NOP": 11,
+    "HMMA.16816.F16": 8,
+    "CS2R": 5,
+    "BRA": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "ISETP.GE.AND": 3,
+    "SEL": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)17>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HADD2.F32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)16>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "I2FP.F32.U32": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)15>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "F2FP.PACK_AB": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)14>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.SHL.U32": 32,
+    "LDS": 32,
+    "CS2R": 20,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 15,
+    "NOP": 13,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "IMAD": 5,
+    "ISETP.GE.AND": 5,
+    "SEL": 4
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)13>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FMNMX": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)12>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "PRMT": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)11>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "IMAD.X": 2
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)10>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "IMAD": 35,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)9>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "LOP3.LUT": 47,
+    "IMAD.IADD": 32,
+    "CS2R": 20,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 14,
+    "NOP": 9,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)8>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HMNMX2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)7>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HFMA2.BF16_V2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)6>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HADD2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)5>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HFMA2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)4>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "HMUL2": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "IMAD.MOV.U32": 15,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "HMMA.16816.F32": 8,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "IMAD": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)3>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FADD": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)2>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FFMA": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)1>(int, int, long long *, int *)": {
+   "regs": 47,
+   "ops": {
+    "FMUL": 32,
+    "CS2R": 20,
+    "NOP": 16,
+    "LOP3.LUT": 15,
+    "IADD3": 15,
+    "IMAD.MOV.U32": 9,
+    "HMMA.16816.F32": 8,
+    "MOV": 6,
+    "BRA": 6,
+    "ISETP.GE.AND": 5,
+    "SEL": 4,
+    "S2R": 3
+   }
+  },
+  "void tensor_tax::tax<(int)0, (int)0>(int, int, long long *, int *)": {
+   "regs": 46,
+   "ops": {
+    "CS2R": 21,
+    "LOP3.LUT": 16,
+    "IADD3": 14,
+    "IMAD.MOV.U32": 11,
+    "NOP": 11,
+    "HMMA.16816.F32": 8,
+    "BRA": 4,
+    "IMAD": 4,
+    "S2R": 3,
+    "ISETP.GE.AND": 3,
+    "SEL": 3,
+    "IMAD.X": 2
+   }
+  }
+ }
+}

@@ -1,0 +1,16 @@
+{
+    "name": "difftastic",
+    "role": "a developer's structural diff (the devbox, docs/setup.md); the tree runs it nowhere. No PyPI package, so a pinned release as mold is.",
+    "upstream": "https://github.com/Wilfred/difftastic",
+    "version": "0.70.0",
+    "command": "difft",
+    "release_asset": "difft-x86_64-unknown-linux-gnu.tar.gz",
+    "release_url": "https://github.com/Wilfred/difftastic/releases/download/0.70.0/difft-x86_64-unknown-linux-gnu.tar.gz",
+    "mirror_urls": [
+        "https://api.github.com/repos/Wilfred/difftastic/releases/assets/505661744"
+    ],
+    "asset_sha256": "2997d2bbe620534edbd79b0049f00ce84eef3fedb15c7822456d58e38d8b05c9",
+    "archive_root": "difftastic-0.70.0",
+    "binary_path": "difft",
+    "version_string": "Difftastic 0.70.0"
+}

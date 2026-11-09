@@ -17,9 +17,9 @@ them are cheap and none of them can be satisfied by a comment.
 
 Usage:
 
-    python tools/lint/drift_guards.py                  # the inventory
-    python tools/lint/drift_guards.py --rule <name>    # one rule
-    python tools/lint/drift_guards.py --test-fixtures  # each rule fires and stays quiet
+    bazel run //tools/lint:drift_guards                     # the inventory
+    bazel run //tools/lint:drift_guards -- --rule <name>    # one rule
+    bazel test //tools/lint:drift_guards_fixtures           # each rule fires and stays quiet
 """
 from __future__ import annotations
 

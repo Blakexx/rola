@@ -1,0 +1,961 @@
+{
+ "experiment": "image_ring",
+ "question": "the carry's state image streamed from the fold's warps to the readout's through a flagged ring in shared memory (L2): what do its stores, packs and handshakes add to a free-running window, by round size and ring depth, against the same window reading a static image?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "a static image",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the publish without handshakes, 8-channel rounds (4 KB)",
+   "reason": "an isolation: the stores race the loads without handshakes"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the publish without handshakes, 32-channel rounds (16 KB)",
+   "reason": "an isolation: the stores race the loads without handshakes"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 8-channel rounds (4 KB) x 2 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 8-channel rounds (4 KB) x 4 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 8-channel rounds (4 KB) x 8 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 16-channel rounds (8 KB) x 2 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 16-channel rounds (8 KB) x 4 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 32-channel rounds (16 KB) x 2 slots, mbarriers",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 8-channel rounds (4 KB) x 2 slots, a named barrier a round",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 16-channel rounds (8 KB) x 2 slots, a named barrier a round",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "the ring, 32-channel rounds (16 KB) x 2 slots, a named barrier a round",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "exchange then compute, 4 digits held, 2 slots of 16 KB",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "exchange then compute in halves, 2 digits held, 2 slots",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "exchange, then the tiles and the fold interleaved, 4 held",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "check",
+   "variant": "a static image, a barrier a window",
+   "ok": true,
+   "detail": "327680 of 327680 panel words exact (each CTA's panel)"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the exchange alone, 2 slots of 16 KB",
+   "reason": "an isolation: the exchange's loads fold into a sink"
+  }
+ ],
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "c2cc1fb320529bf0b7fdd519ffc5726defa626a3",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-12T04:14:52+00:00",
+ "utilization_before": 0,
+ "inputs": {
+  "read.bin": "bb5103914a740e71",
+  "entries_m.bin": "c750d0f206e61ae1",
+  "entries_n.bin": "58a440f6a6d5b58c",
+  "heads_m.bin": "12f6a3ac2712d110",
+  "heads_n.bin": "4cf76efb54118a8b",
+  "banks.json": "dd4d3cbd55657e70"
+ },
+ "results": [
+  {
+   "lab": "result",
+   "name": "a static image",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    2744.732031,
+    2745.486719,
+    2742.226562,
+    2743.093359,
+    2745.760156
+   ],
+   "median": 2744.732031,
+   "min": 2742.226562,
+   "max": 2745.760156,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a static image / the free floor",
+   "unit": "x",
+   "samples": [
+    1.878667,
+    1.879183,
+    1.876952,
+    1.877545,
+    1.87937
+   ],
+   "median": 1.878667,
+   "min": 1.876952,
+   "max": 1.87937,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the publish without handshakes, 8-channel rounds (4 KB)",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    3505.316406,
+    3507.172656,
+    3507.991797,
+    3508.555078,
+    3503.017188
+   ],
+   "median": 3507.172656,
+   "min": 3503.017188,
+   "max": 3508.555078,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the publish without handshakes, 8-channel rounds (4 KB) / the free floor",
+   "unit": "x",
+   "samples": [
+    2.399258,
+    2.400529,
+    2.40109,
+    2.401475,
+    2.397685
+   ],
+   "median": 2.400529,
+   "min": 2.397685,
+   "max": 2.401475,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the publish without handshakes, 32-channel rounds (16 KB)",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    3520.953125,
+    3519.557813,
+    3515.126563,
+    3519.416406,
+    3520.341797
+   ],
+   "median": 3519.557813,
+   "min": 3515.126563,
+   "max": 3520.953125,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the publish without handshakes, 32-channel rounds (16 KB) / the free floor",
+   "unit": "x",
+   "samples": [
+    2.409961,
+    2.409006,
+    2.405973,
+    2.408909,
+    2.409543
+   ],
+   "median": 2.409006,
+   "min": 2.405973,
+   "max": 2.409961,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 2 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    11848.35625,
+    11848.605859,
+    11846.4375,
+    11847.232031,
+    11845.107031
+   ],
+   "median": 11847.232031,
+   "min": 11845.107031,
+   "max": 11848.605859,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 2 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    8.109758,
+    8.109929,
+    8.108445,
+    8.108988,
+    8.107534
+   ],
+   "median": 8.108988,
+   "min": 8.107534,
+   "max": 8.109929,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 4 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    11731.427344,
+    11731.571094,
+    11733.918359,
+    11732.292969,
+    11734.217969
+   ],
+   "median": 11732.292969,
+   "min": 11731.427344,
+   "max": 11734.217969,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 4 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    8.029724,
+    8.029823,
+    8.031429,
+    8.030317,
+    8.031634
+   ],
+   "median": 8.030317,
+   "min": 8.029724,
+   "max": 8.031634,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 8 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    11515.480469,
+    11516.026953,
+    11517.205469,
+    11515.067188,
+    11519.487891
+   ],
+   "median": 11516.026953,
+   "min": 11515.067188,
+   "max": 11519.487891,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 8 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    7.881917,
+    7.882291,
+    7.883098,
+    7.881634,
+    7.88466
+   ],
+   "median": 7.882291,
+   "min": 7.881634,
+   "max": 7.88466,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 2 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    7958.839453,
+    7954.6875,
+    7957.755859,
+    7955.613281,
+    7958.503125
+   ],
+   "median": 7957.755859,
+   "min": 7954.6875,
+   "max": 7958.839453,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 2 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    5.447529,
+    5.444687,
+    5.446787,
+    5.445321,
+    5.447299
+   ],
+   "median": 5.446787,
+   "min": 5.444687,
+   "max": 5.447529,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 4 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    7758.719922,
+    7760.541016,
+    7760.51875,
+    7758.684375,
+    7762.976953
+   ],
+   "median": 7760.51875,
+   "min": 7758.684375,
+   "max": 7762.976953,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 4 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    5.310554,
+    5.311801,
+    5.311786,
+    5.31053,
+    5.313468
+   ],
+   "median": 5.311786,
+   "min": 5.31053,
+   "max": 5.313468,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 32-channel rounds (16 KB) x 2 slots, mbarriers",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    6014.892969,
+    6013.979688,
+    6014.358984,
+    6014.442578,
+    6016.05625
+   ],
+   "median": 6014.442578,
+   "min": 6013.979688,
+   "max": 6016.05625,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 32-channel rounds (16 KB) x 2 slots, mbarriers / the free floor",
+   "unit": "x",
+   "samples": [
+    4.11697,
+    4.116345,
+    4.116604,
+    4.116662,
+    4.117766
+   ],
+   "median": 4.116662,
+   "min": 4.116345,
+   "max": 4.117766,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 2 slots, a named barrier a round",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    5560.298828,
+    5560.386719,
+    5561.621875,
+    5560.010938,
+    5561.039062
+   ],
+   "median": 5560.386719,
+   "min": 5560.010938,
+   "max": 5561.621875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 8-channel rounds (4 KB) x 2 slots, a named barrier a round / the free floor",
+   "unit": "x",
+   "samples": [
+    3.805817,
+    3.805877,
+    3.806723,
+    3.80562,
+    3.806324
+   ],
+   "median": 3.805877,
+   "min": 3.80562,
+   "max": 3.806723,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 2 slots, a named barrier a round",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    5182.771484,
+    5183.852344,
+    5182.166016,
+    5182.200781,
+    5184.066406
+   ],
+   "median": 5182.771484,
+   "min": 5182.166016,
+   "max": 5184.066406,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 16-channel rounds (8 KB) x 2 slots, a named barrier a round / the free floor",
+   "unit": "x",
+   "samples": [
+    3.547414,
+    3.548154,
+    3.546999,
+    3.547023,
+    3.5483
+   ],
+   "median": 3.547414,
+   "min": 3.546999,
+   "max": 3.5483,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 32-channel rounds (16 KB) x 2 slots, a named barrier a round",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    4731.060938,
+    4729.460547,
+    4734.678516,
+    4730.558984,
+    4730.990234
+   ],
+   "median": 4730.990234,
+   "min": 4729.460547,
+   "max": 4734.678516,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the ring, 32-channel rounds (16 KB) x 2 slots, a named barrier a round / the free floor",
+   "unit": "x",
+   "samples": [
+    3.238235,
+    3.237139,
+    3.240711,
+    3.237891,
+    3.238186
+   ],
+   "median": 3.238186,
+   "min": 3.237139,
+   "max": 3.240711,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange then compute, 4 digits held, 2 slots of 16 KB",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    4855.533203,
+    4862.809766,
+    4862.620703,
+    4859.032422,
+    4858.126953
+   ],
+   "median": 4859.032422,
+   "min": 4855.533203,
+   "max": 4862.809766,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange then compute, 4 digits held, 2 slots of 16 KB / the free floor",
+   "unit": "x",
+   "samples": [
+    3.323431,
+    3.328412,
+    3.328282,
+    3.325826,
+    3.325207
+   ],
+   "median": 3.325826,
+   "min": 3.323431,
+   "max": 3.328412,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange then compute in halves, 2 digits held, 2 slots",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    5150.771875,
+    5150.410937,
+    5150.000781,
+    5152.079297,
+    5151.135547
+   ],
+   "median": 5150.771875,
+   "min": 5150.000781,
+   "max": 5152.079297,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange then compute in halves, 2 digits held, 2 slots / the free floor",
+   "unit": "x",
+   "samples": [
+    3.525511,
+    3.525264,
+    3.524983,
+    3.526406,
+    3.52576
+   ],
+   "median": 3.525511,
+   "min": 3.524983,
+   "max": 3.526406,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange, then the tiles and the fold interleaved, 4 held",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    4757.246875,
+    4756.979297,
+    4756.857813,
+    4756.792578,
+    4756.760156
+   ],
+   "median": 4756.857813,
+   "min": 4756.760156,
+   "max": 4757.246875,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "exchange, then the tiles and the fold interleaved, 4 held / the free floor",
+   "unit": "x",
+   "samples": [
+    3.256158,
+    3.255975,
+    3.255892,
+    3.255847,
+    3.255825
+   ],
+   "median": 3.255892,
+   "min": 3.255825,
+   "max": 3.256158,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a static image, a barrier a window",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    3227.261328,
+    3225.3875,
+    3228.599219,
+    3226.671094,
+    3227.284375
+   ],
+   "median": 3227.261328,
+   "min": 3225.3875,
+   "max": 3228.599219,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a static image, a barrier a window / the free floor",
+   "unit": "x",
+   "samples": [
+    2.20894,
+    2.207657,
+    2.209856,
+    2.208536,
+    2.208956
+   ],
+   "median": 2.20894,
+   "min": 2.207657,
+   "max": 2.209856,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the exchange alone, 2 slots of 16 KB",
+   "unit": "cycles a CTA-window",
+   "samples": [
+    1770.130859,
+    1770.03125,
+    1769.999219,
+    1770.023828,
+    1769.989063
+   ],
+   "median": 1770.023828,
+   "min": 1769.989063,
+   "max": 1770.130859,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the exchange alone, 2 slots of 16 KB / the free floor",
+   "unit": "x",
+   "samples": [
+    1.211589,
+    1.21152,
+    1.211498,
+    1.211515,
+    1.211491
+   ],
+   "median": 1.211515,
+   "min": 1.211491,
+   "max": 1.211589,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void image_ring::ring<(int)4, (int)2, (int)8>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 62,
+   "ops": {
+    "FADD": 192,
+    "STS": 64,
+    "LOP3.LUT": 46,
+    "IADD3": 45,
+    "MOV": 29,
+    "SHF.R.S32.HI": 17,
+    "SHF.L.U32": 16,
+    "LDSM.16.MT88.4": 16,
+    "LEA.HI": 15,
+    "NOP": 13,
+    "BRA": 11,
+    "IMAD": 10
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)7>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 189,
+   "ops": {
+    "MOV": 148,
+    "IMAD.MOV.U32": 147,
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 52,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "LEA": 43,
+    "IADD3": 38,
+    "IMAD": 37,
+    "SHFL.IDX": 36,
+    "LEA.HI": 33
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)6>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 241,
+   "ops": {
+    "IMAD.MOV.U32": 293,
+    "MOV": 229,
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 82,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 46,
+    "IMAD": 46,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)5>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 210,
+   "ops": {
+    "IMAD.MOV.U32": 285,
+    "MOV": 201,
+    "FADD": 128,
+    "LOP3.LUT": 99,
+    "FFMA": 96,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 47,
+    "IMAD": 46,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)4>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 242,
+   "ops": {
+    "IMAD.MOV.U32": 281,
+    "MOV": 211,
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 85,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 47,
+    "IMAD": 46,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)3>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 198,
+   "ops": {
+    "IMAD.MOV.U32": 291,
+    "MOV": 197,
+    "FADD": 128,
+    "LOP3.LUT": 115,
+    "FFMA": 96,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 47,
+    "IMAD": 46,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)2, (int)2, (int)3>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 198,
+   "ops": {
+    "IMAD.MOV.U32": 281,
+    "MOV": 206,
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 87,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "IADD3": 49,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IMAD": 43,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)1, (int)2, (int)3>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 200,
+   "ops": {
+    "IMAD.MOV.U32": 259,
+    "MOV": 228,
+    "FADD": 128,
+    "FFMA": 96,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 58,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IMAD": 47,
+    "IADD3": 42,
+    "LEA": 37
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 202,
+   "ops": {
+    "IMAD.MOV.U32": 384,
+    "LDS": 238,
+    "MOV": 188,
+    "LOP3.LUT": 131,
+    "FADD": 128,
+    "IADD3": 96,
+    "FFMA": 96,
+    "BRA": 95,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "MEMBAR.ALL.CTA": 56,
+    "ATOMS.ARRIVE.64": 56
+   }
+  },
+  "void image_ring::ring<(int)2, (int)4, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 206,
+   "ops": {
+    "LDS": 470,
+    "IMAD.MOV.U32": 432,
+    "MOV": 213,
+    "BRA": 153,
+    "FADD": 128,
+    "LOP3.LUT": 112,
+    "MEMBAR.ALL.CTA": 112,
+    "ATOMS.ARRIVE.64": 112,
+    "FFMA": 96,
+    "IADD3": 83,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64
+   }
+  },
+  "void image_ring::ring<(int)2, (int)2, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 206,
+   "ops": {
+    "LDS": 470,
+    "IMAD.MOV.U32": 436,
+    "MOV": 209,
+    "BRA": 151,
+    "FADD": 128,
+    "LOP3.LUT": 120,
+    "MEMBAR.ALL.CTA": 112,
+    "ATOMS.ARRIVE.64": 112,
+    "FFMA": 96,
+    "IADD3": 84,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64
+   }
+  },
+  "void image_ring::ring<(int)1, (int)8, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 206,
+   "ops": {
+    "LDS": 934,
+    "IMAD.MOV.U32": 520,
+    "BRA": 269,
+    "MEMBAR.ALL.CTA": 224,
+    "ATOMS.ARRIVE.64": 224,
+    "MOV": 222,
+    "FADD": 128,
+    "IADD3": 109,
+    "ISETP.NE.AND": 105,
+    "LOP3.LUT": 98,
+    "FFMA": 96,
+    "BSSY": 83
+   }
+  },
+  "void image_ring::ring<(int)1, (int)4, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 206,
+   "ops": {
+    "LDS": 934,
+    "IMAD.MOV.U32": 521,
+    "BRA": 265,
+    "MEMBAR.ALL.CTA": 224,
+    "ATOMS.ARRIVE.64": 224,
+    "MOV": 221,
+    "FADD": 128,
+    "IADD3": 109,
+    "ISETP.NE.AND": 105,
+    "LOP3.LUT": 98,
+    "FFMA": 96,
+    "BSSY": 83
+   }
+  },
+  "void image_ring::ring<(int)1, (int)2, (int)2>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 206,
+   "ops": {
+    "LDS": 934,
+    "IMAD.MOV.U32": 518,
+    "BRA": 263,
+    "MOV": 224,
+    "MEMBAR.ALL.CTA": 224,
+    "ATOMS.ARRIVE.64": 224,
+    "FADD": 128,
+    "IADD3": 106,
+    "ISETP.NE.AND": 105,
+    "LOP3.LUT": 98,
+    "FFMA": 96,
+    "BSSY": 83
+   }
+  },
+  "void image_ring::ring<(int)4, (int)2, (int)1>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 198,
+   "ops": {
+    "IMAD.MOV.U32": 287,
+    "MOV": 201,
+    "FADD": 128,
+    "LOP3.LUT": 103,
+    "FFMA": 96,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IADD3": 47,
+    "IMAD": 45,
+    "LEA.HI": 39
+   }
+  },
+  "void image_ring::ring<(int)1, (int)2, (int)1>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 200,
+   "ops": {
+    "IMAD.MOV.U32": 259,
+    "MOV": 228,
+    "FADD": 128,
+    "FFMA": 96,
+    "F2FP.BF16.PACK_AB": 64,
+    "STS": 64,
+    "LOP3.LUT": 58,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "IMAD": 47,
+    "IADD3": 42,
+    "LEA": 37
+   }
+  },
+  "void image_ring::ring<(int)1, (int)2, (int)0>(read_image::Lists, const unsigned int *, long long *, int *)": {
+   "regs": 189,
+   "ops": {
+    "MOV": 148,
+    "IMAD.MOV.U32": 147,
+    "FADD": 128,
+    "FFMA": 96,
+    "LOP3.LUT": 52,
+    "HMMA.16816.F32.BF16": 48,
+    "ATOMS.ADD": 48,
+    "LEA": 43,
+    "IADD3": 38,
+    "IMAD": 37,
+    "SHFL.IDX": 36,
+    "LEA.HI": 33
+   }
+  }
+ }
+}

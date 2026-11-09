@@ -11,8 +11,8 @@ eye. Not wired into any gate -- a mismatch between the prose and this render
 is a review-time finding (`rola-review`'s pointer), not a CI failure.
 
 Usage:
-    python tools/build/dag_to_dot.py rola.engine.dags.chunk_dag:CHUNK_DAG \
-        --svg docs/internals/engine/chunk_dag.svg
+    python tools/build/dag_to_dot.py rola.engine.dags.prefill_dag:PREFILL_DAG \
+        --svg docs/internals/engine/prefill_dag.svg
     python tools/build/dag_to_dot.py rola.engine.dags.decode_dag:DECODE_STEP \
         --svg docs/internals/engine/decode_dag.svg
 """

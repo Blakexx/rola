@@ -1,6 +1,9 @@
+# THE WHEELS' METADATA (`bazel run //:wheels`, tools/wheels.py, docs/build.md#wheels): no build backend reads this
+# table, since rola builds through the graph alone and a source install is not supported. The version is
+# `rola/__init__.py`'s `__version__`, and the `cu13` extra, `rola-cu13` at exactly that version, is the wheels tool's.
 [project]
 name            = "rola"
-dynamic         = ["version", "optional-dependencies"]  # setup.py: the `cu13` extra pins rola's own version
+dynamic         = ["version"]
 description     = "Routed Linear Attention — fused CUDA kernels with a ratified supported matrix"
 readme          = "README.md"
 license         = { file = "LICENSE" }
@@ -15,14 +18,29 @@ classifiers     = [
   "Environment :: GPU :: NVIDIA CUDA :: 13",
 ]
 
+[project.optional-dependencies]
+# THE ATTENTION REFERENCE every reported carry number sits beside is rola-bench's arm (torch's own flash backend,
+# docs/measurement.md), so it needs no package here; measurements are recorded by `rola_results`.
+bench = ["matplotlib", "pandas"]
+# `entmax` (DeepSPIN) is the fp64 REFERENCE the routing gates are anchored to -- the paper authors' own
+# implementation, pure python with torch as its only dependency. A TEST dependency and never a runtime one:
+# `rola/routing/entmax/production.py` is RoLA's own hand-CUDA producer and imports nothing from it, which
+# `tests/integration/test_production_levels.py` asserts rather than assumes.
+#
+# PINNED to `==1.3`: `rola/routing/entmax/PIN.json` records the version AND a digest of the installed package, and
+# `rola/routing/entmax/reference.py` refuses to import (`pin.gate()`) an install that drifted from either. This `==` is
+# the coarse half of that guard -- the resolver refuses the bump before pip finishes -- and the pin is the fine half,
+# because the resolver cannot see an editable or re-published install that keeps the version string. See
+# `PIN.json`'s `why_this_is_the_only_guard`: the dual-run protocol imports the same installed package on both its sides
+# and cannot see this drift itself.
+test = ["pytest", "pytest-xdist", "entmax==1.3"]
+dev  = ["pytest", "ruff==0.14.10", "vulture==2.16", "clang-format==19.1.7", "ast-grep-cli==0.45.2"]
+
+# NO SOURCE BUILD: the backend refuses, naming the graph's targets (tools/no_source_build.py).
 [build-system]
-# torch is DELIBERATELY EXCLUDED from `requires`: pip's build isolation would
-# fetch a CPU-only torch from PyPI and build against the wrong ABI. Source
-# installs are
-#     pip install rola --no-build-isolation
-# exactly as flash-attn and mamba-ssm require.
-requires      = ["setuptools>=61", "wheel", "packaging", "psutil", "ninja"]
-build-backend = "setuptools.build_meta"
+requires      = []
+build-backend = "no_source_build"
+backend-path  = ["tools"]
 
 [tool.ruff]
 # Carried from the fork's `pyproject.toml` so that "ruff clean" means the same

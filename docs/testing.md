@@ -1,720 +1,333 @@
 # Testing — the three tiers
 
-> **2026-08-20.** The prefill chunk consumer, its backward and their test tier
-> are DELETED from the master line (baseline = tag `baseline/pre-k31`;
-> `docs/internals/DELETIONS.md`). Rows below that name the chunk arm, the scans or
-> `bench_chunk.py` describe the baseline tag's tree; the fp64 oracle remains the
-> executable spec and the decode family's gates are unchanged.
-
-The suite answers **different questions**, and conflating them is how a real bug
-hides. It is three directories, and **each tier ASSUMES the tier below it** — that
-is what keeps the suites from re-proving everything everywhere.
+The suite answers **different questions**, and conflating them is how a real bug hides. It is three directories, and
+**each tier ASSUMES the tier below it** — that is what keeps the suites from re-proving everything everywhere.
 
 | Directory | Question | Compares |
 |---|---|---|
-| **`tests/oracle`** | Does the kernel compute the right function, over the whole DISTRIBUTION SPACE the model can put through it? | the kernels against the **fp64 oracle** (and, once, against torch's own linear-attention loop), at DECLARED regime cells |
-| **`tests/integration`** | Does the COMPOSITION work, GIVEN that the kernels are trustworthy? | the layer against the op, a dispatch fork against what it dispatched to, and — the two-branches-agree class — the kernel against **itself** at every geometry the BUILT MATRIX carries and under both state backings |
+| **`tests/oracle`** | Does the kernel compute the right function, over the whole DISTRIBUTION SPACE the model can put through it? | the kernels against the **fp64 oracle**, per slot, at DECLARED regime cells |
+| **`tests/integration`** | Does the COMPOSITION work, GIVEN that the kernels are trustworthy? | the layer against the op, a dispatch fork against what it dispatched to, and — the two-branches-agree class — a kernel against **itself** across geometries and both state backings |
 | **`tests/unit`** | Does each file honour its own public contract? | one file's surface, under assumptions about how the others behave |
 
-**There is no fourth tier.** Every test answers one of the three questions above, so
-every test lives in one of these three directories — never a fourth bucket alongside
-them, however narrow or however temporary that bucket's own scope feels at the time.
-A `k31` directory was exactly that: a fourth one, named after the campaign that
-built it, gating a kernel as if it were a separate product (`git mv`'d into the
-tier each of its tests actually answered — the reference/fixture modules it carried
-became `tests/oracle`'s shared fixtures). **A campaign name never appears in a test
-path** — `tools/lint/lint_standards.py` enforces both of these mechanically: no
-directory under `tests/` other than `unit/`, `integration/` or `oracle/`.
+**There is no fourth tier**, and a campaign name never appears in a test path: `tools/lint/lint_standards.py` refuses
+any directory under `tests/` other than `unit/`, `integration/` or `oracle/`. **A check that does not execute the code
+under test is a lint, not a test** — it reads files, manifests or versions and asserts consistency, so it lives in
+`tools/lint` (ruled 2026-08-29).
 
-**A check that does not execute the code under test is a lint, not a test — it
-lives in `tools/lint`.** (RULED 2026-08-29.) The deleted test_docs_mirror.py
-was grep-level from the start — it read files, never imported or ran the code
-they document — so it moved into `tools/lint/lint_standards.py`'s
-`check_docs_mirror` rather than staying in the unit tier under a borrowed
-name. Five more moved the same way (test files DELETED):
-`test_generated_docs` → `check_supported_table`, `test_shard_partition` →
-`check_shard_partition`, `test_arch_coverage` → `check_arch_coverage`,
-`test_vendored_pin` → `check_vendored_pin`, `test_entmax_pin` →
-`check_entmax_pin` — each reads files/manifests/versions and asserts
-consistency, never calling the library and asserting behaviour, which is the
-rule of thumb that sorts a future check into one bucket or the other.
+The oracle tier alone is insufficient because a per-geometry tolerance can absorb a geometry bug. The two-branches-agree
+class alone is insufficient because two branches can agree with each other and both be wrong — this project has a bug
+that passed exactly that way. So that class **never stands alone**: every branch it relates is independently anchored to
+the oracle. And the regime cells exist because routing is a MOVING distribution (the gain knob alone sweeps candidate
+fraction ~0.96 → ~0.09 in training), so fixed fixtures answer their question at a handful of unmarked points; declared
+cells make the covered regimes named and the uncovered ones visible.
 
-The oracle tier alone is insufficient because a per-geometry tolerance can absorb a
-geometry bug. The two-branches-agree class alone is insufficient because two
-branches can agree with each other and both be wrong — this project has a bug that
-passed exactly that way. So that class **never stands alone**: every branch it
-relates is independently anchored to the oracle. And the CONFORMANCE FAMILIES exist
-inside the oracle tier because routing is a MOVING distribution (the gain knob alone
-sweeps candidate fraction ~0.96 → ~0.09 in training), so fixed fixtures answer their
-question at a handful of unmarked points in that space; the families make the covered
-regimes declared and the uncovered ones listed.
-
-An integration test never re-grades arithmetic. It checks wiring, dispatch and state
-flow, taking the op's correctness as established by the oracle tier.
+An integration test never re-grades arithmetic. It checks wiring, dispatch and state flow, taking the op's correctness
+as established by the oracle tier. Wherever the layer selects a kernel by shape, length or cache, the LAYER is gated
+forward and backward across every threshold (lengths spanning each switch), asserting finite, non-`None` gradients
+on the input and every parameter for every form -- a forward-only branch under a grad-requiring call is a silent graph
+break, not an error. A gate over a defaulted mode tests only the default, so a crown gate is parametrized over every
+declaration the tree ships a body for, each cell asserts the kernel body it exercised (never default dispatch), and new
+coverage is proved by a negative control (a known-broken variant must fail).
 
 ## The oracle tier — semantics
 
-**Ground truth is `rola.naive_rola`, fp64, and nothing else.** A freshly written
-second reference proves self-consistency only. This prohibition is not a
-preference; it is the direct lesson of a shared-router bug that agreed with a
-sibling implementation and disagreed with the definition.
+**Ground truth is `rola.naive_rola`, fp64, and nothing else.** A freshly written second reference proves
+self-consistency only. This prohibition is not a preference; it is the direct lesson of a shared-router bug that agreed
+with a sibling implementation and disagreed with the definition.
 
 ### What the oracle is, and what it promises
 
-The oracle FACTORS, and each factor is trusted for a different reason. The
-recurrence is textbook gated linear attention -- one state per leaf, a diagonal
-gate, a rank-one deposit, a linear readout -- written as the plain-torch loop a
-reader can check against any linear-attention paper, with normalization carried
-as a ones column of the value rather than as a second recurrence. The feature
-map's hard part, entmax, is the DeepSPIN authors' own package, pinned. What is
-OURS is the glue -- the leaf address map, the gate values, the ratio readout --
-and it is deliberately small, because it is the one shared blind spot the
-factoring does not remove.
+The oracle FACTORS, and each factor is trusted for a different reason. The recurrence is textbook gated linear
+attention -- one state per leaf, a diagonal gate, a rank-one deposit, a linear readout -- written as the plain-torch
+loop
+a reader can check against any linear-attention paper, with normalization carried as a ones column of the value rather
+than as a second recurrence. The feature map's hard part, entmax, is the DeepSPIN authors' own package, pinned. What is
+OURS is the glue -- the leaf address map, the gate values, the ratio readout -- and it is deliberately small, because it
+is the one shared blind spot the factoring does not remove. The oracle takes the bundle itself as its input, so a kernel
+and its reference read the same quantized operands (`tests/oracle/int_reference.py` states the declared integer
+arithmetic in fp64).
 
 Three promises a caller can rely on:
 
-* **Both outputs are `float64`, whatever the inputs were.** Casting back is the
-  caller's business; a reference that rounded itself to an operand's precision
-  would make an accuracy gate compare against a rounded reference.
-* **An input the output does not depend on gets `None`, not a manufactured
-  zero** -- autograd's ordinary answer, and the oracle states nothing else. A
-  test that wants a zero asserts `grad is None` and supplies the zero itself;
-  a manufactured graph edge is exactly what a coerced zero would hide.
-* **The address map is the oracle's own**, derived from the widths rather than
-  imported from `Topology`, so a wrong stride convention cannot agree with
-  itself in every gate the repository has.
+* **Both outputs are `float64`, whatever the inputs were.** Casting back is the caller's business; a reference that
+  rounded itself to an operand's precision would make an accuracy gate compare against a rounded reference.
+* **An input the output does not depend on gets `None`, not a manufactured zero** -- autograd's ordinary answer, and the
+  oracle states nothing else. A test that wants a zero asserts `grad is None` and supplies the zero itself.
+* **The address map is the oracle's own**, derived from the widths rather than imported from `Topology`, so a wrong
+  stride convention cannot agree with itself in every gate the repository has.
+
+**Grouped queries are the ungrouped layer with each write head's side repeated** for its query heads (`docs/api.md`
+[grouped queries](api.md#grouped-queries)): THE IDENTITY GATE, `tests/oracle/test_oracle_grouped.py`, holds the oracle
+to it per slot and fails on the other head assignment; a grouped kernel's gate is the oracle at its own heads.
+
+**An op's gate proves the math; the layer's measures quality** (Blake, 2026-09-26: "the layer oracle should measure
+the end-to-end numerical quality, but each op oracle should just measure that we're actually implementing the math
+correctly"). An op's gate compares the kernel with the fp64 op on the SAME quantized inputs, per slot, at its
+arithmetic's own tolerance, and vetoes; its error against unquantized inputs is reported per slot and per token, never
+gated, since for declared low-precision arithmetic a relative check against the unquantized op fails small channels
+by construction. Quality thresholds and the precision knobs are the layer oracle's, per layer.
+
+**Entmax gradients are graded only against the analytic VJP.** The feature map's gradient is non-smooth: a finite
+difference is a chord across a kink, and autograd through the bisection flips branches near convergence, so neither
+is an oracle. The reference is the hand-written implicit-function VJP composed through the canonical oracle, evaluated
+at kink-free interior points (the support stable under the perturbation); a gap claimed to be fp32 noise is shown by
+running the production gradient in fp64 against the fp64 oracle, where it collapses to ~1e-6.
+
+**A derivation feeding kernel arithmetic is checked symbolically before its gates are trusted**: exact rationals on
+small adversarial instances, chunk boundaries included (2026-08-15: a dropped term that manifested only across a chunk
+boundary passed every seed-level gate and was caught by the exact pass).
+
+**The oracle has no outside anchor** (Blake, 2026-09-15): no default-off cross-check against another library's loop is
+kept, because a default-off gate reports a skip where it should report a failure. The recurrence's claim to BE the gated
+linear-attention loop is held by review of the lines it is written in and by the mutants its own tier plants.
 
 ### Changing the oracle: the dual-run protocol
 
-`rola/ops/naive.py` and the routing references are the oracle pair, so a change
-to them is not reviewed by reading the diff -- the question is never "is this
-code reasonable" but "does it compute the same function". Both versions are RUN:
+`rola/ops/naive.py` and the routing references are the oracle pair, so a change to them is not reviewed by reading the
+diff -- the question is never "is this code reasonable" but "does it compute the same function". Both versions are RUN:
 
 ```bash
 # in rola-bench: this checkout against another, every surface, as targets
 python -m rola_devtools.build run declare.py:diffs --arg target=worktree:PATH --arg references=worktree:OLD
 ```
 
-Both sides are DIFF SIDES (`tests/oracle/sides.py`) run by the build system in each checkout's own environment over
-the same central cell nodes, and compared by a diff target (`rola_devtools.diff`) under the rule `declare.py`'s
-`SURFACES` states: the oracle under BIT-IDENTITY, forward and backward, with "no gradient" an empty tensor and never a
-zero one; the producer under support equality. A side proves which tree it imported, a comparison that compared fewer
-quantities than declared refuses, and the raw tensors never leave the build cache.
-A surface's numerics are a declared FACT rather than a blanket tolerance: `declare.py`'s
-`NUMERICS` names, per surface and per quantity, whether it is held EXACT (the carry
-kernel's `state`, written once per leaf) or RE-ASSOCIATED to a measured `rtol`/`atol`
-(`carry-kernel`'s `num`/`den`: the readout fan-in is an fp32 atomic reduction whose
-association order varies run to run — MEASURED 2026-09-16, three runs of one binary
-against itself over every oracle-tier cell, `den` within 7e-7 relative and `num` within
-1.9e-9 absolute). There is no floor-count refusal or exemption CLI on this line; a
-surface's cell set is `declare.py`'s `surface_cells`, and a shrinking cell set is a
-diff of the declaration itself.
+Both sides are DIFF SIDES (`tests/oracle/sides.py`) run by the build system in each checkout's own environment over the
+same central cells: this checkout exposes its surfaces (`declare.py`'s `SURFACES`), and a diff target
+(`rola_devtools.diff`) compares each under the rule rola-bench owns for it: the oracle under BIT-IDENTITY, forward
+and backward, with "no gradient" an empty
+tensor and never a zero one; the producer reference under support equality. A side proves which tree it imported, a
+comparison that compared fewer quantities than declared refuses, and the raw tensors never leave the build cache.
 
-**The backward's retained state is a declared BUDGET, not a lock and a slicing loop.**
-The oracle side runs `naive_rola` forward and backward in fp64, and autograd retains
-the recurrence's state at every token — MEASURED (2026-09-16) a peak above nine times
-the retained-state byte count, one cell killed by the host under a 9 GiB cap at 1.0 GiB
-of retained state. `RETAINED_STATE_BUDGET` (512 MiB) is checked per cell
-(`retained_state_bytes`), and only `BACKWARD_SURFACES` (`oracle`) runs the backward at
-all; a cell over budget is excluded from that surface, a consequence a reader can
-compute from the declaration rather than a run that died.
+**The backward's retained state is a declared BUDGET.** The oracle side runs `naive_rola` forward and backward in
+fp64, and autograd retains the recurrence's state at every token (measured: a peak above nine times the retained-state
+byte count). `RETAINED_STATE_BUDGET` (512 MiB) is checked per cell (`retained_state_bytes`), and only
+`BACKWARD_SURFACES` runs the backward at all; a cell over budget is excluded from that surface, a consequence a reader
+can compute from the declaration rather than a run that died.
 
-**`rola` is installed editable, so a tool run from a WORKTREE imports the
-canonical checkout unless it is stopped.** The protocol binds and then CHECKS
-the library each side imported, and prints both. Test runs are unaffected --
-pytest puts the rootdir on the path -- but any new tool that imports `rola` and
-compares two trees inherits the trap.
+**A venv imports the `rola` of the checkout it names, so a tool run from one WORKTREE with another checkout's venv imports that checkout unless it is stopped.**
+The protocol binds and then CHECKS the library each side imported, and prints both. Test runs are unaffected -- pytest
+puts the rootdir on the path -- but any new tool that imports `rola` and compares two trees inherits the trap.
 
-Every cell of this cross-product is gated against the oracle:
+### The cells
 
-| Axis | Values |
-|---|---|
-| decay | off, on (including the `1 - rate` catastrophic-cancellation arm) |
-| routing sparsity | dense, sparse, read-only / write-only leaves |
-| `(widths, D, B)` | the built arm list the manifest carries (`chunk_arms()`), projected |
-| sequence length `T` | 37 across the structural matrix; 512 / 2048 / 8192 on the accumulation arm |
+The cells are the central registry's (`rola_devtools.cells`, read through `measure/cells`): each states the regime it
+proves — density, temporal coherence, read-write correlation, mass concentration, support cardinality, depth and
+widths, length — and its draw proves that regime is present before any kernel comparison, so a fixture that cannot
+demonstrate its claimed regime fails rather than passes vacuously. The oracle tier runs the carry cells at
+`tier = oracle` (`tests/unit/test_central_cells.py`). **The length axis is not decoration**: an error that ACCUMULATES
+along the sequence grows as `sqrt(T)`, so a short fixture under-charges it, and the multi-window cells carry it.
 
-Three axes this cross-product used to carry are gone (`52a67d8`; see
-[`internals/DELETIONS.md`](internals/DELETIONS.md), revival = git). Normalization
-is no longer an axis: `raw` is dead, `global` (the mass column and the `num`/`den`
-divide, unconditional) is the only value the kernel arm accepts — anything else
-is a named refusal. `BC` is likewise no longer a host axis:
-it belongs to the built arm, so what varies across cells is the ARM. MMA precision is no
-longer an axis: `tf32x3` is dead, bf16 storage with fp32 accumulation is the only
-arm the kernel has, and the fp64 oracle stands in as the exactness reference a
-`tf32x3` family delta used to provide. `BT` is no longer an axis: the work unit is
-always a fixed 16-token group at the fixed `kMmaKQuantum`/word granule, with no
-runtime-sized tile left to vary. Cells whose entire purpose was one of those three
-axes (a raw-only sweep, a tf32x3-vs-bf16 family delta, a `BT`-boundary
-compile-time check) are deleted, with accounting in
-`workflows/perf/p26_endgame.md`; cells that gate a semantic property (causality,
-the read/write support union, decay pins, `P`-composition) are re-anchored at the
-single bf16 family bound below instead.
+<a id="whole-call-gates"></a>
+THE WHOLE-CALL GATES run on those cells and stay red, cell by cell, until the system under them is ported (ruling
+2026-09-29: a red test is the plan's record of what is unported; base infrastructure is re-pointed at a new seam, never
+deleted with the implementation it exercised): the carry's inter numerator against the fp64 inter term in the
+recurrence's units (`tests/oracle/test_carry_vs_oracle.py`, its drawn-cell supplement
+`test_carry_hypothesis_cells.py`), the op's readout and handed-back state against `naive_rola`
+(`tests/oracle/test_prefill_vs_oracle.py`), and the state's backings bit-identical through a fresh call and a
+continuation (`tests/integration/test_chunk_paging_equivalence.py`). `declare.py`'s `carry-vs-oracle` diff stores the
+carry's verdict per cell beside the instruments.
 
-The length axis is not decoration. An error that ACCUMULATES along the sequence
-grows as `sqrt(T)`, so a short fixture under-charges it by `sqrt(8192/37) = 15x` —
-the blind spot a resident-state re-quantization walk was measured to exploit.
-The gate that closed it, a family-deviation row flat in `T`, retired with the chunk
-arm it was measured on (slope `+0.053` against the walk's `+0.49`). The axis itself
-did not retire: the carry tier's MULTI-WINDOW cells carry it, folding a state over
-more windows than one against the same fp64 reference, and a rebuild that claims the
-length axis is covered states which cells carry it.
-
-**The window, `GT`, was a fifth axis and is not one now.** It was the tiled
-consumer's token quantum, chosen per launch by reading the realized routing, and
-gated by fixtures built long enough to force the wide arm. Both the axis and its
-kernel retired with the tiled consumer ([`internals/DELETIONS.md`](internals/DELETIONS.md)); the
-chunk arm's chunk `rola.engine.rules.arm.CHUNK_TOKENS = 32` is a build fact and not a
-second formulation to gate. It is a CEILING on one super-chunk's gathered entries,
-not a quantum the caller lands on, so `T` is an ordinary length axis here:
-the ragged-length rows that held this against the oracle retired with the chunk
-kernel; on this line the combined prefill REFUSES a length that is not whole windows
-(`rola/ops/prefill.py`), and the carry alone takes any length, which the carry tier's
-cells cover.
+Decode is its own family (`tests/oracle/test_decode_family.py`): the prefill-to-decode hand-off, a 32-step horizon with
+checkpoints ALONG it (a per-step check cannot see cross-call compounding), and frozen density declarations proven
+performance-only under drifting realized routing.
 
 ### Tolerance discipline
 
-1. `BF16_RTOL = 1e-2` — the ONE tolerance the whole file holds to now that there
-   is only one storage arm: an **honest format tolerance** derived from 8 mantissa
-   bits (`u_bf16 = 2^-8 = 3.9e-3` per requantization), not a relaxation of the
-   exactness gate. There is no separate `tf32x3` tolerance to widen it against or
-   to protect — the fp64 oracle is the exactness reference this bound is measured
-   against directly.
-2. The **kernel-vs-oracle arm** is `tests/oracle/test_carry_vs_oracle.py`,
-   `tests/oracle/test_prefill_vs_oracle.py`, `tests/oracle/test_decode_vs_oracle.py`
-   and `tests/oracle/test_intra_kernel.py`, each per slot under its output kind
-   (`tests/oracle/tolerances.py`). The CPU-only fp64 transcription that
-   used to sit beside it (`test_algorithm_vs_oracle.py`) transcribed the TILED
-   kernel's control structure and retired with that kernel; the
-   separation it bought — "the algorithm is wrong" against "fp32 accumulated
-   differently" — is carried by the oracle comparison itself, which is fp64 on
-   one side, and by `tests/unit/test_oracle_contract.py` on the reference's own
-   properties.
-4. **Every tolerance is either DECLARED with its derivation in a module comment or
-   DERIVED in code.** A number with neither is a defect.
-5. **Loosening a tolerance is a semantic change**: changelog entry, derivation,
-   reviewer sign-off. Tightening needs none of that.
-6. **A tolerance is only half of a claim; the other half is what the error is
-   divided by.** Every kernel-vs-oracle comparison is PER SLOT
-   (`tests.oracle.fixtures.assert_slots_close`) and names the OUTPUT KIND it
-   grades (`tests/oracle/tolerances.py`). A kind holds each slot to its CLAUSES --
-   `(rtol, atol)` pairs, one of which fails a slot whose relative and absolute
-   errors both exceed it, measured with their frontier and never tighter than the
-   kind's own budget -- and, where the output is multilinear, to `rtol` times that
-   slot's envelope, the sum of the sizes of the terms it adds up, which the same
-   fp64 reference computes on `|v|` (`fixtures.oracle_run`). The tightest binds and
-   the failure says which. Never a global max: the readout is a ratio whose
-   denominator is accumulated write mass, so `|y|` at the cold start exceeds the
-   rest of the sequence by up to `2.4e4` at `T = 8192`, and a single normalizer set
-   by that token was measured BIT-IDENTICAL between two arms it was supposed to
-   separate. A rule that cannot fail is the same defect as a tolerance that cannot
-   fail, so each gate plants errors on the kernel's own output that must fail
-   (`fixtures.assert_planted_errors_fail`), and
-   `tests/oracle/test_prefill_vs_oracle.py`'s
-   `test_the_per_slot_rule_fails_what_a_global_max_passes` plants a `sqrt(t)` drift
-   ten times the band that the global form passes. `tests/oracle/tolerances.py`
-   records the measured margins.
+1. **Every kernel-vs-oracle comparison is PER SLOT** (`tests.oracle.fixtures.assert_slots_close`) and names the OUTPUT
+   KIND it grades (`tests/oracle/tolerances.py`). A kind holds each slot to its CLAUSES -- `(rtol, atol)` pairs, one of
+   which fails a slot whose relative and absolute errors both exceed it, measured with their frontier and never tighter
+   than the kind's own budget -- and, where the output is multilinear, to `rtol` times that slot's envelope, the sum of
+   the sizes of the terms it adds up, which the same fp64 reference computes on `|v|` (`fixtures.oracle_run`). The
+   tightest binds and the failure says which. Never a global max: the readout is a ratio whose denominator is
+   accumulated write mass, so `|y|` at the cold start exceeds the rest of the sequence by orders of magnitude, and a
+   single normalizer set by that token was measured BIT-IDENTICAL between two arms it was supposed to separate.
+2. **A rule that cannot fail is the same defect as a tolerance that cannot fail**, so each gate plants errors on the
+   kernel's own output that must fail (`fixtures.assert_planted_errors_fail`), and `tests/unit/test_oracle_rule.py`
+   holds the rule itself. `tests/oracle/tolerances.py` records the measured margins.
+3. **A kernel whose arithmetic is declared is graded against a reference that mirrors it** (the fold's
+   `tests/oracle/fold_reference.py`, the intra's `int_reference.py`, the state's `state_rounded`), so the tolerance
+   charges only accumulation order, never a rounding the reference skipped. Where a third party's arithmetic is opaque
+   (a cuBLAS reduction order), the gate sits at the seam: the production intermediate is fed to the reference. A fused
+   kernel is gated through a shipped probe composed of its own device components (the carry's `fold_probe`), so the
+   agreement is a fact of the call graph and the gate runs the shipped binary.
+4. **Every tolerance is either DECLARED with its derivation in a module comment or DERIVED in code.** A number with
+   neither is a defect.
+5. **Loosening a tolerance is a semantic change**: changelog entry, derivation, reviewer sign-off. Tightening needs none
+   of that.
 
-## The two-branches-agree class — geometry, as data
+## The two-branches-agree class
 
-**The matrix machinery retired with its axes.** This class held its
-geometry pairs as a literal table in `matrix.py`, over five axes — `BC`, `DV`,
-`DECAY`, `P` and `paging`. Four of those are gone: `P` with sequence-parallelism, and `BC`/`DV`/
-`DECAY` when the tiled consumer went, leaving a one-axis table that could not earn
-the three meta-tests written to keep a matrix honest. The table, its meta-tests
-and `test_endgame_executor.py` (the tiled walk's own gate) are in
-[`internals/DELETIONS.md`](internals/DELETIONS.md); revival = git.
-
-What it is now is the same QUESTION asked of the pairs that still exist, one
-file per pair rather than one table over all of them:
+The same question — do two geometries of one computation agree — asked one file per pair:
 
 | file | the pair it relates |
 |---|---|
-| `test_chunk_paging_equivalence.py` | paged vs dense backing — bit identity, a continuation and a three-call chain, absent-atom inertness, residency at every built `BC`, a fragmented non-monotone slot arena, the plan's exact demand through a real launch |
-| `test_decode_bc_blindness.py` | one decode step across prefill arms that differ in `BC` |
-| `test_decode_paging.py`, `test_page_arena_vmm.py`, `test_atom_bitmap.py` | the backing's own structures |
+| `test_decode_bc_blindness.py` | one decode step across prefill boxes that differ in `BC` |
+| `test_decode_paging.py`, `test_page_arena_vmm.py`, `test_atom_bitmap.py` | the dense and paged backings, and the backing's own structures |
 | `test_stream_discipline_fixture.py` | the crossing paths (below) |
 
-`test_chunk_dense_inplace.py` (the dense continuation's one plane vs the double-buffer
-form it replaced), `test_chunk_final_state.py` (the register-resident state against its
-stored plane) and `test_paging_stream_races.py` (the crossing paths, before its rewrite
-onto `test_stream_discipline_fixture.py`'s subject) were deleted whole with the tiled
-consumer's test surface (`docs/internals/DELETIONS.md`, 2026-08-20); their claims have
-no successor on this line yet.
-
-The two contract classes below still govern every one of those comparisons, and
-the prohibitions in them are what the deleted table's meta-tests enforced
-mechanically. What is LOST with the table is the mechanical enforcement — a new
-built axis no longer fails collection until someone declares its class — and that
-is stated rather than papered over: the census that catches an undeclared
-instantiation axis now lives on the binary's own side -- each family's `arms()`
-answered out of the running extension -- and the shard partition's structural
-checks are `tools/lint/lint_standards.py`'s (`check_shard_partition`), which carry
-M1's manifest pin.
+The census of instantiation axes lives on the binary's side: each family's `arms()` answers out of the running
+extension, and `tools/lint/lint_standards.py`'s `check_shard_partition` holds the shard partition.
 
 ### Class (a) — ENGINEERED IDENTITY
 
-The two geometries are *designed* to produce byte-identical output. Tested with
-`torch.equal` — **no tolerance, no `allclose`, ever.** The claim is always
-structural and the structure is stated in the row's `basis`.
-
-**Every such row declares a VALIDITY PRECONDITION and the test asserts it.** The
-`BC` row, for example, is only meaningful with no initial state carried and with
-both `BC` values tiling the same state columns — and it compares STATE, never `y`,
-because the split-K `atomicAdd` across concurrent owner CTAs makes `y`
-nondeterministic *by construction*, so a bit comparison there would be testing the
-scheduler. A bit-identity assertion whose precondition is unstated is a future
-flake.
+The two geometries are *designed* to produce byte-identical output. Tested with `torch.equal` — **no tolerance, no
+`allclose`, ever.** The claim is always structural and the structure is stated. **Every such pair declares a VALIDITY
+PRECONDITION and the test asserts it**: a bit-identity assertion whose precondition is unstated is a future flake.
 
 ### Class (b) — REASSOCIATION-EQUIVALENT
 
-The two geometries legitimately reorder floating-point accumulation. Tested by
-**two assertions, both required**:
+The two geometries legitimately reorder floating-point accumulation. Tested by **two assertions, both required**:
 
-1. **Oracle anchor** — *each* geometry is independently within its Tier-1 tolerance
-   of the *same* oracle point. This is what stops two wrong geometries from
-   agreeing.
-2. **Derived mutual bound** — the two are within a bound *derived* from the
-   reassociation (`split_readout_n2_eps`, `carry_fold_T_eps`), never chosen.
+1. **Oracle anchor** — *each* geometry is independently within its tolerance of the *same* oracle point. This is what
+   stops two wrong geometries from agreeing.
+2. **Derived mutual bound** — the two are within a bound *derived* from the reassociation, never chosen.
 
 Two prohibitions, both of which have cost this project time:
 
-- **Never bitwise-vs-each-other.** `atomicAdd` order is a random variable; one draw
-  agreeing is not a property (`test_split_k_determinism_is_not_assumed`).
-- **Never a loosened tolerance in place of a derived bound.** If a pair misses its
-  bound, the answer is a bug hunt or a corrected derivation — never a bigger
-  number.
+- **Never bitwise-vs-each-other.** An atomic fan-in's order is a random variable; one draw agreeing is not a property.
+- **Never a loosened tolerance in place of a derived bound.** If a pair misses its bound, the answer is a bug hunt or a
+  corrected derivation — never a bigger number.
 
 ### The classes are not a spectrum
 
-A pair is (a) or (b). Where the same axis carries different classes in different
-sub-cases, those are **separate rows** with separate preconditions. `P` is the live
-example:
-
-| Sub-case | Class | Basis |
-|---|---|---|
-| `P = 1` vs `P = 2`, zero initial state, **state** | (a) | at `P = 2` pass 1's single summary IS the serial prefix — no re-associated boundary exists |
-| `P >= 3`, zero initial state, **state** | (b) | intermediate summaries are folded into the boundaries |
-| an owner with **no write anywhere**, every `P` | (a) | the spec's carve-out is **normative and bitwise** |
-| written leaves, **state** | (b) | the carry fold re-associates |
-| any `P > 1`, **`y`** | (b) | split-K `atomicAdd` across owners |
-
-Note the third row: class (a) not because the arithmetic happens to agree but
-because the spec *requires* it to. That is exactly why the class must be declared
-data rather than inferred from behaviour.
-
-## The conformance families — the data-regime box
-
-`tests/oracle/`. The regime axes and every family are DATA
-(`families.py`, pure CPU — the declared-data doctrine the geometry table also
-followed); generation and the
-non-vacuity checkers live in `generators.py`; execution in the `test_*`
-files. Three fixture sources cover the box, and each is there for a stated
-reason:
-
-* **stratified** — random generation confined to one stratum per axis
-  (density, temporal coherence, read-write correlation, mass concentration,
-  tail, support cardinality). Axis-DEFINED, never naive random: independent
-  per-token sampling manufactures anti-structure exactly where realized
-  routing is coincident.
-* **producer** — the REAL entmax producer at swept input gains (realized
-  density 1.00 → 0.10, monotone, asserted), because some correlations only
-  realized routing produces. (The stale-plan family drove `rola.expert`'s
-  derive/execute seam with a plan priced on a distribution 4x dead; that seam no
-  longer exists — there is no plan object to make stale — and the family retired
-  with it.)
-* **adversarial** — named corners FROZEN PERMANENT (cold read, all-read-only,
-  chunk boundary): the bug list, kept forever, and enforced by
-  `test_family_meta.py::test_the_adversarial_corners_are_permanent`. Two more —
-  `k0-fold` and `ragged-tail` — were forced-`P` fixtures and left with the `P`
-  axis with sequence-parallelism; the freeze protects a demonstrated bug class, not a deleted
-  capability's fixture.
-
-**Self-policing**: every family carries an IN-TEST non-vacuity assertion —
-checkers keyed `(axis, value)` so a claim cannot be declared without its
-proof running — and a fixture that cannot demonstrate its claimed regime
-FAILS before any kernel comparison (the token-0 vacuity lesson generalized).
-The checkers themselves are under test: each is fed a violating fixture and
-must refuse it, and each accepts an in-regime witness.
-
-**The census join** was the completeness claim in its mechanical form:
-(instantiation x data-regime), pairwise, with the left-hand side projected from the
-BUILT ARM LIST, so a new built arm failed it demanding families or expected-empty
-rows. It retired with the tiled consumer, and what carries the claim now is the
-central registry: a cell states the regime it proves and `realize` proves the draw is
-there, while the instantiation side is the binary's own `arms()`. Post-D2 it joins 7 off-mid instantiation values
-against 10 non-mid regime values — 70 cells, `EXPECTED_EMPTY` 69 — where the
-tiled axes gave 6 x 10 and 56. Empty cells are LISTED against a committed
-`EXPECTED_EMPTY` rule with named exceptions, asserted with exact equality in
-both directions — a newly-empty cell fails, and a stale listing fails too.
-
-**Decode** is its own family (`test_decode_family.py`): the prefill→decode
-handoff across the arms from a ragged prefill, a 32-step horizon with
-checkpoints ALONG it (the cross-call-compounding blindness the bf16-state
-kill named), frozen density declarations proven performance-only under
-drifting realized routing, and ONE walk crossing every dispatch boundary
-forward and backward with the graph asserted alive on the grad legs.
-
-**Backward** (`test_backward_family.py`): the reference backward is autograd
-through the decomposed fp64 oracle with the detachment as literal spec — the
-stored-clock input gets `None`, asserted per regime cell — plus one
-spec-derived structural-zero test (the anti cell), and the producer VJP
-against the pinned DeepSPIN package's own backward. `gradcheck` is DEMOTED to
-one-time insurance behind `ROLA_GRADCHECK_INSURANCE=1`, never a lane gate:
-it cannot express the spec's detachment, and the insurance harness holds the
-clock constant explicitly to demonstrate exactly that. When the native
-backward lands (M-2), its kernel-VJP gates plug into these same families.
-
-## The three meta-tests — RETIRED WITH THE MATRIX, and where each claim went
-
-The retired `test_meta.py` held them, and it went with the table they
-policed. They are recorded here because a completeness claim that
-quietly stops being enforced is exactly the failure they existed to prevent, and
-because the successor of each is a specific file rather than a hope.
-
-| meta-test | what it required | where the claim lives now |
-|---|---|---|
-| M1 census | every built axis DECLARED, and the manifest pinned to the build's own | `tests/unit/test_carry_surface.py` (the ratified census against the binary's own `rola.ops.carry.arms()`) and `check_shard_partition` in `tools/lint/lint_standards.py` (the manifest pin, through `tools/gen_shards.py --check`) |
-| M2 non-vacuity | a class-(a) row's declared probe must move its output | `assert_planted_errors_fail` in `tests/oracle/fixtures.py`: every gate that compares slots plants one mutant PER CLAUSE and requires each to fail |
-| M3 class drift | a class-(b) pair must NOT be byte-equal | NOWHERE, and it is the one of the three with no successor: the paged/dense pair is class (a) by construction -- `torch.equal`, because addressing is exact or wrong (`tests/integration/test_chunk_paging_equivalence.py`, `tests/integration/test_decode_paging.py`), and no current pair is declared class (b) |
-
-The definitions below are kept because the two contract classes are still the
-vocabulary the geometry class reasons in.
-
-**M1 — CENSUS.** Decodes the template arguments of every ratified instantiation
-from the mangled names in the manifests, and requires every axis to be **declared**
-— as a GEOMETRY (which then needs rows), a PROBLEM_SHAPE, or a SEMANTIC arm gated
-in the oracle tier — with matching value sets in both directions, and every geometry pair
-the census rule requires to have a row. It runs at **module import**, so adding
-a new value to a live axis (e.g. a fifth `D`) without declaring its contract class
-**fails at collection**. It also pins the manifest it reads to `BUILD_CONFIG["manifest_sha256"]`,
-so the census cannot enumerate a product that was never built.
-
-**M2 — NON-VACUITY.** For every class-(a) row, a one-ULP perturbation of the row's
-**declared probe input** must move the compared output. A byte-equality that a
-broken kernel would also satisfy proves nothing.
-
-**M3 — CLASS DRIFT.** For every class-(b) row, the two geometries must **not** be
-byte-equal. This is counter-intuitive and it is the point: if a declared
-reassociation starts producing identical output, either the kernel silently changed
-(a split-K path disabled, an atomic turned serial, a `P > 1` launch degraded to
-`P = 1`) or the fixture stopped exercising it. **A tolerance-based test cannot see
-either**, because "identical" passes any bound. The failure message names both
-hypotheses, because the correct response differs: a kernel change is a bug, a
-fixture change is a re-derivation of the row.
-
-**Each meta-test was verified by construction**, and the standard outlives them:
-M1 was pointed at a fabricated product carrying a new value on an existing axis
-(`D = 5`), M3 at a `P > 1` launch forced to degrade to `P = 1` and at a genuine
-engineered identity mislabelled as a reassociation, M2 at a probe that cannot move
-its output. *A gate that cannot fail is not a gate* — which is why the conformance
-tier's own checkers are each fed a violating fixture, and why the bf16 family gate
-ships M3-shaped mutant rows that must breach.
-
-**A contract class is declared, never inferred from behaviour**, and changing one
-is a reviewed edit with a new stated basis. That was a rule about `matrix.py`; it
-is now a rule about the file that holds the pair.
+A pair is (a) or (b), and where one comparison carries both, those are separate assertions with separate
+preconditions. The decode step is the live example: its STATE is class (a) — the write positions partition the leaves,
+so a written leaf's bytes are a function of its old bytes and the token alone — while its `y` is class (b), each head's
+partials added in arrival order ([`internals/decode/decode.md#determinism`](internals/decode/decode.md#determinism)).
 
 ## The build-shape gates
 
-Five checks are about the SHAPE OF THE BUILD rather than about arithmetic, and
-they are here because each one guards a property whose failure leaves every other
-gate green.
+Each of these guards a property of the BUILD whose failure leaves every other gate green.
 
-**`python tools/gen_shards.py --check`** regenerates the generated instantiation
-sources into memory and diffs them against what is on disk — today **2 generated
-files over a 1-row arm list**, `(D, DV, warps) = (2, 64, 8)`, the one carry arm the
-rebuild ships. They are NOT checked in (they live under `build/generated/`, which the
-closed-world policy treats as build output), so the selection header, which has no
-file to diff against, is held to its GENERATOR's schema instead, for the two scopes a
-real build or ratify run uses and for the empty selection. `setup.py` runs it before
-compiling and CI runs it in the CPU lane.
+**`bazel run //tools:gen_shards -- --check`** regenerates the per-arm carry units into memory and diffs them against the
+checked-in ones, and holds the selection header — generated, never checked in — to its generator's schema for the
+scopes a build or ratify run uses and for the empty selection
+([`internals/tools/gen_shards.md`](internals/tools/gen_shards.md)).
+The library's record action runs it on every build, and the commit gate's standards lint runs it (`check_shard_partition`, below).
 
-**`check_shard_partition`** in `tools/lint/lint_standards.py` carries what the
-deleted `test_shard_partition.py` claimed, and carries the half of it that still has
-something to read. The per-shard membership hash went with the families that had
-generated units; what remains is `gen_shards --check` above, plus the claim that
-matters most to a reader of `tools/manifests/`: the ratification on disk is the one
-`_build_config.py` recorded at build time. That digest is recomputed over the arch
-SUBSET the build declares (`BUILD_CONFIG["archs"]`) and not over a directory glob —
-the glob is what made a single-arch iteration build fail for doing nothing wrong.
-CPU only; a tree that has not been built has nothing to compare and is not failed.
+**`check_shard_partition`** in `tools/lint/lint_standards.py`: the ratification on disk is the one `_build_config.py`
+recorded at build time, its digest recomputed over the arch subset the build declares. CPU only; a tree that has not
+been built has nothing to compare and is not failed.
 
-**`check_arch_coverage`**, beside it, is the same claim across ARCHITECTURES, and
-it is the failure no single-card battery can see: every other gate runs on whichever
-arch the developer's card happens to be, so a hole on another one is invisible.
-Tabulated architectures with no ratified manifest are REPORTED, not failed — that is
-the *not ratified — will refuse to load* row `tools/supported.py` prints, and the
-check asserts the generated table says so. Manifests only, no device.
+**`check_arch_coverage`** is the same claim across ARCHITECTURES, the failure no single-card battery can see:
+tabulated architectures with no ratified manifest are REPORTED, not failed — the *not ratified — will refuse to load*
+row `tools/supported.py` prints — and the check asserts the generated table says so. Manifests only, no device.
 
-ITS PER-TOPOLOGY HALF IS OWED BACK. It required every ratified arch's manifest to
-carry an arm for every `(D, B)` class any other arch carried one for, because a
-topology class with no arm on an architecture does not run there at all — the
-degradation rule moves a topology onto another `BC`, never onto another `(D, B)`. It
-went with the deleted families, and it returns keyed on the rebuilt family's own arm
-list; restoring it against a one-row list would assert nothing.
+**`tests/unit/test_closed_world_arch_gate.py`** holds the RUNTIME refusal: closed-world rule R4 forbids a launch on a
+device whose arch was never measured, as a pair of clauses — `static_assert(tabulated(kArch))` in
+`csrc/rola/src/common/arch_caps.cuh` and `check_arch_table()` (`csrc/rola/src/common/arch_runtime.cu`) as the first
+statement of every launching entry. The test states the clause over every declared entry surface, so the next entry
+inherits it.
 
-`tests/unit/test_closed_world_arch_gate.py` is the third of this family and the one
-about the RUNTIME refusal: closed-world rule R4 forbids a launch on a device whose arch
-was never measured, and because the device is absent at build time the rule is a pair of
-clauses — `static_assert(tabulated(kArch))` in `csrc/rola/src/common/arch_caps.cuh` and
-a per-device `check_arch_table()` on the first launch. Neither half substitutes for the
-other: a derivation is only as good as the facts it closed over, and only a fact read
-off the DEVICE says this is the device they were read for. The test states the clause
-over EVERY declared entry surface, not one family's, so the next entry inherits it.
-**The runtime half has its definition back**, in its own translation unit
-(`csrc/rola/src/common/arch_runtime.cu`, `docs/internals/common/arch_runtime.md`),
-called as the first statement of every launching entry this pass has checked (carry,
-decode, entmax/factor, liveness, intra, the SM clock read) — the state this test's own
-module docstring still describes as red predates that file landing.
-
-(The fatbin gate that read device entry points per originating object and caught a
-FAILED translation-unit split lived here. It decoded a stats-pass mangled name to ask
-which shard owned an instantiation, so it went with the stats passes and returns
-with the sharded family — `docs/internals/DELETIONS.md`.)
-
-**`python tools/header_selfcheck.py`** compiles every header under `csrc/rola/`
-ALONE — one generated translation unit per header, containing that header twice and
-nothing else, under the extension's own flag list. A header that uses a name it never
-included compiles anyway whenever some other file in the translation unit included
-that name's home first; nothing in a normal build says so, and the break surfaces
-later, at a new caller or at an unrelated include removal. Including the header twice
-is what makes the include guard part of the check. It needs `nvcc` but no device, and
-takes about 70 s for the whole tree, so it belongs to the GPU arm's runner image
-rather than to the CPU lane.
+**`bazel run //tools:header_selfcheck`** compiles every header under `csrc/rola/` ALONE, twice in one translation unit
+under the extension's own flags, so a header that leans on another's include, or whose include guard is broken, fails
+here rather than at a later caller. It needs `nvcc` but no device.
 
 ## The documentation gates
 
-Two of the units-layer tests are about documents rather than arithmetic, and they
-are here because a document nothing checks is a document that drifts.
+A document nothing checks is a document that drifts. These run in the commit gate, read files and never touch a device
+([`internals/tools/lint.md`](internals/tools/lint.md)):
 
-The README's generated support tables are pinned to `tools/supported.py --check` by
-the commit gate (the document checks moved out of the unit tier and into
-`tools/lint/`, where a check that reads files rather than running code belongs). A
-hand-maintained support table is a claim; a generated one is a report, and that is
-what keeps the difference real.
-
-`test_derive.py` (the `BC` derivation, term by term) and `test_dispatch_table.py`
-(the tiled dispatch table joined against the fatbin's entry points) were the third
-and fourth of these gates. Both retired with their subjects: there is no
-derivation left to gate — `BC` belongs to the built arm — and no dispatch table to
-census. The binary-side half of the census question survives, in a stronger form
-than either: the DEVICE-SIDE entry list the build reports (each family's `arms()` and
-build stamp), which answers out of the running binary rather than out of a host table
-describing it.
-
-`tools/lint/lint_standards.py` pins the `docs/internals/` mirror. The
-engine's design reasons live in a markdown tree that mirrors `csrc/rola/`, with
-one-line `//: HAZARD <slug>` stubs left at the sites they explain. Five rules,
-all grep-level so a contributor can read the check itself:
-
-1. every source file under `csrc/rola/` has a mirror doc at the same relative
-   path (minus the `src/` component), extension `.md`;
-2. every `docs/internals/….md#anchor` cited from a source resolves to an anchor
-   that doc defines;
-3. a hazard stub's slug IS its anchor id, so the two cannot drift apart;
-4. no doc defines the same anchor twice, which would make a citation ambiguous;
-5. a directory of GENERATED sources is exempt from rule 1 and documented by one
-   README instead — and the exemption is checked rather than granted: the README
-   must exist, and the directory may contain nothing its generator does not
-   produce. `csrc/rola/src/instantiations/` is the only such directory; eight
-   mirror docs restating one sentence would be the ceremony this mandate removes,
-   and the next re-partition would orphan them. A generated directory that does not
-   EXIST is not a violation — the carry arm list is empty, so the generator produces
-   nothing and the directory is absent until a shipped set names rows.
-
-It carries its own non-vacuity guard: a floor on the number of sources found, so
-that a broken glob cannot make the file pass by checking nothing.
-
-Both run in the CPU line. They read files; they never touch a device.
+- **`tools/docrefs.py`**: every citation a doc or a skill makes of the tree is pinned to its target's content; a new
+  citation is read and accepted, and a changed target waits in `pending` for the docs pass; a skill is held strictly
+  ([`internals/tools/docrefs.md`](internals/tools/docrefs.md)).
+- **`tools/lint/lint_standards.py`'s mirror rules**: every source file under `csrc/rola/` has a mirror doc at the same
+  relative path (minus `src/`); every internals anchor a source cites resolves; a hazard stub's slug is its
+  anchor; no doc defines an anchor twice; a page names only identifiers the tree carries (or declares them `ABSENT`);
+  and a directory of GENERATED sources — `csrc/rola/src/instantiations/` — is exempt from the one-page rule and
+  documented by one README, the exemption itself checked (the README exists, and the directory holds nothing its
+  generator does not produce). A floor on the number of sources found keeps a broken glob from checking nothing.
+- **`check_supported_table`** (the standards lint): the README's support table is `tools/supported.py`'s output, read
+  from files alone. The README's other generated block, the activation registry's capability table, is produced by
+  running the registry, so its check executes the code under test and is a test, not a lint: it runs in the CPU tier
+  (`tests/unit/test_capability_table_docs.py`), not in the commit gate.
+- **`tools/lint/portable_claude.py`**: the agent files name no machine path.
 
 ## The host-structure gates
 
 The engine's DAG framework is host-only, so its battery is too.
 
-**`tests/unit/test_facts_memo.py`** runs with no CUDA, no extension and no kernel.
-It holds the caches the engine may declare — `pure_of`'s plain dict and `per_state`'s
-`WeakKeyDictionary`, including the weakness itself (a dropped sequence drops its
-buffers) and the TRANSIENTS-ONLY discipline over it (every shipped `per_state` node
-declares every non-`state` need a memo key, and its body runs against a state that
-raises on any attribute read, so nothing about the sequence can enter what is cached),
-plus the PRIMITIVE-level census cache, which is neither: the build census is
-read once however many folds ask for it, and what it returns is immutable, because a
-shared cached value a caller could mutate would not be a fact. It also holds the
-structural refusals that fire at DAG declaration: a need that arrives later than its
-reader, a second Join, a second device-to-host read, a memo key that is not one of the
-node's own inputs. And it pins the shipped chunk DAG's placement facts: the union table
-and the atom bitmap come from ONE node, that node runs before the admission it feeds,
-and the Join is upstream of the block bitmap. These were conventions reachable only
-through a launch before the engine named them.
+**`tests/unit/test_facts_memo.py`** runs with no CUDA and no extension. It holds the caches the engine may declare —
+`pure_of`'s plain dict and `per_state`'s `WeakKeyDictionary`, including the weakness itself (a dropped sequence drops
+its buffers) and the TRANSIENTS-ONLY discipline (a `per_state` node's body runs against a state that raises on any
+attribute read) — and the structural refusals that fire at DAG declaration: a need that arrives later than its reader,
+a second Join, a second device-to-host read, a memo key that is not one of the node's inputs. It holds the decode
+family's structural declarations too: every node of `DECODE_STEP` declares `capturable` and none declares `host_sync`,
+and no shipped DAG contains a `reference_only` node, which keeps the growth gate's independent second derivation from
+being wired in. The CAPTURE ITSELF is `tests/integration/test_decode_graph_step.py`'s.
 
-It also holds the decode family's two STRUCTURAL declarations, which is where they can
-be held without a device: every node of `DECODE_STEP` declares `capturable` and none
-declares `host_sync` (so a node added to the captured recipe that reads the device on
-the host fails here, not at some caller's first `graph.replay()`), and no shipped DAG
-contains a `reference_only` node — `write_atom_bitmap`, the growth gate's independent
-second derivation, is declared and refused by `validate_dag`, which is what keeps that
-independence from being wired away. The CAPTURE ITSELF is
-`tests/integration/test_decode_graph_step.py`'s; this is the declaration that must agree
-with it.
-
-**`tests/unit/test_facts_rules.py`** runs the same way and holds the RULE layer: every
-band-2 fold fed plain values -- tuples, ints, a fake manifest, a `torch.device` -- and
-asserted on its decision, plus the marker sweep that makes `rola/engine/rules/` an inventory
-rather than a folder (an unmarked function there fails). The run table is the case that
-was unreachable without a device at all: it is derived over all eight liveness bytes
-against every row of `engine/rules.md#run-table`, and the row LINES are matched against that
-document, so a doc edit and a rule edit cannot drift apart. It must pass under
-`CUDA_VISIBLE_DEVICES=""`, and it asserts that the battery never resolved the compiled
+**`tests/unit/test_facts_rules.py`** holds the RULE layer: every band-2 fold fed plain values and asserted on its
+decision, plus the marker sweep that makes `rola/engine/rules/` an inventory (an unmarked function there fails). The
+run table is derived over all eight liveness bytes against every row of
+[`internals/engine/rules.md#run-table`](internals/engine/rules.md#run-table), whose row lines are matched against the
+rule. It must pass under `CUDA_VISIBLE_DEVICES=""`, and it asserts that the battery never resolved the compiled
 extension.
-
-The backward's ctx had a host-structure gate as well as a memory one, once the ctx
-became the forward's plan HELD BY REFERENCE: it walked every tensor the ctx pinned,
-refused BY NAME a field it had no term for, and held each to a closed form in `T`,
-`sumW`, `entries` or `N` — none of which contains `N * T`. It retired with the chunk
-consumer's backward, and the rebuild's backward (card C, C-b) owes its own: a
-retained set nothing walks is a retained set that grows.
-
-A host refactor claiming neutrality answered to a capture-and-verify tool, which
-retired with the chunk consumer and whose replacement is the DIFF NODE (two
-executors, the cells, a strategy): `capture` on the parent tree, `verify` on the
-refactored one: `y`, the returned state plane, the union table, the block bitmap and
-the atom bitmap over a fixed cell set, compared with `torch.equal`. It records what
-the extension RETURNED during a `rola_op` call rather than re-deriving anything, so
-it cannot pass by agreeing with itself. `y` is the one exception and only where the
-topology spans more than one owner block, since its fan-in is an fp32 atomic
-reduction and is not bit-reproducible run to run.
 
 ## Running it
 
+Each tier is one target of the build graph (`tests/BUILD.bazel`, [`build-graph.md`](build-graph.md#checks)), and each
+test is in exactly one:
+
 ```bash
-pytest tests/unit tests/oracle -m "not cuda"                                 # CPU: no device, no build
-pytest tests/unit -m cuda                           # tests/unit's CUDA-marked rows
-pytest tests/oracle                                 # kernels vs the fp64/torch baselines, incl. The families
-pytest tests/integration                            # composition, dispatch, two-branches-agree
-ROLA_GRADCHECK_INSURANCE=1 pytest tests/oracle/test_backward_family.py  # one-time, opt-in -- see above
+bazel test //tests:cpu              # tests/unit -m "not cuda", with no device visible
+bazel test //tests:unit_cuda        # tests/unit's CUDA-marked rows
+bazel test //tests:oracle           # kernels vs the fp64 baselines
+bazel test //tests:integration      # composition, dispatch, two-branches-agree
+bazel test //:lane                  # all four
+bazel test //tests:oracle --test_filter=carry_fold --test_output=streamed   # some of a tier, by pytest's -k
 ```
 
-**The lane, measured** (2026-08-06, sm_86, warm build, under the pre-P70-C
-directory names): CPU 70 s; unit-cuda 2.5 s; the oracle rows 123 s + 9 s + 4.5 s;
-the composition rows 6 s — the WHOLE battery was ~3.6 min, inside the < 5 min
-commit-lane goal, so the commit lane IS the full battery above and no per-commit
-subset needs choosing. The same battery, scoped as
-`tests/oracle tests/integration tests/unit -q`, is **1076 passed, 83 skipped, 1
-deselected in ~18 s** (re-measured 2026-08-29, post-K46: five lint-shaped test
-files moved into `tools/lint/lint_standards.py` and deleted, so the count is the
-prior number minus exactly those files' rows — `test_docs_mirror.py` had already
-moved with the comments). `test_shard_partition.py` (moved too) had parametrized one
-row per csrc source alongside `test_docs_mirror.py`'s, so a deleted surface used
-to move the count by more than its own tests; that coupling is gone now that
-both checks are plain functions in `lint_standards.py` rather than parametrized
-pytest rows. The
-build-shape gates and `tools/ratify.py` run additionally at a batch tip (and
-always when csrc, manifests or codegen flags moved); the latency gate and the
-sanitizer lane are scheduled, never per-commit. The runtime x
-unique-assertion audit that sized this (evidence:
-`workflows/refactor/p07_conformance.md`) removed nothing: every oracle row carries
-a mutant-proven charge, every two-branches-agree row is census-required, and the
-conformance families are new coverage at 4.5 s.
+Every tier takes the built library -- collecting a tier reaches the plugin (a module that calls a kernel's entry at
+import) -- so a source change rebuilds it first. The CPU tier is `tests/unit` alone: an oracle or integration row needs the device whatever its marker (with none
+visible, such rows fail rather than skip), so the oracle tier runs `tests/oracle` whole.
 
-THE ORACLE HAS NO OUTSIDE ANCHOR, by Blake's ruling of 2026-09-15: the one-time
-cross-check against `flash-linear-attention`'s naive GLA loop is DELETED
-(`docs/internals/DELETIONS.md`) rather than kept as a test the tree runs only when
-someone remembers to set a flag -- a default-off gate reports a skip where it should
-report a failure, which is how it sat unrunnable for ten days in August. The
-recurrence's claim to BE the gated linear-attention loop is held by review of the
-eleven lines it is written in and by the mutants its own tier plants.
+**The commit lane is the whole battery above, inside five minutes.** The build-shape gates and `tools/ratify.py` run
+additionally at a batch tip (and always when csrc, manifests or codegen flags moved); the latency gate and the sanitizer
+lane run on their own cadence, never per-commit. **Never `pytest tests/` unscoped.**
 
-**THE LOCK IS `/tmp/rola_gpu.lock` — that exact path, with an underscore.** `flock`
-is advisory and keyed on a NAME, so a second spelling excludes nothing and silently
-buys nothing: two commands holding two different paths run on the device at the same
-time and neither can tell. Every GPU entry point in this repository takes this one
-path through `gpu_lock()` (`rola_devtools.locks.gpu`). If you find another spelling
-anywhere, it is a defect — fix it rather than adding a second lock beside it.
+**Every GPU entry point takes the GPU lock itself** — a test tier through a session fixture in `tests/conftest.py`,
+`tools/sanitize_oracle.py`, rola-devtools' build system for a target that holds the GPU — through `gpu_lock()`
+(`rola_devtools.locks.gpu`): shared for correctness runs, exclusive for measurement. Invoke them BARE: an external
+`flock` on the lock's path around a self-locking tool deadlocks, and a lint rule in `tools/lint/lint_standards.py`
+refuses one on a command line. A tier runs outside the sandbox, since the locks it takes live in `/tmp` by default
+(the GPU lock `host.gpu_lock`, the host budget's slots in `host.lock_dir`) and a sandboxed test's `/tmp` is its own;
+a device tier runs alone (`exclusive`), and each shard of a sharded tier draws a host slot, as an xdist worker does.
 
-**EVERY GPU ENTRY POINT LOCKS ITSELF.** The lock used to be half-and-half:
-`tools/sanitize_oracle.py` took it internally, but pytest
-and the chunk-arm bench harness relied on the CALLER wrapping the command in an
-external `flock` — and the harness REFUSED a bare invocation to enforce that. The other side showed its own failure mode: an external `flock`
-wrapping a tool that ALSO locks itself deadlocks (per-open-file-description
-semantics — the wrapper's own lock blocks the wrapped process's identical
-`fcntl.flock` call forever). Both harnesses now share ONE design: every GPU
-entry point — pytest (a session-scoped `gpu_lock()` fixture in `tests/conftest.py`),
-`tools/sanitize_oracle.py`, rola-devtools' build system for a target that holds the GPU — takes
-`gpu_lock()` itself and is invoked
-BARE. The lock is REENTRANT (`ROLA_GPU_LOCK_HELD` in the environment), so a tool that
-itself locks and then launches another self-locking tool as a subprocess (`tools/
-sanitize_oracle.py` launching `compute-sanitizer python -m pytest ...`) cannot
-deadlock either: the inner acquire sees the marker and is a no-op. Nothing in this
-tree is invoked wrapped in an external `flock` anymore; a lint rule in
-`tools/lint/lint_standards.py` finds the word back on a command line if it returns.
-
-**THAT IS NOT THE SAME QUESTION AS THE `cuda` MARKER.** The marker's job is
-*collection-time deselection* — it is what lets the first line avoid initializing a
-CUDA context at all. It is **not** a device partition: `tests/integration` carries
-rows that launch kernels without being `cuda`-marked (e.g.
-`test_layer_dispatch.py::test_the_bf16_arm_is_paging_invisible_at_its_own_tolerance`),
-because in those tiers a device is the premise of the tier rather than a property of a
-row. So `-m "not cuda"` may NOT be used to decide whether a run needs the lock; the
-`tests/conftest.py` fixture keys on TIER (`tests/oracle/`, `tests/integration/`) OR the
-`cuda` marker, unconditionally, which is why `-m "not cuda"` still avoids the lock for
-`tests/unit`'s non-`cuda` rows but never for a whole oracle/integration run.
-
-`tests/unit -m "not cuda"` above deselects `tests/unit`'s own `cuda`-marked rows (e.g.
-`test_interface.py`'s dispatch rows) the same way it deselects `tests/oracle`'s
--- so the `-m cuda` line above is what makes them reachable at all. Every committed test
-must be collected by SOME line here; a test that only a `-m "not cuda"` line ever
-selects against is a test nothing runs.
-
-**Never `pytest tests/` unscoped.** The `cuda` marker exists so `-m "not cuda"`
-deselects at *collection* time, before torch initializes a CUDA context. The
-`bench` marker is opt-in for the same reason in reverse: a latency measurement is
-not a correctness gate and must never be able to fail a merge.
+**THE `cuda` MARKER IS NOT THE LOCK'S QUESTION.** The marker's job is *collection-time deselection* — it lets the first
+tier avoid initializing a CUDA context at all. It is **not** a device partition: `tests/integration` carries rows that
+launch kernels without being `cuda`-marked (e.g. `test_facts_pass.py::test_the_words_are_the_model_bit_for_bit`,
+skipped without a device), because in that tier a device is the premise rather than a property of a row. So the
+`tests/conftest.py` fixture keys on TIER (`tests/oracle/`, `tests/integration/`) OR the `cuda` marker. Every committed
+test is collected by one tier above. The `bench` marker is opt-in for the same reason in reverse: a latency measurement is not a correctness gate and
+must never be able to fail a merge.
 
 ## Measurement, and the tests that guard it
 
-Performance work has its own document — **`docs/measurement.md`** — because the
-instruments are as much a subject of review as the kernel is: one method (rola-devtools'
-timing system, run by this checkout's declarations in `declare.py`), one stopwatch per session, and
-raw samples stored through `rola_results` in the measurements store (`store.root`).
-
-The tests that hold that machinery to the non-vacuity standard live beside the code they
-guard. Each plants the violation its instrument exists to catch and requires the refusal;
-none launches a kernel.
-
-| file | what it plants |
-|---|---|
-| rola-devtools tests/test_timing.py | a timing entry that cannot run (recorded as that entry's failure while the session goes on), a call that drifts without a reset, two stopwatches in one session, a clock read off the lock, a failed entry in the memory pass; every entry of a session in every rep's random order; a stored session appending a run-stamped sample |
-| rola-devtools tests/test_declared_build.py | a label or path entering a key, a build failure (later targets skipped, `always_run` still runs), a domain failure in a target's output, a cached output that no longer holds on this machine, a held resource missing from the worker, a target declared twice, a cached `always_run` target, a zero claim, a dependency from another graph |
-| rola-devtools tests/test_cells.py | a name registered twice, a point naming an absent cell or a runner with none, a cell with no data provider, a point whose cells break its `equal` claim |
-| rola-devtools tests/test_verdict.py | a shift smaller than its own scatter, a round count below the one the test can decide at, a single unlucky run, an effect with no significance behind it, a spread of zero at the stopwatch's resolution |
-| rola-results `rola_results/test_verdict.py` | stored sessions: an unchanged candidate, a slow session flagged and then confirmed, a baseline filtered by its label |
-| `tests/unit/test_bench_provider.py` | an uncarried carry arm, an iteration build, another library's data, a binary without the intra or decode kernel a subject launches; no arm carries a dial its subject does not read |
-
-`python tools/ratify.py --self-test` is the same discipline on the codegen side and
-is listed arm by arm in `docs/ratification.md`.
+Performance work has its own document — [`measurement.md`](measurement.md) — because the instruments are as much a
+subject of review as the kernel. The timing system's own non-vacuity tests live with it, in rola-devtools and
+rola-results; this repository's is `tests/unit/test_bench_provider.py`, which plants an uncarried carry arm, an
+iteration build, another library's data and a binary without the kernel a subject launches, and requires each refusal.
+`bazel run //:ratify -- --self-test` is the same discipline on the codegen side ([`ratification.md`](ratification.md)).
 
 ### Triaging a suspected stream-ordering bug
 
-There is no runtime detector anywhere for a forgotten cross-stream dependency on
-already-allocated memory, and `compute-sanitizer --tool racecheck` does not fill the
-gap — it detects on-chip **shared memory** hazards only, and both bugs that escaped
-here were host-side Python. Two environment variables classify one before a debugger
-is opened, because each removes a different precondition:
+There is no runtime detector for a forgotten cross-stream dependency on already-allocated memory, and
+`compute-sanitizer --tool racecheck` does not fill the gap — it detects on-chip **shared memory** hazards only, and both
+bugs that escaped here were host-side Python. Two environment variables classify one before a debugger is opened,
+because each removes a different precondition:
 
 ```bash
 CUDA_LAUNCH_BLOCKING=1            # serializes launches: collapses the window a missing join needs
 PYTORCH_NO_CUDA_MEMORY_CACHING=1  # every free becomes a device-synchronizing cudaFree
 ```
 
-A bug that disappears under either is an allocator-lifetime or stream-ordering bug —
-a missing `record_stream` or a missing join — not a device memory hazard.
+A bug that disappears under either is an allocator-lifetime or stream-ordering bug — a missing `record_stream` or a
+missing join — not a device memory hazard.
 
 ### The stream-discipline fixture, and what every crossing path owes
 
-`tests/integration/stream_discipline.py` is the fixture; it was four bespoke cells
-guarding one module, and copying them into each new path is how three of the four end
-up missing. **A path that crosses a stream instantiates all four checks.**
+`tests/integration/stream_discipline.py` is the fixture, and **a path that crosses a stream instantiates all four
+checks**:
 
 | check | makes deterministic |
 |---|---|
@@ -723,74 +336,40 @@ up missing. **A path that crosses a stream instantiates all four checks.**
 | `allocator_pressure` | the window a lifetime bug needs is actually opened |
 | `assert_capture_rejoins` | a fork that never rejoins **refuses to close a CUDA graph capture** |
 
-The last is the only *mechanical* detector of the missing-join class that exists
-anywhere, and it is not ours: `cudaStreamEndCapture` returns
-`cudaErrorStreamCaptureUnjoined` when a stream forked inside the captured region never
-joins back. Measured here (sm_86, CUDA 12.4): the joined region closes its capture,
-the same region with the join deleted raises *"capturing stream has unjoined work"*.
-Each attempt runs in its own process, because a failed capture leaves the context in
-an error state that later calls inherit.
+The last is the only *mechanical* detector of the missing-join class that exists anywhere, and it is not ours:
+`cudaStreamEndCapture` returns `cudaErrorStreamCaptureUnjoined` when a stream forked inside the captured region never
+joins back. Each attempt runs in its own process, because a failed capture leaves the context in an error state that
+later calls inherit. **Its limits are measured too**: capture validates only the captured region, cannot see an event
+recorded on the *wrong* stream, and requires the region to be capture-legal. `PageArena` records its side stream's
+readiness event outside any capture, which a capture rejects as a cross-capture dependency, so the paged admission
+cannot be wrapped in one; the detector is the contract for paths that *can* be captured, and
+`test_stream_discipline_fixture.py` proves it reads on this driver in both directions.
 
-**Its limits are measured too, and the paged path is outside them.** Capture validates
-only the captured region, cannot see an event recorded on the *wrong* stream, and
-requires the region to be capture-legal. `PageArena` owns a persistent side stream and
-records its readiness event outside any capture, which the capture rejects as a
-cross-capture dependency before the body even runs — so the production paged path
-cannot be wrapped in one today. The detector is therefore the contract for paths that
-*can* be captured, and `test_stream_discipline_fixture.py` proves it reads on this
-driver in both directions rather than leaving that an assumption.
-
-Every check in that file is run against a planted violation as well as a correct
-path — an unjoined fork, a publication read before its join, an inner join standing in
-for an outer one, a tensor crossing without `record_stream`, a burst that allocates
-nothing. A fixture that cannot be shown failing converts "we checked" into a sentence
-nobody can falsify.
+Every check in that file is run against a planted violation as well as a correct path — an unjoined fork, a
+publication read before its join, an inner join standing in for an outer one, a tensor crossing without
+`record_stream`, a burst that allocates nothing.
 
 ### The sanitizer lane
 
-The lane's DRIVER was `rola_probe sanitize`, retired with the rest of the
-harness; the lane's shape and its measured findings are kept here because they are
-what the successor has to reproduce, and re-deriving them from memory is how a
-finding turns into a belief.
+`bazel test //tests:sanitizer` runs `tools/sanitize_oracle.py`, passing it the toolkit's own `compute-sanitizer`
+(`@cuda_tools`, the release the library is built by; the script refuses any whose `--version` is not the toolchain
+record's `sanitizer`, and takes none from PATH) over ONE named oracle cell per family (the facts pass, the
+carry's fold and a whole call, the intra, decode, the producer and the entmax solves), each pair in its own process
+with a timeout, under the GPU lock; `--test_arg=--tool --test_arg=racecheck` or `--family` narrows or widens it. It is
+`manual`: no suite holds it.
+It runs **when a component lands, before a ratify, and on a schedule, never per commit**
+(`docs/KERNEL_STANDARDS.md#sanitizer`) — the tools cost one to two orders of magnitude, and a gate that takes an hour
+gets disabled — with `--error-exitcode=1`, an explicit skip-list whose entries carry their
+reason, and an `ASSERTED` table for an adjudicated idiom that still runs and passes only if every record is that idiom.
+Both are empty, which is the standard.
 
-**A scheduled lane over a named subset, never a PR gate** — the shape every surveyed
-adopter converged on, because the tools cost one to two orders of magnitude and a gate
-that takes an hour gets disabled. `--error-exitcode=1`, a committed suppressions file,
-and an explicit skip-list whose entries carry their reason.
+**RACECHECK IS DEFERRED for every kernel** (Blake, 2026-10-01). The lane runs synccheck and initcheck by default;
+racecheck runs only by an explicit `--tool racecheck`, and nothing waits on it: it does not finish on the mbarrier
+pipelines (polls tracked inside one barrier interval), it reports false hazards on a fence standing in for a barrier,
+and its barrier table overflows past ~20 mbarriers. What covers races meanwhile: the repeat-launch bitwise tests,
+synccheck, memcheck and the per-slot oracle.
 
-Measured on this box, on the TILED consumer's two registered probes
-(`consumer_forward`, `consumer_forward_deep`): memcheck, initcheck and synccheck
-reported 0 errors; racecheck reported 0 hazards, 0 warnings. **No such measurement
-exists for the chunk arm yet** — that is a gap, not a carry-over.
-
-**Sold honestly, in both directions.**
-
-* It does **not** own our historical bug class. Both escaped races were host-side
-  Python ordering; `racecheck` detects on-chip shared-memory hazards only. The
-  stream-discipline fixture above is what covers that class.
-* `racecheck` ran on both registered probes with an EMPTY skip-list. The `Gm`
-  write/read edge that once needed an exemption was ordered by the visit's own
-  `__syncthreads()` — exactly the barrier class `racecheck` orders shared memory
-  by — so no edge was left that a counter protocol published instead. An empty
-  skip-list is the standard the successor lane inherits.
-* **AND THE SUCCESSOR LANE FOUND THE EDGE THAT SENTENCE ANTICIPATED.**
-  `tools/sanitize_oracle.py`'s decode cell publishes exactly what the bullet above says
-  a barrier saved the tiled consumer from: the decode step's CTA combine has NO
-  barrier below its prologue and publishes its shared rows with a fence plus an arrival
-  counter, so `racecheck` reports 48 RAW hazards on it. The SKIP-LIST IS STILL EMPTY and
-  stays that way: the pair is adjudicated, not skipped. `ASSERTED` declares the one idiom
-  — the two writing expressions, the two reading expressions, the kernel, `RAW` only, both
-  located in the source at gate time rather than pinned to line numbers — and the run
-  passes ONLY if every record the tool emits is that idiom. A hazard anywhere else, of any
-  other type, in any other kernel, or on lines the declared expressions no longer occupy,
-  still FAILS the lane. The declaration carries the PTX-memory-model proof and the
-  80,000-launch perturbed-schedule measurement behind it, plus the exit condition that
-  deletes it (`KERNEL_STANDARDS.md` §18: a declared exception, never a blanket skip). If
-  the tool ever goes clean here on its own, the lane says so and asks for the declaration
-  to be removed.
-* `--leak-check full` is **not** used: torch's caching allocator retains its pools by
-  design, so the flag reports 3 "leaks" on a clean run — a lane whose clean state is
-  three errors is a lane whose findings nobody reads.
-* An overrun that stays **inside** a caching-allocator segment is invisible: tensors
-  are suballocated, so that memory is legitimately the allocator's. The lane detects
-  accesses that escape the segment, and the planted-violation test plants exactly one.
+**Its two honest limits.** `--leak-check full` is **not** used: torch's caching allocator retains its pools by design,
+so a clean run reports "leaks", and a lane whose clean state is errors is a lane whose findings nobody reads. And an
+overrun that stays **inside** a caching-allocator segment is invisible, since that memory is legitimately the
+allocator's; the lane detects accesses that escape the segment.

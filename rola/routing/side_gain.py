@@ -12,9 +12,9 @@ the ratio.
 **THE GAIN LOGIT IS COLUMNS OF THE ROUTER GEMM.** The gain is a function of the read
 stream, and so are the routing logits, so a separate ``[hidden -> H]`` projection was a
 second GEMM plus a second cast of the whole source stream for one column per head. The
-columns live in ``route_W``'s trailing span (``rola/routing/projection.py``); this
-module owns what is left, which is the bias, the layout and the positive
-parameterization.
+columns live in ``route_W``'s trailing span (``rola/routing/projection.py``) and its bias on the layer
+(``RoLA.gain_bias``); this module owns the layout and the positive parameterization, which the producer applies
+(``rola/ops/produce.py``).
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 WRITE_GAIN = 0
@@ -78,56 +77,9 @@ def gain_layout(*, write_gain: bool = True) -> tuple[str, ...]:
     return GainConfig(write_gain=write_gain).layout
 
 
-class SideGain(nn.Module):
-    """The gain half of the feature map: a bias and a positive parameterization.
-
-    It takes the LOGIT COLUMNS the router GEMM already produced and returns
-    ``{'g_write': [B, T, H]}``. ``columns`` is 0 when the gain is ablated, and then
-    there is no logit to take and the gain is the CONSTANT 1 -- a missing column has no
-    gradient to waste, which is what ``gain=False`` means.
-
-    ``bias_init`` places an all-zero-logit gain at that value (``None`` leaves the bias
-    at zero). Why the gain belongs to routing rather than to the layer:
-    ``docs/api.md`` section 2.1.
-    """
-
-    def __init__(
-        self,
-        *,
-        num_heads: int,
-        config: GainConfig,
-        bias_init: float | None = None,
-    ) -> None:
-        super().__init__()
-        self.num_heads = int(num_heads)
-        self.config = config
-        self.layout = self.config.layout
-        bias_value = 0.0 if bias_init is None else init_side_gain_bias(bias_init)
-        self.gain_bias = nn.Parameter(
-            torch.full((self.num_heads, len(self.layout)), bias_value))
-
-    @property
-    def columns(self) -> int:
-        """Router-GEMM columns this gain consumes, per head."""
-        return len(self.layout)
-
-    def forward(self, logits: torch.Tensor | None, *, batch: int, tokens: int,
-                dtype: torch.dtype, device) -> dict[str, torch.Tensor]:
-        if not self.columns:
-            return {"g_write": torch.ones(batch, tokens, self.num_heads,
-                                          dtype=dtype, device=device)}
-        if logits.shape[-1] != self.columns:
-            raise ValueError(
-                f"the side gain takes {self.columns} logit column(s) per head, got "
-                f"{logits.shape[-1]}")
-        biased = logits + self.gain_bias.to(logits.dtype)[None, None, :, :]
-        return {"g_write": softplus_side_gain(biased[..., WRITE_GAIN]).to(dtype)}
-
-
 __all__ = [
     "WRITE_GAIN",
     "GainConfig",
-    "SideGain",
     "gain_layout",
     "init_side_gain_bias",
     "softplus_side_gain",

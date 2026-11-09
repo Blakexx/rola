@@ -5,11 +5,12 @@ say when the tensor pipe sat idle or what else was happening then. This one read
 activity over time on the real card, through the profiler's PM sampling. Each gate cell gets a
 timeline of true utilization and a chart.
 
-    python tools/pipe_timeline.py --cell flagship-dense            # capture, then read with the stored scale
-    python tools/pipe_timeline.py --cell flagship-dense --rep r.ncu-rep
-    python tools/pipe_timeline.py --cell flagship-dense --calibrate  # on a ROLA_CARRY_PARTS=none build
+    bazel run //tools:pipe_timeline -- --cell flagship-dense            # capture, then read with the stored scale
+    bazel run //tools:pipe_timeline -- --cell flagship-dense --rep r.ncu-rep
+    bazel run //tools:pipe_timeline -- --cell flagship-dense --calibrate  # on a `--//:carry_parts=none` build
 
-**The capture.** It uses the Nsight Compute CLI 2025.3 or later, found at `/usr/local/cuda-13.0/bin/ncu`.
+**The capture.** It uses the Nsight Compute CLI 2025.3 or later: the pinned one (`tools/nsight_compute_pin.json`),
+found by its pin (`dev_config.ncu()`).
 The 2024.1 CLI that ships with CUDA 12.4 has no PM sampling. The capture runs `--section PmSampling` over
 one launch of the cell through the probe worker. The profiler replays the kernel over several passes
 (five here). Each pass samples one single-pass counter group at a fixed interval, 1 µs on this card

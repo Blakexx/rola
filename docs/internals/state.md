@@ -9,7 +9,7 @@ Vocabulary, defined here and used unqualified below: `N` = leaf count;
 `cols` = `d_v` plus one mass column (the ratio readout's denominator);
 `BH` = `batch * heads`; **atom** = 16 consecutive leaves in canonical leaf order,
 which is the page granule; **slot** = the physical page an atom is mapped to;
-`BC` = leaves one owner block owns.
+`BC` = the carry's box in leaves, the arena's allocation extent.
 
 ## The two axes: strategy vs backing
 
@@ -23,8 +23,8 @@ made mechanical.
 
 ```python
 s = rola.state()                        # unbound
-y, s = rola.rola_op(routes, v, state=s) # bound to this call's shape; s is mutated
-y, _ = rola.rola_op(routes, v)          # stateless: (y, None)
+y, s = rola.rola_op(routes, values, state=s) # bound to this call's shape; s is mutated
+y, _ = rola.rola_op(routes, values)          # stateless: (y, None)
 ```
 
 `rola.state` IS THE CONSTRUCTOR, unambiguously: the class and the function live in
@@ -47,7 +47,7 @@ does: it governs what a paged arena PRE-COMMITS, not what a call computes. A fra
 above `0.0` reserves that fraction of each batch-head's full residency as physical slots
 a decode step can admit into ON THE DEVICE, with no host round trip — `0.0` is EXACT
 COMMITMENT, unchanged from before the pool existed. The mechanics — sizing, the
-pre-zeroed ordinary slots, the device-side claim and its shadow row, exhaustion and
+pre-zeroed ordinary slots, the device-side claim, exhaustion and
 refill — are [`paging/paging.md` §the-slack-pool](paging/paging.md#the-slack-pool); what
 the pool changes at THIS seam is [§5b](#decode-seam).
 
@@ -87,43 +87,42 @@ what every kernel derives its addressing from:
 | `D`, `B` | the routing depth and the PER-LEVEL widths `B_l`, each a power of two at or above 16 (the axis law: the floor is `K_max`, which keeps every span inside one level's run and the atom inside one level) |
 | `order` | the canonical leaf order — MSB-first mixed radix, and a FIELD rather than an assumption, so a second order is a refusal and not a silent reinterpretation of somebody's bytes |
 | `page_bits` | the page rectangle: the trailing `log2(16)` canonical bits. The page IS that rectangle |
-| `DV` | the value width; `cols = DV + 1` is the page's LOGICAL width, not its layout |
-| `dtype` | `"fp32 as split bf16 planes"` — the logical element is fp32, and [section 3](#backing) is how the word is stored |
+| `DV` | the value width, a multiple of 32 (one exponent a 32-channel group); `cols = DV + 1` is the page's LOGICAL width, not its layout |
+| `dtype` | `"s24 hi/lo planes at an s8 group exponent, fp32 mass"` — the int8 state format ([section 3](#backing)); the unported carry's own descriptor names its split fp32 page |
 | `ids` | the page-table id space, `BH * N / 16` |
 
 **PREFILL AND DECODE SHARE ONE ADMISSION LAW: THE DESCRIPTOR** (Blake, 2026-08-29).
 Decode accepts exactly what prefill accepts — the same `D`, the same per-level `B_l`
-(powers of two at or above 16), the same `N = prod_l B_l`, the same `DV`, bf16 operands,
+(powers of two at or above 16), the same `N = prod_l B_l`, the same `DV`, the same operand format,
 and therefore the same topologies. There is no decode-only shape, no decode-only
 tolerance and no decode-only admission branch anywhere, tests included: a second
 admission law is a second contract to keep in step with the first, and the two kernels
 partition ONE paged state.
 
 **Later calls are CHECKED against it, and a mismatch is a refusal at the seam naming
-the field that differs** — at `_kernel_entry` for a chunk call, at `_decode_entry` for a
-step. This REPLACES the old "later calls are NOT checked" clause and the accepted hazard
-that went with it: two states of the same `N` and `cols` built from DIFFERENT widths
-have different leaf orders, and interchanging them used to be silent. It is refused now,
-because the leaf order, the page rectangle and the value width are precisely what a
+the field that differs** — at `_kernel_entry` for a prefill call, at `_decode_entry` for a
+step. Two states of the same `N` and `cols` built from DIFFERENT widths have different
+leaf orders, and interchanging them is refused, because the leaf order, the page rectangle and the value width are
+precisely what a
 kernel addresses bytes with — a state that disagrees with the call is not a risk for the
 caller to own, it is a wrong address. Resubmitting an older state, sharing one between
 two sequences and continuing after a `clone` stay legal and the caller's semantics to
 own. The descriptor is fixed for the state's life and travels with the
 `LayerContinuation`; a re-layout is an explicit state op, never something a call does.
 
-**C1a PINS THIS CONTRACT WITHOUT A KERNEL BODY**
-(`tests/unit/test_state_contract.py`): the seven-field list above, each field's own
+**`tests/unit/test_state_contract.py` PINS THIS CONTRACT WITHOUT A KERNEL BODY**: the seven-field list above, each
+ field's own
 refusal, and that `_kernel_entry` (prefill) and `_decode_entry` (decode) both build the
 call's presented format through `_format_of` and check it through `StateFormat.check` --
 the same two calls, never a second comparison at either seam, which is the ADMISSION LAW
 paragraph above made structural.
 
-**PAD (card `C_CLEAN_SLATE.md`'s C2) KEEPS THIS DESCRIPTOR AT SEVEN FIELDS.** The
+**PADDING KEEPS THIS DESCRIPTOR AT SEVEN FIELDS.** The
 logical-vs-padded split (`b_l` the caller's width, `B_l` the padded, shipped one) lives
 at the op call surface (`rola.ops.padding`, `docs/internals/padding.md`), never here:
 `StateFormat.B` still carries only the lawful, padded width, and `_format_of` still
 builds it from whatever widths the presented routing carries. A caller reaches this
-descriptor with an already-padded `RouteFactors` (`rola.routing.producer.RouteProducer`'s
+descriptor with an already-padded `RouteFactors` (the layer producer's
 own bundle stays at the caller's logical widths, unpadded, by a DIFFERENT, pinned
 contract -- `tests/unit/test_api_contract.py`), so `check()`'s refusal message names
 padded numbers on both sides, never a logical one -- a genuine limit: two different
@@ -150,26 +149,17 @@ The backing is chosen at BIND time and is not a per-call flag:
   bit-identity gate compares the paged backing against. A FRESH dense bind is ZEROED: the exit sweep stores the atoms a call WRITES and no others, so the atoms it
   skips must already hold the zero an absent paged atom reads as.
 
-<a id="split-planes"></a>**THE PAGE STORES SPLIT bf16 PLANES**, in
-BOTH backings. A page — one atom, 16 leaves — holds
+<a id="int8-state"></a>**THE PAGE IS THE INT8 STATE FORMAT** (ruled 2026-09-28), in BOTH backings. A page — one
+atom, 16 leaves — holds
 
-    [16 x DV hi][16 x DV lo][16 mass hi][16 mass lo]
+    [16 x DV hi s16][16 x DV lo u8][16 x DV/32 exponent s8][16 mass fp32]
 
-where `hi || lo` is the fp32 word exactly. The bytes are the fp32 page's bytes
-(`16 * cols * 4`), so the arena, the page table, the id space, the VMM commitment and
-the 4 GiB displacement bound are unmoved; what changes is that a hi row is one 128 B
-line (the fp32 row was 260 B and never line-aligned), the mass rides its own blocks
-rather than column `DV` of each row, and **an atom a call only READS moves half the
-bytes**. The geometry and its two `PRMT`s live in
-[`common/state_page.md`](common/state_page.md#geometry).
-
-THE DECLARATION THAT MAKES HI-ONLY READS EXACT RATHER THAN APPROXIMATE: **the readout
-operand is the hi plane in every kernel.** Prefill's MMA A operand has been
-`hi_bf16x2` of the accumulator since F1b; decode states the same of its own readout.
-So a lo plane is observable only through an atom's continued ACCUMULATION, which is
-the WRITTEN case, and the written case moves and stores both planes. Against the fp64
-oracle this is a dual run: the truth oracle REPORTS the difference and the gate
-asserts against the bf16-mirrored band.
+a leaf-channel the s24 `hi << 8 | lo` at its (leaf, 32-channel group)'s power-of-two exponent, the mass fp32:
+about 3.03 bytes a leaf-channel against fp32's 4, fp32-class precision (a 24-bit mantissa, a shared exponent a
+group). The arena, the page table, the id space and the VMM commitment address `page_bytes`-sized slots and are
+otherwise unmoved; a read that needs only the s16 operand touches the hi plane alone. The geometry and the codec
+live in [`common/state_page.md`](common/state_page.md#geometry). The unported carry keeps its split fp32 page and
+refuses this format by name, so a stateful prefill is refused until its int8 port.
 
 THERE IS NO RAGGED STATE (Blake, 2026-08-29). `N = prod_l B_l` with every `B_l` a power
 of two at or above 16, so a lawful state is PAGE ALIGNED BY CONSTRUCTION, and a leaf
@@ -216,7 +206,7 @@ the warp-box half lands with that stage rather than in a fifth derivation of the
 `paging=True` is REFUSED: paging is on by default, so there is nothing to turn on, and
 the expert overrides the MAPPING only. Dense and paged are ONE kernel, one ABI, one
 accumulation order and one base translation — `torch.equal`, not a tolerance
-(`tests/integration/test_chunk_paging_equivalence.py`). A caller cannot observe
+(`tests/integration/test_decode_paging.py`). A caller cannot observe
 which backing a state has except by asking (`state.paged`), and no result depends on
 the answer. A state never switches backing mid-life: there is one arm, and it reads
 whichever backing the state bound.
@@ -228,8 +218,8 @@ exists to avoid, and the rejoin is a second reason not to.
 
 ## <a id="backing-policy"></a>4. What the state contributes to a kernel call
 
-The ORDER of a stateful call is the chunk DAG's and is stated there
-([`engine/chunk_dag.md` §4](engine/chunk_dag.md#host-order)). What is the STATE's own
+The ORDER of a stateful call is the prefill DAG's and is stated there
+([`engine/prefill_dag.md`](engine/prefill_dag.md)). What is the STATE's own
 is this: `_kernel_entry` plans the call's atoms into slots and hands back
 `(s_in, arena)`, and `_kernel_commit` takes the final plane for a state that just BOUND
 a dense backing — a paged state owns the arena's plane, and a dense continuation was
@@ -238,7 +228,7 @@ launched into its own.
 ### <a id="four-shapes"></a>The kernel's four shapes, and no plane the caller did not make
 
 `state_in` and `state_out` are two references the caller hands the kernel, and every
-layer above it (`rola.ops.carry.carry_forward`, `rola.ops.prefill.prefill`) passes them
+layer above it (`rola.ops.prefill.prefill`) passes them
 through and allocates nothing (ruling 2026-09-08). Neither is the NULL-STATE call:
 nothing comes in, nothing goes out, no sweep runs. `state_in` alone is READ-ONLY: the
 readout against a frozen state, the folds accumulate in registers and are never stored.
@@ -252,12 +242,11 @@ the CALLER'S COMMITMENT rather than a shape the call derives: the pre-analysis r
 activity bits and allocates the pages the call will touch before it runs (Blake,
 2026-09-15), so the kernel never reaches a page nobody committed, and a pool smaller than
 the state's atom count is what paging is for. An atom with no slot reads as zero and is
-never stored. Both shapes are refused at the surface (`rola.ops.carry._refuse_state`) and
-again at the kernel boundary (`csrc/rola/src/carry/carry_host.cuh`'s `refuse_pool`). The state lives in the
+never stored. The state lives in the
 register file between the two sweeps -- the exit sweep is a whole store of the box's
 written atoms, never a read-modify-write of bytes -- which is why the out plane needs no
 prior contents and why in and out may be one tensor. A plane comes from
-`rola.ops.carry.state_plane` (dense, zeroed) or the arena (paged, with its page table).
+the caller (dense, zeroed) or the arena (paged, with its page table).
 
 ### <a id="the-dense-continuation"></a>The continuation advances IN PLACE, in either backing
 
@@ -267,16 +256,14 @@ reason it is worth stating: a second whole-written `[BH, N, d_v + 1]` fp32 plane
 hundreds of megabytes at the parity curve's `N`, it scales with the growth axis, and a
 transient whose only job is to be swapped in buys nothing the caller can observe.
 
-**What makes it safe is the CTA structure, not a convention.** The owner blocks tile the
-leaf space exactly, so each atom belongs to exactly one CTA and, inside it, to one slot
-group: the deleted consumer's `atom_first()` was `blockIdx.y`, the block's BC-aligned leaf
-base and the group's offset, and the entry fold and the store epilogue iterate the SAME
-`kAtoms` from the SAME base. The entry fold runs ONCE, in the prologue, before the first
-super-chunk is staged; the store runs ONCE, in the epilogue, after the last drain. So no
-CTA ever reads an atom another CTA may already have stored, and no CTA reads its own
-after storing it. Nothing in the walk between them touches the plane — which is why a
-short or ragged final super-chunk changes none of this: the state fold sits outside the
-chunk walk entirely.
+**What makes it safe is the CTA structure, not a convention.** The boxes tile the leaf
+space exactly, so each atom belongs to exactly one CTA. A kernel with state I/O reads its
+box's atoms ONCE, before its first window, and stores them ONCE, after its last, from the
+same base, so no CTA reads an atom another CTA may already have stored and no CTA reads
+its own after storing it. That is the contract the carry's entry and exit sweeps owe;
+the rebuilt carry has no state I/O yet ([`docs/open-work.md`](../open-work.md)). The decode
+step updates in place under its own argument: its write positions partition the leaves
+([`decode/decode.md#determinism`](decode/decode.md#determinism)).
 
 **The cost is that no stateful call is transactional.** A launch that faults part way
 through the grid leaves the plane part advanced, in either backing. Recovering a
@@ -311,8 +298,10 @@ the facade, and the dense-contents bridge that existed to carry it (`_dense_entr
 
 ## <a id="decode-seam"></a>5b. The `T = 1` seam
 
-`rola.engine.dags.decode_dag.decode_forward(routes, v, state, decay=..., expert=...)` takes
-and returns the state exactly as `rola_op` does. Three things live behind that seam:
+`rola.engine.dags.decode_dag.decode_step_gated(routes, v, state, decay=..., expert=...)` takes and
+returns the state exactly as `rola_op` does, and its caller owns the verdict (`growth_pending`, then
+`admit_growth` and the step again -- the layer's `_step` and one-token `forward`). Three things live
+behind that seam:
 
 * **The frozen carrier and the scratch** (`DecodeGeometry`, `DecodeScratch`) are the
   decode DAG's own memoized nodes, not the state's — launch machinery fails the
@@ -462,4 +451,4 @@ origin, which bounds a plane at 4 GiB (~1,032,192 pages) and is refused loudly a
 The dense backing hits it first and the paged backing IS the answer to it; when a cell
 does reach it, the two backings need different lifts (one per-`bh` 64-bit base for dense,
 arena sharding for paged). Stated at
-[`carry/carry_kernel.md`](carry/carry_kernel.md).
+[`carry/ampere/carry_kernel.md`](carry/ampere/carry_kernel.md).

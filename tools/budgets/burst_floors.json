@@ -1,4 +1,0 @@
-{
- "carry_kernel.cuh:frag_mma": 97.3,
- "carry_kernel.cuh:readout_tile": 69.0
-}

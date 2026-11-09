@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R9 ENFORCEMENT LINT (KERNEL_STANDARDS "§R9 ENFORCEMENT: A STRUCTURE BRANCH FAILS LOUD AT EVERY
+"""R9 ENFORCEMENT LINT (CONSTITUTION "§R9 ENFORCEMENT: A STRUCTURE BRANCH FAILS LOUD AT EVERY
 LAYER"). Gated by `tools/lint/ratchet.py r9_enforcement`.
 
 R9 says a CTA-uniform branch on structure (a runtime switch/if-chain over an
@@ -50,6 +50,7 @@ CSRC = ROOT / "csrc" / "rola"
 
 SWITCH_RE = re.compile(r"^\s*switch\s*\(\s*(\w+)\s*\)")
 IF_RE = re.compile(r"^\s*(?:}\s*else\s+)?if\s*(constexpr)?\s*\(\s*(\w+)\s*(==|!=)")
+ELSE_IF_RE = re.compile(r"^\s*}\s*else\s+if\b")
 MARKER_RE = re.compile(r"//\s*R9-CASES:")
 TRAP_RE = re.compile(r"__trap\s*\(")
 DEFAULT_RE = re.compile(r"^\s*default\s*:")
@@ -123,7 +124,8 @@ def if_chain_findings(path: Path, lines: list[str]) -> list[str]:
     n = len(lines)
     while i < n:
         m = IF_RE.match(lines[i])
-        if not m or m.group(1) == "constexpr":
+        #: an `} else if` continues the chain its first `if` started (and is walked from there); it never starts one
+        if not m or m.group(1) == "constexpr" or ELSE_IF_RE.match(lines[i]):
             i += 1
             continue
 

@@ -1,0 +1,363 @@
+{
+ "experiment": "vote_stash",
+ "question": "what does the facts pass's first stage pay to keep each digit's live bytes -- a STASH a (window, digit), its live bytes in token order, one byte an entry -- beside the vote that turns its rows into bitlists, and does the row stream keep its rate?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "70cb9766df254420b535023e92b324baad8cdb58",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-08T19:25:02+00:00",
+ "utilization_before": 1,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "vote / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    453.579765,
+    453.269022,
+    452.465489,
+    453.306078,
+    454.656608
+   ],
+   "median": 453.306078,
+   "min": 452.465489,
+   "max": 454.656608,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash a digit / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    189.25322,
+    189.684371,
+    189.418205,
+    174.790622,
+    189.462044
+   ],
+   "median": 189.418205,
+   "min": 174.790622,
+   "max": 189.684371,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    439.930851,
+    245.845241,
+    437.676412,
+    438.484343,
+    438.980625
+   ],
+   "median": 438.484343,
+   "min": 245.845241,
+   "max": 439.930851,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "vote / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    452.877318,
+    452.844915,
+    453.20912,
+    453.704017,
+    453.95403
+   ],
+   "median": 453.20912,
+   "min": 452.844915,
+   "max": 453.95403,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash a digit / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    111.66539,
+    106.016461,
+    111.65804,
+    111.700619,
+    110.068976
+   ],
+   "median": 111.65804,
+   "min": 106.016461,
+   "max": 111.700619,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    417.651864,
+    416.838746,
+    418.425003,
+    416.87401,
+    419.386569
+   ],
+   "median": 417.651864,
+   "min": 416.838746,
+   "max": 419.386569,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote / k 64",
+   "unit": "bytes a cycle",
+   "samples": [
+    453.503902,
+    452.886602,
+    453.678511,
+    453.678636,
+    452.740432
+   ],
+   "median": 453.503902,
+   "min": 452.740432,
+   "max": 453.678636,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash a digit / k 64",
+   "unit": "bytes a cycle",
+   "samples": [
+    80.949396,
+    80.92948,
+    80.974921,
+    80.911604,
+    80.967883
+   ],
+   "median": 80.949396,
+   "min": 80.911604,
+   "max": 80.974921,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 64",
+   "unit": "bytes a cycle",
+   "samples": [
+    270.331344,
+    271.863726,
+    270.92085,
+    272.017908,
+    272.002604
+   ],
+   "median": 271.863726,
+   "min": 270.331344,
+   "max": 272.017908,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 4 / 8 warps, 2 stages",
+   "unit": "bytes a cycle",
+   "samples": [
+    440.320386,
+    442.233205,
+    441.595011,
+    442.240646,
+    441.209401
+   ],
+   "median": 441.595011,
+   "min": 440.320386,
+   "max": 442.240646,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 4 / 6 warps, 2 stages, tiled",
+   "unit": "bytes a cycle",
+   "samples": [
+    425.029676,
+    407.637642,
+    421.093332,
+    424.035542,
+    424.355845
+   ],
+   "median": 424.035542,
+   "min": 407.637642,
+   "max": 425.029676,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 4 / 4 warps, 3 stages, tiled",
+   "unit": "bytes a cycle",
+   "samples": [
+    407.843541,
+    407.7435,
+    407.373435,
+    407.945282,
+    408.498167
+   ],
+   "median": 407.843541,
+   "min": 407.373435,
+   "max": 408.498167,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 16 / 6 warps, 2 stages, tiled",
+   "unit": "bytes a cycle",
+   "samples": [
+    396.961877,
+    398.062196,
+    397.199552,
+    398.593874,
+    398.743413
+   ],
+   "median": 398.062196,
+   "min": 396.961877,
+   "max": 398.743413,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "vote + stash packed / k 16 / 4 warps, 3 stages, tiled",
+   "unit": "bytes a cycle",
+   "samples": [
+    297.228295,
+    297.528343,
+    297.762485,
+    297.502045,
+    297.904228
+   ],
+   "median": 297.528343,
+   "min": 297.228295,
+   "max": 297.904228,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void vote_stash::stage1<(int)2, (int)4, (int)3, (int)1>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 64,
+   "ops": {
+    "LOP3.LUT": 112,
+    "IADD3": 111,
+    "IMAD.MOV.U32": 92,
+    "IMAD.IADD": 60,
+    "LDS": 56,
+    "LEA.HI": 45,
+    "SHF.R.S32.HI": 43,
+    "IADD3.X": 40,
+    "CALL.REL.NOINC": 38,
+    "BRA": 37,
+    "MOV": 36,
+    "SEL": 36
+   }
+  },
+  "void vote_stash::stage1<(int)2, (int)6, (int)2, (int)1>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 64,
+   "ops": {
+    "LOP3.LUT": 117,
+    "IMAD.MOV.U32": 104,
+    "IADD3": 102,
+    "IMAD.IADD": 64,
+    "LDS": 56,
+    "LEA.HI": 45,
+    "SHF.R.S32.HI": 42,
+    "CALL.REL.NOINC": 38,
+    "BRA": 37,
+    "MOV": 36,
+    "SEL": 36,
+    "IADD3.X": 32
+   }
+  },
+  "void vote_stash::stage1<(int)2, (int)8, (int)2, (int)0>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 56,
+   "ops": {
+    "LOP3.LUT": 123,
+    "IADD3": 98,
+    "IMAD.MOV.U32": 94,
+    "IMAD.IADD": 61,
+    "LEA.HI": 41,
+    "LDS": 40,
+    "CALL.REL.NOINC": 37,
+    "BRA": 36,
+    "SEL": 36,
+    "MOV": 35,
+    "SHF.R.S32.HI": 34,
+    "IADD3.X": 32
+   }
+  },
+  "void vote_stash::stage1<(int)2, (int)8, (int)3, (int)0>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 54,
+   "ops": {
+    "LOP3.LUT": 120,
+    "IADD3": 108,
+    "IMAD.MOV.U32": 96,
+    "IMAD.IADD": 58,
+    "LEA.HI": 41,
+    "IADD3.X": 40,
+    "LDS": 40,
+    "CALL.REL.NOINC": 37,
+    "BRA": 36,
+    "SHF.R.S32.HI": 36,
+    "SEL": 36,
+    "MOV": 35
+   }
+  },
+  "void vote_stash::stage1<(int)1, (int)8, (int)3, (int)0>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 56,
+   "ops": {
+    "LOP3.LUT": 111,
+    "IADD3": 108,
+    "LEA.HI": 41,
+    "LDS": 40,
+    "IADD3.X": 35,
+    "LDGSTS.E.BYPASS.128": 32,
+    "SHF.R.S32.HI": 27,
+    "IMAD.SHL.U32": 24,
+    "BRA": 19,
+    "IMAD.IADD": 18,
+    "IMAD": 18,
+    "IMAD.MOV.U32": 17
+   }
+  },
+  "void vote_stash::stage1<(int)0, (int)8, (int)3, (int)0>(const unsigned char *, unsigned int *, unsigned char *, int *, long long *)": {
+   "regs": 48,
+   "ops": {
+    "LOP3.LUT": 92,
+    "IADD3": 80,
+    "LEA.HI": 41,
+    "LDS": 40,
+    "LDGSTS.E.BYPASS.128": 32,
+    "IMAD.IADD": 23,
+    "SHF.R.S32.HI": 20,
+    "IADD3.X": 19,
+    "IMAD.X": 18,
+    "IMAD.MOV.U32": 16,
+    "PRMT": 16,
+    "NOP": 15
+   }
+  },
+  "vote_stash::fill(unsigned char *, int)": {
+   "regs": 28,
+   "ops": {
+    "LOP3.LUT": 22,
+    "SHF.R.U32.HI": 20,
+    "IADD3": 14,
+    "NOP": 9,
+    "IMAD.WIDE.U32": 6,
+    "IMAD": 6,
+    "UIADD3": 6,
+    "IADD3.X": 5,
+    "STG.E.U8": 5,
+    "UMOV": 4,
+    "BRA": 4,
+    "IMAD.MOV.U32": 3
+   }
+  }
+ }
+}

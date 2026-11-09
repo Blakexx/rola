@@ -208,7 +208,7 @@ def permutation(widths, k: int, m: int, device="cuda") -> torch.Tensor:
         d = (ell // math.prod(widths[l + 1:])) % widths[l]
         o_term += (d // s[l]) * math.prod(g[l + 1:])
         #: THE INTRA-BOX ORDER: mixed radix over the owner's run offsets, most
-        #: significant level first -- `box.cuh`'s `run_of`.
+        #: significant level first.
         local += (d % s[l]) * math.prod(s[l + 1:])
     return o_term * bc + local
 

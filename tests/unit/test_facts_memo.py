@@ -86,12 +86,9 @@ def test_a_dropped_sequence_drops_its_scratch():
 #: discipline a gate rather than a habit.
 def _decode_scratch_facts():
     from rola.ops.decode import derive_decode_geometry
+    from tests.oracle.oracle_fixtures import _topology
 
-    class _Topology:
-        widths = (16, 16)
-
-    return {"geometry": derive_decode_geometry(_Topology(), d_v=64, decay=False, BH=2,
-                                               device="cpu"),
+    return {"geometry": derive_decode_geometry(_topology((16, 16)), d_v=64, decay=False),
             "BH": 2, "device": "cpu"}
 
 
@@ -99,11 +96,11 @@ PER_STATE_FACTS = {"scratch": _decode_scratch_facts}
 
 
 def _shipped_per_state_nodes() -> list[Node]:
-    from rola.engine.dags.chunk_dag import CHUNK_DAG
-    from rola.engine.dags.decode_dag import DECODE_STEP, DECODE_VERDICT
+    from rola.engine.dags.decode_dag import DECODE_STEP
+    from rola.engine.dags.prefill_dag import PREFILL_DAG
 
     seen: dict[int, Node] = {}
-    for dag in (CHUNK_DAG, DECODE_STEP, DECODE_VERDICT):
+    for dag in (PREFILL_DAG, DECODE_STEP):
         seen.update({id(step): step for step in dag if step.per_state})
     return list(seen.values())
 
@@ -209,71 +206,6 @@ def test_a_supplied_fact_short_circuits_its_producer():
     assert facts["read_plane"] == "supplied" and not calls
 
 
-@pytest.fixture
-def census(monkeypatch):
-    """The manifest primitive over a COUNTING stand-in for the extension.
-
-    Device-free by the same argument as the rest of this file: the census is a fact
-    about the loaded binary, and what is under test is how many times it is read.
-    """
-    from rola.engine.facts import manifest
-
-    reads: list[str] = []
-
-    class _Ext:
-        def chunk_arms(self):
-            reads.append("chunk")
-            return [(32, 128, 2, 64, 0, 0, 0, 0, 0)]
-
-    manifest.chunk_arms.cache_clear()
-    monkeypatch.setattr(manifest, "extension", _Ext)
-    yield manifest, reads
-    manifest.chunk_arms.cache_clear()
-
-
-def test_the_build_census_is_read_once_however_many_folds_ask_for_it(census):
-    """A PRIMITIVE declares its caching. The census is a function of the loaded
-    binary and of nothing else, and it has several call sites -- the chunk DAG's
-    node, the adapters in `facts/call.py` and the bitmap-alone helper -- so a
-    per-site memo would be all of them agreeing by hand."""
-    manifest, reads = census
-
-    for _ in range(4):
-        assert manifest.chunk_arms() == ((32, 128, 2, 64),)
-
-    assert reads == ["chunk"], (
-        f"the census was read {len(reads)} times for one binary: {reads}")
-
-
-def test_a_cached_census_is_immutable(census):
-    """A shared cached value a caller could mutate would not be a fact."""
-    manifest, _ = census
-
-    assert isinstance(manifest.chunk_arms(), tuple)
-
-
-def test_the_chunk_dag_is_walkable_and_declares_its_discipline():
-    """The shipped DAG is validated at import; this is that check made visible, plus
-    the two properties a reader would otherwise have to trust."""
-    from rola.engine.dags.chunk_dag import CHUNK_DAG
-
-    assert all(isinstance(step, Node) for step in CHUNK_DAG)
-    joins = [step for step in CHUNK_DAG if step.waits]
-    reads = [step for step in CHUNK_DAG if step.host_sync]
-    assert len(joins) == 1 and len(reads) == 1
-    tables = next(step for step in CHUNK_DAG if step.name == "facts_tables")
-    assert set(tables.gives) == {"union_table", "atom_bits"}, (
-        "the union table and the atom bitmap came apart; they are one pass over the "
-        "amplitude plane and two nodes would read it twice")
-    order = [step.name for step in CHUNK_DAG]
-    assert order.index("facts_tables") < order.index("residency"), (
-        "the facts pass moved past the admission it feeds; the atom bitmap IS the "
-        "page plan's input")
-    assert order.index("join") < order.index("block_bits"), (
-        "the Join moved past the block bitmap, which reads the page table the "
-        "admission writes")
-
-
 # ---------------------------------------------------------------------------
 # the decode family's two structural declarations
 # ---------------------------------------------------------------------------
@@ -291,14 +223,10 @@ def test_the_decode_step_is_declared_capturable_end_to_end():
     proves the claim is a property of the DECLARATION, so a node added to the step
     without the attribute fails here rather than at someone's first `graph.replay()`.
     """
-    from rola.engine.dags.decode_dag import DECODE_STEP, DECODE_VERDICT, read_verdict
+    from rola.engine.dags.decode_dag import DECODE_STEP
 
     assert all(step.capturable for step in DECODE_STEP)
     assert not any(step.host_sync for step in DECODE_STEP)
-    assert [step for step in DECODE_VERDICT if step.host_sync] == [read_verdict]
-    #: and the verdict read is the LAST node: it is enqueued behind the launches it
-    #: reads the answer of, which is the whole of the host order.
-    assert DECODE_VERDICT[-1] is read_verdict
 
 
 def test_a_reference_only_node_is_refused_by_every_shipped_dag():
@@ -308,37 +236,22 @@ def test_a_reference_only_node_is_refused_by_every_shipped_dag():
     set. Splicing it into a shipped DAG would make the gate compare the probe against
     itself, and `validate_dag` is where that is refused.
     """
-    from rola.engine.dags.chunk_dag import CHUNK_DAG
-    from rola.engine.dags.decode_dag import DECODE_STEP, DECODE_VERDICT, write_atom_bitmap
+    from rola.engine.dags.decode_dag import DECODE_STEP, write_atom_bitmap
+    from rola.engine.dags.prefill_dag import PREFILL_DAG
 
     assert write_atom_bitmap.reference_only
-    for dag in (CHUNK_DAG, DECODE_STEP, DECODE_VERDICT):
+    for dag in (PREFILL_DAG, DECODE_STEP):
         assert not any(step.reference_only for step in dag)
     with pytest.raises(ValueError, match="second derivation"):
         validate_dag((write_atom_bitmap,), ("routes", "geometry"))
 
 
-def test_the_decode_dag_is_walkable_and_masks_the_growth_band_off_the_dense_step():
-    """The step is the LAST node, and the host-visible verdict band is the dense mask's.
-
-    RESTATED with the absorption: the growth band used to be a node ahead of the step,
-    which the dense mask dropped and which the ordering assertion pinned in front. There
-    is no such node -- the step derives the verdict itself, in its own launch -- so what
-    is left to state is where the verdict can be READ: after the launch that publishes
-    it, and only where there is a page table to publish about.
-    """
-    from rola.engine.dags.decode_dag import DECODE_STEP, DECODE_VERDICT, read_verdict
+def test_the_decode_dag_ends_at_the_step_and_its_verdict_is_read_outside_it():
+    """The step is the LAST node, and no node reads the host. The verdict is the step's own output, read by
+    `growth_pending` at the caller's synchronization -- after the launch that publishes it, and only where there is a
+    page table to publish about -- so the whole tuple is the captured one."""
+    from rola.engine.dags.decode_dag import DECODE_STEP
 
     assert all(isinstance(node, Node) for node in DECODE_STEP)
-    assert read_verdict.masks == (Mask.M4,), (
-        "the verdict is the paged backing's own fact; asking it of a dense step would "
-        "read a growth flag no launch wrote")
-    assert read_verdict not in DECODE_STEP, (
-        "DECODE_STEP is the CAPTURABLE tuple and a host read cannot be captured")
-    order = [node.name for node in DECODE_VERDICT]
-    assert order.index("step") < order.index("read_verdict"), (
-        "the verdict is the step's own output, so the read cannot precede it")
-    assert order[-1] == "read_verdict", "the read is the last thing a decode step does"
-    assert DECODE_VERDICT[:len(DECODE_STEP)] == DECODE_STEP, (
-        "the two tuples must be one recipe: the verdict tuple is the captured one plus a "
-        "read, never a different walk")
+    assert DECODE_STEP[-1].name == "step", "the step is the last thing the decode tuple does"
+    assert not any(node.host_sync for node in DECODE_STEP), "a host read cannot be captured"

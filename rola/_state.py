@@ -9,8 +9,8 @@ Storage (an arena or a dense plane), a page table, the logical shape
 (docs/internals/state.md).
 
     s = rola.state()                     # unbound; the first call binds the shape
-    y1, s = rola.rola_op(routes1, v1, state=s)
-    y2, s = rola.rola_op(routes2, v2, state=s)
+    y1, s = rola.rola_op(routes1, values1, state=s)
+    y2, s = rola.rola_op(routes2, values2, state=s)
 
 ``state=None`` is the stateless call and returns ``(y, None)``. That predicate --
 ``state is not None`` -- is the whole engagement signal at the op and at the layer.
@@ -44,8 +44,13 @@ PAGE_RECTANGLE_BITS = MMA_K_QUANTUM.bit_length() - 1
 #: reinterpretation of somebody's bytes.
 CANONICAL_ORDER = "mixed-radix-msb-first"
 
-#: The stored form of an fp32 state value: the two halves of the word live in two
-#: separate bf16 planes of the page, and ``hi || lo`` is the fp32 word exactly.
+#: THE STATE FORMAT (ruled 2026-09-28): a leaf-channel is an s24 at its (leaf, 32-channel group)'s s8
+#: power-of-two exponent, stored as an s16 hi plane and a u8 lo plane; the mass is fp32
+#: (`rola.ops.paging.page_layout`, docs/internals/common/state_page.md).
+STATE_DTYPE = "s24 hi/lo planes at an s8 group exponent, fp32 mass"
+
+#: THE UNPORTED CARRY'S OWN PAGE, fp32 split into two bf16 planes: it describes the carry's
+#: descriptor alone, and the carry port deletes it.
 SPLIT_PLANE_DTYPE = "fp32 as split bf16 planes"
 
 #: The per-level width floor (``B_l`` a power of two at or above 16 = ``K_max``), which
@@ -89,7 +94,9 @@ class StateFormat:
         if self.page_bits != PAGE_RECTANGLE_BITS:
             raise ValueError(
                 f"the page rectangle is the trailing {PAGE_RECTANGLE_BITS} canonical bits")
-        if self.DV % 2:
+        if self.dtype == STATE_DTYPE and self.DV % 32:
+            raise ValueError(f"a channel group is 32 channels, so DV is a multiple of 32; got {self.DV}")
+        if self.dtype == SPLIT_PLANE_DTYPE and self.DV % 2:
             raise ValueError(
                 f"the split planes address a PAIR of value columns per 32-bit access, so DV is "
                 f"even; got {self.DV}")
@@ -120,8 +127,11 @@ class StateFormat:
 
     @property
     def page_bytes(self) -> int:
-        """``[16 x DV hi][16 x DV lo][16 mass hi][16 mass lo]`` -- the same bytes an
-        fp32 page held, re-laid out so a hi row is one line."""
+        """One page's bytes: the int8 state page (`rola.ops.paging.page_layout`), or the carry's split fp32 page."""
+        if self.dtype == STATE_DTYPE:
+            from rola.ops.paging import page_layout
+
+            return page_layout(self.DV).bytes
         return (1 << self.page_bits) * self.cols * 4
 
     def check(self, other: StateFormat) -> None:
@@ -144,7 +154,7 @@ def _format_of(routes, d_v: int, BH: int) -> StateFormat:
     for width in widths:
         n *= width
     return StateFormat(D=len(widths), B=widths, order=CANONICAL_ORDER,
-                       page_bits=PAGE_RECTANGLE_BITS, DV=int(d_v), dtype=SPLIT_PLANE_DTYPE,
+                       page_bits=PAGE_RECTANGLE_BITS, DV=int(d_v), dtype=STATE_DTYPE,
                        ids=BH * (n >> PAGE_RECTANGLE_BITS))
 
 
@@ -281,7 +291,9 @@ class RoLAState:
             return None
         if self._arena is not None:
             return self._arena.materialize().view(self._shape)
-        return self._plane.view(self._shape)
+        from rola.ops.paging import decode_pages
+
+        return decode_pages(self._plane, self._format.DV).view(self._shape)
 
     def clone(self, strategy: str | None = None) -> RoLAState:
         """An EAGER deep copy, and the only sanctioned strategy change.
@@ -338,17 +350,18 @@ class RoLAState:
                       paging: bool, BC: int):
         """`(s_in, arena)` for the kernel arm, with this call's pages committed.
 
-        The chunk DAG has already run the atom-bitmap pass, so the only thing that
+        The prefill DAG has already run the activity pass, so the only thing that
         happens here is `plan_exact` on the arena's side stream -- one device-to-host
         size read, no other synchronization. The DAG's Join is what puts the
-        admission before the block bitmap and the launch
-        (docs/internals/engine/chunk_dag.md#the-join).
+        admission before anything reads the page table and before the launch
+        (docs/internals/engine/prefill_dag.md).
 
         `BC` arrives FROM THE CALL and is never stored: it is allocator policy (the
         extent default is one owner's atoms), and every ADDRESS is `BC`-invariant by
         the atom re-key, so a `BC` flip between calls neither rebuilds the arena nor
         moves a byte.
         """
+        routes.refuse_grouped("the carried state")
         presented = _format_of(routes, d_v, routes.batch * routes.heads)
         if not self.bound:
             self._shape = (routes.batch, routes.heads, routes.topology.N, d_v + 1)
@@ -425,7 +438,7 @@ class RoLAState:
                                       self._shape[0] * self._shape[1]))
         if self._arena is not None:
             return self._arena.state, self._arena.page_table, self._arena
-        return self._plane.view(self._shape), None, None
+        return self._plane, None, None
 
     def _decode_entry_arena(self, bitmap: torch.Tensor):
         """Admit `bitmap`'s atoms into the carried arena and hand it back.

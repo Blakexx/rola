@@ -131,113 +131,6 @@ Activation: TypeAlias = RoutingActivation
 
 
 @dataclass(frozen=True, slots=True)
-class RouteDescriptor:
-    """Versioned compact routing ABI shared by every routing consumer.
-
-    Values are physically tile-major: ``[BH, ceil(T/32), sum_width, 32]``.
-    Support is packed once per zero-capable level as signed ``int32`` storage
-    carrying uint32 bit patterns in
-    ``[BH, ceil(T/32), sum_sparse_width]``.  There is deliberately no token-major
-    view, padded branch width, digits table, or per-level support tensor in this
-    contract.  A cleared support bit guarantees that the corresponding stored
-    side factor is zero; a set bit may conservatively accompany a stored zero.
-    """
-
-    read_values: torch.Tensor
-    write_values: torch.Tensor
-    support_words: torch.Tensor
-    level_offsets: tuple[int, ...]
-    support_offsets: tuple[int, ...]
-    level_widths: tuple[int, ...]
-    radix_strides: tuple[int, ...]
-    support_side_flags: tuple[int, ...]
-    token_origin: int
-    token_count: int
-    topology_stamp: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        for name, tensor in (
-            ("read_values", self.read_values),
-            ("write_values", self.write_values),
-            ("support_words", self.support_words),
-        ):
-            if not isinstance(tensor, torch.Tensor):
-                raise TypeError(f"{name} must be a torch.Tensor")
-        if self.read_values.ndim != 4 or self.write_values.ndim != 4:
-            raise ValueError("route values must have rank 4")
-        if self.support_words.ndim != 3:
-            raise ValueError("support_words must have rank 3")
-
-        offsets = tuple(self.level_offsets)
-        support_offsets = tuple(self.support_offsets)
-        widths = tuple(self.level_widths)
-        strides = tuple(self.radix_strides)
-        flags = tuple(self.support_side_flags)
-        stamp = tuple(self.topology_stamp)
-        d = len(widths)
-
-        if d == 0 or len(offsets) != d + 1:
-            raise ValueError("level_offsets must contain D + 1 entries for a nonempty routing plan")
-        validate_routing_shape(widths, owner="RouteDescriptor")
-        if any(type(value) is not int for value in (*offsets, *support_offsets, *widths, *strides, *flags, *stamp)):
-            raise TypeError("RouteDescriptor metadata must contain exact ints")
-        if len(support_offsets) != d or len(strides) != d or len(flags) != d:
-            raise ValueError("RouteDescriptor metadata must contain one entry per routing level")
-        if offsets[0] != 0 or any(end - start != width or width < 2 for start, end, width in zip(offsets, offsets[1:], widths)):
-            raise ValueError("level_offsets must be compact slices matching level_widths >= 2")
-        expected_support_offset = 0
-        for offset, width, flag in zip(support_offsets, widths, flags):
-            if flag not in (0, READ_SUPPORT, WRITE_SUPPORT, READ_SUPPORT | WRITE_SUPPORT):
-                raise ValueError("support_side_flags entries must be READ=1 and/or WRITE=2")
-            if flag == 0:
-                if offset != -1:
-                    raise ValueError("dense routing levels must use support offset -1")
-            else:
-                if offset != expected_support_offset:
-                    raise ValueError("support offsets must compactly represent each sparse level once")
-                expected_support_offset += width
-        expected_strides = tuple(prod(widths[index + 1:]) for index in range(d))
-        if strides != expected_strides:
-            raise ValueError("radix_strides must be canonical MSB-first mixed-radix strides")
-        if type(self.token_origin) is not int or self.token_origin < 0:
-            raise ValueError("token_origin must be a nonnegative exact int")
-        if type(self.token_count) is not int or self.token_count < 0:
-            raise ValueError("token_count must be a nonnegative exact int")
-        route_tiles = (self.token_count + ROUTE_TILE_SIZE - 1) // ROUTE_TILE_SIZE
-        expected_value_shape = (self.read_values.shape[0], route_tiles, offsets[-1], ROUTE_TILE_SIZE)
-        if (
-            self.read_values.dtype != torch.bfloat16
-            or self.write_values.dtype != torch.bfloat16
-            or self.read_values.shape != expected_value_shape
-            or self.write_values.shape != expected_value_shape
-            or not self.read_values.is_contiguous()
-            or not self.write_values.is_contiguous()
-        ):
-            raise ValueError("route values must be contiguous bf16 [BH, route_tiles, sum_width, 32] arenas")
-        if self.read_values.device != self.write_values.device:
-            raise ValueError("read and write route arenas must share a device")
-        expected_support_shape = (self.read_values.shape[0], route_tiles, expected_support_offset)
-        if (
-            self.support_words.dtype != torch.int32
-            or self.support_words.shape != expected_support_shape
-            or not self.support_words.is_contiguous()
-            or self.support_words.device != self.read_values.device
-        ):
-            raise ValueError(
-                "support_words must be contiguous int32 uint32-bit patterns "
-                "[BH, token_words, sum_sparse_width]")
-        expected_stamp = (ROUTE_DESCRIPTOR_VERSION, d, *widths, *strides, *flags)
-        if stamp != expected_stamp:
-            raise ValueError("topology_stamp does not match the RouteDescriptor ABI metadata")
-        object.__setattr__(self, "level_offsets", offsets)
-        object.__setattr__(self, "support_offsets", support_offsets)
-        object.__setattr__(self, "level_widths", widths)
-        object.__setattr__(self, "radix_strides", strides)
-        object.__setattr__(self, "support_side_flags", flags)
-        object.__setattr__(self, "topology_stamp", stamp)
-
-
-@dataclass(frozen=True, slots=True)
 class IndependentRouting:
     """One routing LEVEL: its branch width and its two per-duty activations.
 
@@ -295,14 +188,6 @@ class IndependentRouting:
         """This level's operator choice at another branch width."""
         return IndependentRouting(width=width, read=self.read, write=self.write)
 
-    def duty_simplex_output(self, duty: str) -> bool:
-        """Whether this cell's own output already lands on the simplex.
-
-        Independent routing hands each duty one WHOLE solve, so the duty's answer is
-        the activation's registry column unchanged.
-        """
-        return activation_properties(self.activation(duty)).simplex_output
-
 
 @dataclass(frozen=True, slots=True)
 class UnionRouting:
@@ -329,10 +214,6 @@ class UnionRouting:
                 "without exact structural zeros there is no support to intersect, only "
                 "small numbers, and the read/write split would be silently meaningless")
 
-    @property
-    def properties(self) -> ActivationProperties:
-        return properties_for(("entmax", self.alpha), owner="UnionRouting")
-
     def activation(self, duty: str) -> EntmaxActivation:
         """Union routing runs ONE solve, so both duties name the same activation."""
         if duty not in ("read", "write"):
@@ -342,18 +223,6 @@ class UnionRouting:
     def at(self, width: int) -> UnionRouting:
         """This level's operator choice at another branch width."""
         return UnionRouting(width=width, alpha=self.alpha)
-
-    def duty_simplex_output(self, duty: str) -> bool:
-        """Whether this cell's own output already lands on the simplex.
-
-        The write duty receives the shared solve WHOLE, so it is the activation's
-        registry column. The read duty receives a SPLIT of that solve's support and
-        therefore a strict share of its mass: measured across the shipped census, the
-        read sum runs as low as 7e-4, so the column does not transfer to it.
-        """
-        if duty not in ("read", "write"):
-            raise ValueError(f"duty must be 'read' or 'write', got {duty!r}")
-        return duty == "write" and self.properties.simplex_output
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,7 +238,7 @@ class TiedRouting:
     generically); a field and a method cannot share one name on a ``slots=True``
     dataclass, and the accessor is the name the rest of the tree already dispatches on.
 
-    A tied SOFTMAX level is legal and is DENSE_BOTH: validation is a registry lookup
+    A tied SOFTMAX level is legal and dense on both sides: validation is a registry lookup
     (``activation_properties``), not a list of admissible activation names, so any row
     -- entmax or softmax -- is accepted the moment it exists in
     ``rola/routing/activations.py``.
@@ -382,10 +251,6 @@ class TiedRouting:
         validate_level_width(self.width, owner="TiedRouting")
         activation_properties(self.op, owner="TiedRouting.op")
 
-    @property
-    def properties(self) -> ActivationProperties:
-        return activation_properties(self.op, owner="TiedRouting")
-
     def activation(self, duty: str) -> RoutingActivation:
         """Tied routing runs ONE solve, so both duties name the same activation."""
         if duty not in ("read", "write"):
@@ -395,17 +260,6 @@ class TiedRouting:
     def at(self, width: int) -> TiedRouting:
         """This level's operator choice at another branch width."""
         return TiedRouting(width=width, op=self.op)
-
-    def duty_simplex_output(self, duty: str) -> bool:
-        """Whether this cell's own output already lands on the simplex.
-
-        Tied routing hands both duties the SAME whole solve, so the duty's answer is
-        the activation's registry column unchanged -- identical to
-        :meth:`IndependentRouting.duty_simplex_output` on a shared solve.
-        """
-        if duty not in ("read", "write"):
-            raise ValueError(f"duty must be 'read' or 'write', got {duty!r}")
-        return self.properties.simplex_output
 
 
 LevelRouting: TypeAlias = IndependentRouting | TiedRouting | UnionRouting
@@ -678,9 +532,9 @@ class ResolvedRouting:
 # they already satisfy the contract's shapes. Only the topology/decay
 # wrappers are new. These are producer-agnostic: they describe the routing
 # contract the naive oracle (``rola/ops/naive.py``) consumes, not a
-# projection ABI. They deliberately do not reuse ``ResolvedRouting`` /
-# ``RouteDescriptor``, which are packed-router / kernel ABI types tied to the
-# earlier Q/K-shaped producer and are not part of this contract.
+# projection ABI. They deliberately do not reuse ``ResolvedRouting``, a
+# packed-router type tied to the earlier Q/K-shaped producer and not part of
+# this contract.
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True, slots=True)
@@ -688,9 +542,9 @@ class OpaqueActivation:
     """The activation of a cell this package did not solve.
 
     A producer is duck-typed, so a level may be filled by a map with no registry row of
-    its own. Its cell still has to answer every question the rules ask -- density,
-    ratification, normalization -- and it answers them from ONE row, ``("opaque",
-    None)``, whose columns are argued in ``rola/routing/activations.py``.
+    its own. Its cell still has to answer every question the rules ask -- density and
+    ratification -- and it answers them from ONE row, ``("opaque", None)``, whose columns
+    are argued in ``rola/routing/activations.py``.
     """
 
     @property
@@ -731,10 +585,6 @@ class OpaqueRouting:
     def at(self, width: int) -> OpaqueRouting:
         """The same opaque declaration at another branch width."""
         return OpaqueRouting(width=width)
-
-    def duty_simplex_output(self, duty: str) -> bool:
-        """The opaque row's column: a foreign producer's output is never vouched for."""
-        return activation_properties(self.activation(duty)).simplex_output
 
 
 LevelRouting: TypeAlias = IndependentRouting | TiedRouting | UnionRouting | OpaqueRouting
@@ -798,7 +648,7 @@ class Topology:
 
         ``widths == padded_widths`` for an ideal (power-of-two >= 16, every level)
         model: :meth:`padded` still returns an equivalent ``Topology`` in that case,
-        so a caller may always call it uniformly (KERNEL_STANDARDS §R9: a structure
+        so a caller may always call it uniformly (CONSTITUTION §R9: a structure
         branch is a derived fact, never a data-dependent shortcut) -- this property
         exists for callers that want to skip a genuinely zero-cost pad.
         """
@@ -843,15 +693,6 @@ class Topology:
         """That cell's registry row -- the ONLY source of activation properties."""
         return activation_properties(
             self.activation(level, duty), owner=f"Topology.levels[{level}].{duty}")
-
-    def duty_simplex_output(self, level: int, duty: str) -> bool:
-        """Whether that cell's own map already lands on the simplex.
-
-        THE fold's licence to skip a level. It is a routing-form
-        question and not only an activation one, because a routing form may hand a
-        duty a share of a solve rather than the whole of it.
-        """
-        return self.levels[level].duty_simplex_output(duty)
 
     def duty_cells(self) -> tuple[tuple[int, str], ...]:
         """Every `(level, duty)` cell, so a rule can quantify over the whole grid
@@ -925,32 +766,10 @@ class LeafMassDecay:
         object.__setattr__(self, "dials", dials)
 
     def validate_against(self, topology: Topology) -> None:
-        """Check level count, per-level width, and the WRITE-side mass precondition.
-
-        **Mass decay requires a `normalized` write side.** The clock is
-        `c[t,s] = prod_l p_write_stored[t, d_l(s)]` and the survival factor is
-        `(1 - rate_leaf)**c` -- an expression that prices a decay per unit of MASS
-        DEPOSITED. If the write side does not land on the simplex, `c` is no longer
-        a unit-mass share and the same routing decays by an amount that depends on
-        the un-normalized scale of the logits, which is not a modeling choice anyone
-        made. Stated against the registry column, so it covers every present and
-        future activation without naming one.
-        """
+        """Check level count and per-level width. The clock needs no property of the write side: it is each leaf's
+        SHARE of the token's write, computed from the write rows themselves (docs/CONSTITUTION.md#r23), so it prices
+        survival per unit of deposited mass whatever magnitude a level carries."""
         widths = topology.widths
-        unnormalized = [
-            (level, topology.activation(level, "write").tag)
-            for level in range(topology.D)
-            if not topology.activation_properties(level, "write").normalized
-        ]
-        if unnormalized:
-            raise ValueError(
-                f"LeafMassDecay requires a `normalized` write side on every level; "
-                f"levels {unnormalized} name activations whose registry row says "
-                "`normalized=False`. The decay clock prices survival per unit of "
-                "DEPOSITED MASS, so an un-normalized write side makes the amount "
-                "decayed depend on the scale of the logits rather than on the "
-                "routing. Configure a normalized write activation, or do not "
-                "configure mass decay")
         if len(self.dials) != len(widths):
             raise ValueError(
                 f"LeafMassDecay.dials must contain one tensor per level (D={len(widths)}), "

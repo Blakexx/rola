@@ -45,10 +45,28 @@ CONSTRUCTIONS = {c.name: c for c in (
     _c("chunk-decode-w16", (16, 16), 1.5, 1.0, "layer-B2-T128-H2-h128-dv64-fp32-s4-dec8", "prefill + 8 carried steps"),
     _c("chunk-decode-la-w256", (256,), None, 1.0, "layer-B2-T128-H2-h128-dv64-fp32-s10-dec8",
        "D = 1 flat dense: the LA control for the routed decode"),
+    #: THE CAPACITY-FAIR LONG LAYER: T = N = 65,536 a head, four heads, the alternating split, at rising logit gains --
+    #: the weights realize the support (`tools/realized_support.py`), so a layer reading spans it
+    *(_c("nl64k-alt-h4" + ("" if gain == 1.0 else f"-g{gain:g}"), (256, 256), 1.5, gain,
+         "layer-B1-T65536-H4-h256-dv64-bf16-s11", f"the capacity-fair long layer at logit gain {gain:g}")
+      for gain in (1.0, 4.0, 16.0)),
     #: THE PRODUCER SWEEP: one entmax constructor at rising logit gains; the realized density must fall across it
     *(_c(f"producer-sweep-g{gain:g}", (64, 64), 1.5, gain, "layer-B1-T128-H4-h64-dv64-fp32-s201",
          "the producer sweep: the logit gain moves the realized density") for gain in (0.25, 1.0, 4.0, 16.0)),
 )}
+
+
+def _levels(construction: Construction):
+    """The construction's levels. Every side has a dense level (docs/api.md section 2.1), so an entmax construction is
+    the ALTERNATING split: entmax on the write duty at the even levels (read-dense) and on the read duty at the odd
+    (write-dense). A softmax construction, and any depth-one one, is dense on both sides."""
+    from rola import dense_routing, split_routing
+
+    widths = construction.widths
+    if construction.alpha is None or len(widths) == 1:
+        return [dense_routing(w) for w in widths]
+    return [split_routing(w, construction.alpha, sparse_duty="write" if level % 2 == 0 else "read")
+            for level, w in enumerate(widths)]
 
 
 def build(cell, construction: Construction) -> dict:
@@ -61,25 +79,24 @@ def build(cell, construction: Construction) -> dict:
     import torch
     from rola_devtools.cells.layer import realize
 
-    from rola import RoLA, RouteProducer, dense_routing, union_routing
+    from rola import RoLA, Routing
 
     if cell.name not in construction.cells:
         raise ValueError(f"{construction.name} is declared for {list(construction.cells)}, not {cell.name}")
     torch.manual_seed(cell.seed)
-    template = union_routing(1, construction.alpha) if construction.alpha is not None else dense_routing(1)
-    producer = RouteProducer([template.at(w) for w in construction.widths], hidden_size=cell.hidden_size,
-                             num_heads=cell.H)
-    layer = RoLA(producer, d_v=cell.dv, decay=None, layer_idx=0).to("cuda", cell.torch_dtype).eval()
+    routing = Routing(_levels(construction))
+    layer = RoLA(routing, hidden_size=cell.hidden_size, num_heads=cell.H, d_v=cell.dv, decay=None,
+                 layer_idx=0).to("cuda", cell.torch_dtype).eval()
     if construction.logit_gain != 1.0:
         with torch.no_grad():
-            producer.route_W.mul_(construction.logit_gain)
+            layer.route_W.mul_(construction.logit_gain)
     for param in layer.parameters():
         param.requires_grad_(False)
     drawn = realize(cell)
     x, v = drawn.x, drawn.v
     with torch.no_grad():
-        routes = layer.routes(x[:, :cell.tokens])
-    return {"cell": cell, "construction": construction, "layer": layer, "producer": layer.routes, "x": x, "v": v,
+        routes, _values = layer._produce(x[:, :cell.tokens])
+    return {"cell": cell, "construction": construction, "layer": layer, "x": x, "v": v,
             "routes": routes, "v_prefill": v[:, :cell.tokens].contiguous(),
             "v_kernel": v[:, :cell.tokens].to(torch.bfloat16).contiguous()}
 

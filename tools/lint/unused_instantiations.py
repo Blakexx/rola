@@ -14,7 +14,7 @@ SCOPE IS `__global__` ONLY, NOT `__device__` -- MEASURED, not assumed. The
 manifest's `entries` are keyed from `ptxas -v`'s "Compiling entry function
 '...' for 'sm_XX'" line (`tools/ratify.py`'s `ENTRY` regex) -- `ptxas -v`
 reports ENTRY FUNCTIONS ONLY. A `__device__` helper (`ops.cuh`'s `stage_run`,
-`box.cuh`'s `canon_leaf_acc`, ...) is normally `__forceinline__` and inlined
+`geom.cuh`'s `geom_read_index`, ...) is normally `__forceinline__` and inlined
 into every kernel that calls it; it has NO standalone symbol in this project's
 manifest format regardless of whether it is used. Checking `__device__`
 templates the same way as `__global__` ones was tried first and produced 65
@@ -61,8 +61,8 @@ least one arm is one the shipped set says gets instantiated, so its absence
 from the manifests is a ratification the milestone owes and is printed as
 `pending ratification`; a kernel no declaration would instantiate is the
 closed world leaking, and that is the gating finding. The manifest-versus-
-binary half of the same question is `setup.py`'s post-build check and
-`tools/ratify.py --check`, both of which run against a real build.
+binary half of the same question is the library's arm gate (`bazel/gates.py`) and
+ratify's verdict (`bazel test //:ratified`), both of which run against a real build.
 """
 from __future__ import annotations
 
@@ -172,7 +172,7 @@ def self_test() -> int:
 #: THE FAMILIES WHOSE MEMBERSHIP IS DECLARED AS DATA, and the file that declares each.
 #: A `csrc/rola/src/<family>/` directory whose declaration names at least one arm HAS a
 #: shipped instantiation by construction, whatever the manifests currently record.
-DECLARATIONS = {"carry": MANIFEST_DIR / "shipped_set.json"}
+DECLARATIONS = {"carry": MANIFEST_DIR / "shipped_set.json", "scale": MANIFEST_DIR / "scale_set.json"}
 
 
 def declared_families() -> dict:

@@ -1,0 +1,28 @@
+{
+ "unit": "instructions per warp tile pair (a warp's 16 readers against its writer columns of one 64-token writer tile), every digit live, (256, 256), the f16 natural form",
+ "components": {
+  "reader": "reader_part",
+  "copies": "stage_share",
+  "gate": "gate_table",
+  "gram": "gram_dense",
+  "fold": "fold_level",
+  "epilogue": "epilogue",
+  "value": "value_product",
+  "deposit": "deposit",
+  "gram_slabs": "gram_slabs"
+ },
+ "cells": {
+  "nl64k-dense": {
+   "gram": 400.0,
+   "fold": 40.0,
+   "epilogue": 90.0,
+   "value": 130.0,
+   "copies": 40.0,
+   "reader": 30.0,
+   "gate": 2.0,
+   "deposit": 16.0,
+   "hmma": 144.0,
+   "gram_slabs": 0
+  }
+ }
+}

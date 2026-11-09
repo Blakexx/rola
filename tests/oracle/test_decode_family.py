@@ -29,20 +29,30 @@ realize it, asserted, rather than staging it.
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import pytest
 import torch
 
 from rola.engine.facts.call import arm_refusal
-from rola.engine.rules.arm import CHUNK_TOKENS
 from rola.ops.decode import _decode_step, derive_decode_geometry
 from rola.ops.lattice import to_canonical, to_lattice
 from rola.ops.naive import naive_rola
-from rola.ops.paging import bytes_equal, from_split_planes, to_split_planes
+from rola.ops.paging import bytes_equal
 from rola.routing.factors import RouteFactors
 from rola.routing.types import LeafMassDecay
-from tests.oracle.fixtures import assert_slots_close, oracle_run
+from tests.oracle.fixtures import (
+    assert_slots_close,
+    bundle_operands,
+    logical_state,
+    oracle_run,
+    state_pages,
+    state_quantum,
+    state_rounded,
+    step_bundles,
+    with_gain,
+)
 from tests.oracle.oracle_fixtures import _decay_dials, _simplex, _topology
 from tests.oracle.tolerances import DECODE_STATE, DECODE_Y
 
@@ -51,12 +61,11 @@ pytestmark = [
     pytest.mark.skipif(not torch.cuda.is_available(), reason="decode is a CUDA kernel"),
 ]
 
-#: The prefill leg runs on the CHUNK arm, whose built manifest is
-#: uniform-width, so the family's topology is a built `(D, B)` and its prefill
-#: length is a multiple of `rola.engine.rules.arm.CHUNK_TOKENS`. DECODE's own envelope
-#: is unchanged -- it is BC-blind and topology-general -- so that is a
-#: constraint the PREFILL puts on the fixture, not one decode acquired.
+#: The prefill leg is the fp64 oracle, so the family's topology and prefill length are the fixture's own.
+#: DECODE's envelope is BC-blind and topology-general.
 _WIDTHS, _DV, _B, _H = (64, 64), 64, 2, 2
+#: the oracle prefill's length, in tokens.
+_PREFILL_TOKENS = 64
 
 
 def _draw(gen, device, T, p_read, p_write, *, widths=_WIDTHS, H=_H, B=_B, dv=_DV,
@@ -107,6 +116,11 @@ def _f32(d):
             for k, v in d.items()}
 
 
+def _bundles(step, topology):
+    """A drawn step in the internal format: what the kernel reads, and whose values the oracle takes."""
+    return step_bundles(step["v"], step["read"], with_gain(step["write"], step["g_write"]), topology)
+
+
 # ---------------------------------------------------------------------------
 # 1. The prefill -> decode handoff, across the regime arms
 # ---------------------------------------------------------------------------
@@ -127,16 +141,14 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
     """
     device = "cuda"
     gen = torch.Generator(device=device).manual_seed(9000 + int(decay_on))
-    T, steps = 2 * CHUNK_TOKENS, 4
+    T, steps = _PREFILL_TOKENS, 4
     topology = _topology(_WIDTHS)
     decay = (None if not decay_on else
              LeafMassDecay(dials=_decay_dials(_WIDTHS, _H, gen, device)))
     pre = _draw(gen, device, T, 0.5, 0.4,
                 write_live=_WIDTHS[0] // 2)
     f = _f32(pre)
-    bundle = RouteFactors(
-        topology=topology, read=f["read"], write=f["write"],
-        g_write=f["g_write"])
+    bundle = RouteFactors.from_levels(topology, f["read"], with_gain(f["write"], f["g_write"]))
     if decay_on:
         # The decay retirement: decay is not a feature of the operator. The
         # kernel arm names the refusal and the dispatch routes such a call to
@@ -144,35 +156,38 @@ def test_the_handoff_holds_across_the_arms_from_an_oracle_prefill(decay_on):
         # conditions, and the oracle below keeps the handoff semantics alive.
         reason = arm_refusal(bundle, decay, d_v=_DV)
         assert reason is not None and "decay" in reason, reason
-        naive_rola(pre["v"], pre["read"], pre["write"],
-                   pre["g_write"], topology, decay,
-                   output_final_state=True)
+        naive_rola(pre["v"], pre["read"], with_gain(pre["write"], pre["g_write"]), topology, decay, output_final_state=True)
         return
     assert arm_refusal(bundle, decay, d_v=_DV) is None, "the prefill fixture left the envelope"
-    ref = oracle_run(pre["v"], pre["read"], pre["write"], pre["g_write"], topology, decay)
+    ref = oracle_run(pre["v"], pre["read"], with_gain(pre["write"], pre["g_write"]), topology, decay)
+    #: the hand-off state is a STORED one: both sides continue from the int8 format's values.
+    ref = ref._replace(state=state_rounded(ref.state))
 
-    config = derive_decode_geometry(topology, d_v=_DV, decay=decay_on, BH=_B * _H,
-                                  device=device)
+    config = derive_decode_geometry(topology, d_v=_DV, decay=decay_on)
     #: THE SEAM: the oracle's plane is canonical, the kernel's is lattice-ordered.
-    state = to_split_planes(to_lattice(ref.state.float(), _WIDTHS, config.lattice_k, config.lattice_m))
+    state = state_pages(to_lattice(ref.state.float(), _WIDTHS, config.lattice_k, config.lattice_m))
     workspace, cold_seen = None, False
     for s in range(steps):
-        step = _draw(gen, device, 1, 0.5, 0.4)
-        fs = _f32(step)
-        y, state, workspace = _decode_step(
-            fs["v"], fs["read"], fs["write"], fs["g_write"],
-            config, state, decay=decay, workspace=workspace)
-        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
+        routes, values = _bundles(_draw(gen, device, 1, 0.5, 0.4), topology)
+        y, state, workspace = _decode_step(routes, values, config, state, decay=decay, workspace=workspace)
+        ref = oracle_run(*bundle_operands(routes, values), topology, decay, entry=ref)
+        ref = ref._replace(state=state_rounded(ref.state))
         assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"y at step {s}")
-        canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
-        assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what=f"the state at step {s}")
+        canonical = to_canonical(_logical(state), _WIDTHS, config.lattice_k, config.lattice_m)
+        assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope,
+                           what=f"the state at step {s}", derived_atol=2 * state_quantum(ref.state))
 
-        R = _leaf_product(step["read"], _WIDTHS) != 0
+        R = _leaf_product(tuple(r.float() for r in routes.read_rows), _WIDTHS) != 0
         written = (_leaf_product(pre["write"], _WIDTHS) != 0).any(dim=1, keepdim=True)
         cold_seen = cold_seen or bool((R & ~written).any())
     assert cold_seen, (
         "no decode step read a prefill-cold leaf; the fixture stopped realizing "
         "the corner this family owns natively")
+
+
+def _logical(state):
+    """The kernel's stored pages as the logical ``[B, H, N, d_v + 1]`` lattice-ordered state."""
+    return logical_state(state, _DV).reshape(_B, _H, -1, _DV + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -196,23 +211,22 @@ def test_the_horizon_is_conformant_at_every_checkpoint_not_just_the_end():
     m0 = 0.1 * torch.randn(_B, _H, N, cols, device=device, dtype=torch.float64,
                            generator=gen)
     m0[..., _DV] = m0[..., _DV].abs()
+    m0 = state_rounded(m0)
 
-    config = derive_decode_geometry(topology, d_v=_DV, decay=True, BH=_B * _H,
-                                  device=device)
-    state = to_split_planes(to_lattice(m0.float(), _WIDTHS, config.lattice_k, config.lattice_m))
+    config = derive_decode_geometry(topology, d_v=_DV, decay=True)
+    state = state_pages(to_lattice(m0.float(), _WIDTHS, config.lattice_k, config.lattice_m))
     ref = m0
     workspace = None
     for s in range(1, max(_CHECKPOINTS) + 1):
-        step = _draw(gen, device, 1, 0.5, 0.4)
-        fs = _f32(step)
-        y, state, workspace = _decode_step(
-            fs["v"], fs["read"], fs["write"], fs["g_write"],
-            config, state, decay=decay, workspace=workspace)
-        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, decay, entry=ref)
+        routes, values = _bundles(_draw(gen, device, 1, 0.5, 0.4), topology)
+        y, state, workspace = _decode_step(routes, values, config, state, decay=decay, workspace=workspace)
+        ref = oracle_run(*bundle_operands(routes, values), topology, decay, entry=ref)
+        ref = ref._replace(state=state_rounded(ref.state))
         if s in _CHECKPOINTS:
-            canonical = to_canonical(from_split_planes(state), _WIDTHS, config.lattice_k, config.lattice_m)
+            canonical = to_canonical(_logical(state), _WIDTHS, config.lattice_k, config.lattice_m)
             assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"y at checkpoint {s}")
-            assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope, what=f"the state at checkpoint {s}")
+            assert_slots_close(canonical, ref.state, output=DECODE_STATE, envelope=ref.state_envelope,
+                               what=f"the state at checkpoint {s}", derived_atol=2 * state_quantum(ref.state))
     # NON-VACUITY: the horizon must actually accumulate fp32-vs-fp64 distance —
     # a zero at the far end would mean the comparison is comparing nothing.
     assert bool((canonical.double() != ref.state).any())
@@ -224,9 +238,9 @@ def test_the_horizon_is_conformant_at_every_checkpoint_not_just_the_end():
 # ---------------------------------------------------------------------------
 
 def test_the_decode_split_is_performance_only_under_drift():
-    """Freeze THREE carriers at three ``n_split`` values, then run the SAME
+    """Freeze THREE carriers at three grid sizes (``ctas``), then run the SAME
     drifted stream (sparse steps and dense steps in one sequence) through each.
-    ``n_split`` sizes the LAUNCH -- how many CTAs divide the row space -- and
+    ``ctas`` sizes the LAUNCH -- how many resident CTAs claim the positions -- and
     nothing else, so the states must be BYTE-IDENTICAL across carriers and ``y``
     inside the oracle band. A split that could move a stored number would make
     how many CTAs ran a semantic input, and the whole reason the split can be
@@ -234,37 +248,33 @@ def test_the_decode_split_is_performance_only_under_drift():
     device = "cuda"
     gen = torch.Generator(device=device).manual_seed(9200)
     topology = _topology(_WIDTHS)
-    configs = {
-        f"n_split={n}": derive_decode_geometry(topology, d_v=_DV, decay=False, BH=_B * _H, device=device,
-            n_split=n)
-        for n in (1, 3, 8)
-    }
+    derived = derive_decode_geometry(topology, d_v=_DV, decay=False)
+    configs = {f"ctas={n}": dataclasses.replace(derived, ctas=n) for n in (1, 3, 8)}
     N, cols = topology.N, _DV + 1
     m0 = 0.1 * torch.randn(_B, _H, N, cols, device=device, dtype=torch.float64,
                            generator=gen)
     m0[..., _DV] = m0[..., _DV].abs()
+    m0 = state_rounded(m0)
     #: The drift: half the steps realized-sparse, half realized-dense, one stream.
-    steps = [_draw(gen, device, 1, p, p)
+    steps = [_bundles(_draw(gen, device, 1, p, p), topology)
              for p in (0.2, 0.2, 1.0, 1.0, 0.3, 1.0)]
 
     outcomes = {}
     for name, config in configs.items():
-        state = to_split_planes(to_lattice(m0.float(), _WIDTHS, config.lattice_k, config.lattice_m))
+        state = state_pages(to_lattice(m0.float(), _WIDTHS, config.lattice_k, config.lattice_m))
         workspace, ys = None, []
-        for step in steps:
-            fs = _f32(step)
-            y, state, workspace = _decode_step(
-                fs["v"], fs["read"], fs["write"], fs["g_write"],
-                config, state, workspace=workspace)
+        for routes, values in steps:
+            y, state, workspace = _decode_step(routes, values, config, state, workspace=workspace)
             ys.append(y)
         outcomes[name] = (ys, state)
 
     ref, refs = m0, []
-    for step in steps:
-        ref = oracle_run(step["v"], step["read"], step["write"], step["g_write"], topology, entry=ref)
+    for routes, values in steps:
+        ref = oracle_run(*bundle_operands(routes, values), topology, entry=ref)
+        ref = ref._replace(state=state_rounded(ref.state))
         refs.append(ref)
 
-    base = outcomes["n_split=1"]
+    base = outcomes["ctas=1"]
     for name, (ys, state) in outcomes.items():
         assert bytes_equal(state, base[1]), (
             f"the {name} carrier's STATE differs from the single-CTA one: the "
@@ -273,9 +283,7 @@ def test_the_decode_split_is_performance_only_under_drift():
             assert_slots_close(y, ref.y, output=DECODE_Y, envelope=ref.y_envelope, what=f"{name}, y at step {s} under drift")
 
     # The certificates half: an arm mismatch REFUSES rather than degrades.
-    step = _f32(steps[0])
+    routes, values = steps[0]
     with pytest.raises(ValueError, match="has_decay"):
-        _decode_step(step["v"], step["read"], step["write"],
-                       step["g_write"], configs["n_split=1"],
-                       base[1].clone(),
+        _decode_step(routes, values, configs["ctas=1"], base[1].clone(),
                        decay=LeafMassDecay(dials=_decay_dials(_WIDTHS, _H, gen, device)))

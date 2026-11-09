@@ -19,8 +19,7 @@
 # --index-strategy unsafe-best-match -o requirements.lock` (uv being present
 # on this box -- the card's "uv lock, or pip-compile if uv isn't available").
 # The extra index is required because a plain PyPI resolve of `torch` fetches
-# the CPU-only wheel, which is exactly the trap `docs/build.md` and
-# `pyproject.toml`'s `[build-system]` comment both name for the build itself.
+# the CPU-only wheel, and the extension is built against the CUDA one.
 
 # --- pyproject.toml's runtime dependencies ---
 # torch for the cu13 toolchain's CUDA major, from its `torch_index` (tools/toolchains/cu13.json).
@@ -35,13 +34,20 @@ pandas==3.0.3
 entmax==1.3
 pytest-xdist==3.8.0
 
-# --- [dev] extra: the commit gate's tools, at the versions .pre-commit-config.yaml and CI pin, so the gate runs from
-# this venv and never from a tool the host happens to have ---
+# --- [dev] extra: the lints' tools, at the versions CI pins, so a lint runs from this environment and never from a
+# tool the host happens to have ---
 ruff==0.14.10
-pre-commit==4.6.2
 vulture==2.16
+# the ast-grep gate's reader of its rule files (tools/lint/ast_grep_gate.py)
+pyyaml==6.0.3
 clang-format==19.1.7
 ast-grep-cli==0.45.2
+
+# --- the devbox's developer tools: a developer's commands the tree does not run, which the dev image and every
+# checkout's venv carry (docs/setup.md) ---
+py-spy==0.4.3
+#: the editor's language server, at the pinned clang-tidy's LLVM major (tools/clang_tidy_pin.json)
+clangd==22.1.1
 
 # --- shared pytest core (rola311-measured versions) ---
 pytest==9.1.1
@@ -52,10 +58,6 @@ pytest-metadata==3.1.1
 pytest-timeout==2.4.0
 hypothesis==6.165.10
 
-# --- setup.py's [build-system] requires (torch excluded there for the
-# no-build-isolation reason above; the rest are ordinary build deps) ---
+# --- torch.utils.cpp_extension's imports (ratify's compile path, the header self-check) ---
 setuptools>=61
-wheel
 packaging
-psutil==7.2.2
-ninja==1.13.0

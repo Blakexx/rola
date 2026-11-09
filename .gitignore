@@ -14,3 +14,4 @@ compile_commands.json
 
 # the dev container's host mounts, written by `python3 tools/dev.py container compose` (host paths, never committed)
 .devcontainer/compose.local.yaml
+.devcontainer/devbox_image.local

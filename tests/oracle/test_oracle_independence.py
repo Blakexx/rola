@@ -31,6 +31,7 @@ from rola.routing.types import (
     SoftmaxActivation,
     Topology,
 )
+from tests.oracle.fixtures import with_gain
 
 _ROUTING = IndependentRouting(
     width=1, read=SoftmaxActivation(), write=SoftmaxActivation())
@@ -109,8 +110,7 @@ def _oracle_outputs(topology):
     write = tuple(simplex(w) for w in widths)
     v = torch.randn(B, T, H, d_v, dtype=torch.float64)
     g_write = torch.rand(B, T, H, dtype=torch.float64) + 0.5
-    return naive_rola(v, read, write, g_write, topology, None,
-                      output_final_state=True)
+    return naive_rola(v, read, with_gain(write, g_write), topology, None, output_final_state=True)
 
 
 def test_perturbing_productions_strides_makes_the_oracle_disagree(monkeypatch):

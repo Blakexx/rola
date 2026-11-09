@@ -1,103 +1,112 @@
-# `carry/carry.cu` — the carry family's host seam
+# `carry/carry.cu` and `carry/carry.cuh` — the carry's constants, operand block and host seam
 
-Mirrors `csrc/rola/src/carry/carry.cu`, `carry/carry_arm.cuh` and
-`carry/carry_arm_abi.cuh`. The body has its own page, `carry_kernel.md`.
+Mirrors `csrc/rola/src/carry/carry.cuh` (the constants and the operand block every component reads) and
+`csrc/rola/src/carry/carry.cu` (the kernel boundary's refusals, the block's derivation from the carve, the dispatch
+over the built arms). The body has its own page, `ampere/carry_kernel.md`; the components `ampere/parts.md` and `ampere/fold.md`; an arm's
+plan `ampere/plan.md`.
+
+The carry is the inter-window term: each CTA owns a BOX of leaves (the carve's, `docs/internals/engine/rules.md#carve`,
+`docs/internals/engine/carve.md`) and walks a call's windows in order. Every window it reads the state before the
+window's writes out to the window's readers (the readout), then folds the window's writers into it (the fold). The
+state never leaves the registers inside a call; the readout reads an f16 image of it (`ampere/handoff.md#image`), each warp every
+leaf of the box for its channels (`ampere/readout.md`).
+
+<a id="constants"></a>
+## The constants
+
+- `kWarps = 8`, `kThreads = 256`: one CTA an SM, its register file holding the box's state.
+- The window W is the build's (`Plan<Arm, B>::kWindow`, [`../common/window.md`](../common/window.md)): the facts
+  pass, the scale pass and the intra read the same trait, so the inter/intra split is one recurrence.
+- THE BOX'S CAPS, every arm's: `kMaxExtent = 32` (a level's extent at most: the facts pass's group of digits, a lane
+  a list), `kStateValues` = 32,768 values = 256 lanes x 128 fp32 registers. An arm's own box is its plan's
+  (`ampere/plan.md#box`): its fold's lists and rows and its channels, their product the state.
+- `kListBound = 64`, `kListAt = 8`: a list's boundaries, its entries before every 64th union slot (the last its
+  length), so the carry chunks a union at any multiple of 64 the facts pass never sees, out in prefix form over the
+  list group's lists modulo 2^16 (`G + 1` rows, a row a list, then the group's, at most `kPreRows = 33`:
+  `ampere/plan.md#list-groups`) beside the group's exact totals;
+  `kListCap = kWindow` entries a list.
+- `max_steps(g)`, `plan_words(g)`: a window's plan record for a box class at `g` query heads a write head, its plan
+  word and a 16-bit step word a step (`ampere/schedule.md#plan`).
+- `kSliceBytes = 64`: a level's slice in a pool row, the box's 32 digits at f16.
+- `kMaxLevels = 4`: the depth the operand block addresses.
+
+<a id="sides"></a>
+## A side of the carve
+
+`Side` is one side's plan as the kernel addresses it. A side with a sparse level lists it (`list`) and forms its rows
+from its other levels (`operand`, in level order). GROUPED QUERIES: the CTA is a write head's (`H` in the block, the
+values' and the write rows' heads); its read rows are its `g` query heads', `g` by the read rows' heads over `H`, so a
+read union's slot holds a ROW, `j 512 + t` -- query head `j` of the write head (the call's `bh g + j`), token `t` --
+and a grouped read side lists at a level (refused otherwise, by name). A side with no sparse level (`list` -1) names two dense levels in
+`operand`: its row level, then its coefficient level, whose digit is each slot's coefficient for a list or a digit
+(`docs/internals/engine/carve.md#sides`). Each operand level carries its plane and element bytes. A level's slice is the
+box's digits of it from the box's first digit: `origin_of` decomposes the CTA's box index in level order, the channel
+group innermost.
+
+<a id="lists"></a>
+## The lists
+
+`SideLists` is the facts pass's output at a side's list level in its final form, per (batch-head, window), merged
+over `heads` query heads' rows (the read side's a write head's `g`, the write side's one;
+[`facts.md`](../facts/facts.md#lists-out)):
+
+- `entries`: a list's 8-byte entries in slot order, `kListCap` a query head, no pads. A read entry is its slot's pool row
+  offset in the union in 16-byte chunks with its swizzle folded in (the first word's low half), its token (its high
+  half: its query head's row, `j 512 + t`, its place in the scale bytes) and the coefficient (f16, the second word's low
+  half): a chunk from a multiple of 64 takes its pool back by its first slot's offset and its slot from the row
+  (`ampere/readout.md#chunk`). A write entry is the slot, then `c_v` and `c_m`. A step's lanes past a chunk's entries are
+  masked by the carry (a read lane's stores predicated off, a write lane's row 0 with c = 0).
+- `pre` (int16, the boundaries in prefix form modulo 2^16, the arm's list group plus one rows of `8 heads` columns) and
+  `totals` (int32,
+  the group's exact): `chunk_runs` turns a chunk's slots into each list's run and its place, `side_counts` reads the
+  totals.
+- `union_tok` and `union_count` (int32): per list group each slot's row (its query head and window-relative token,
+  `#sides`), and the slots' extent; a GAP slot holds `kGap` (bit 15 set), and a fill zero-fills its row.
+
+The addresses both kernels compute live here, one copy: `kGap` and `pool_chunk` (a pool row's 16-byte chunk swizzled by
+the slot's residue, or its high bits within each four for a row of an odd number of 64-byte quarters); `parts.cuh`'s
+`chunk_at` is `pool_chunk` at a compiled row.
+
+<a id="params"></a>
+## The operand block
+
+`CarryParams` reaches the kernel as a grid constant. The box is the carve's: `extents` a level, `channels`, and
+`stride`, a level's step in the box index (the channel groups innermost). Every pointer is the bundle's own memory:
+the rows and values at their strides (the row alignment law, `docs/internals/facts/facts.md`), the facts pass's
+lists, the cross-CTA sum's scale bytes (`scale`, an exponent byte a query head's token, a window wide so a window's
+copy is aligned: the scale pass's bound on |num(t)|, `scale/scale.md`, read only where `reduce` is f16 pairs). The
+outputs are `den` (each token's v+1 channel, `ampere/handoff.md#den`), `num` (a query head's: f16 pairs at each token's scale, or
+fp32 channels, by `reduce` -- `carry_api.md#carry-reduce`, `ampere/panel.md#drain`) and `check` (the final state's sum).
+`plans` are the plan pass's records (`ampere/schedule.md#pass`), a window's for each box class.
+`readout_f16` is the readout's accumulation (`carry_api.md#carry-readout-accumulate`); `forced` a plan form every
+window takes where it fits, -1 for none (`ampere/schedule.md#planner`). A bound capture copies the block and its grid out before the
+launch (`CarryCapture`, `carry_api.md#carry-capture-bind`).
 
 <a id="refusals"></a>
-## The kernel boundary refuses; it never translates
+## The kernel boundary refuses
 
-KERNEL_STANDARDS' two-contracts addendum: the API above accepts any shape and serves it by
-padding, and this boundary accepts only the descriptor's strict shape. `refuse_shape` and
-`refuse_operand` are the whole of it — the page rectangle, the depth, every level width a
-power of two at or above the page granule, a value width that is a power of two at or above
-sixteen, a launch shape the family builds, and then every operand's dtype, contiguity and
-exact extent. A carried state is refused unless its two planes are the SAME pointer, because
-the exit sweep stores only the pages this call writes and two planes would silently drop the
-rest.
+`carry_forward` takes the strict form and refuses everything else, naming the field:
 
-The closed-world arch refusal is the first statement of every entry, ahead of any of this: a
-device that was never measured outranks a shape that was never built.
+- depth 1 to 4; every width a power of two from 16, every extent a power of two dividing it; the box's leaves times
+  its channels exactly a CTA's state; the channel extent a power of two from 32 to 128, dividing `d_v` (the built
+  arms 32 and 64); the arm key's rows from 16 and channels from 32.
+- a side lists at most one level and forms its operand from all the others; a list level spans the arm's list group
+  (the box's lists or digits, `ampere/plan.md#list-groups`), and the side's lists are shaped at it; a side with no list level names exactly a row level and a coefficient level; an operand slice is a 4-byte
+  copy at least and `kSliceBytes` at most.
+- every tensor's dtype, contiguity and exact shape (the lists' five, `scale` `[BH, windows x W]`, `num` int32 `[BH,
+  T, d_v / 2]` for f16 pairs or fp32 `[BH, T, d_v]`); the arm key's channels and factor counts agreeing with the
+  carve, and its hand-off form (`same_split`) with the levels the sides list (`ampere/handoff.md#same-split`); a write head's
+  `num` rows under 2^32 values (the drain's offsets); the readout's accumulation fp32 (0), fp16 (1) or the device's rule (-1); the cross-CTA sum f16
+  pairs (0) or fp32 (1); a forced form -1 or a
+  mode (0 to 2) with two chunk fields in 14 bits; a window's token stride under 2^31 / `kWindow` (a window's offsets
+  are 32-bit).
 
-The addressing block is derived here, once, by the same `derive_carry_geom` the host mirror
-`carry_geometry` calls, and its refusal string is passed through verbatim.
+The closed-world arch refusal (`check_arch_table`) is the first statement of every entry.
 
-**The carve order is a runtime input the surface cannot yet name.** The stream schedule makes
-the per-side level order a launch input, and the mode word is what expresses it; the launch
-surface carries no such field, so this entry derives with every level declared dense on both
-sides. That is a lawful point of the derivation — the two sides then share one order — and
-it is a shape question, not an arithmetic one: the carve decides which leaves a warp owns,
-never what the fold computes.
+## Dispatch
 
-<a id="launch"></a>
-## The launch
-
-One CTA per `(box, batch-head)`: `grid = (owners, BH)`, `block = warps_per_cta * 32`,
-dynamic shared memory from the box plan's ledger. The opt-in above 48 KB is done once per
-arm behind a function-local flag. The launch bound is `(threads, 1)` — one CTA per SM is the
-design point on every architecture, not a measured outcome, and the launch table says the
-same thing in the same words.
-
-The parameter block reaches the kernel as a GRID CONSTANT. The body reads its fields through
-a reference from every inlined stage, and without that qualifier a reference to a by-value
-kernel parameter forces a per-thread local copy of the whole block — 816 bytes of stack
-frame and two hundred local accesses, in the measurement that found it.
-
-<a id="census"></a>
-## The build stamp and the census
-
-`carry_build_stamp` returns ONE number, the way every other family's stamp does — a mixed
-radix over four facts a kernel THIS binary compiled read off the device: the page granule
-with the warps per SM, the capability digest the device code compiled against, the state's
-share of the register file, and the cluster size. A path or a content hash could be produced
-by a stale extension; this could not, which is why every harness that has to know which
-binary answered asks for exactly this.
-
-`carry_census` is the separate question and returns one row per built arm: the register
-count, the local size, the shared bytes, the maximum threads and the binary version from
-`cudaFuncGetAttributes`, then the box plan's own derived numbers — the threads, the box's
-leaves, its pages, the accumulator's register count, the state elements a warp holds, the
-state registers per lane, the segment slot count and the generated member count. The first
-group is what the compiler did; the second is what the design says it should have done, and
-having both in one row is what makes a disagreement visible.
-
-## One arm, one translation unit
-
-`tools/gen_shards.py` emits one `.cu` per arm group from the declared shipped set; each
-defines its arms only when this build's generated selection header names them, so an
-arm-subset build is a FILE subset and the arms compile in parallel rather than serially
-inside one front end. The dispatch translation unit here holds no arm body — it declares
-the ABI and calls it — which is what keeps a subset build from instantiating an arm locally
-and leaving the shards doing nothing.
-
-<a id="carve-order"></a>
-## The carve order on the launch surface
-
-`carry_forward` takes the carve order as `2 * D` entries — the read side's levels ranked
-innermost first, then the write side's — and hands them to the one derivation, which is
-where the order has always belonged (`docs/internals/common/geom.md#carve-order`). It reaches
-the kernel inside the parameter block's addressing, as each side's `level_at`/`rank`, and
-every stage that addresses a leaf reads it from there.
-
-A CALLER NEVER SPELLS IT. The seam derives it from the level modes it already carries — a
-side's sparse levels rank outermost — and hands the block it derived to this surface, so the
-order the kernel addresses by and the order the host checked against are one derivation and
-not two. A call that declares no modes gets the canonical order.
-
-<a id="schedule"></a>
-## The schedule dials
-
-`carry_forward` takes a two-entry `schedule` beside the carve order: `[read grain, fold
-grain]`, in LEAVES -- the leaf range one stream keys on. The grains are the primitive
-ledger's class 3, per side, and each is a LAUNCH parameter
-that selects a body: one uniform switch per phase, inside the window loop and outside the
-batch loop, with the grain's k-step count, stream count and pass structure as compile-time
-facts of the body it selects (`carry_kernel.md#streams`).
-
-The boundary refuses a grain that is not a power of two between the page rectangle and the
-warp sub-box (a finer stream would divide the innermost digits below the vector width, R13).
-The grain at the warp sub-box is the one-stream point of the family, the dense form, which
-the bench's `box` schedule name selects.
-
-`rola.ops.carry.select_schedule` picks the default order policy, the first-live-box sort
-(`kOrderFirstBox`); the identity order is the sort's A/B. The stream-grain dials this
-paragraph once described are gone with the frame they selected (`DELETIONS.md`).
+The key is `rola.ops.carry.arm_key(carve)`; `arm_switch<CarryArmSet>` resolves it to the generated arm's launch or
+refuses naming the field no built arm carries (`docs/internals/common/arm_switch.md`). The grid is
+`(boxes, batch-heads)`. The phase ledger, when bound by `carry_ledger_bind`, must cover the grid.
+`carry_build_stamp` reads four facts back off a kernel this binary compiled at the current device's build (its window,
+the capability digest, `kStateValues`, `kListBound`), the device-side check a stale binary cannot pass.

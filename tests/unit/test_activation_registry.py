@@ -70,17 +70,13 @@ def test_the_declared_properties_are_the_ones_the_maps_actually_have():
     from rola.routing.entmax.reference import entmax as entmax_reference
 
     dense = torch.softmax(logits, dim=-1)
-    assert torch.allclose(dense.sum(-1), torch.ones(1, dtype=torch.float64))
     assert (dense > 0).all(), "softmax declares exact_zeros=False"
-    assert ACTIVATION_REGISTRY[("softmax", None)].normalized
     assert not ACTIVATION_REGISTRY[("softmax", None)].exact_zeros
 
     for alpha in ratified_entmax_alphas():
         p = entmax_reference(logits, alpha=alpha)
-        assert torch.allclose(p.sum(-1), torch.ones(1, dtype=torch.float64), atol=1e-9)
         assert (p == 0).any(), f"entmax({alpha}) declares exact_zeros=True"
         assert ACTIVATION_REGISTRY[("entmax", alpha)].exact_zeros
-        assert ACTIVATION_REGISTRY[("entmax", alpha)].normalized
 
 
 # --- closed world ------------------------------------------------------------
@@ -110,9 +106,7 @@ def test_a_registry_row_added_at_runtime_is_immediately_constructible():
     exists everywhere. If this needed a second edit somewhere, the registry would not
     be the single source of truth."""
     tag = ("entmax", 1.75)
-    ACTIVATION_REGISTRY[tag] = ActivationProperties(
-        normalized=True, simplex_output=True, exact_zeros=True,
-        support_differentiable=False, kerneled=False)
+    ACTIVATION_REGISTRY[tag] = ActivationProperties(exact_zeros=True, kerneled=False)
     try:
         activation = EntmaxActivation(1.75)
         assert activation.properties.exact_zeros
@@ -126,7 +120,7 @@ def test_a_registry_row_added_at_runtime_is_immediately_constructible():
 
 def test_the_public_constructors_take_no_property_metadata():
     """Plain tagged constructors only. A caller that could supply
-    `normalized=` could supply it wrong, and every validator downstream would then be
+    `exact_zeros=` could supply it wrong, and every validator downstream would then be
     checking a claim instead of a fact."""
     assert [f.name for f in SoftmaxActivation.__dataclass_fields__.values()] == []
     assert [f.name for f in EntmaxActivation.__dataclass_fields__.values()] == ["alpha"]
@@ -157,23 +151,6 @@ def test_per_level_and_per_duty_configuration_is_addressable_as_a_grid():
         topology.activation(0, "both")
 
 
-def test_mass_decay_demands_a_normalized_write_side_loudly():
-    """THE property-violation test. `normalized=False` on the write side is refused
-    with an error naming the COLUMN that failed and why it matters -- never silently
-    accepted, and never phrased as "softmax or entmax is required"."""
-    tag = ("entmax", 1.75)
-    ACTIVATION_REGISTRY[tag] = ActivationProperties(
-        normalized=False, simplex_output=False, exact_zeros=False,
-        support_differentiable=True, kerneled=False)
-    try:
-        topology = _topology(softmax(), EntmaxActivation(1.75), tied=False)
-        decay = LeafMassDecay(dials=(torch.full((1, 4), 0.5),))
-        with pytest.raises(ValueError, match="normalized"):
-            decay.validate_against(topology)
-    finally:
-        del ACTIVATION_REGISTRY[tag]
-
-
 def test_an_activation_with_a_row_is_configurable_without_widening_an_isinstance_list():
     """Admission is a registry lookup, so a variant with a row is usable at once.
     A duck-typed activation stands in for a future family the shipped classes cannot
@@ -183,9 +160,7 @@ def test_an_activation_with_a_row_is_configurable_without_widening_an_isinstance
     class _Future:
         tag = ("future_family", None)
 
-    ACTIVATION_REGISTRY[("future_family", None)] = ActivationProperties(
-        normalized=True, simplex_output=True, exact_zeros=False,
-        support_differentiable=True, kerneled=False)
+    ACTIVATION_REGISTRY[("future_family", None)] = ActivationProperties(exact_zeros=False, kerneled=False)
     try:
         routing = IndependentRouting(width=4, read=_Future(), write=_Future())
         assert routing.activation("read").tag == ("future_family", None)
@@ -197,7 +172,8 @@ def test_an_activation_with_a_row_is_configurable_without_widening_an_isinstance
 
 
 def test_mass_decay_accepts_every_ratified_activation():
-    """Non-vacuity for the rule above: it must not reject the shipped world."""
+    """The decay asks nothing of a level's activation: its clock is the write rows' own shares
+    (docs/CONSTITUTION.md#r23)."""
     for activation in (softmax(), entmax(1.5), entmax(2.0)):
         topology = _topology(activation, activation)
         LeafMassDecay(dials=(torch.full((1, 4), 0.5),)).validate_against(topology)
@@ -205,9 +181,7 @@ def test_mass_decay_accepts_every_ratified_activation():
 
 def test_union_routing_demands_exact_zeros_for_the_intersection_guarantee():
     tag = ("entmax", 1.75)
-    ACTIVATION_REGISTRY[tag] = ActivationProperties(
-        normalized=True, simplex_output=True, exact_zeros=False,
-        support_differentiable=True, kerneled=False)
+    ACTIVATION_REGISTRY[tag] = ActivationProperties(exact_zeros=False, kerneled=False)
     try:
         with pytest.raises(ValueError, match="exact_zeros"):
             UnionRouting(width=4, alpha=1.75)
@@ -228,9 +202,7 @@ def test_tied_routing_admits_any_registered_activation_without_widening_an_isins
     class _Future:
         tag = ("future_family", None)
 
-    ACTIVATION_REGISTRY[("future_family", None)] = ActivationProperties(
-        normalized=True, simplex_output=True, exact_zeros=False,
-        support_differentiable=True, kerneled=False)
+    ACTIVATION_REGISTRY[("future_family", None)] = ActivationProperties(exact_zeros=False, kerneled=False)
     try:
         tied = TiedRouting(width=4, op=_Future())
         assert tied.activation("read").tag == tied.activation("write").tag == ("future_family", None)
@@ -239,24 +211,6 @@ def test_tied_routing_admits_any_registered_activation_without_widening_an_isins
 
     with pytest.raises(UnknownActivation):
         TiedRouting(width=4, op=_Future())
-
-
-def test_mass_decay_accepts_tied_routing_and_still_demands_a_normalized_write_side():
-    """`LeafMassDecay` reads `topology.activation(level, 'write')` generically -- a
-    `TiedRouting` level needs no special case, on either side of the rule."""
-    topology = Topology(levels=(TiedRouting(width=4, op=entmax(1.5)),))
-    LeafMassDecay(dials=(torch.full((1, 4), 0.5),)).validate_against(topology)
-
-    tag = ("entmax", 1.75)
-    ACTIVATION_REGISTRY[tag] = ActivationProperties(
-        normalized=False, simplex_output=False, exact_zeros=False,
-        support_differentiable=True, kerneled=False)
-    try:
-        unnormalized = Topology(levels=(TiedRouting(width=4, op=EntmaxActivation(1.75)),))
-        with pytest.raises(ValueError, match="normalized"):
-            LeafMassDecay(dials=(torch.full((1, 4), 0.5),)).validate_against(unnormalized)
-    finally:
-        del ACTIVATION_REGISTRY[tag]
 
 
 # --- the not-kerneled surface ------------------------------------------------
@@ -273,9 +227,7 @@ def test_an_unratified_activation_is_refused_and_the_refusal_names_it():
     available before the call and without a device -- and it wins over every clause
     that would otherwise admit the call."""
     tag = ("entmax", 1.75)
-    ACTIVATION_REGISTRY[tag] = ActivationProperties(
-        normalized=True, simplex_output=True, exact_zeros=True,
-        support_differentiable=False, kerneled=False)
+    ACTIVATION_REGISTRY[tag] = ActivationProperties(exact_zeros=True, kerneled=False)
     try:
         topology = _topology(entmax(1.75), entmax(1.75))
         assert not topology.kerneled
@@ -283,7 +235,7 @@ def test_an_unratified_activation_is_refused_and_the_refusal_names_it():
             (0, "read", ("entmax", 1.75)), (0, "write", ("entmax", 1.75)))
 
         refusal = rola.expert.envelope_refusal(
-            _StubBundle(topology), torch.zeros(1, 1, 1, 64))
+            _StubBundle(topology), rola.Values.from_projection(torch.zeros(1, 1, 1, 64)))
         assert "unratified activations" in refusal and "entmax" in refusal
     finally:
         del ACTIVATION_REGISTRY[tag]
@@ -356,8 +308,8 @@ def test_no_module_outside_the_registry_branches_on_an_activation_type():
 def test_the_capability_matrix_is_generated_from_the_registry():
     table = capability_table()
     assert table.splitlines()[0] == "| activation | " + " | ".join(ACTIVATION_COLUMNS) + " |"
-    assert "| entmax(alpha=1.5) | yes | yes | yes | no | yes |" in table
-    assert "| softmax | yes | yes | no | yes | yes |" in table
+    assert "| entmax(alpha=1.5) | yes | yes |" in table
+    assert "| softmax | no | yes |" in table
     assert len(table.splitlines()) == len(ACTIVATION_REGISTRY) + 2
 
 

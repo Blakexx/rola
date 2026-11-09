@@ -19,7 +19,8 @@ writes).
 Registration is host-only. Left inside a `.cu` it is recompiled once per `-gencode` target for no benefit, and every
 architecture added to the ratified set multiplies that cost. Every declaration it names is a host header
 (`src/carry/carry_api.cuh`, `src/decode/decode_api.cuh`, `src/entmax/entmax.cuh`, `src/entmax/factor.cuh`,
-`src/common/geom_api.cuh`, `src/facts/liveness_api.cuh`, `src/intra/intra.cuh`, `src/paging/vmm_owner.cuh`), so no
+`src/common/geom_api.cuh`, `src/facts/facts_api.cuh`, `src/intra/intra_api.cuh`, `src/paging/vmm_owner.cuh`,
+`src/produce/produce_api.cuh`), so no
 device body is in scope.
 
 ## <a id="one-library"></a>2. One library, registered here only
@@ -41,12 +42,15 @@ reaches into the module itself.
 
 | group | operators |
 |---|---|
-| the carry launch surface | `carry_forward`, `carry_backward` (the reverse surface's refusal only), `carry_ledger_bind`, `carry_build_stamp`, `carry_census`, `carry_arms` |
-| build and clock facts | `csrc_build_stamp`, `sm_clock_ghz` |
-| the addressing block and the one liveness pass | `carry_geometry`, `carry_sub_boxes`, `liveness_words` |
-| the within-window term | `intra_forward`, `intra_arms`, `intra_build_stamp` |
+| the carry launch surface | `carry_forward`, `carry_readout_accumulate`, `carry_ledger_bind`, `carry_probe_bind`, `carry_capture_bind`, `carry_capture_bytes`, `carry_build_stamp`, `carry_census`, `carry_arms` |
+| build, card and clock facts | `csrc_build_stamp`, `device_card`, `segment_tokens`, `sm_clock_ghz` |
+| the addressing block | `carry_geometry`, `carry_sub_boxes` |
+| the facts pass | `rola_facts_forward`, `rola_facts_ledger_bind` |
+| the within-window term | `rola_intra_forward`, `rola_intra_ledger_bind`, `intra_footprint`, `intra_block_rows`, `intra_build_stamp` |
+| the scale pass | `scale_forward` |
+| the producer | `rola_produce_forward`, `rola_produce_ledger_bind` |
 | the producer's solves | `entmax_union_forward`, `entmax_union_backward`, `entmax_factor_forward`, `entmax_factor_backward`, `routing_softmax_forward`, `routing_softmax_backward` |
-| the T=1 decode path | `rola_decode_forward`, `rola_decode_residency`, `rola_decode_build_stamp`, `rola_decode_arms`, `rola_decode_capacity`, `rola_decode_producer_width_mirror` |
+| the T=1 decode path | `rola_decode_forward`, `rola_decode_build_stamp`, `rola_decode_arms`, `rola_decode_ledger_bind`, `rola_decode_ledger_warps`, `rola_decode_capacity`, `rola_decode_producer_width_mirror` |
 | the VMM owner, by handle | `vmm_probe`, `vmm_create`, `vmm_release`, `vmm_base`, `vmm_grow`, `vmm_rollback_to`, `vmm_reset`, `vmm_close`, `vmm_facts` |
 
 Every operator that launches a kernel opens with `check_arch_table()`, the closed-world refusal of an architecture the
@@ -61,9 +65,7 @@ stale mirror cannot satisfy the capacity `static_assert`; and <a id="decode-buil
 is the device-side fact a stale extension cannot fake ([`decode/decode_api.md`
 §build-stamp](decode/decode_api.md#build-stamp)).
 
-The tiled consumer's entries and the CUDA page-plan producer's eight are not registered and have not been since their
-kernels were deleted ([`DELETIONS.md`](DELETIONS.md)); the page table the carry reads is published by the torch arena in
-`rola/ops/paging.py`.
+The page table a kernel reads is published by the torch arena in `rola/ops/paging.py`; no device entry produces one.
 
 ## <a id="vmm-binding"></a>5. The VMM owner, by handle
 
@@ -96,5 +98,6 @@ carries `H` -- and no separate admission-probe entry: the residency test reads t
 anyway ([`decode/decode_fold.md`](decode/decode_fold.md), [`decode/decode.md` §4c](decode/decode.md#absorbed-verdict)).
 
 `growth`, `growth_any`, `growth_ctr`, `done` and `atom_bits` are the verdict's own buffers, required whichever backing
-the call is, so one schema serves both. `pool_slots`, `pool_cursor` and `pool_map` are the slack pool, present exactly
+the call is, so one schema serves both. `yacc` and `queue` are the work queue's sums and counters
+([`decode/decode.md#queue`](decode/decode.md#queue)). `pool_slots` and `pool_cursor` are the slack pool, present exactly
 on a paged step whose state reserved one ([`decode/decode_api.md` §4-5](decode/decode_api.md#the-verdict)).

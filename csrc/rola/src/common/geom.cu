@@ -14,7 +14,7 @@ namespace rola::carry {
 //: names lives here; `min_l B_l < 16` is a CENSUS FACT and not one of them.
 //: -- see docs/internals/common/geom_api.md#derive-block
 static CarryGeomRT derive_block(const std::vector<int64_t>& widths, int64_t level_modes, int bc,
-                                int dv, int nsr, int nsw) {
+                                int dv, int nsr, int nsw, bool interleave, bool atom_floor) {
   int w[kGeomMaxLevels] = {1, 1, 1, 1};
   const int D = (int)widths.size();
   STD_TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the routing depth is one to four levels, got ",
@@ -23,7 +23,8 @@ static CarryGeomRT derive_block(const std::vector<int64_t>& widths, int64_t leve
   CarryGeomRT geo{};
   CarveOrder order{};
   carve_order_of_modes(D, (uint32_t)level_modes, order);
-  const char* err = derive_carry_geom(D, w, bc, dv, order, nsr, nsw, geo);
+  const char* err = derive_carry_geom(D, w, bc, dv, order, nsr, nsw, interleave, atom_floor, geo,
+                                      (uint32_t)level_modes);
   STD_TORCH_CHECK(err == nullptr,
                   "the addressing block refuses this call: ", err == nullptr ? "" : err,
                   " (widths=", shape(widths), ", BC=", bc, ", level_modes=", level_modes, ")");
@@ -40,9 +41,16 @@ static CarryGeomRT derive_block(const std::vector<int64_t>& widths, int64_t leve
   return geo;
 }
 
+CarryGeomRT tall_block(const std::vector<int64_t>& widths, int64_t level_modes) {
+  return derive_block(widths, level_modes, tall_leaves_per_sm(), kCtaChannels, warps_per_sm,
+                      warps_per_sm, false, false);
+}
+
 std::vector<int64_t> geometry(std::vector<int64_t> widths, int64_t level_modes, int64_t bc,
-                              int64_t nsr, int64_t nsw, int64_t dv) {
-  const CarryGeomRT g = derive_block(widths, level_modes, (int)bc, (int)dv, (int)nsr, (int)nsw);
+                              int64_t nsr, int64_t nsw, int64_t dv, int64_t interleave,
+                              int64_t atom_floor) {
+  const CarryGeomRT g = derive_block(widths, level_modes, (int)bc, (int)dv, (int)nsr, (int)nsw,
+                                     interleave != 0, atom_floor != 0);
   std::vector<int64_t> o;
   auto push_side = [&](const SideGeom& s) {
     for (int l = 0; l < kGeomMaxLevels; ++l) o.push_back(s.level_at[l]);
@@ -59,6 +67,7 @@ std::vector<int64_t> geometry(std::vector<int64_t> widths, int64_t level_modes, 
     o.push_back(s.leaf);
     o.push_back(s.streams);
     o.push_back(s.assign);
+    o.push_back(s.interleave);
   };
 
   o.push_back(g.D);
@@ -89,13 +98,14 @@ std::vector<int64_t> geometry(std::vector<int64_t> widths, int64_t level_modes, 
   return o;
 }
 
-std::vector<std::vector<int64_t>> sub_box_set(int64_t depth, int64_t box_leaves, int64_t workers) {
+std::vector<std::vector<int64_t>> sub_box_set(int64_t depth, int64_t box_leaves, int64_t workers,
+                                              int64_t atom_floor) {
   const int D = (int)depth;
   STD_TORCH_CHECK(D >= 1 && D <= kGeomMaxLevels, "the shape set is generated to depth four, got ",
                   D);
   STD_TORCH_CHECK(geom_ilog2((int)box_leaves) >= 0 && geom_ilog2((int)workers) >= 0,
                   "the box and the worker count are powers of two");
-  const SubBoxSet set = sub_boxes(D, (int)box_leaves, (int)workers);
+  const SubBoxSet set = sub_boxes(D, (int)box_leaves, (int)workers, atom_floor != 0);
   std::vector<std::vector<int64_t>> out;
   for (int a = 0; a < set.count; ++a) {
     std::vector<int64_t> row;

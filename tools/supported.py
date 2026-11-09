@@ -2,9 +2,10 @@
 
 A hand-maintained support table says what someone hoped was true when
 they last edited it; this one is derived from the two artifacts that decide the
-answer, and CI fails on drift:
+answer, and the commit gate fails on drift (the standards lint's `check_supported_table`; the capability table's
+test is the CPU tier's, `tests/unit/test_capability_table_docs.py`):
 
-* ``csrc/rola/src/common/arch_caps.cuh`` -- the architectures the KERNEL knows how to
+* ``csrc/rola/src/common/hardware.cuh`` (generated from ``hardware.json``) -- the architectures the KERNEL knows how to
   size itself for. ``sm_arch_tabulated()`` is a ``static_assert`` at compile time
   and the chunk dispatch's first-launch check a refusal at run time, so an arch
   missing from it cannot execute whatever the table says.
@@ -16,8 +17,8 @@ arch that is tabulated but not ratified is listed with an empty toolchain column
 and the status *not ratified -- will refuse to load*. A support claim is worth
 nothing if the table quietly implies coverage nobody measured.
 
-    python tools/supported.py            # print the table
-    python tools/supported.py --check    # fail if README.md has drifted
+    bazel run //tools:supported              # print the tables
+    bazel run //tools:supported -- --write   # rewrite README.md's generated blocks
 
 GPU names are the only hand-written column, in ``GPUS`` below, because a compute
 capability does not know its own marketing name. They are labels; the ratification
@@ -28,13 +29,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 import toolchains
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCH_TABLE = ROOT / "csrc" / "rola" / "src" / "common" / "arch_caps.cuh"
+ARCH_TABLE = ROOT / "csrc" / "rola" / "src" / "common" / "hardware.cuh"
 README = ROOT / "README.md"
 
 #: The README's generated regions: `marker -> producer`. TWO of them, because two
@@ -45,6 +45,20 @@ BLOCKS = {
     "tools/supported.py": lambda: table(),
     "rola.routing.activations.capability_table": lambda: _capability_table(),
 }
+
+
+def markers(marker: str) -> tuple[str, str]:
+    """A generated block's two markers in the README."""
+    return f"<!-- BEGIN GENERATED: {marker} -->", f"<!-- END GENERATED: {marker} -->"
+
+
+def block(text: str, marker: str) -> str | None:
+    """The README's generated block for `marker`, its text between the markers; None when it has none. The one reader
+    of the format: `--write` and the checks read it here."""
+    begin, end = markers(marker)
+    if begin not in text or end not in text:
+        return None
+    return text.split(begin, 1)[1].split(end, 1)[0].strip("\n")
 
 
 def _capability_table() -> str:
@@ -75,7 +89,7 @@ def tabulated_archs() -> list[str]:
     match = _TABULATED.search(body)
     if match is None:
         raise SystemExit(
-            "cannot read `tabulated()` from common/arch_caps.cuh. The supported "
+            "cannot read `tabulated()` from common/hardware.cuh. The supported "
             "table is GENERATED from that function; if its shape changed, this "
             "parser must change with it rather than the table being hand-written.")
     codes = [int(n) for n in re.findall(r"\d+", match.group(1))]
@@ -126,39 +140,26 @@ def table() -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check", action="store_true",
-                    help="fail if README.md's generated block has drifted")
-    ap.add_argument("--write", action="store_true", help="rewrite README.md's block")
+    ap.add_argument("--write", action="store_true", help="rewrite README.md's generated blocks")
     a = ap.parse_args()
 
-    if not (a.check or a.write):
+    if not a.write:
         for marker, produce in BLOCKS.items():
             print(f"--- {marker}")
             print(produce())
         return 0
 
-    text = new = README.read_text()
+    new = README.read_text()
     for marker, produce in BLOCKS.items():
-        begin, end = f"<!-- BEGIN GENERATED: {marker} -->", f"<!-- END GENERATED: {marker} -->"
-        if begin not in new or end not in new:
+        if block(new, marker) is None:
             raise SystemExit(f"README.md has no generated block for {marker}")
+        begin, end = markers(marker)
         head, rest = new.split(begin, 1)
         _, tail = rest.split(end, 1)
         new = f"{head}{begin}\n{produce()}\n{end}{tail}"
 
-    if a.write:
-        README.write_text(new)
-        print(f"README.md: {len(BLOCKS)} generated blocks rewritten")
-        return 0
-    if new != text:
-        sys.stderr.write(
-            "README.md's GENERATED tables have DRIFTED from the artifacts that decide "
-            "them (the kernel's arch table, the committed manifests, the activation "
-            "registry). Regenerate:\n"
-            "    python tools/supported.py --write\n"
-            "A support table edited by hand is a claim, not a report.\n")
-        return 1
-    print(f"README.md: {len(BLOCKS)} generated blocks are up to date")
+    README.write_text(new)
+    print(f"README.md: {len(BLOCKS)} generated blocks rewritten")
     return 0
 
 

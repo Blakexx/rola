@@ -1,13 +1,13 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""The liveness pass's CONTRACT: the class-1 words, and the two class-2 folds.
+"""The class-1 liveness words' CONTRACT, and the two class-2 folds.
 
-The pass itself is a CUDA kernel this module does not own. What lives here is the
-contract that kernel writes and every consumer reads -- the word layout
-(:class:`LivenessLayout`, the mirror of ``csrc/rola/src/facts/liveness_contract.cuh``),
-a reader that turns those words back into per-token bits, and a pure-torch MODEL of
-the pass and of the folds that is the executable spec the kernel is graded against
-(docs/internals/facts/liveness_contract.md).
+The facts pass that writes the words is a CUDA kernel this module does not own
+(:mod:`rola.ops.facts`). What lives here is the contract that kernel writes and every
+consumer reads -- the word layout (:class:`LivenessLayout`, the mirror of
+``csrc/rola/src/facts/liveness_contract.cuh``), a reader that turns those words back into
+per-token bits, and a pure-torch MODEL of the words and of the folds that is the
+executable spec the kernel is graded against (docs/internals/facts/liveness_contract.md).
 
 Vocabulary, defined here and used unqualified below: ``D`` = routing depth;
 ``B_l`` = the PADDED width of level ``l`` (a power of two at or above 16, the
@@ -27,6 +27,10 @@ from rola.engine.facts.planes import ATOM_READ, ATOM_WRITTEN
 #: Tokens are the table's minor axis, 32 to a word: one warp ballot per row.
 TOK_BITS = 32
 
+#: A TILE UNION's grain: 64 tokens (two words) of a 32-digit group of one level.
+TILE_TOKENS = 64
+GROUP_DIGITS = 32
+
 #: The two sides, in table order.
 READ, WRITE = 0, 1
 SIDES = 2
@@ -34,9 +38,6 @@ SIDES = 2
 #: The stored word type. ``uint32_t`` on the device; torch carries it as the
 #: same 32 bits signed, exactly as the union table already did.
 WORD_DTYPE = torch.int32
-
-#: bf16 MAGNITUDE, sign excluded: an amplitude of -0 is DEAD, like +0.
-BF16_MAGNITUDE_MASK = 0x7FFF
 
 #: The page granule, in leaves.
 ATOM_LEAVES = 16
@@ -54,9 +55,8 @@ def mask_words(bits: int) -> int:
 class LivenessLayout:
     """Where the bit for (side, level, digit, token) lives.
 
-    One row per DIGIT in canonical order, so a row index IS the packed amplitude
-    column the digit occupies -- the pass reads column ``r`` and writes row ``r``, and
-    no consumer needs a second layout to relate them.
+    One row per DIGIT in canonical order: row ``row_base(l) + d`` is level ``l``'s digit
+    ``d``, the column a packed plane of the levels would hold it at.
     """
 
     D: int
@@ -109,6 +109,21 @@ class LivenessLayout:
     def token_bit(self, token: int) -> int:
         return 1 << (token % TOK_BITS)
 
+    def group_base(self, level: int) -> int:
+        return sum(-(-width // GROUP_DIGITS) for width in self.B[:level])
+
+    @property
+    def groups(self) -> int:
+        """A side's 32-digit groups: each level's digits in groups of 32, a narrower level one group."""
+        return self.group_base(self.D)
+
+    @property
+    def tiles(self) -> int:
+        return -(-self.L // TILE_TOKENS)
+
+    def union_index(self, bh: int, side: int, group: int, tile: int) -> int:
+        return ((bh * SIDES + side) * self.groups + group) * self.tiles + tile
+
     @property
     def N(self) -> int:
         n = 1
@@ -133,11 +148,12 @@ class LivenessLayout:
 class SideStatics:
     """One side's static operands: which levels the pass SKIPS, and the digit mask.
 
-    A dense level is not read (its amplitudes are never exactly zero, so reading them
-    would buy nothing and cost the traffic); its row is the WIDTH MASK instead, which
-    is exact because only a pad digit's logit is -inf. The mask arrives as bits, never
-    as a logical width: a width field in a kernel entry signature is what R13's two
-    contracts forbid, and the seam is the only translator.
+    A dense level (an activation with no exact zeros) is not read; its row is the WIDTH
+    MASK instead. That is exact up to a sound over-report: only a pad digit's logit is
+    -inf, and a digit whose value rounded to a zero digit is reported live, which costs
+    work and never a contribution. The mask arrives as bits, never as a logical width: a
+    width field in a kernel entry signature is what R13's two contracts forbid, and the
+    seam is the only translator.
     """
 
     dense_levels: tuple[bool, ...]
@@ -173,48 +189,79 @@ def side_statics(layout: LivenessLayout, dense_levels, logical_widths) -> SideSt
     return SideStatics(dense_levels=dense, digit_mask=tuple(mask))
 
 
-def _amplitude_rows(plane: torch.Tensor, layout: LivenessLayout) -> torch.Tensor:
-    """`[BH, L, rows]` bool: the per-digit nonzero test, on the bf16 MAGNITUDE."""
-    if plane.dtype is not torch.bfloat16:
-        raise ValueError(f"the pass reads bf16 amplitudes; got {plane.dtype}")
-    flat = plane.reshape(-1, layout.L, layout.rows).contiguous()
-    return (flat.view(torch.int16) & BF16_MAGNITUDE_MASK) != 0
+def _live_rows(levels, layout: LivenessLayout) -> torch.Tensor:
+    """`[BH, rows, L]` bool: each level's per-digit nonzero test, its ``[B, T, H, w_l]`` rows in any dtype (a u8
+    digit or a drawn float); a digit at or past ``w_l`` is dead."""
+    if len(levels) != layout.D:
+        raise ValueError(f"a side holds {layout.D} levels' rows, got {len(levels)}")
+    B, T, H = levels[0].shape[:3]
+    if T != layout.L:
+        raise ValueError(f"the rows carry {T} tokens; the layout {layout.L}")
+    live = torch.zeros((B * H, layout.rows, layout.L), dtype=torch.bool, device=levels[0].device)
+    for level, rows in enumerate(levels):
+        width = rows.shape[-1]
+        if tuple(rows.shape[:3]) != (B, T, H) or width > layout.B[level]:
+            raise ValueError(f"level {level}'s rows are {tuple(rows.shape)}; [{B}, {T}, {H}, <= {layout.B[level]}]")
+        base = layout.row_base(level)
+        live[:, base:base + width] = (rows != 0).permute(0, 2, 3, 1).reshape(B * H, width, T)
+    return live
 
 
 def _pack(bits: torch.Tensor, layout: LivenessLayout) -> torch.Tensor:
-    """`[BH, rows, L]` bool -> `[BH, rows, words]` words, token `t` at bit `t % 32`."""
-    BH = bits.shape[0]
+    """`[..., L]` bool -> `[..., words]` words, token `t` at bit `t % 32`."""
     pad = layout.words * TOK_BITS - layout.L
     if pad:
-        bits = torch.cat([bits, bits.new_zeros((BH, layout.rows, pad))], dim=-1)
-    lanes = bits.reshape(BH, layout.rows, layout.words, TOK_BITS).to(torch.int64)
+        bits = torch.cat([bits, bits.new_zeros((*bits.shape[:-1], pad))], dim=-1)
+    lanes = bits.reshape(*bits.shape[:-1], layout.words, TOK_BITS).to(torch.int64)
     weights = (1 << torch.arange(TOK_BITS, device=bits.device, dtype=torch.int64))
     words = (lanes * weights).sum(dim=-1)
     return (words - (words >= 1 << 31).to(torch.int64) * (1 << 32)).to(WORD_DTYPE)
 
 
-def liveness_words(read_plane: torch.Tensor, write_plane: torch.Tensor,
-                   layout: LivenessLayout, read_statics: SideStatics,
+def liveness_words(read_rows, write_rows, layout: LivenessLayout, read_statics: SideStatics,
                    write_statics: SideStatics) -> torch.Tensor:
-    """THE MODEL OF THE PASS: `[BH, 2, rows, words]` words, the executable spec.
+    """THE MODEL OF THE PASS: `[B H_w, g + 1, rows, words]` words from each side's per-level rows (read
+    ``[B, T, H, w_l]``, write ``[B, T, H_w, w_l]``, ``g = H / H_w``; batch-major), the executable spec: slots
+    ``0 .. g - 1`` a write head's query heads' read side, slot ``g`` its write side (``[BH, 2, ...]`` ungrouped).
 
-    A sparse level's row is voted from the amplitudes; a dense level's row is the
-    static width mask, broadcast over every token and costing no read. A token past
-    ``L`` votes dead, so the tail word's high bits are zero and a fold may OR whole
-    words without masking.
+    A sparse level's digit is live where its row is nonzero and the digit mask names it; a
+    dense level's row is the static width mask, broadcast over every token and costing no
+    read. A token past ``L`` votes dead, so the tail word's high bits are zero and a fold
+    may OR whole words without masking.
     """
     sides = []
-    for plane, statics in ((read_plane, read_statics), (write_plane, write_statics)):
-        live = _amplitude_rows(plane, layout).permute(0, 2, 1).contiguous()
+    for levels, statics in ((read_rows, read_statics), (write_rows, write_statics)):
+        live = _live_rows(levels, layout)
+        mask = torch.tensor(statics.digit_mask, dtype=torch.bool, device=live.device)
         for level, dense in enumerate(statics.dense_levels):
-            if not dense:
-                continue
-            base = layout.row_base(level)
-            mask = torch.tensor(statics.digit_mask[base:base + layout.B[level]],
-                                dtype=torch.bool, device=live.device)
-            live[:, base:base + layout.B[level], :] = mask[None, :, None]
-        sides.append(_pack(live, layout))
-    return torch.stack(sides, dim=1)
+            if dense:
+                base = layout.row_base(level)
+                live[:, base:base + layout.B[level], :] = True
+        sides.append(_pack(live & mask[None, :, None], layout))
+    write = sides[1]
+    read = sides[0].reshape(write.shape[0], -1, *write.shape[1:])
+    return torch.cat((read, write[:, None]), dim=1)
+
+
+def tile_unions(words: torch.Tensor, layout: LivenessLayout) -> torch.Tensor:
+    """THE MODEL OF THE TILE UNIONS: `[BH, slots, rows, words]` words -> `[BH, slots, groups, tiles]` int32, bit ``i`` of
+    (group ``g`` of level ``l``, tile ``t``) set when digit ``32 g + i`` of level ``l`` is live at a token in
+    ``[64 t, 64 t + 64)``: the OR of the tile's two words, a row a bit."""
+    BH, slots = words.shape[:2]
+    pad = 2 * layout.tiles - layout.words
+    if pad:
+        words = torch.cat([words, words.new_zeros((*words.shape[:-1], pad))], dim=-1)
+    live = (words.reshape(BH, slots, layout.rows, layout.tiles, 2) != 0).any(-1)
+    groups = []
+    for level, width in enumerate(layout.B):
+        base = layout.row_base(level)
+        rows = live[:, :, base:base + width]
+        rows = torch.cat([rows, rows.new_zeros((BH, slots, -width % GROUP_DIGITS, layout.tiles))], dim=2)
+        groups.append(rows.reshape(BH, slots, -1, GROUP_DIGITS, layout.tiles))
+    bits = torch.cat(groups, dim=2).to(torch.int64)
+    weights = (1 << torch.arange(GROUP_DIGITS, device=words.device, dtype=torch.int64))[:, None]
+    unions = (bits * weights).sum(dim=3)
+    return (unions - (unions >= 1 << 31).to(torch.int64) * (1 << 32)).to(WORD_DTYPE)
 
 
 def unpack(words: torch.Tensor, layout: LivenessLayout) -> torch.Tensor:
@@ -261,23 +308,35 @@ class Box:
         return torch.unique(self.leaves(layout) // ATOM_LEAVES)
 
 
-def box_activity(words: torch.Tensor, layout: LivenessLayout, boxes, side: int) -> torch.Tensor:
+def _live_token_words(layout: LivenessLayout, device) -> torch.Tensor:
+    """`[words]` int32: every live token's bit, the tail word's high bits zero -- a dense level's row in the table."""
+    return _pack(torch.ones(layout.L, dtype=torch.bool, device=device), layout)
+
+
+def box_activity(words: torch.Tensor, layout: LivenessLayout, boxes, side: int, statics: SideStatics) -> torch.Tensor:
     """CLASS 2, THE PRIMARY BITS: `[BH, len(boxes)]` bool, per box over the WHOLE CALL.
 
     A box is live for a token when EVERY level has a live digit inside that level's
     run -- a token's live leaf set is the product of its per-level live digit sets, so
     the AND over levels is exact and never a relaxation -- and the call-level bit is
     the OR of that over the call's tokens. Nothing is kept per window: a window with
-    nothing live for a box is a schedule fact, read off these rows while walking.
+    nothing live for a box is a schedule fact, read off these rows while walking. A
+    DENSE level's rows are its width mask over the live tokens, taken from the side's
+    ``statics`` and never read from ``words`` (the facts pass does not write them).
     """
     table = words[:, side]
+    live = _live_token_words(layout, words.device)
     out = []
     for box in boxes:
         box.check(layout)
         clause = None
         for level in range(layout.D):
             base = layout.row_base(level) + box.start[level]
-            run = _or_rows(table, base, box.span[level])
+            if statics.dense_levels[level]:
+                named = any(statics.digit_mask[base:base + box.span[level]])
+                run = (live if named else torch.zeros_like(live)).expand(table.shape[0], -1)
+            else:
+                run = _or_rows(table, base, box.span[level])
             clause = run if clause is None else clause & run
         out.append((clause != 0).any(dim=-1))
     if not out:
@@ -351,34 +410,45 @@ def atom_boxes(layout: LivenessLayout) -> list[Box]:
     return [Box(start=tuple(row), span=spans) for row in grid]
 
 
-def atom_activity(words: torch.Tensor, layout: LivenessLayout, side: int) -> torch.Tensor:
-    """`[BH, N/16]` bool: :func:`box_activity` at the ATOM box set, every box at once.
+def atom_activity(words: torch.Tensor, layout: LivenessLayout, side: int, statics: SideStatics) -> torch.Tensor:
+    """`[BH, N/16]` bool: :func:`box_activity` at the ATOM box set, every box at once, of the words' slot ``side``
+    (``READ``, ``WRITE`` ungrouped; a query head's or the write side's grouped).
 
     The same law -- the OR over tokens of the AND over levels of the OR over the box's
     digit run -- folded as one outer product over the levels, which the atom set admits
     because it is the whole aligned partition and its canonical order is exactly the
-    order that product builds.
+    order that product builds. A dense level is its width mask from ``statics``.
     """
     spans = atom_spans(layout)
     bits = unpack(words, layout)[:, side]
     BH = bits.shape[0]
+    mask = torch.tensor(statics.digit_mask, dtype=torch.bool, device=bits.device)
     clause = None
     for level in range(layout.D):
         base, width, span = layout.row_base(level), layout.B[level], spans[level]
-        run = bits[:, base:base + width, :].reshape(BH, width // span, span, layout.L).any(dim=2)
+        if statics.dense_levels[level]:
+            named = mask[base:base + width].reshape(width // span, span).any(dim=1)
+            run = named[None, :, None].expand(BH, -1, layout.L)
+        else:
+            run = bits[:, base:base + width, :].reshape(BH, width // span, span, layout.L).any(dim=2)
         clause = run if clause is None else (
             clause[:, :, None, :] & run[:, None, :, :]).reshape(BH, -1, layout.L)
     return clause.any(dim=-1)
 
 
-def page_bits(words: torch.Tensor, layout: LivenessLayout) -> torch.Tensor:
-    """`[BH, N/16]` uint8: the EXACT activity byte, `ATOM_READ | ATOM_WRITTEN`.
+def page_bits(words: torch.Tensor, layout: LivenessLayout, read_statics: SideStatics,
+              write_statics: SideStatics) -> torch.Tensor:
+    """`[BH, N/16]` uint8: the EXACT activity byte, `ATOM_READ | ATOM_WRITTEN`, a write head's (its state's): read
+    by any of its query heads (slots ``0 .. g - 1``), written by its write side (slot ``g``).
 
     :func:`page_activity` is this fold at an arbitrary carve, where a box straddling a
     page makes the answer a sound over-report; at the atom box set the map is a
     bijection and the byte is exact, which is what `plan_exact` allocates on and what a
     residency check reads.
     """
-    read = atom_activity(words, layout, READ).to(torch.uint8) * ATOM_READ
-    write = atom_activity(words, layout, WRITE).to(torch.uint8) * ATOM_WRITTEN
-    return read | write
+    heads = words.shape[1] - 1
+    read = atom_activity(words, layout, READ, read_statics)
+    for slot in range(1, heads):
+        read = read | atom_activity(words, layout, slot, read_statics)
+    write = atom_activity(words, layout, heads, write_statics).to(torch.uint8) * ATOM_WRITTEN
+    return read.to(torch.uint8) * ATOM_READ | write

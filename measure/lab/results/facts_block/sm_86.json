@@ -1,0 +1,1069 @@
+{
+ "experiment": "facts_block",
+ "question": "the facts pass as carve-group blocks -- one block of sixteen warps an SM, an item a (window, level-side, head, W-digit span) whose whole window is double-buffered: the block issues its next item's copies, then votes and builds the current one. Does the row stream hold its rate with the build under the next item's copies, and what does the build cost?",
+ "arch": "sm_86",
+ "device": "NVIDIA GeForce RTX 3080 Ti",
+ "driver": "595.95",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "70cb9766df254420b535023e92b324baad8cdb58",
+  "dirty": true
+ },
+ "reps": 5,
+ "date": "2026-10-08T19:24:04+00:00",
+ "utilization_before": 1,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "flat read",
+   "unit": "bytes a cycle",
+   "samples": [
+    538.810184,
+    539.292362,
+    538.803749,
+    539.003615,
+    539.635383
+   ],
+   "median": 539.003615,
+   "min": 538.803749,
+   "max": 539.635383,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    399.915396,
+    411.066332,
+    387.143432,
+    392.008581,
+    408.01214
+   ],
+   "median": 399.915396,
+   "min": 387.143432,
+   "max": 411.066332,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.177595,
+    1.14565,
+    1.216444,
+    1.201347,
+    1.154226
+   ],
+   "median": 1.177595,
+   "min": 1.14565,
+   "max": 1.216444,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote resident / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    555.344632,
+    556.136639,
+    555.15052,
+    556.160865,
+    556.748966
+   ],
+   "median": 556.136639,
+   "min": 555.15052,
+   "max": 556.748966,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote resident / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.848011,
+    0.846803,
+    0.848307,
+    0.846766,
+    0.845872
+   ],
+   "median": 0.846803,
+   "min": 0.845872,
+   "max": 0.848307,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    350.134182,
+    349.818808,
+    349.272577,
+    349.957483,
+    349.552608
+   ],
+   "median": 349.818808,
+   "min": 349.272577,
+   "max": 350.134182,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.283867,
+    1.285024,
+    1.287034,
+    1.284515,
+    1.286003
+   ],
+   "median": 1.285024,
+   "min": 1.283867,
+   "max": 1.287034,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build resident / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    405.860847,
+    406.576484,
+    405.476627,
+    405.807383,
+    405.789907
+   ],
+   "median": 405.807383,
+   "min": 405.476627,
+   "max": 406.576484,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build resident / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.107586,
+    1.105636,
+    1.108635,
+    1.107732,
+    1.107779
+   ],
+   "median": 1.107732,
+   "min": 1.105636,
+   "max": 1.108635,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build / 64 digits / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    256.87872,
+    256.552033,
+    256.783952,
+    256.604197,
+    256.482892
+   ],
+   "median": 256.604197,
+   "min": 256.482892,
+   "max": 256.87872,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build / 64 digits / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.599033,
+    1.601069,
+    1.599623,
+    1.600744,
+    1.601501
+   ],
+   "median": 1.600744,
+   "min": 1.599033,
+   "max": 1.601501,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build resident / 64 digits / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    292.428812,
+    292.523003,
+    292.58186,
+    292.416293,
+    292.567036
+   ],
+   "median": 292.523003,
+   "min": 292.416293,
+   "max": 292.58186,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "bulk / vote + build resident / 64 digits / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.404641,
+    1.404189,
+    1.403906,
+    1.404701,
+    1.403977
+   ],
+   "median": 1.404189,
+   "min": 1.403906,
+   "max": 1.404701,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    431.961328,
+    429.958574,
+    427.92132,
+    419.839809,
+    420.995352
+   ],
+   "median": 427.92132,
+   "min": 419.839809,
+   "max": 431.961328,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.090233,
+    1.095311,
+    1.100525,
+    1.12171,
+    1.118631
+   ],
+   "median": 1.100525,
+   "min": 1.090233,
+   "max": 1.12171,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote resident / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    1583.673772,
+    1583.963345,
+    1584.541756,
+    1585.005584,
+    1584.930015
+   ],
+   "median": 1584.541756,
+   "min": 1583.673772,
+   "max": 1585.005584,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote resident / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.297371,
+    0.297316,
+    0.297208,
+    0.297121,
+    0.297135
+   ],
+   "median": 0.297208,
+   "min": 0.297121,
+   "max": 0.297371,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    352.470308,
+    351.298039,
+    346.681725,
+    356.254065,
+    349.959479
+   ],
+   "median": 351.298039,
+   "min": 346.681725,
+   "max": 356.254065,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.275358,
+    1.279613,
+    1.296652,
+    1.261812,
+    1.284508
+   ],
+   "median": 1.279613,
+   "min": 1.261812,
+   "max": 1.296652,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build resident / 64 digits / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    628.810138,
+    629.105869,
+    629.045241,
+    628.836801,
+    629.109813
+   ],
+   "median": 629.045241,
+   "min": 628.810138,
+   "max": 629.109813,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build resident / 64 digits / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.714883,
+    0.714547,
+    0.714616,
+    0.714853,
+    0.714542
+   ],
+   "median": 0.714616,
+   "min": 0.714542,
+   "max": 0.714883,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build / 64 digits / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    324.117428,
+    286.674478,
+    323.905285,
+    324.166271,
+    324.228135
+   ],
+   "median": 324.117428,
+   "min": 286.674478,
+   "max": 324.228135,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build / 64 digits / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.267311,
+    1.432836,
+    1.268141,
+    1.26712,
+    1.266878
+   ],
+   "median": 1.267311,
+   "min": 1.266878,
+   "max": 1.432836,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build resident / 64 digits / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    380.259888,
+    380.315952,
+    380.149729,
+    380.143269,
+    380.368212
+   ],
+   "median": 380.259888,
+   "min": 380.143269,
+   "max": 380.368212,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "tiled / vote + build resident / 64 digits / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.080202,
+    1.080043,
+    1.080515,
+    1.080533,
+    1.079894
+   ],
+   "median": 1.080202,
+   "min": 1.079894,
+   "max": 1.080533,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    439.755594,
+    438.327262,
+    439.509935,
+    426.891946,
+    416.36589
+   ],
+   "median": 438.327262,
+   "min": 416.36589,
+   "max": 439.755594,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "split / vote / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.070909,
+    1.074399,
+    1.071508,
+    1.103179,
+    1.131068
+   ],
+   "median": 1.074399,
+   "min": 1.070909,
+   "max": 1.131068,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "split / vote ring only / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    438.446486,
+    436.9921,
+    436.333541,
+    438.631362,
+    436.456559
+   ],
+   "median": 436.9921,
+   "min": 436.333541,
+   "max": 438.631362,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote ring only / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.088973,
+    1.092598,
+    1.094247,
+    1.088514,
+    1.093938
+   ],
+   "median": 1.092598,
+   "min": 1.088514,
+   "max": 1.094247,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote resident / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    2008.236543,
+    2009.175615,
+    2009.75306,
+    2009.362106,
+    2007.002504
+   ],
+   "median": 2009.175615,
+   "min": 2007.002504,
+   "max": 2009.75306,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote resident / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.234503,
+    0.234394,
+    0.234326,
+    0.234372,
+    0.234648
+   ],
+   "median": 0.234394,
+   "min": 0.234326,
+   "max": 0.234648,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    390.300462,
+    386.220374,
+    386.629313,
+    386.410742,
+    387.460462
+   ],
+   "median": 386.629313,
+   "min": 386.220374,
+   "max": 390.300462,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.151743,
+    1.16391,
+    1.162679,
+    1.163336,
+    1.160185
+   ],
+   "median": 1.162679,
+   "min": 1.151743,
+   "max": 1.16391,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build resident / k 4",
+   "unit": "bytes a cycle",
+   "samples": [
+    833.749751,
+    832.637776,
+    831.913542,
+    832.146096,
+    832.152094
+   ],
+   "median": 832.152094,
+   "min": 831.913542,
+   "max": 833.749751,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build resident / k 4 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.539161,
+    0.539881,
+    0.540351,
+    0.5402,
+    0.540197
+   ],
+   "median": 0.540197,
+   "min": 0.539161,
+   "max": 0.540351,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    343.04079,
+    303.721166,
+    342.46361,
+    343.524892,
+    344.178439
+   ],
+   "median": 343.04079,
+   "min": 303.721166,
+   "max": 344.178439,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    1.197401,
+    1.352417,
+    1.199419,
+    1.195714,
+    1.193444
+   ],
+   "median": 1.197401,
+   "min": 1.193444,
+   "max": 1.352417,
+   "unstable": true
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build resident / k 16",
+   "unit": "bytes a cycle",
+   "samples": [
+    469.033915,
+    468.676573,
+    469.987908,
+    468.063006,
+    469.135908
+   ],
+   "median": 469.033915,
+   "min": 468.063006,
+   "max": 469.987908,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "split / vote + build resident / k 16 / DRAM floor",
+   "unit": "x",
+   "samples": [
+    0.875752,
+    0.87642,
+    0.873975,
+    0.877569,
+    0.875562
+   ],
+   "median": 0.875752,
+   "min": 0.873975,
+   "max": 0.877569,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void facts_block::facts<(int)64, (int)4, (int)4, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 55,
+   "ops": {
+    "LOP3.LUT": 163,
+    "FMNMX": 160,
+    "FMUL": 128,
+    "IADD3": 70,
+    "LEA.HI": 47,
+    "STS": 44,
+    "LDS": 42,
+    "SHF.R.U32.HI": 40,
+    "SHFL.BFLY": 40,
+    "SHF.R.S32.HI": 35,
+    "I2F.U8": 32,
+    "I2FP.F32.U32": 32
+   }
+  },
+  "void facts_block::split<(int)4, (int)4>(facts_block::Params, long long *)": {
+   "regs": 62,
+   "ops": {
+    "LOP3.LUT": 404,
+    "LDS": 239,
+    "IADD3": 214,
+    "SHF.R.S32.HI": 160,
+    "LEA.HI": 156,
+    "LEA": 105,
+    "NOP": 90,
+    "BRA": 83,
+    "LEA.HI.X": 82,
+    "IMAD.IADD": 72,
+    "IMAD": 60,
+    "SHF.R.U32.HI": 59
+   }
+  },
+  "void facts_block::facts<(int)64, (int)3, (int)16, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 63,
+   "ops": {
+    "IMAD.MOV.U32": 221,
+    "LOP3.LUT": 219,
+    "IMAD.IADD": 157,
+    "SEL": 140,
+    "IADD3": 113,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "IMAD.SHL.U32": 85,
+    "BRA": 81,
+    "IMAD": 67,
+    "LDS": 60,
+    "SHFL.UP": 57
+   }
+  },
+  "void facts_block::facts<(int)64, (int)1, (int)16, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 61,
+   "ops": {
+    "LOP3.LUT": 217,
+    "IMAD.MOV.U32": 212,
+    "IMAD.IADD": 154,
+    "SEL": 140,
+    "IADD3": 115,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "IMAD.SHL.U32": 84,
+    "BRA": 81,
+    "IMAD": 73,
+    "LDS": 60,
+    "SHF.R.S32.HI": 57
+   }
+  },
+  "void facts_block::facts<(int)64, (int)3, (int)4, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 63,
+   "ops": {
+    "IMAD.MOV.U32": 221,
+    "LOP3.LUT": 219,
+    "IMAD.IADD": 157,
+    "SEL": 140,
+    "IADD3": 113,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "IMAD.SHL.U32": 85,
+    "BRA": 81,
+    "IMAD": 67,
+    "LDS": 60,
+    "SHFL.UP": 57
+   }
+  },
+  "void facts_block::facts<(int)64, (int)1, (int)4, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 61,
+   "ops": {
+    "LOP3.LUT": 217,
+    "IMAD.MOV.U32": 212,
+    "IMAD.IADD": 154,
+    "SEL": 140,
+    "IADD3": 115,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "IMAD.SHL.U32": 84,
+    "BRA": 81,
+    "IMAD": 73,
+    "LDS": 60,
+    "SHF.R.S32.HI": 57
+   }
+  },
+  "void facts_block::facts<(int)64, (int)2, (int)4, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 37,
+   "ops": {
+    "LOP3.LUT": 79,
+    "IADD3": 53,
+    "STS": 40,
+    "LEA.HI": 30,
+    "SHF.R.S32.HI": 29,
+    "LDS": 24,
+    "IMAD.SHL.U32": 19,
+    "BRA": 16,
+    "IMAD.IADD": 15,
+    "LEA": 14,
+    "NOP": 14,
+    "LEA.HI.X": 12
+   }
+  },
+  "void facts_block::facts<(int)64, (int)0, (int)4, (bool)1>(facts_block::Params, long long *)": {
+   "regs": 37,
+   "ops": {
+    "LOP3.LUT": 74,
+    "IADD3": 54,
+    "STS": 40,
+    "SHF.R.S32.HI": 31,
+    "LEA.HI": 30,
+    "LDS": 24,
+    "IMAD.SHL.U32": 21,
+    "BRA": 16,
+    "IMAD.IADD": 16,
+    "LEA": 15,
+    "IMAD": 14,
+    "NOP": 14
+   }
+  },
+  "void facts_block::facts<(int)64, (int)3, (int)16, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 72,
+   "ops": {
+    "LOP3.LUT": 279,
+    "IMAD.MOV.U32": 228,
+    "FMNMX": 162,
+    "IMAD.IADD": 155,
+    "SEL": 140,
+    "FMUL": 132,
+    "IADD3": 127,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "BRA": 81,
+    "LDS": 77,
+    "IMAD.SHL.U32": 75
+   }
+  },
+  "void facts_block::split<(int)3, (int)16>(facts_block::Params, long long *)": {
+   "regs": 101,
+   "ops": {
+    "LOP3.LUT": 540,
+    "IMAD.MOV.U32": 357,
+    "IMAD.IADD": 292,
+    "IADD3": 275,
+    "LDS": 232,
+    "SEL": 199,
+    "LEA.HI": 168,
+    "CALL.REL.NOINC": 161,
+    "MOV": 160,
+    "BRA": 138,
+    "SHF.R.S32.HI": 132,
+    "IMAD": 104
+   }
+  },
+  "void facts_block::facts<(int)64, (int)1, (int)16, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 72,
+   "ops": {
+    "LOP3.LUT": 277,
+    "IMAD.MOV.U32": 219,
+    "FMNMX": 162,
+    "IMAD.IADD": 152,
+    "SEL": 140,
+    "FMUL": 132,
+    "IADD3": 129,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "BRA": 81,
+    "LDS": 77,
+    "IMAD.SHL.U32": 74
+   }
+  },
+  "void facts_block::split<(int)1, (int)16>(facts_block::Params, long long *)": {
+   "regs": 104,
+   "ops": {
+    "LOP3.LUT": 734,
+    "IADD3": 383,
+    "IMAD.MOV.U32": 366,
+    "LDS": 352,
+    "IMAD.IADD": 327,
+    "LEA.HI": 228,
+    "SHF.R.S32.HI": 217,
+    "SEL": 199,
+    "BRA": 194,
+    "CALL.REL.NOINC": 169,
+    "MOV": 168,
+    "IMAD": 141
+   }
+  },
+  "void facts_block::facts<(int)64, (int)3, (int)4, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 72,
+   "ops": {
+    "LOP3.LUT": 279,
+    "IMAD.MOV.U32": 228,
+    "FMNMX": 162,
+    "IMAD.IADD": 155,
+    "SEL": 140,
+    "FMUL": 132,
+    "IADD3": 127,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "BRA": 81,
+    "LDS": 77,
+    "IMAD.SHL.U32": 75
+   }
+  },
+  "void facts_block::split<(int)3, (int)4>(facts_block::Params, long long *)": {
+   "regs": 101,
+   "ops": {
+    "LOP3.LUT": 540,
+    "IMAD.MOV.U32": 357,
+    "IMAD.IADD": 292,
+    "IADD3": 275,
+    "LDS": 232,
+    "SEL": 199,
+    "LEA.HI": 168,
+    "CALL.REL.NOINC": 161,
+    "MOV": 160,
+    "BRA": 138,
+    "SHF.R.S32.HI": 132,
+    "IMAD": 104
+   }
+  },
+  "void facts_block::facts<(int)64, (int)1, (int)4, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 72,
+   "ops": {
+    "LOP3.LUT": 277,
+    "IMAD.MOV.U32": 219,
+    "FMNMX": 162,
+    "IMAD.IADD": 152,
+    "SEL": 140,
+    "FMUL": 132,
+    "IADD3": 129,
+    "CALL.REL.NOINC": 93,
+    "MOV": 92,
+    "BRA": 81,
+    "LDS": 77,
+    "IMAD.SHL.U32": 74
+   }
+  },
+  "void facts_block::split<(int)1, (int)4>(facts_block::Params, long long *)": {
+   "regs": 104,
+   "ops": {
+    "LOP3.LUT": 734,
+    "IADD3": 383,
+    "IMAD.MOV.U32": 366,
+    "LDS": 352,
+    "IMAD.IADD": 327,
+    "LEA.HI": 228,
+    "SHF.R.S32.HI": 217,
+    "SEL": 199,
+    "BRA": 194,
+    "CALL.REL.NOINC": 169,
+    "MOV": 168,
+    "IMAD": 141
+   }
+  },
+  "void facts_block::facts<(int)64, (int)2, (int)4, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 62,
+   "ops": {
+    "LOP3.LUT": 168,
+    "FMNMX": 160,
+    "FMUL": 128,
+    "IADD3": 68,
+    "LEA.HI": 47,
+    "STS": 44,
+    "LDS": 42,
+    "SHFL.BFLY": 40,
+    "SHF.R.U32.HI": 39,
+    "SHF.R.S32.HI": 33,
+    "I2F.U8": 32,
+    "I2FP.F32.U32": 32
+   }
+  },
+  "void facts_block::split<(int)2, (int)4>(facts_block::Params, long long *)": {
+   "regs": 52,
+   "ops": {
+    "LOP3.LUT": 354,
+    "IADD3": 189,
+    "LDS": 165,
+    "LEA.HI": 142,
+    "SHF.R.S32.HI": 92,
+    "STS": 66,
+    "PRMT": 52,
+    "NOP": 51,
+    "IMAD.IADD": 50,
+    "LEA": 49,
+    "IMAD.MOV.U32": 43,
+    "BRA": 43
+   }
+  },
+  "void facts_block::facts<(int)64, (int)0, (int)4, (bool)0>(facts_block::Params, long long *)": {
+   "regs": 55,
+   "ops": {
+    "LOP3.LUT": 163,
+    "FMNMX": 160,
+    "FMUL": 128,
+    "IADD3": 70,
+    "LEA.HI": 47,
+    "STS": 44,
+    "LDS": 42,
+    "SHF.R.U32.HI": 40,
+    "SHFL.BFLY": 40,
+    "SHF.R.S32.HI": 35,
+    "I2F.U8": 32,
+    "I2FP.F32.U32": 32
+   }
+  },
+  "void facts_block::split<(int)0, (int)4>(facts_block::Params, long long *)": {
+   "regs": 79,
+   "ops": {
+    "LOP3.LUT": 465,
+    "IADD3": 286,
+    "LDS": 285,
+    "LEA.HI": 197,
+    "SHF.R.S32.HI": 172,
+    "LEA": 116,
+    "BRA": 100,
+    "NOP": 98,
+    "LEA.HI.X": 90,
+    "IMAD.IADD": 83,
+    "IMAD": 81,
+    "STS": 66
+   }
+  },
+  "facts_block::flat(const unsigned char *, long long *, int *)": {
+   "regs": 30,
+   "ops": {
+    "IADD3": 17,
+    "NOP": 17,
+    "LOP3.LUT": 13,
+    "IMAD.SHL.U32": 10,
+    "IMAD.MOV.U32": 9,
+    "IMAD.IADD": 9,
+    "IADD3.X": 9,
+    "LDGSTS.E.BYPASS.128": 8,
+    "IMAD": 6,
+    "LDGDEPBAR": 4,
+    "BRA": 4,
+    "LDS": 4
+   }
+  },
+  "facts_block::checksum(facts_block::Params, unsigned long long *)": {
+   "regs": 37,
+   "ops": {
+    "LOP3.LUT": 51,
+    "IMAD": 27,
+    "IMAD.MOV.U32": 19,
+    "IADD3": 18,
+    "SHF.R.U32.HI": 16,
+    "LDG.E.U16": 12,
+    "IMAD.SHL.U32": 10,
+    "SHF.L.U64.HI": 10,
+    "BRA": 9,
+    "NOP": 8,
+    "ISETP.NE.AND": 7,
+    "IMAD.X": 7
+   }
+  },
+  "facts_block::count_lists(const unsigned short *, long long, unsigned long long *)": {
+   "regs": 39,
+   "ops": {
+    "IADD3": 85,
+    "IMAD.X": 48,
+    "IMAD.MOV.U32": 35,
+    "IADD3.X": 35,
+    "LDG.E.U16": 29,
+    "IMAD": 14,
+    "NOP": 14,
+    "BRA": 13,
+    "IMAD.WIDE.U32": 12,
+    "IMAD.HI.U32": 11,
+    "LEA": 9,
+    "LEA.HI.X": 8
+   }
+  },
+  "facts_block::count_live(const unsigned char *, unsigned long long *)": {
+   "regs": 40,
+   "ops": {
+    "IADD3": 85,
+    "IMAD.MOV.U32": 46,
+    "IADD3.X": 46,
+    "SEL": 37,
+    "IMAD.X": 36,
+    "LDG.E.U8": 29,
+    "ISETP.NE.AND": 29,
+    "IMAD": 14,
+    "BRA": 13,
+    "IMAD.WIDE.U32": 12,
+    "IMAD.HI.U32": 11,
+    "NOP": 8
+   }
+  },
+  "facts_block::fill(unsigned char *, __half2 *, int)": {
+   "regs": 28,
+   "ops": {
+    "LOP3.LUT": 28,
+    "SHF.R.U32.HI": 26,
+    "IADD3": 16,
+    "NOP": 15,
+    "IMAD": 11,
+    "IMAD.WIDE.U32": 8,
+    "UIADD3": 6,
+    "BRA": 5,
+    "IADD3.X": 5,
+    "STG.E.U8": 5,
+    "UMOV": 4,
+    "IMAD.MOV.U32": 3
+   }
+  }
+ }
+}

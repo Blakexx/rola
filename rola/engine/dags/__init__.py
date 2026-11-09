@@ -8,32 +8,28 @@ terminal node folds what the walk produced into the family's PLAN, and the kerne
 read only the plan (docs/internals/engine/engine.md).
 """
 
-from rola.engine.dags.chunk_dag import (
-    CHUNK_DAG,
-    ChunkContext,
-    build_chunk_plan,
-    validate_context,
-)
 from rola.engine.dags.decode_dag import (
     DECODE_STEP,
-    DECODE_VERDICT,
     DecodeContext,
     admit_growth,
-    decode_forward,
     decode_step_gated,
     growth_pending,
 )
+from rola.engine.dags.prefill_dag import (
+    PREFILL_DAG,
+    PrefillContext,
+    run_prefill,
+    validate_context,
+)
 
 __all__ = [
-    "CHUNK_DAG",
     "DECODE_STEP",
-    "DECODE_VERDICT",
-    "ChunkContext",
+    "PREFILL_DAG",
     "DecodeContext",
+    "PrefillContext",
     "admit_growth",
-    "build_chunk_plan",
-    "decode_forward",
     "decode_step_gated",
     "growth_pending",
+    "run_prefill",
     "validate_context",
 ]

@@ -1,0 +1,12 @@
+"""THE HARNESSES (docs/measurement.md): the part harness's calibrations as a run target, in the checkout on its own
+venv; `bazel run //:parts_library` builds the module they load."""
+
+load("//bazel:defs.bzl", "tool_run", "tree_part")
+
+tool_run(
+    name = "carry_calib",
+    tool = "measure/harness/bench_carry_calib.py",
+)
+
+#: this package's part of the tree the checks read
+tree_part()

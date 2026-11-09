@@ -210,7 +210,7 @@ def _touches_gpu(request) -> bool:
 def _gpu_lock_held():
     from rola_devtools.locks.gpu import gpu_lock
 
-    #: SHARED mode (LOCKS brief, 2026-08-29): a pytest battery is correctness
+    #: SHARED mode: a pytest battery is correctness
     #: work (oracle/integration/cuda-marked unit tests), not a measurement --
     #: it can share the device with another correctness run (up to
     #: `host.gpu_shared_slots` of them) rather than excluding every other
@@ -220,19 +220,20 @@ def _gpu_lock_held():
         yield
 
 
-#: THE HOST-COMPUTE BUDGET, PER XDIST WORKER (LOCKS brief item 1: "a pytest
-#: tier that forks workers draws 1 per worker"). `PYTEST_XDIST_WORKER` is set
-#: by `pytest-xdist` in every worker process (never in the controller), so a
-#: bare `pytest` run (no `-n`) draws nothing here -- only a forked worker
-#: competes with compiles/sanitizer runs/clang-tidy passes for the shared pool.
+#: THE HOST-COMPUTE BUDGET, PER PARALLEL PROCESS ("a pytest tier that forks
+#: workers draws 1 per worker"): an xdist worker (`PYTEST_XDIST_WORKER`, never
+#: the controller) or one of a sharded tier's shards (`--bazel-shard`,
+#: rola_devtools.graph.pytest_shards) competes with compiles, sanitizer runs and clang-tidy
+#: passes for the shared pool; a single process draws nothing.
 @pytest.fixture(scope="session", autouse=True)
-def _host_budget_worker_slot():
-    if "PYTEST_XDIST_WORKER" not in os.environ:
+def _host_budget_worker_slot(request):
+    worker = os.environ.get("PYTEST_XDIST_WORKER") or request.config.getoption("--bazel-shard", None)
+    if worker is None:
         yield
         return
     from rola_devtools.locks import host
 
-    with host.acquire(1, label=f"pytest-worker:{os.environ['PYTEST_XDIST_WORKER']}"):
+    with host.acquire(1, label=f"pytest-worker:{worker}"):
         yield
 
 
@@ -255,60 +256,44 @@ def _take_gpu_lock(request):
 # have something to run.
 
 
-@pytest.fixture
-def dev_config_env(tmp_path):
-    """`make(host={...}, ...)` writes those sections to a fresh dev config directory (`tools/dev_config.py`) and returns
-    an environment whose children read it, the in-process loader's cache cleared."""
-    import json
+def alternating_routing(depth):
+    """THE ALTERNATING SPLIT, one routing a level for ``build_routing``/``build_layer``: entmax on the write duty at the
+    even levels (read-dense) and on the read duty at the odd (write-dense), so every side has a dense level and, from
+    depth two, a sparse one (docs/api.md section 2.1). At depth one the one level is softmax on both duties."""
+    from rola import dense_routing, split_routing
 
-    import dev_config
-
-    def make(**sections) -> dict:
-        root = tmp_path / "dev_config"
-        root.mkdir(exist_ok=True)
-        for name, values in sections.items():
-            (root / f"{name}.json").write_text(json.dumps(values))
-        env = dict(os.environ)
-        env[dev_config.POINTER] = str(root)
-        dev_config.reload()
-        return env
-
-    yield make
-    dev_config.reload()
+    if depth == 1:
+        return [dense_routing(1)]
+    return [split_routing(1, sparse_duty="write" if level % 2 == 0 else "read") for level in range(depth)]
 
 
-def build_routes(*, hidden_size=64, num_heads=4, widths=(16,), routing=None,
-                 gain=True, bias=False,
-                 gain_bias_init=None, gain_config=None):
-    """One :class:`rola.RouteProducer` covering every level in ``widths``."""
-    from rola import dense_routing
-    from rola.routing.producer import RouteProducer
+def build_routing(*, widths=(16,), routing=None, gain=True, bias=False, gain_bias_init=None, gain_config=None):
+    """One declared :class:`rola.Routing` covering every level in ``widths``; ``routing`` is one level routing for every
+    level, or a list with one a level (`alternating_routing`)."""
+    from rola import Routing, dense_routing
 
-    levels = [dense_routing(w) if routing is None else routing.at(w) for w in widths]
-    return RouteProducer(
-        levels, hidden_size=hidden_size, num_heads=num_heads, bias=bias,
-        gain=gain, gain_bias_init=gain_bias_init,
-        gain_config=gain_config)
+    per_level = routing if isinstance(routing, (list, tuple)) else [routing] * len(widths)
+    levels = [dense_routing(w) if r is None else r.at(w) for r, w in zip(per_level, widths)]
+    return Routing(levels, gain=gain, bias=bias, gain_bias_init=gain_bias_init, gain_config=gain_config)
 
 
 def build_layer(*, hidden_size=64, num_heads=4, d_v=32, widths=(16,), routing=None,
                 decay=None, decay_rate=2.0 ** -8, gain=True,
                 bias=False, expert=None, layer_idx=None, **kwargs):
-    """A :class:`rola.RoLA` over :func:`build_routes`.
+    """A :class:`rola.RoLA` over :func:`build_routing`.
 
     ``decay`` takes ``None`` (no decay), ``'learned'`` or ``'constant'`` -- the two
     shipped decay SOURCES -- rather than a rate, because which source a model uses is
-    the choice the slot exists to express.
+    the choice the slot exists to express. A test that needs a bundle takes it from
+    the layer's producer: ``layer._produce(x)``.
     """
     from rola import ConstantDecay, LearnedDecay, RoLA
 
-    routes = build_routes(hidden_size=hidden_size, num_heads=num_heads,
-                          widths=widths, routing=routing,
-                          gain=gain, bias=bias, **kwargs)
+    declared = build_routing(widths=widths, routing=routing, gain=gain, bias=bias, **kwargs)
     sources = {"learned": LearnedDecay, "constant": ConstantDecay}
     source = None if decay is None else sources[decay](
-        decay_rate, widths=routes.widths, num_heads=num_heads)
-    return RoLA(routes, d_v=d_v, decay=source,
+        decay_rate, widths=declared.widths, num_heads=num_heads)
+    return RoLA(declared, hidden_size=hidden_size, num_heads=num_heads, d_v=d_v, decay=source,
                 layer_idx=layer_idx, expert=expert)
 
 
@@ -319,18 +304,15 @@ def build_layer(*, hidden_size=64, num_heads=4, d_v=32, widths=(16,), routing=No
 # The low-level producer gates in tests/oracle/test_producer.py and
 # tests/integration/test_production_levels.py drive raw parameter tensors directly
 # (route_W, gain_W, ... as bare leaves) rather than a module's parameters, which
-# is what lets them isolate a backward-through-every-tensor gate. The production
-# orchestration is `RouteProducer` -- an nn.Module over nn.Parameters -- so
-# `produce_routing` builds one and runs it under
-# `torch.nn.utils.stateless.functional_call` with the caller's tensors standing
-# in for its parameters. The graph reaches the caller's leaves and the numerics
-# are the REAL producer's, not a second derivation of them.
+# is what lets them isolate a backward-through-every-tensor gate. The producer is a
+# primitive over bare tensors (`rola.ops.produce.produce`), so `produce_routing`
+# calls it with the caller's tensors: the graph reaches the caller's leaves and the
+# numerics are the REAL producer's, not a second derivation of them.
 
 
 def resolved_routing_from_topology(topology):
-    """A `ResolvedRouting` over a `Topology`'s own levels -- exactly what
-    `RouteProducer.__init__` builds for itself
-    (`self.routing = ResolvedRouting(levels=self.levels)`)."""
+    """A `ResolvedRouting` over a `Topology`'s own levels -- exactly what a declared
+    `Routing` resolves (`Routing.resolved`)."""
     from rola.routing.types import ResolvedRouting
 
     return ResolvedRouting(levels=topology.levels)
@@ -347,53 +329,50 @@ def fuse_gain_columns(route_W, gain_W):
 
 
 def raw_side_gain(x, route_W, gain_W, gain_bias, resolved):
-    """`g_write` BEFORE the mass fold, through the library's own two pieces.
+    """The producer's write gain ``[B, T, H]``, through the library's own two pieces.
 
     Not a second implementation: the projection is `_packed_router_logits`' gain span
-    and the nonlinearity is `SideGain`, which is exactly what the producer composes --
-    what the producer does NOT expose is the value between them, which is what a fold
-    gate has to see.
+    and the nonlinearity is `softplus_side_gain`, which is exactly what the producer
+    composes -- what the producer does NOT expose is the gain apart from write level 0's
+    scale (docs/CONSTITUTION.md#r23), which is what a gate on that fold has to see.
     """
     from rola.routing.projection import _packed_router_logits
-    from rola.routing.side_gain import GainConfig, SideGain
+    from rola.routing.side_gain import WRITE_GAIN, softplus_side_gain
 
     columns = gain_W.shape[1]
     _, _, gain_logits = _packed_router_logits(
-        x, fuse_gain_columns(route_W, gain_W), resolved, route_bias=None, h_w=None,
+        x, fuse_gain_columns(route_W, gain_W), resolved, route_bias=None,
         projection_dtype=x.dtype, gain_columns=columns)
-    gain = SideGain(num_heads=gain_W.shape[0], config=GainConfig.from_public(bool(columns)))
-    with torch.no_grad():
-        gain.gain_bias.copy_(gain_bias)
-    return gain(gain_logits, batch=x.shape[0], tokens=x.shape[1], dtype=x.dtype,
-                device=x.device)
+    if not columns:
+        return torch.ones(x.shape[0], x.shape[1], gain_W.shape[0], dtype=x.dtype, device=x.device)
+    biased = gain_logits + gain_bias.to(gain_logits.dtype)[None, None, :, :]
+    return softplus_side_gain(biased[..., WRITE_GAIN]).to(x.dtype)
 
 
-def produce_routing(x, x_w, v, route_W, route_bias, gain_W, gain_bias, topology):
+def produce_routing(x, v, route_W, route_bias, gain_W, gain_bias, topology):
     """The producer, run over bare parameter tensors -> a plain namespace.
 
-    ``v`` is accepted (matching the call sites) and unused: callers need it only
-    afterwards, to run the oracle. The return carries the field names those gates
-    read (`read_levels`/`write_levels`/`g_write`). There is no read-side gain: the
-    readout is a ratio, which fixes it to 1 identically.
+    ``v`` sizes the value half the producer also computes (from a zero weight: these gates read the routing) and is
+    the callers' input to the oracle afterwards. The return carries the levels those gates read, dequantized
+    (`read_levels`/`write_levels`): as the solve produced them, the write gain in write level 0
+    (docs/CONSTITUTION.md#r23).
     """
     from types import SimpleNamespace
 
-    from torch.func import functional_call
-
-    from rola.routing.producer import RouteProducer
+    from rola import Routing
+    from rola.ops.produce import ProducerPlan, ProducerWeights, hidden_contiguous, produce, projection_dtype
 
     H, hidden_size, _ = route_W.shape
-    producer = RouteProducer(
-        topology.levels, hidden_size=hidden_size, num_heads=H,
-        bias=route_bias is not None)
-    parameters = {"route_W": fuse_gain_columns(route_W, gain_W),
-                  "side_gain.gain_bias": gain_bias}
-    if route_bias is not None:
-        parameters["route_bias"] = torch.cat(
-            [route_bias, route_bias.new_zeros(H, gain_W.shape[1])], dim=-1)
-    streams = (x,) if x_w is None else (x, x_w)
-    routes = functional_call(producer, parameters, streams)
-
-    return SimpleNamespace(
-        read_levels=routes.read_simplex(), write_levels=routes.write,
-        g_write=routes.g_write)
+    d_v = v.shape[-1]
+    plan = ProducerPlan(routing=Routing(topology.levels, bias=route_bias is not None, gain=bool(gain_W.shape[1])),
+                        num_heads=H, hidden_size=hidden_size, d_v=d_v)
+    bias = None if route_bias is None else torch.cat([route_bias, route_bias.new_zeros(H, gain_W.shape[1])], dim=-1)
+    #: THE WEIGHTS IN THE PRODUCER'S CONTRACT FORM: the projection's dtype, and on the kernel's path (CUDA, no fp64)
+    #: the hidden axis contiguous
+    fused = fuse_gain_columns(route_W, gain_W).to(projection_dtype(x))
+    weights = ProducerWeights(route_W=hidden_contiguous(fused) if fused.dtype is torch.bfloat16 else fused,
+                              route_bias=bias, gain_bias=gain_bias,
+                              v_W=torch.zeros(H * d_v, hidden_size, dtype=torch.bfloat16, device=x.device))
+    routes, _values = produce(x, plan, weights)
+    read_levels, write_levels = routes.dequantized()
+    return SimpleNamespace(read_levels=read_levels, write_levels=write_levels)
