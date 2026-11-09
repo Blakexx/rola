@@ -351,26 +351,9 @@ def gate_venv(checkout: Path | str) -> str:
     return done.stdout.strip()
 
 
-def _follow_lock_mount() -> None:
-    """A container's locks follow its launcher's mount at every init: the host's where they are mounted, else the
-    machine's own (the keys an earlier init wrote for a mount removed), so a container started once without the mount
-    never keeps its own locks beside the host's -- see docs/setup.md#the-devbox-image."""
-    if dev_config.locks_mounted():
-        _write_section("host", dev_config.CONTAINER_LOCKS, force=True)
-        return
-    path = dev_config.directory() / "host.json"
-    values = json.loads(path.read_text()) if path.exists() else {}
-    stale = [k for k, v in dev_config.CONTAINER_LOCKS.items() if values.get(k) == v]
-    if stale:
-        path.write_text(json.dumps({k: v for k, v in values.items() if k not in stale}, indent=1, sort_keys=True) + "\n")
-        dev_config.reload()
-        print(f"wrote {path}: the host's locks are not mounted here, so {', '.join(stale)} take this machine's own")
-
-
 def cmd_init(a) -> int:
     for section, values in dev_config.detect().items():
         _write_section(section, values, a.force)
-    _follow_lock_mount()
 
     for name in (TOOLKIT, *DEV_TOOLS):
         ensure_pinned(name)
@@ -453,16 +436,6 @@ def cmd_check(a) -> int:
             + ("" if wired else ", not in the user's settings"), "bazel run //:init")
     else:
         row(True, "agent skill router: no Claude Code configuration here")
-    #: the host's locks where a launcher mounted them, else this machine's own: never a container's own beside the host's
-    mounted, named = dev_config.locks_mounted(), dev_config.get("host.lock_dir") == dev_config.CONTAINER_LOCKS["lock_dir"]
-    if mounted == named:
-        what = "host.lock_dir: the host's, mounted by the container's launcher" if mounted else "host.lock_dir: this machine's own"
-    elif mounted:
-        what = (f"host.lock_dir: the host's locks are mounted at {dev_config.CONTAINER_LOCKS['lock_dir']} and the config "
-                f"names {dev_config.get('host.lock_dir')}")
-    else:
-        what = "host.lock_dir names the host's mounted locks, and none are mounted here"
-    row(mounted == named, what, "bazel run //:init")
     for key in ("host.lock_dir", "host.scratch"):
         path = Path(dev_config.get(key))
         path.mkdir(parents=True, exist_ok=True)
@@ -681,17 +654,24 @@ def _load(tarball: str, tag: str) -> None:
     subprocess.run(["docker", "tag", f"{DEVBOX_REPO}:latest", tag], check=True)
 
 
+#: THE ONE LOCK PATH: a container's lock directory and GPU lock, the dev config's defaults, where the host's are mounted
+LOCK_PATH = Path(dev_config.SCHEMA["host"]["lock_dir"].default)
+LOCK_GPU = Path(dev_config.SCHEMA["host"]["gpu_lock"].default)
+
+
 def _mounts(named: Path, digest: str) -> list[str]:
-    """What a container started here shares with the host, as `source:target[:ro]`: the host's lock directories at the
-    paths its init records (`dev_config.CONTAINER_LOCKS`), so one lock governs the GPU both use; the image's digest,
-    written to `named`, where `dev_config.devbox_image()` reads it; and under WSL the driver's libraries at their own
-    path. Nothing else: its checkouts and installs are its own."""
-    gpu, shared = Path(dev_config.get("host.gpu_lock")), Path(dev_config.CONTAINER_LOCKS["gpu_lock"])
-    if gpu.name != shared.name:
-        raise SystemExit(f"host.gpu_lock {gpu} must be named {shared.name} for a container to share it")
+    """What a container started here shares with the host, as `source:target[:ro]`: the host's lock directory at the
+    one lock path (`host.lock_dir`'s default, which a container's own config keeps), so one lock governs the GPU both
+    use; the image's digest, written to `named`, where `dev_config.devbox_image()` reads it; and under WSL the driver's
+    libraries at their own path. Nothing else: its checkouts and installs are its own."""
+    locks, gpu = Path(dev_config.get("host.lock_dir")), Path(dev_config.get("host.gpu_lock"))
+    if gpu != locks / LOCK_GPU.name:
+        raise SystemExit(f"host.gpu_lock {gpu} must be {locks / LOCK_GPU.name} for a container to share it: the "
+                         "container's locks are one directory")
+    #: a missing source would be made by the daemon, as root
+    locks.mkdir(parents=True, exist_ok=True)
     named.write_text(digest + "\n")
-    mounts = [f"{dev_config.get('host.lock_dir')}:{dev_config.CONTAINER_LOCKS['lock_dir']}", f"{gpu.parent}:{shared.parent}",
-              f"{named}:{dev_config.CONTAINER_IMAGE}:ro"]
+    mounts = [f"{locks}:{LOCK_PATH}", f"{named}:{dev_config.CONTAINER_IMAGE}:ro"]
     wsl_lib = dev_config.get("host.wsl_lib")
     #: the whole WSL directory, not only lib/: its libcuda is a loader that opens the host's driver store beside it
     return mounts + ([f"{Path(wsl_lib).parent}:{Path(wsl_lib).parent}:ro"] if wsl_lib else [])
@@ -734,7 +714,7 @@ with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
     F.scaled_dot_product_attention(q, q, q, is_causal=True)
 print(torch.cuda.get_device_name(0), torch.__version__)
 PY""",
-    "a host-held lock is held here": f"""{CONTAINER_PYTHON} - {dev_config.CONTAINER_LOCKS['lock_dir']}/rola_container_probe.lock <<'PY'
+    "a host-held lock is held here": f"""{CONTAINER_PYTHON} - {LOCK_PATH}/rola_container_probe.lock <<'PY'
 import fcntl, sys
 f = open(sys.argv[1], "w")
 try:

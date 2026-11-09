@@ -245,7 +245,6 @@ __device__ __forceinline__ void tile_out(const Tile& t, const ReadLanes& r, cons
 
 //: A PASS over the halves of the digits `live` names, two a tile, two tiles a trip, a tile's rows a tile ahead, the trip's
 //: one exit at its end (§20). -- see docs/internals/carry/ampere/readout.md#chunk
-//: @burst-exempt a loop over the pass's tiles (`unroll 1`, its exit a shuffle), not yet `Burst` units
 template <class P, bool F32, bool F16, bool Den>
 __device__ __forceinline__ void read_pass(const ReadLanes& r, uint32_t live) {
   if (live == 0u) return;

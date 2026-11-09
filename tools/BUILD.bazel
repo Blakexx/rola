@@ -96,6 +96,7 @@ cc_binary(
     "pipe_counters",
     "pipe_sim",
     "pipe_timeline",
+    "quality",
     "readout_scaling",
     "realized_support",
     "region_ledger",

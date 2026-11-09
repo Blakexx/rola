@@ -25,8 +25,8 @@ Usage -- the lane is the build graph's, which passes `--sanitizer`, the toolkit'
 Invoked BARE: this script takes `gpu_lock()` itself, once, for the whole
 run, exactly the way every
 other GPU entry point does -- never wrap it in an external `flock` on the
-same lock path, which self-deadlocks (see `rola_devtools.locks.gpu`'s module
-docstring for the K38 incident this rule exists to prevent).
+lock path, which serializes against nothing (the lock is the files beside it;
+`rola_devtools.locks.gpu`'s module docstring).
 
 Exit code is 0 iff every (family, tool) pair is CLEAN or DECLARED. DECLARED is
 the one adjudicated exception, not a skip: the pair still runs and its whole

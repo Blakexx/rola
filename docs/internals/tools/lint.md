@@ -63,7 +63,7 @@ tell a real finding from a false one, so a human decides each, and the decision 
 | `drift_guards.py` | 20 over 11 rules | the table below |
 | `r9_enforcement.py` | 1 | `decode_lattice.cuh`'s `switch (kind)` folds its fourth case into a bare default; the fix is a `uniform_switch`, a decode kernel change |
 | `coverage.py` | 0 (2026-09-29) | nothing: it gates the undeclared gaps (a kernel not in `tools/coverage.json`, a pointer to nothing); the owed obligations -- budgets, phase ledgers, sanitizer rows and oracle tests for the entmax solves, three kernels awaiting the milestone ratify -- are the backlog it prints ([`coverage.md`](coverage.md)) |
-| `burst_tier.py` | 0 (2026-11-09) | KERNEL_STANDARDS §24: an MMA issued outside a `//: @burst` function or a vote, sync, barrier, `while`, data `if` or `unroll 1` inside one, over every device function (a `static` or `__host__` one among them); `//: @burst-exempt <reason>` names a debt (the dense fold's and the dense readout's loops over a chunk's slots, `steps_dense`, `read_dense`, `dense_den`; the readout's `read_pass`, whose MMAs are `tile_mma`'s) |
+| `burst_tier.py` | 0 (2026-11-09) | KERNEL_STANDARDS §24: an MMA issued outside a `//: @burst` function or a vote, sync, barrier, `while`, data `if` or `unroll 1` inside one, over every device function (a `static` or `__host__` one among them); `//: @burst-exempt <reason>` names a debt (the dense fold's and the dense readout's loops over a chunk's slots, `steps_dense`, `read_dense`, `dense_den`). It reads only a function that issues an MMA itself: a loop above a burst function that hand-rolls what `Burst` units do is a debt it cannot see, named on that kernel's page (the readout's `read_pass`, `readout.md#chunk`) |
 
 <a id="drift-guards"></a>
 ## The drift guards, and the inventory they exist to size
@@ -114,8 +114,8 @@ fixture.
 code carries `#pragma unroll 1`, scoped to `__global__`/`__device__` bodies by brace counting), the torch include as a
 text belt to the ast-grep rule, a CTA or grid barrier inside a declared barrier-free region (`__syncwarp` is intra-warp
 and excluded), a committed doc, skill or script wrapping a command in an external `flock` on the GPU lock path (scoped
-to `docs/`, `.claude/skills/`, `measure/`, `tools/`, `CLAUDE.md` and `README.md`; `docs/KERNEL_STANDARDS.md` is exempted
-by name for its `cuda-gdb` recipe and its statement of `flock`'s semantics), the file-reading checks
+to `docs/`, `.claude/skills/`, `measure/`, `tools/`, `CLAUDE.md` and `README.md`, the standards among them), the
+file-reading checks
 (`check_supported_table`, `check_shard_partition`, `check_arch_coverage`, `check_vendored_pin`, each a function of the
 tree's files, never of an imported `rola`), and
 `check_repo_portability` (§17): every tracked file scanned for an absolute home-directory path, a citation of an

@@ -14,7 +14,8 @@ Per checkout: `binary` (the build graph's library, `bazel run //:library`, every
 machine facts, every run), the instruments of `INSTRUMENTS` (SASS and the register walk once, cached; the phase clock,
 pipe counters, stall census, timeline and the intra roofline on every carry cell, and the intra's own
 (`counters-intra`, `census-intra`) on the cells of `LONG_CELL_TOKENS` and
-more, every run, holding the GPU), and with
+more, every run, holding the GPU; the output's error against fp64 by each leg's accumulation, `quality`, on the cells
+of tier `both`), and with
 a timing server the timing registrations: `carry_forward`, `carry_intra`, `intra_forward`, `scale_pass` and `prefill` on
 the carry cells, `entmax_solve@layer=C`, `produce@layer=C`, `layer_prefill@layer=C`, `decode_step@layer=C` and the op's
 stages on the layer's own bundle (`layer_facts`, `layer_scale`, `layer_carry`, `layer_intra`, `layer_op`) for each RoLA
@@ -68,9 +69,12 @@ INSTRUMENTS = {
     "counters-intra": ("tools/pipe_counters.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"}, [], 900),
     "census-intra": ("tools/stall_census.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"},
                      ["tools/budgets/intra.json", "csrc/rola/src/intra/ampere/intra_kernel.cuh"], 900),
+    #: the output's error against the fp64 recurrence at each pairing of the carry's and the intra's accumulations
+    "quality": ("tools/quality.py", ["{cell}"], True, {"gpu": 1}, ["rola", "measure", "tests/oracle"], 900),
 }
-#: the instruments read only on the long cells (16K tokens and more): the intra's
-LONG_CELL_INSTRUMENTS = {"counters-intra", "census-intra"}
+#: THE CELLS AN INSTRUMENT RUNS ON, where not every measurement carry cell: the intra's on the long cells (16K tokens
+#: and more), the output's error on the cells sized for the fp64 recurrence as well (tier `both`)
+INSTRUMENT_CELLS = {"counters-intra": "long", "census-intra": "long", "quality": "both"}
 LONG_CELL_TOKENS = 16384
 CARRY_ARMS = ("carry_forward", "carry_intra", "intra_forward", "scale_pass", "prefill")
 LAYER_ARMS = ("entmax_solve", "produce", "layer_prefill", "decode_step", "layer_facts", "layer_scale", "layer_carry",
@@ -127,9 +131,10 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
         params={"paths": ["tests/oracle"], "timeout": TIER_TIMEOUT_S},
         code={"files": ["tests/oracle", "tests/conftest.py", "rola", "measure"]})
     long_cells = [c for c in carry if central().cell(c)["params"].get("tokens", 0) >= LONG_CELL_TOKENS]
+    both = [c for c in carry if central().cell(c)["params"].get("tier") == "both"]
     for name in instruments:
         tool, args, per_cell, holds, data, timeout = INSTRUMENTS[name]
-        on = long_cells if name in LONG_CELL_INSTRUMENTS else carry
+        on = {"long": long_cells, "both": both, None: carry}[INSTRUMENT_CELLS.get(name)]
         if per_cell and not on:
             continue
         out["instruments"][name] = g.node(
@@ -162,14 +167,14 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
 #: and, where it has one, a tier), and what the side holds while it runs. Exposed for rola-bench, which pairs a surface
 #: across checkouts and OWNS the rule it compares them under (its `RULES`), as it owns the timing methodology; the
 #: only diff this file declares itself is the kernel against its own oracle, below. What rola states about a surface's
-#: numerics is a FACT, in `NUMERICS`: the carry's ``num`` is EXACT run to run -- its readout adds exact integer pairs,
-#: MEASURED 2026-10-15, three runs of one binary over every oracle cell it reads, every slot bit-identical.
+#: numerics is a FACT, in `NUMERICS`; it states nothing exact of the carry: its readout's f16 (or fp32) REDs from a
+#: token's CTAs land in any order and reassociate, so its ``num`` is compared under its clauses, never bit for bit.
 SURFACES = {
     "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}),
     "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}),
     "carry-kernel": ("tests.oracle.sides:carry_kernel", "carry", "oracle", {"gpu": "all"}),
 }
-NUMERICS = {"carry-kernel": {"exact": ["num"]}}
+NUMERICS: dict = {}
 #: the kernel-vs-oracle diff INSIDE one checkout: the carry's slots against the fp64 inter term's, PER SLOT under each
 #: output kind's clauses and envelope (`tests/oracle/tolerances.py`) -- the numeric half of the oracle tier
 KERNEL_VS_ORACLE = ("carry-kernel", "tests.oracle.sides:carry_reference", {"num": "CARRY_NUM"})

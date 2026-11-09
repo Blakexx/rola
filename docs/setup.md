@@ -105,10 +105,9 @@ bootstrap, init and the venv: what a fresh machine pays before it can work) are 
 `environment` under the image's digest, and a green check writes the digest to `tools/devbox_image.json`. A green
 run's volumes go with it; a red run's stay for a look until the next run.
 
-**What a container shares with the host:** the host's `host.lock_dir` at `/run/rola/locks` and its GPU lock's
-directory at `/run/rola/gpu` (`dev_config.CONTAINER_LOCKS`, which the container's init detects and records at every
-run, so the lock directory follows the mount: a container started without it uses its own locks, and `check` is red
-where the config and the mount disagree), and under
+**What a container shares with the host:** the host's lock directory (`host.lock_dir`, the GPU lock inside it), at
+the one lock path every machine's config defaults to (`/tmp/rola-locks`), so the container's own default config names
+the host's locks with nothing to detect, and under
 WSL the directory above `host.wsl_lib` (`/usr/lib/wsl`) read-only: the image's loader path starts at
 `/usr/lib/wsl/lib`, and without the Windows driver's libraries there CUDA fails to initialize inside the container with
 error 500 even though `nvidia-smi` works (measured 2026-09-12, Docker Desktop 20.10.17, driver 595.95). The whole

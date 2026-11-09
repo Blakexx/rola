@@ -1,11 +1,12 @@
 // measure/lab/experiments/read_red.cu -- QUESTION: can the sparse readout's exits go straight to `num` by global
 // reductions -- each lane's outputs scaled and packed as f16 pairs, `red.global.add.noftz.f16x2`, no shared panel and
-// no drain -- and what does that cost beside the readout's MMAs against today's exact s16 pairs added into the CTA's
+// no drain -- and what does that cost beside the readout's MMAs against the exact s16 pairs (the integer panel of
+// the time) added into the CTA's
 // panel and drained after each pass? METHOD: one CTA an SM, 8 warps; `G` CTAs share a head's `num` rows (the boxes of
 // one head add into the same tokens), 1,024 tokens a head, a CTA one 32-channel half of the row. A pass: each warp
 // `TILES` tiles, a tile 8 tokens on N (8-aligned, spread over the head's tokens), its read rows by one `ldmatrix.x4`
 // from shared memory and 4 bf16 MMAs against a held state (the readout's tokens-on-N tile), then the exit. FORM 0
-// today's: each lane's two tokens' channel pairs (g, g + 8) as exact s16 pairs added into the panel at the token's
+// the integer panel's: each lane's two tokens' channel pairs (g, g + 8) as exact s16 pairs added into the panel at the token's
 // slot (`red.shared.add.u32`), and after the pass a barrier, the drain (a warp its 32 slots, two a request, each word
 // read, cleared and added into `num` by `red.global.add.noftz.f16x2`) and a barrier; FORM 1 each pair packed f16 and
 // added into `num` at the token's row (`red.global.add.noftz.f16x2`, 4 a lane a tile), nothing after the pass; FORM 2

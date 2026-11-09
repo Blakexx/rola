@@ -56,9 +56,9 @@ declarations name it. A calibration that puts a global reduction between its HMM
 name, with the cost it measures (`measure/harness/carry_parts/kept_signatures.json`, `kernels`: `{pattern: {lint:
 cost}}`, the lints `step_branches`, `step_xu`, `step_global`, `step_cover`); `sm_80 <pattern>` declares a signature
 one architecture's SASS keeps alone (ptxas schedules each apart: the reductions' step cover is sm_80's). An undeclared
-signature is red, as on the extension, and so is a declaration no function of the binary shows, among the
-architectures it carries (a one-card iteration build reads none of another card's): the declarations say only what is
-so. Every other
+signature is red, as on the extension, and so is a declaration an architecture the binary carries does not show: a
+plain one on each such architecture, an `sm_XX` one on its own (a one-card iteration build reads none of another
+card's). The declarations say only what is so. Every other
 signature (local memory, a stack frame, convergence calls, predicated HMMA) is red on a probe as on any kernel. This
 is section 29's lab declaration (STEP_XU, STEP_GLOBAL) for an instrument, beside its source.
 

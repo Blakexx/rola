@@ -58,12 +58,14 @@ def unpack_num(num: torch.Tensor, factor: torch.Tensor | float = 1.0) -> torch.T
 
 
 def prefill(routes, values, facts, carve, layout, read_statics, write_statics, *, accumulate: str | None = None,
-            reduce_dtype: torch.dtype | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+            reduce_dtype: torch.dtype | None = None, intra_accumulate: str | None = None
+            ) -> tuple[torch.Tensor, torch.Tensor]:
     """``(num, den)`` fp32 ``[BH, L, d_v]`` and ``[BH, L]`` over ``r`` (:func:`readout` divides by it): the scale pass,
     the carry at its bytes (its ``num`` and its ``den``), and the intra reduced into the same planes. ``facts`` is the
     facts pass's output over this bundle in ``layout`` with the carve's read row (`rola.ops.carry.form`) and these
     statics. ``accumulate`` and ``reduce_dtype`` are reserved: the gates' choice of the MMAs' accumulation and the
-    carry's cross-CTA dtype, each the device's or the carve's rule by default."""
+    carry's cross-CTA dtype, each the device's or the carve's rule by default; ``intra_accumulate`` names the intra's
+    apart from the carry's (``accumulate``'s by default), for a measurement that turns one leg at a time."""
     unit = carry_factor(routes)
     scale = scale_ops.scale(routes, facts, unit)
     num_c, den_c, _, _ = carry_ops.carry(routes, values, facts, carve, scale, accumulate=accumulate,
@@ -75,7 +77,7 @@ def prefill(routes, values, facts, carve, layout, read_statics, write_statics, *
     num = unpack_num(num_c, factor)
     den = (den_c * unit).contiguous()
     intra_ops.intra_forward(routes, values, facts, layout, read_statics, write_statics, num, den,
-                            accumulate=accumulate)
+                            accumulate=intra_accumulate or accumulate)
     return num, den
 
 

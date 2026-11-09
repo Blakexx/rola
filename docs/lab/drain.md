@@ -71,7 +71,7 @@ checked:
 
 | `num` | alt-k4 | alt-k16 | cohort-k16 | L2 sectors (alt-k4) | L2 atomic unit busy |
 |---|---|---|---|---|---|
-| s16 pairs (today) | 1,045 | 2,542 | 2,441 | 2.21M | 36% |
+| s16 pairs (the integer panel of the time) | 1,045 | 2,542 | 2,441 | 2.21M | 36% |
 | f16 pairs | 1,515 (1.45x) | 3,284 (1.29x) | 3,083 (1.26x) | 2.21M | 30% |
 | fp32 | 2,612 (2.50x) | 4,853 (1.91x) | 4,396 (1.80x) | 4.41M | 47% |
 | fp32, one FFMA a channel | 2,586 | 4,804 | 4,318 | 4.41M | 47% |
@@ -81,6 +81,6 @@ checked:
   and s32 alike, and trimming the conversion to one FFMA a channel buys 2%: L2's atomic path charges the bytes.
 - f16 PAIRS keep the bytes and the requests and cost 26-45% more: L2's atomic unit does ~20% more work a sector than
   for integer adds (30% of a 1.44x launch against 36%), the rest is the conversion in the request loop's latency
-  (issue 740 against 484 a unit); the pipe model prices it at today's (the global path binds at 1,124 either way).
+  (issue 740 against 484 a unit); the pipe model prices it at the s16 pairs' (the global path binds at 1,124 either way).
 
 Records: `measure/lab/results/drain/sm_86.json`, `sm_86.counters.json`.

@@ -94,10 +94,7 @@ SCHEMA: dict[str, dict[str, Key]] = {
     },
 }
 
-#: WHERE A CONTAINER THIS TREE STARTS FINDS THE HOST'S LOCKS: its launcher mounts them there (tools/dev.py's
-#: `_mounts`) and its init records them (`detect`), so one lock governs a GPU the host and the container share
-CONTAINER_LOCKS = {"lock_dir": "/run/rola/locks", "gpu_lock": "/run/rola/gpu/rola_gpu.lock"}
-#: where that launcher mounts the image's digest (`devbox_image`)
+#: where a container's launcher (tools/dev.py's `_mounts`) mounts the image's digest (`devbox_image`)
 CONTAINER_IMAGE = "/run/rola/devbox_image"
 #: where WSL puts the driver's Linux libraries, which a container this tree starts sees at the same path (the devbox
 #: image's loader searches it first)
@@ -171,16 +168,6 @@ def ncu() -> str:
     if not path.is_file():
         raise SystemExit(f"the pinned Nsight Compute is not installed at {path}: bazel run //:init")
     return str(path)
-
-
-def locks_mounted() -> bool:
-    """Whether this machine is a container whose launcher mounted the host's locks (`CONTAINER_LOCKS`): the mount point
-    is one of this process's mounts, never merely a directory, which a tool could have made."""
-    try:
-        mounts = Path("/proc/self/mountinfo").read_text().splitlines()
-    except OSError:
-        return False
-    return any(line.split()[4] == CONTAINER_LOCKS["lock_dir"] for line in mounts if len(line.split()) > 4)
 
 
 def devbox_image() -> str:

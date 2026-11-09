@@ -5,7 +5,7 @@ Mirrors `measure/lab/experiments/read_red.cu`, an experiment of the lab
 
 THE QUESTION: can the sparse readout's exits go straight to `num` by global reductions -- each lane's outputs scaled,
 packed as f16 pairs and added by `red.global.add.noftz.f16x2`, with no shared panel and no drain -- and what does that
-cost beside the readout's MMAs against today's exact s16 pairs added into the CTA's panel and drained after each pass?
+cost beside the readout's MMAs against the exact s16 pairs added into the CTA's panel and drained after each pass (the integer panel of the time)?
 (Blake, 2026-11-06: the sparse carry rebuilt with the panel gone.)
 
 THE FORM: one CTA an SM, 8 warps, 16 CTAs sharing a head's `num` rows (the boxes of one head add into the same
@@ -22,7 +22,7 @@ THE RECORD: `measure/lab/results/read_red/sm_86.json` (RTX 3080 Ti), cycles a ti
 | exit | 4 tiles a warp a pass (alt-k4's ~3.3 a window) | 16 tiles a pass |
 |---|---|---|
 | none (the tiles alone) | 260 | 260 |
-| exact s16 pairs into the panel, drained a pass (today's) | 525 | 334 |
+| exact s16 pairs into the panel, drained a pass (the integer panel of the time) | 525 | 334 |
 | f16 pairs straight to `num`, the fragment's order | 573 | 574 |
 | fp32 straight to `num` | 1,112 | 1,115 |
 | **f16 pairs through the warp's staging tile, 64 bytes a token a request** | **412** | 412 |

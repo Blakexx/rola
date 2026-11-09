@@ -33,8 +33,8 @@ forms' numerics differ, GeForce's the coarser; both are gated per slot (`tests/o
 <a id="carry-reduce"></a>
 ## The cross-CTA sum: `reduce_dtype`
 
-The CTAs holding a token's read leaves add their partials into one `num` row. Inside a CTA the partials are exact
-integers at the CTA's own unit (`ampere/parts.md#units`); across CTAs the sum's dtype is declared (ruled 2026-10-19): F16
+The CTAs holding a token's read leaves add their partials into one `num` row. Inside a CTA the partials meet in the
+chunk's panel in the sum's dtype (`ampere/panel.md#drain`); across CTAs the sum's dtype is declared (ruled 2026-10-19): F16
 PAIRS (`torch.float16`; `num` int32 `[BH, T, d_v / 2]`, two channels a word in the panel's channel order) at each
 token's `scale` byte -- a power of two bounding |num(t)|, every CTA's the same, which f16's exponent absorbs with
 slack to ~2^27, so a loose bound costs nothing (the scale pass's write-aligned bound, `scale/scale.md`: its slack

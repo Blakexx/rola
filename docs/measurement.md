@@ -273,6 +273,7 @@ timing session:
 | `timeline` | [`tools/pipe_timeline.py`](internals/tools/pipe_timeline.md) | the pipes' activity over a launch |
 | `counters-intra`, `census-intra` | the same tools' `--kernel` ([`tools/kernel_targets.py`](internals/tools/kernel_targets.md)) | the intra's launches, on the cells of 16K tokens and more |
 | `roofline` | `tools/roofline.py` | the intra's time beside the device's u8 IMMA ceiling |
+| `quality` | [`tools/quality.py`](internals/tools/quality.md) | the output's error against fp64 by each leg's accumulation, on the cells of tier `both` |
 | `oracle-tier` | the oracle battery | the counts, the failed cases, the margins |
 
 A question about the machine itself, rather than a shipped kernel, is a lab experiment ([`lab/`](lab/README.md)).

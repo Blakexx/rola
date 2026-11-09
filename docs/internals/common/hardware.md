@@ -57,7 +57,8 @@ while a class template carrying it compiles -- so host templates and plans take 
 <a id="traits"></a>
 `traits_of(Build)` is what a kernel's plan reads: the family, the window W ([`window.md`](window.md): a card's,
 chosen per architecture) and the architecture's `Caps`. A tabulated architecture that is not built may leave its
-window unchosen (sm_90, 0 until the hopper carry's design picks it); a built one must choose it. The check
+window unchosen; a built one must choose it. sm_90's is 1,024, the A100's, provisional until the sm_90 carry's design
+picks it (Blake, 2026-11-09). The check
 (`measure/hardware.py --check`) refuses an architecture whose build names no family of `FAMILIES` or a trait outside
 the family and `BUILD_TRAITS`, a built architecture whose build chooses no window, and a product overriding a trait
 outside `BUILD_TRAITS`.

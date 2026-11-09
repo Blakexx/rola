@@ -51,8 +51,9 @@ the dense floor stored: [`liveness_contract.md#floor`](internals/facts/liveness_
 values are f16 against its largest channel with an fp32 scale (`rola/values.py`). Nothing floating is stored between
 the producer and the kernels.
 
-**Declared arithmetic, per kernel.** Every kernel's arithmetic is declared and mirrored by its gate's reference, and
-accumulation is fp32 or exact integer ([`architecture/precision.md`](architecture/precision.md)):
+**Declared arithmetic, per kernel.** Every kernel's arithmetic is declared and mirrored by its gate's reference; a
+state's accumulation is fp32 or exact integer, and the readout's partials, an output's, meet at each token's scale
+byte ([`architecture/precision.md`](architecture/precision.md)):
 
 | kernel | operands | accumulation |
 |---|---|---|
@@ -283,7 +284,8 @@ One CTA a box and batch-head, eight warps, one CTA an SM; the box's fp32 state l
 whole call. Per window, in sm_86's phase order with shared memory time-shared by phase: the lists and the readout
 units in; the PUBLISH of the state to the readout's f16 operand (through shared memory where the two plans' warps own
 different leaves); the READOUT passes, each slot's read operand against the f16 state into a panel DRAINED to `num`
-as packed s16 pairs at the token's unit, added by u32 atomics (CTAs join only there, R22); then the FOLD, the
+as f16 pairs at the token's scale byte (or fp32), added by f16x2 (or fp32) REDs (CTAs join only there, R22); then the
+FOLD, the
 window's write slots in units of passes ringing two shared slots, each a burst of fp32-accumulate MMAs into the state.
 The mass is the carry's own v+1 channel, read out beside `num` as each token's `den` (ruled 2026-11-02); the f16 sum's
 scale bytes come from the scale pass, the write-aligned bound ([`internals/scale/scale.md`](internals/scale/scale.md),
@@ -357,7 +359,7 @@ never select a wider-type emulation. sm_80 and sm_86 are both core targets, pric
 | state in the register file | symmetric warps, in-warp pipelining | producer/consumer specialization with per-warp register repartitioning | the accumulator in tensor memory |
 | operand staging from DRAM | asynchronous copy into shared memory, landed on `mbarrier`s | tensor-memory-accelerator box loads, descriptors built at runtime | same, plus multicast to a cluster |
 | runtime addressing | uniform-datapath registers from the prologue | the same, pairing with runtime descriptors | the same |
-| the readout's cross-CTA join | u32 global atomics of packed s16 pairs | the same | the same |
+| the readout's cross-CTA join | `red.global` of f16 pairs at the token's scale byte (or fp32) | the same | the same |
 | the box grain | one CTA per multiprocessor | a two-CTA cluster sharing staging through distributed shared memory | the same |
 | decode's walk and combine | per-lane-group gathers, a work queue of visits, global atomics into a head's sums | bulk copies per warp | the same |
 | the closed world | ratified manifest per architecture, device stamp | the same | the same |

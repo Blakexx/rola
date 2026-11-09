@@ -74,7 +74,9 @@ each, `tile_mma`), its own 8 rows kept. Lane `d` holds, once a pass, the run of 
 count loads the half's first and adds nothing), the rows by two `ldmatrix.x4` (`chunk_addr` at the entry's row offset):
 each trip of the pass is two tiles, each's row loads issued before the other's MMAs and adds, so no operand moves
 between registers and the trip's one exit is at its end (no branch among its MMAs; the second tile's adds predicated
-off where it is past the pass's last; the exit's flag shuffled from lane 0, so ptxas sees it warp-uniform). `tile_late`
+off where it is past the pass's last; the exit's flag shuffled from lane 0, so ptxas sees it warp-uniform). The pass
+hand-rolls what `Burst` units do (KERNEL_STANDARDS §24's form), a debt the burst lint cannot see: it reads only a
+function that issues an MMA itself, and the pass's MMAs are `tile_mma`'s, a burst function. `tile_late`
 loads the rest just before the next tile's rows: each half's digit's slice (the 32 lists x 8 channels of the warp's
 channel group, one `ldmatrix.x4.trans` at `slice_at`: the lane's row and the digit's plane and swizzle bits apart, one
 product, a mask and an XOR), its den factor, and the lane's two tokens' entries (row `g` the first half's, row `g + 8`

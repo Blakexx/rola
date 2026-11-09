@@ -71,6 +71,7 @@ from both ([pipes.md](pipes.md)).
 | a 4-lane reduce-scatter of 4 values (lane `t` ends with value `t`'s max over its quad) | 12: 3 `SHFL` + 6 `SEL` (which value each lane keeps and sends) + 3 `IMNMX` | `post_keys` (production, 2026-11-01) |
 | a per-slot fact handed to the slot's lanes (a lane forms it, a step reads it) | 1 `SHFL` a fact a step + 1 `IADD3` (the step's source lane) | `drain` (production, 2026-11-02) |
 | a 64-bit address from a 32-bit word offset (`word_at`) | 2: `LEA` + `LEA.HI.X` (ptxas turns `mad.wide` by an immediate 4 into the shift-adds) | `drain` (production, 2026-11-02) |
+| an f16 pair times one half (`ops::hmul2_by`) | 1: `HMUL2` with the half in its operand selector (`.H0_H0`); on a packed `splat_u16` operand +2 a broadcast (`PRMT` or `LOP3`, and `IMAD`) | compiled alone, and the dense readout's carry kernels (production, 2026-11-09; sm_80 not read) |
 
 <a id="forms"></a>
 ## Forms

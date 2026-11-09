@@ -715,23 +715,12 @@ def check_docs_mirror() -> list[str]:
 #: "The word `flock` leaves the process": -- every GPU entry point now takes
 #: `rola_devtools.locks.gpu`'s `gpu_lock()` ITSELF, so no committed doc/skill/script should
 #: ever again tell a reader to wrap a command in an external `flock` on the GPU lock
-#: path (that is exactly the self-deadlock shape). A COMMAND LINE is what this
-#: catches -- a line that, once backticks/leading whitespace are stripped, STARTS
-#: with the literal token `flock` naming the GPU lock path; a PROSE mention (a
-#: warning against doing this, or a general statement about `flock`'s per-filesystem
-#: semantics) is not on a line whose own first token is the command, so it is not a
-#: false positive here in practice -- see the exemptions below for the two places
-#: that would still trip a purely first-token check.
+#: path (the lock is the files beside it, so the wrapper serializes against nothing;
+#: a binary with no `gpu_lock()` runs under `python -m rola_devtools.locks.gpu --`).
+#: A COMMAND LINE is what this catches -- a line that, once backticks/leading
+#: whitespace are stripped, STARTS with the literal token `flock` naming the GPU lock
+#: path; a PROSE mention is not on a line whose own first token is the command.
 FLOCK_GPU_LOCK_RE = re.compile(r"^\s*`{0,3}\s*flock\s+\S*rola_gpu")
-
-#: docs/KERNEL_STANDARDS.md carries two legitimate mentions this check would
-#: otherwise flag: an ad hoc `cuda-gdb` debugging recipe (a human wrapping an
-#: interactive THIRD-PARTY binary that has no `gpu_lock()` of its own to call --
-#: outside "every GPU entry point" this rule is about) and a general statement of
-#: `flock`'s per-filesystem semantics (still true, unrelated to who calls it). It
-#: is the constitution, edited only by ruling, so it is exempted by name rather than
-#: taught a narrower regex.
-FLOCK_CHECK_EXEMPT_FILES = {ROOT / "docs" / "KERNEL_STANDARDS.md"}
 
 #: "docs, skills, scripts" (the ruling's own words): committed prose and recipes an
 #: agent or contributor reads and might copy-paste, not generated/vendored trees.
@@ -928,8 +917,6 @@ def check_no_campaign_work_codes() -> list[str]:
 def check_no_bare_flock_on_gpu_lock() -> list[str]:
     findings = []
     for path in _flock_check_files():
-        if path in FLOCK_CHECK_EXEMPT_FILES:
-            continue
         for idx, line in enumerate(path.read_text().splitlines(), start=1):
             if FLOCK_GPU_LOCK_RE.match(line):
                 findings.append(

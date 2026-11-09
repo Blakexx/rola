@@ -27,9 +27,6 @@ graph's environment interpreter, its arguments after `--`.
   does not report its pin's version; the measurement tools find the pinned Nsight Compute by its pin
   (`dev_config.ncu()`).
 - The Windows System32 mount under WSL.
-- In a container, the lock directories its launcher mounted (`dev_config.locks_mounted()`, from the process's own
-  mount table), rewritten at every run and removed where the mount is gone (`_follow_lock_mount`), so a container
-  never keeps its own locks beside the host's; `check`'s row is red where the config and the mount disagree.
 
 A key already in a file is kept unless `--force`. A pinned tool that is missing, or does not report its pin's
 version, is downloaded from the pin's release URL (the devbox tools' pins by init, `tools/bazelisk_pin.json` by
@@ -90,7 +87,7 @@ Docker loads it (`//:image_tarball`), tagged `rola-devbox:<digest[:12]>`.
   before it can work. It stores the result through `rola_results` at `environment`, one record per image digest, and
   a green check writes the digest to `tools/devbox_image.json` and removes its volumes.
 - `compose` (`bazel run //:container_compose`) writes `.devcontainer/compose.local.yaml`: the image's tag, the
-  devbox's own volumes and the host's mounts (`_mounts`: the lock directories at `dev_config.CONTAINER_LOCKS`, the WSL
+  devbox's own volumes and the host's mounts (`_mounts`: the lock directory at the one lock path, the WSL
   driver's libraries, and the image's digest, read inside by `dev_config.devbox_image()`).
 - `gate` is the commit gate's check: the image the graph builds is the one `tools/devbox_image.json` names, and a
   commit changing the name has a passing record for the new digest. A commit that leaves the image alone needs no

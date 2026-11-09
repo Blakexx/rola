@@ -116,7 +116,7 @@ markers = [
 addopts = "-m 'not bench and not hypothesis_cells'"
 #: K39: a per-test wall so a hung kernel (a divergent `__syncwarp`, an
 #: unreleased `flock`) becomes a NAMED failure instead of a stuck CI runner or
-#: a live GPU held forever behind `/tmp/rola_gpu.lock` for every other agent
+#: a live GPU held forever behind the GPU lock (`host.gpu_lock`) for every other agent
 #: (KERNEL_STANDARDS §14, "a hang here blocks the whole flock queue"). 120s is
 #: a conservative floor above every gated test's observed wall (the slowest
 #: class on record, `test_oracle_gradcheck.py`'s double-precision backward

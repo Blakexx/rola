@@ -19,9 +19,8 @@ Mirrors `csrc/rola/src/common/atoms/math.cuh`, a concern of the baseline operati
   two fp32 to an f16 pair rounded to nearest (`cvt.rn.f16x2.f32`, `lo` in the low half). Every rounding is explicit so
   `tests/oracle/fold_reference.py` can mirror it.
 - <a id="hmul2-by"></a>`hmul2_by`: an f16 pair times one half, each product rounded once (`__hmul2_rn` on the half
-  broadcast). ptxas folds the broadcast into HMUL2's operand selector (`.H0_H0`, `.H1_H1`), so the product is one
-  instruction; on a packed `splat_u16` operand each broadcast costs two integer instructions more, a PRMT or LOP3 and
-  an IMAD (pinned nvcc 13.0, sm_86, 2026-11-09). The dense readout scales its rows by it
+  broadcast): ptxas folds the broadcast into HMUL2's operand selector, its price in
+  [budgets.md#prices](../../tools/budgets.md#prices). The dense readout scales its rows by it
   (`docs/internals/carry/ampere/readout_dense.md#nest`).
 
 The bf16 pair helpers, `hi_bf16` through `or_run`, have no shipped caller.

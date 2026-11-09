@@ -42,7 +42,9 @@ registers stay live beside the nest -- 8 spilled) -> each TILE (its rows once, o
 coefficients for the group, 8 bytes each) -> each digit: the rows scaled by the tokens' `c[t, d]` (four HMUL2, the
 lane's rows `g` and `g + 8` each its half broadcast) and one MMA into the tile's accumulator. ONE fp32 ACCUMULATOR over
 all `K D` leaves: 512 products of image values up to `2^10` reach `2^19`, past f16, so a dense side accumulates in fp32
-on every card (sm_86's half rate is its floor). A batch's accumulators times each token's num exit word are added into
+on every card (sm_86's half rate is its floor). On GeForce that departs from the constitution's R17 (fp16 where fp32
+accumulate is half rate), which the image's `2^10` top serves for a listed tile's 32 products: owed, fp16 sums kept
+inside that bound, straight into the f16 panel. A batch's accumulators times each token's num exit word are added into
 its panel words (the fill zeroed them; an image half's call adds onto the other's): `panel_word<128>` at f16,
 `panel_word<256>` at fp32. A slot past the chunk is the chunk's last, read and never added.
 

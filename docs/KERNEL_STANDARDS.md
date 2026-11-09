@@ -136,7 +136,9 @@ or stop and name the gap; efficiency is correctness.
 ## 11. Debugging a device hang or race (recorded 2026-08-26 after a stage burned 2.5 h reasoning blind)
 `cuda-gdb` works on this machine when the process is LAUNCHED under it; ATTACHING (`-p`) is refused by
 Yama `ptrace_scope=1` (a Linux setting, liftable with `sudo sysctl kernel.yama.ptrace_scope=0`).
-Recipe: `flock /tmp/rola_gpu.lock cuda-gdb -q --args <venv>/bin/python repro.py` → `run` → Ctrl-C on a
+Recipe: `<venv>/bin/python -m rola_devtools.locks.gpu -- cuda-gdb -q --args <venv>/bin/python repro.py` (the GPU
+lock's command form: the lock is the files beside `host.gpu_lock`, so a raw `flock` on its path serializes against
+nothing) → `run` → Ctrl-C on a
 hang → `info cuda kernels` / `info cuda warps` / `cuda kernel 0 block (..) thread (..)` / `bt` / `print`.
 `compute-sanitizer --tool synccheck|racecheck|memcheck` for barrier misuse, shared-memory hazards and
 addressing (it found the decode pool race). Device `printf` flushes only on kernel completion — useless
@@ -261,9 +263,9 @@ Committed records carry repo-relative or host-keyed locations. Skills that ship 
 repo docs and the measurements record, never at a journal.
 
 ## §14 addendum (law, 2026-08-28): CONTAINERS AND THE GPU LOCK
-`flock /tmp/rola_gpu.lock` is per-filesystem: a lock taken inside a container serializes nothing on the
-host or in another container. Every container that touches the GPU bind-mounts the host's lock
-directory so one flock governs all. One gate container at a time: stop the previous run before
+A lock file is per-filesystem: a lock taken inside a container serializes nothing on the host or in another
+container unless both see the same files. Every container that touches the GPU mounts the host's lock directory at
+the one lock path (`/tmp/rola-locks`, every machine's default), so one set of locks governs all. One gate container at a time: stop the previous run before
 launching the next (three concurrent in-container probes turned a minutes-long gate into an hour).
 
 ## §18 — Tools refuse, they do not choose (law, 2026-08-28, from Blake's "why keep two linkers")

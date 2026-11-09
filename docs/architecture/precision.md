@@ -7,7 +7,7 @@ The distinction is the whole document, so state it first.
 
 | | What it means | Rule |
 |---|---|---|
-| **ACCUMULATION** | the format a value is *added into* across steps and carried: the fold's state, the mass (the state's v+1 channel), the scale pass's write masses, the readout's partials across lists and CTAs | fp32 or exact integer, closed. Not a default, not a knob. |
+| **ACCUMULATION** | the format a value is *added into* across steps and carried: the fold's state, the mass (the state's v+1 channel), the scale pass's write masses | fp32 or exact integer, closed. Not a default, not a knob. |
 | **STORAGE and OPERANDS** | the format a value is *held in* and read, without being accumulated into: routing rows, values, the stored state between calls, the readout's image, the output | declared per component, each with its quality measured against fp64. |
 
 A read-only value that is 1 ULP wrong contributes an error bounded by its own magnitude, once. An accumulator that is
@@ -23,14 +23,24 @@ nothing bounds what accumulation embeds.
 | the values | f16 at the token's largest channel = 1, an fp32 scale a token | -- |
 | the stored state | s24 a leaf-channel (an s16 hi plane and a u8 lo plane) at an s8 power-of-two exponent a (leaf, 32-channel group); the mass fp32 | -- |
 | the fold | A the slots' dense slices f16 times c (f16 at `2^(E - unit)`), B the values f16 | fp32 on every card, each list in its running unit |
-| the readout | the state's f16 image at a power of two a digit, the digit's largest value under 2^10; read rows f16; the coefficient f16 | a listed read side: fp32 where fp32 accumulate is full rate (A100, A6000, A40), fp16 on GeForce, chosen per product from `hardware.json`; a dense read side: fp32 on every card, one accumulator over all its leaves (512 products of values up to 2^10 pass f16's range; [`carry/ampere/readout_dense.md`](../internals/carry/ampere/readout_dense.md)); the partials exact s16 pairs at each token's unit, summed as u32 |
+| the readout | the state's f16 image at a power of two a digit, the digit's largest value under 2^10; read rows f16; the coefficient f16 | a listed read side: fp32 where fp32 accumulate is full rate (A100, A6000, A40), fp16 on GeForce, chosen per product from `hardware.json`; a dense read side: fp32 on every card today, a departure from this rule on GeForce (its one accumulator over all 512 leaves of a token batch can reach 2^19, past the 2^15 bound the image's 2^10 top gives a listed tile's 32 products; [`carry/ampere/readout_dense.md`](../internals/carry/ampere/readout_dense.md)), owed: fp16 sums kept inside that bound; each token's num into the panel as f16 pairs at its scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`; [`carry/ampere/panel.md#drain`](../internals/carry/ampere/panel.md#drain)) |
 | the scale pass | the rows as stored (a u8 digit over 255, a dense f16), `F` | fp32, the byte by the carry's rule |
 | decode | the bundle's token, the stored state | each written element updated in fp32 and rounded to its group's unit (2^-23 of the group's largest) |
 | the output | `y = P x unit / den`, bf16 | -- |
 
 The image's 2^10 top keeps a 32-list sum of image times read row under 2^15, inside an fp16 accumulator, so one
 placement serves both readout accumulations (`docs/internals/carry/ampere/handoff.md#maxima`). The fp16 readout accumulation is
-not a state accumulator: it sums one tile's 32 lists, and the exact pair takes it from there.
+not a state accumulator: it sums one tile's 32 lists, and the panel takes its result at the token's scale.
+
+MEASURED ([`tools/quality.py`](../internals/tools/quality.md), sm_86, 2026-11-09): the listed readout's fp16
+accumulation costs nothing measurable in the output (the median a token 0.032-0.045% at three listed cells, fp16 as
+fp32); the intra's fp16 doubles it (0.057-0.088%; the dense cell 0.054% -> 0.111%).
+
+The readout's partials are an output's, not a state's: each token's num into the panel and across CTAs as f16 pairs at each token's scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`),
+the scale pass's byte bounding the token's whole num so the f16 sum stays in range (Blake, 2026-11-06: the readout's
+exits straight to HBM by f16x2 REDs, no integer panel; the dtype declared 2026-10-19,
+[`carry_api.md#carry-reduce`](../internals/carry/carry_api.md#carry-reduce)). The constitution's R17 still names them
+exact s16 pairs: a departure its text owes.
 
 <a id="quality"></a>
 ## Quality

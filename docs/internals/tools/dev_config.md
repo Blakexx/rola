@@ -44,8 +44,6 @@ resolved value and the file it came from ([dev.md](dev.md)).
   until init installed it. Every compile, disassembly and assembler check outside the graph's own rules uses them, so
   the ptxas a gate reads is the one the build ran.
 - `scratch(name)` returns a tool's scratch directory.
-- `locks_mounted()` says whether this machine is a container whose launcher mounted the host's locks at
-  `CONTAINER_LOCKS` (from the process's own mount table, never a directory a tool could have made).
 - `devbox_image()` returns the devbox image's digest inside such a container, which its launcher mounts read-only at
   `CONTAINER_IMAGE`, else the empty string. A file the launcher mounts, not an environment variable: an editor's
   container would carry a variable as a setting of its own.
