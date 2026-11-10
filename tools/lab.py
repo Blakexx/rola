@@ -71,10 +71,6 @@ def smi(*query: str) -> list[str]:
     return [field.strip() for field in out.splitlines()[0].split(",")]
 
 
-def device_arch() -> str:
-    return "sm_" + smi("compute_cap")[0].replace(".", "")
-
-
 def build(path: Path, arch: str) -> Path:
     """The experiment's binary for `arch`, compiled with the pinned toolkit."""
     out = dev_config.scratch("lab") / f"{path.stem}.{arch}"
@@ -305,7 +301,7 @@ def pipes_report(raw: dict[str, dict], table: dict[str, dict], units: dict[str, 
     from measure import hardware
 
     local = hardware.product_of(smi("name")[0])
-    arch = device_arch()
+    arch = sass.device_arch()
     here = hardware.resolve(product=local) if local else hardware.resolve(arch=arch)
     kinds = {_plain(k): pipes.mma_kind(v["ops"]) for k, v in table.items()}
     for k, c in raw.items():
@@ -463,7 +459,7 @@ def keep(name: str, arch: str, device: dict, results: list[dict], table: dict, r
 
 
 def run(name: str, reps: int, record: bool, force: bool) -> int:
-    arch = device_arch()
+    arch = sass.device_arch()
     binary = build(experiments()[name], arch)
     table = kernels(binary)
     failures = check(binary, table)
@@ -517,7 +513,7 @@ def ncu_counters(binary: Path, metrics: list[str], extra: list[str]) -> dict[str
 
 
 def counters(name: str, metrics: list[str], record: bool) -> int:
-    arch = device_arch()
+    arch = sass.device_arch()
     binary = build(experiments()[name], arch)
     failures = check(binary, kernels(binary))
     if failures:
@@ -556,7 +552,7 @@ def ledger(name: str, pattern: str | None) -> int:
     """KERNEL_STANDARDS section 29.13: each kernel's executed instructions by phase (its source's `//:` headings), per
     declared unit or per launch -- ncu's SourceCounters of the kernel's first launch, each SASS offset mapped to its
     innermost line in the experiment's source (the lab builds carry `-lineinfo`)."""
-    arch = device_arch()
+    arch = sass.device_arch()
     path = experiments()[name]
     binary = build(path, arch)
     table = kernels(binary)
@@ -618,7 +614,7 @@ def kernels_mangled(binary: Path) -> list[str]:
 
 def show_sass(name: str, pattern: str | None, full: bool, arch: str | None) -> int:
     path = experiments()[name]
-    binary = build(path, arch or device_arch())
+    binary = build(path, arch or sass.device_arch())
     table = kernels(binary)
     sigs = signatures(binary)
     for k, info in table.items():

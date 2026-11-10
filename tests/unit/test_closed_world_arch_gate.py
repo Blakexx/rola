@@ -186,19 +186,14 @@ def test_this_device_is_tabulated_and_the_gate_admits_it():
     launch takes no arm and no state, so what this cell exercises is the gate and
     nothing else.
     """
+    from measure import hardware
     from rola.ops import facts as facts_ops
     from rola.routing.factors import RouteFactors
     from rola.routing.types import OpaqueRouting, Topology
     from rola.values import Values
 
-    major, minor = torch.cuda.get_device_capability()
-    cc = major * 100 + minor * 10
-    rows = re.search(r"constexpr bool tabulated\(int cc\) \{\s*return ([^;]+);",
-                     HARDWARE.read_text(), re.S).group(1)
-    assert f"cc == {cc}" in rows, (
-        f"this device is compute capability {major}.{minor}, which the capability table "
-        "does not carry -- the refusal is then the correct behaviour, and this row is "
-        "the one that must be added")
+    #: refuses by name where the capability table carries no row for this device: the row is then the one to add
+    assert hardware.device_arch(*torch.cuda.get_device_capability()) in hardware.tabulated()
     widths, L = (16, 16), 32
     levels = tuple(torch.ones(1, L, 1, width, device="cuda") for width in widths)
     routes = RouteFactors.from_levels(Topology(levels=tuple(OpaqueRouting(width=w) for w in widths)), levels, with_gain(levels, torch.ones(1, L, 1, device="cuda")), sparse=((False, True), (True, False)))

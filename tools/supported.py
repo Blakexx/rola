@@ -5,10 +5,10 @@ they last edited it; this one is derived from the two artifacts that decide the
 answer, and the commit gate fails on drift (the standards lint's `check_supported_table`; the capability table's
 test is the CPU tier's, `tests/unit/test_capability_table_docs.py`):
 
-* ``csrc/rola/src/common/hardware.cuh`` (generated from ``hardware.json``) -- the architectures the KERNEL knows how to
-  size itself for. ``sm_arch_tabulated()`` is a ``static_assert`` at compile time
-  and the chunk dispatch's first-launch check a refusal at run time, so an arch
-  missing from it cannot execute whatever the table says.
+* ``csrc/rola/src/common/hardware.json``'s rows (``measure.hardware.tabulated``, which also writes
+  ``common/hardware.cuh``'s ``tabulated``) -- the architectures the KERNEL knows how to size itself for: a
+  ``static_assert`` at compile time and the card's admission a refusal at run time, so an arch missing from it
+  cannot execute whatever the table says.
 * ``tools/manifests/<toolchain>/sm_XX.json`` -- the architectures MEASURED, per toolchain (``tools/toolchains.py``).
   One file per arch, so "is it ratified?" is a file-existence question.
 

@@ -49,9 +49,11 @@ def probe_binary(tmp_path_factory):
     nvcc = _nvcc()
     if not pathlib.Path(nvcc).exists():
         pytest.skip(f"no nvcc at {nvcc}: the toy kernel cannot be compiled")
-    major, minor = torch.cuda.get_device_capability()
+    from measure import hardware
+
+    arch = hardware.device_arch(*torch.cuda.get_device_capability())
     out = tmp_path_factory.mktemp("structure_switch") / "probe"
-    cmd = [*BUILD_LOCK, nvcc, "-std=c++17", f"-arch=sm_{major}{minor}",
+    cmd = [*BUILD_LOCK, nvcc, "-std=c++17", f"-arch={arch}",
            "--expt-relaxed-constexpr", f"-I{SRC}", str(PROBE), "-o", str(out)]
     done = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, f"the toy kernel did not compile:\n{done.stderr}"

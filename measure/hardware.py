@@ -49,7 +49,11 @@ def cc_of(arch: str) -> int:
 
 def arch_of(cc: int) -> str:
     """The architecture row a compute capability x 10 names (900 `sm_90a`): the one map back from `cc_of`."""
-    return next(arch for arch in load()["arch"] if cc_of(arch) == cc)
+    for arch in load()["arch"]:
+        if cc_of(arch) == cc:
+            return arch
+    raise SystemExit(f"compute capability {cc // 100}.{cc // 10 % 10} has no row in {CONFIG.name}: an untabulated "
+                     "architecture")
 
 
 def device_arch(major: int, minor: int) -> str:
