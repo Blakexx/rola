@@ -27,7 +27,7 @@ RESULTS = ROOT / "measure" / "lab" / "results"
 MANIFESTS = ROOT / "tools" / "manifests"
 #: the rates a built architecture must resolve: its pipes' (the schedulers, the issue, a shared wavefront and the
 #: shared atomics), which the phase floors (`tools/overlap_gate.py`), the pipe model and the budgets' forms read
-CHOICE = ("schedulers", "issue", "wavefront", "atomic", "atomic_wavefront")
+PIPE_RATES = ("schedulers", "issue", "wavefront", "atomic", "atomic_wavefront")
 SOURCES = ("measured", "documented", "announced")
 #: a measured rate may differ from its record's median by its own rounding and no more
 TOLERANCE = 0.002
@@ -249,7 +249,7 @@ def _source_findings(where: str, arch: str, rate: Rate) -> list[str]:
 
 
 def check(cfg: dict | None = None, header_text: str | None = None) -> list[str]:
-    """The header current; every built architecture tabulated and able to price a choice; every product on a tabulated
+    """The header current; every built architecture tabulated with its pipes' and MMAs' rates; every product on a tabulated
     architecture; every rate a known field with one source that holds."""
     cfg = cfg or load()
     findings = []
@@ -258,7 +258,7 @@ def check(cfg: dict | None = None, header_text: str | None = None) -> list[str]:
                         "(`python -m measure.hardware --write`)")
     names = [f["name"] for f in cfg["schema"]["caps"] if f["name"] != "cc"]
     kinds, taxed = cfg["schema"]["mma"], cfg["schema"]["taxed"]
-    known = {*CHOICE, *(f"mma.{k}" for k in kinds), *(f"tax.{k}.{c}" for k in kinds for c in taxed),
+    known = {*PIPE_RATES, *(f"mma.{k}" for k in kinds), *(f"tax.{k}.{c}" for k in kinds for c in taxed),
              *(f"latency.{k}" for k in cfg["schema"]["latency"]),
              *(f"shared.{k}" for k in cfg["schema"]["shared"]), *(f"pipe.{k}" for k in cfg["schema"]["pipe"]),
              *(f"global.{k}" for k in cfg["schema"]["global"])}
@@ -275,7 +275,7 @@ def check(cfg: dict | None = None, header_text: str | None = None) -> list[str]:
             findings.append(f"{arch} is built (tools/manifests) but has no row in {CONFIG.name}")
             continue
         rates = resolve(arch, cfg=cfg)
-        missing = [f for f in (*CHOICE, *(f"mma.{k}" for k in kinds)) if f not in rates]
+        missing = [f for f in (*PIPE_RATES, *(f"mma.{k}" for k in kinds)) if f not in rates]
         if missing:
             findings.append(f"{arch} is built but its defaults lack {', '.join(missing)}")
         if cfg["arch"][arch].get("build", {}).get("window", 0) <= 0:

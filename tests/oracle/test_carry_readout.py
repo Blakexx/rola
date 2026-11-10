@@ -180,6 +180,13 @@ def test_a_dense_read_side_reads_out_to_the_reference(widths, growth, reduce_dty
     assert ratio <= 1.0, ratio
 
 
+def test_a_dense_read_side_refuses_an_fp16_readout():
+    """The dense readout accumulates fp32 alone: the kernel boundary refuses an fp16 request by name, never runs fp32
+    under it."""
+    with pytest.raises(RuntimeError, match="dense read side's readout accumulates fp32 alone"):
+        _readout_ratio((64, 64), 2 * window_of(), 0, 0, "fp16", dense=True)
+
+
 @pytest.mark.parametrize("reduce_dtype", [torch.float16, torch.float32], ids=["f16", "fp32"])
 def test_one_box_of_a_dense_read_side_reads_out(reduce_dtype):
     """One box a batch-head on both sides dense (32 digits x K 16, the box's extents): every slot within its bound over

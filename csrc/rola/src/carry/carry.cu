@@ -317,6 +317,8 @@ Tensor carry_forward(std::vector<Tensor> read_rows, std::vector<Tensor> write_ro
                       && k.read_factors == p.read.operands,
                   "the arm key's channels and factors are the carve's: ", channels, ", ",
                   p.write.operands, ", ", p.read.operands);
+  STD_TORCH_CHECK(!(accumulate == 1 && k.read_factors == 2),
+                  "a dense read side's readout accumulates fp32 alone: its fp16 form is not built");
   //: the hand-off's form is the sides' levels: the fold's lists (a dense fold's coefficients) the readout's digits
   const int64_t fold_outer = write_list >= 0 ? write_list
                                              : (write_operand.size() > 1 ? write_operand[1] : -1),

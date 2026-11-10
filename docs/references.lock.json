@@ -1680,6 +1680,8 @@
   {"doc": "docs/internals/tools/docrefs.md", "pinned_at": "c1e86602038e", "reviewed": true, "sha256": "28fd1c08daf250ba", "target": "tools/docrefs.py::locate"},
   {"doc": "docs/internals/tools/docrefs.md", "pinned_at": "9edbb7b546c4", "reviewed": true, "sha256": "add8c8a321e13479", "target": "tools/docrefs.py::references"},
   {"doc": "docs/internals/tools/docrefs.md", "pinned_at": "9edbb7b546c4", "reviewed": true, "sha256": "94aaf716ac9ca7cd", "target": "tools/docrefs.py::verdict"},
+  {"doc": "docs/internals/tools/factor_census.md", "pinned_at": "afa8123cbcad", "reviewed": true, "sha256": "", "target": "tests/oracle/readout_reference.py"},
+  {"doc": "docs/internals/tools/factor_census.md", "pinned_at": "afa8123cbcad", "reviewed": true, "sha256": "", "target": "tools/factor_census.py"},
   {"doc": "docs/internals/tools/gen_shards.md", "pinned_at": "f9de7b1175b6", "reviewed": true, "sha256": "", "target": "bazel/gates.py"},
   {"doc": "docs/internals/tools/gen_shards.md", "pinned_at": "f9de7b1175b6", "reviewed": true, "sha256": "", "target": "bazel/headers.py"},
   {"doc": "docs/internals/tools/gen_shards.md", "pinned_at": "913ba49e5ac3", "reviewed": true, "sha256": "9813fff6fc2fdeea", "target": "docs/internals/common/select.md#carried"},

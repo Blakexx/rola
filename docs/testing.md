@@ -124,8 +124,9 @@ deleted with the implementation it exercised): the carry's inter numerator again
 recurrence's units (`tests/oracle/test_carry_vs_oracle.py`, its drawn-cell supplement
 `test_carry_hypothesis_cells.py`), the op's readout and handed-back state against `naive_rola`
 (`tests/oracle/test_prefill_vs_oracle.py`), and the state's backings bit-identical through a fresh call and a
-continuation (`tests/integration/test_chunk_paging_equivalence.py`; red by plan until the prefill composition ports,
-when its readouts take the carry's f16 sum's bound, the carry's num differing run to run). `declare.py`'s `carry-vs-oracle` diff stores the
+continuation (`tests/integration/test_chunk_paging_equivalence.py`, red by plan). Its readouts' bit-identity is an
+assertion the carry cannot meet -- the carry's num differs run to run (its f16 sums reassociate) -- so the test's port
+re-points it to the carry's f16 sum's bound; the state's bit-identity stands. `declare.py`'s `carry-vs-oracle` diff stores the
 carry's verdict per cell beside the instruments.
 
 Decode is its own family (`tests/oracle/test_decode_family.py`): the prefill-to-decode hand-off, a 32-step horizon with

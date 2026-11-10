@@ -144,7 +144,7 @@ to the percent ([pipes.md#checked](../tools/pipes.md#checked)).
 
 `python -m measure.hardware --check`: the header is what the file generates; every architecture's capabilities
 are the schema's; every built architecture (one with a manifest under `tools/manifests/`) has a row whose
-defaults can price a choice (`schedulers`, `issue`, `wavefront`, `atomic`, `atomic_wavefront`, every MMA kind);
+defaults carry its pipes' and MMAs' rates (`schedulers`, `issue`, `wavefront`, `atomic`, `atomic_wavefront`, every MMA kind);
 every product names a tabulated architecture and its device is that product; every rate is a field the schema
 names, with exactly one source that holds.
 

@@ -120,9 +120,6 @@ def carry(routes, values, facts, carve: Carve, scale: torch.Tensor, accumulate: 
     (docs/internals/carry/schedule.md#planner); ``forced`` (:func:`forced_word`) is reserved: the gates' and the
     measurements' choice of the plan a window takes where every chunk of it fits. A grouped bundle's CTAs are its write heads', each reading its query
     heads' rows; ``num`` and ``scale`` are a query head's."""
-    if accumulate == "fp16" and arm_key(carve)[3] == 2:
-        raise ValueError("a dense read side's readout accumulates fp32 alone: its fp16 form is not built "
-                         "(docs/internals/carry/ampere/readout_dense.md#nest)")
     BH = routes.batch * routes.heads
     d_v = values.v.shape[-1]
     dtype = reduce_dtype_for(carve, reduce_dtype)

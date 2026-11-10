@@ -11,7 +11,7 @@ readout, the intra's: fp32 and fp32, fp16 and fp32, fp32 and fp16, fp16 and fp16
 (`tests.oracle.fixtures.oracle_run`) on the same operands gives `y64`. A token's error is `|y - y64| / |y64|` over its
 channels (L2), over the tokens whose `y64` is not zero; the record holds the median, the 99th percentile and the
 largest, and which read side the cell's carve gives (listed or dense: a dense read side's readout accumulates fp32
-whatever it is told, so its record holds the intra's pairings alone). `declare.py` runs it on the cells sized for both
+alone and the carry refuses an fp16 request there, so its record holds the intra's pairings alone). `declare.py` runs it on the cells sized for both
 the oracle and a measurement.
 
 Docs: docs/internals/tools/quality.md.
@@ -66,7 +66,7 @@ def measure(name: str) -> dict:
     out = {"cell": name, "arm": list(key), "read_side": "dense" if key[3] == 2 else "listed",
            "device_form": carry_ops.readout_accumulate(), "forms": {}}
     for carry_form, intra_form in PAIRS:
-        #: the entry refuses an fp16 readout on a dense read side, which accumulates fp32 alone
+        #: the kernel boundary refuses an fp16 readout on a dense read side, which accumulates fp32 alone
         if out["read_side"] == "dense" and carry_form == "fp16":
             continue
         num, den = prefill_ops.prefill(routes, values, facts, carve, layout, *statics, accumulate=carry_form,

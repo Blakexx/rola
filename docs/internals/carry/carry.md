@@ -93,6 +93,7 @@ launch (`CarryCapture`, `carry_api.md#carry-capture-bind`).
 - a side lists at most one level and forms its operand from all the others; a list level spans the arm's list group
   (the box's lists or digits, `ampere/plan.md#list-groups`), and the side's lists are shaped at it; a side with no list level names exactly a row level and a coefficient level; an operand slice is a 4-byte
   copy at least and `kSliceBytes` at most.
+- an fp16 readout on a dense read side, whose readout accumulates fp32 alone (`ampere/readout_dense.md#nest`).
 - every tensor's dtype, contiguity and exact shape (the lists' five, `scale` `[BH, windows x W]`, `num` int32 `[BH,
   T, d_v / 2]` for f16 pairs or fp32 `[BH, T, d_v]`); the arm key's channels and factor counts agreeing with the
   carve, and its hand-off form (`same_split`) with the levels the sides list (`ampere/handoff.md#same-split`); a write head's

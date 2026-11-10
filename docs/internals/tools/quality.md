@@ -3,8 +3,8 @@
 The constitution's R17 declares each component's accumulation precision, and [precision.md](../../architecture/precision.md)
 records it; this instrument is how a choice of accumulation is priced in the output, not in a model. It reads a
 stateless prefill's per-token error against the fp64 recurrence with each MMA leg -- the carry's readout and the
-intra -- at fp32 or fp16 (`rola.ops.prefill`'s `accumulate` and `intra_accumulate`); a dense read side's readout runs
-fp32 whatever it is told, so only the intra turns there.
+intra -- at fp32 or fp16 (`rola.ops.prefill`'s `accumulate` and `intra_accumulate`); a dense read side's readout
+accumulates fp32 alone and the carry refuses an fp16 request there, so only the intra turns there.
 
     bazel run //tools:quality -- flagship-alt-k4 [--json quality.json]
 
