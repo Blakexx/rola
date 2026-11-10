@@ -42,7 +42,9 @@ def load() -> dict:
 
 
 def cc_of(arch: str) -> int:
-    return int(arch.removeprefix("sm_")) * 10
+    """An architecture's compute capability x 10: `sm_86` 860; `sm_90a` (the hopper row, built with its
+    architecture-specific features) 900, as `__CUDA_ARCH__` reads there."""
+    return int(arch.removeprefix("sm_").rstrip("a")) * 10
 
 
 def tabulated(cfg: dict | None = None) -> list[str]:

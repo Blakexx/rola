@@ -34,7 +34,7 @@ def test_a_product_override_wins_over_its_architecture():
 def test_every_architecture_names_its_family_and_each_built_one_its_window():
     cfg = hardware.load()
     assert {a: r["build"]["family"] for a, r in cfg["arch"].items()} == {
-        "sm_80": "ampere", "sm_86": "ampere", "sm_87": "ampere", "sm_89": "ampere", "sm_90": "hopper"}
+        "sm_80": "ampere", "sm_86": "ampere", "sm_87": "ampere", "sm_89": "ampere", "sm_90a": "hopper"}
     cfg["arch"]["sm_86"]["build"].pop("window")
     assert any("sm_86 is built but its build chooses no window" in f for f in hardware.check(cfg))
 

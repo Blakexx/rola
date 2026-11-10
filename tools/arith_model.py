@@ -8,7 +8,8 @@ bf16 values and operands, fp32 accumulation and an fp32 sum.
 
 The cell's bundle is put in the format first -- each level's rows u8 unit-max with its fp32 scale (a dense level
 too: no floor, a zero a zero), the values bf16 unit-max with an fp32 scale a token -- and the fp64 recurrence
-(`rola.ops.naive`'s, window by window) on THOSE operands is the truth. The model rounds where a kernel of the family
+on THOSE operands is the truth: summed a window at a time (what a 64K run can hold), and proven the oracle's every
+run (`rola.ops.naive.naive_rola` over the first two windows, refused on a difference). The model rounds where a kernel of the family
 rounds, a window `W` at a time:
 - THE FOLD: a (token, leaf)'s coefficient, the levels' bytes over 255 times the token's `m s` (the value column) or
   `m` (the mass column), rounded to bf16 once; times the bf16 value; summed into an fp32 state.
@@ -49,15 +50,29 @@ def _fp32(x):
 
 
 def _format(levels):
-    """Each level's rows as ``(unit, scale)``: u8 over 255 against the row's max, ``[T, width]`` and ``[T]``."""
-    import torch
+    """Each level's rows as ``(unit, scale)`` in the u8 scaled-block form (`rola.routing.quant.SPARSE`: against the
+    row's max at 255, no floor, a zero a zero), ``[T, width]`` fp64 and ``[T]``."""
+    from rola.routing import quant
 
     out = []
     for x in levels:
-        scale = x.amax(dim=-1)
-        unit = torch.where(scale[:, None] > 0, x / scale[:, None].clamp_min(1e-300), torch.zeros_like(x))
-        out.append((torch.round(unit * 255.0) / 255.0, scale))
+        rows, scale = quant.SPARSE.quantize(x.float()[None, :, None])
+        out.append((rows[0, :, 0].double() / quant.SPARSE.top, scale[0, :, 0].double()))
     return out
+
+
+def _prove_truth(reads, writes, u, s, topology, y64, tokens: int) -> None:
+    """THE TRUTH IS THE ORACLE'S: `rola.ops.naive.naive_rola` on the formatted operands over the run's first
+    ``tokens``, against this tool's windowed fp64 sums there -- refused where they differ, so the windowed form (what a
+    64K run can hold) is the recurrence, proven every run."""
+
+    from rola.ops.naive import naive_rola
+
+    level = lambda side: tuple((unit * scale[:, None])[None, :tokens, None] for unit, scale in side)  # noqa: E731
+    want, _ = naive_rola((u * s[:, None])[None, :tokens, None], level(reads), level(writes), topology, None)
+    worst = float((y64[:tokens] - want[0, :, 0]).abs().amax() / want.abs().amax().clamp_min(1e-300))
+    if not worst < 1e-9:
+        raise SystemExit(f"the windowed truth is not the oracle's over the first {tokens} tokens: {worst:.3e}")
 
 
 def _errors(y, want) -> dict:
@@ -128,6 +143,7 @@ def model(name: str, window: int, head: int) -> dict:
             del inter, intra, fold
         del Rq, Wq
     y64 = torch.cat(want)
+    _prove_truth(reads, writes, u, s, routes.topology, y64, min(T, 2 * window))
     return {"cell": name, "tokens": T, "window": window, "head": head,
             "errors": {k: _errors(torch.cat(ys), y64) for k, ys in got.items()}}
 

@@ -1582,6 +1582,8 @@
   {"doc": "docs/internals/tools/README.md", "pinned_at": "cbc988f847f5", "reviewed": true, "sha256": "", "target": "tools/devbox_image.json"},
   {"doc": "docs/internals/tools/README.md", "pinned_at": "bf797997b3e5", "reviewed": true, "sha256": "", "target": "tools/lint"},
   {"doc": "docs/internals/tools/README.md", "pinned_at": "bf797997b3e5", "reviewed": true, "sha256": "", "target": "tools/manifests"},
+  {"doc": "docs/internals/tools/arith_model.md", "pinned_at": "57e2df9133c9", "reviewed": true, "sha256": "c35214d9ff37de27", "target": "docs/architecture/precision.md#quality"},
+  {"doc": "docs/internals/tools/arith_model.md", "pinned_at": "57e2df9133c9", "reviewed": true, "sha256": "01bce0a77f31525d", "target": "rola/ops/naive.py::naive_rola"},
   {"doc": "docs/internals/tools/arith_model.md", "pinned_at": "85970c8d510f", "reviewed": true, "sha256": "", "target": "tools/arith_model.py"},
   {"doc": "docs/internals/tools/bank_model.md", "pinned_at": "66c79def10e1", "reviewed": true, "sha256": "", "target": "measure/lab/experiments/read_image.inputs.py"},
   {"doc": "docs/internals/tools/bank_model.md", "pinned_at": "66c79def10e1", "reviewed": true, "sha256": "", "target": "tools/bank_model.py"},

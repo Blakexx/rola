@@ -29,7 +29,8 @@ defaults, which are what the SM design does.
 
 ## Families, builds and products
 
-Every architecture row names its FAMILY in its `build` block -- `ampere` (sm_80 to sm_89), `hopper` (sm_90),
+Every architecture row names its FAMILY in its `build` block -- `ampere` (sm_80 to sm_89), `hopper` (sm_90a: the row is
+named as it is compiled, with the architecture's own features; its compute capability 900),
 `blackwell` (reserved) -- the name a kernel's schedule is selected by (`Family`; the constitution's R8). Instruction
 differences stay at the atom, read at the compiling architecture.
 

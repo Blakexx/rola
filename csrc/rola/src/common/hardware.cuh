@@ -41,7 +41,7 @@ constexpr Caps caps_of(int cc) {
     return Caps{.cc = 890, .bf16_cvt_packed = true, .reg_transpose_b16 = true, .bf16_simd_arith = false,
                 .bf16_simd_fma = true, .smem_per_sm = 102400, .smem_per_cta_max = 101376, .regs_per_sm = 65536,
                 .max_threads_per_sm = 1536};
-  // sm_90: TABULATED, NOT BUILT; its window the A100's, provisional until the sm_90 carry's design picks it; see docs/internals/common/arch_caps.md#caps-of-note-l147
+  // sm_90a: TABULATED, NOT BUILT; its window the A100's, provisional until the sm_90 carry's design picks it; see docs/internals/common/arch_caps.md#caps-of-note-l147
   if (cc == 900)
     return Caps{.cc = 900, .bf16_cvt_packed = true, .reg_transpose_b16 = true, .bf16_simd_arith = true,
                 .bf16_simd_fma = true, .smem_per_sm = 233472, .smem_per_cta_max = 232448, .regs_per_sm = 65536,
