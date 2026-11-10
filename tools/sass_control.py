@@ -161,7 +161,7 @@ def branch_target(text: str) -> int | None:
 
 def machine(cubin: Path) -> str:
     """The cubin's architecture off its disassembly; refused unless `MACHINES` describes it."""
-    m = re.search(r"\.target\s+(sm_\d+)", sass.disassemble(cubin)[:4000])
+    m = re.search(r"\.target\s+(sm_\d+a?)", sass.disassemble(cubin)[:4000])
     arch = m.group(1) if m else "?"
     if arch not in MACHINES:
         raise SystemExit(f"no machine model for {arch}; the models are {sorted(MACHINES)}")

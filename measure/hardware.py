@@ -52,6 +52,11 @@ def arch_of(cc: int) -> str:
     return next(arch for arch in load()["arch"] if cc_of(arch) == cc)
 
 
+def device_arch(major: int, minor: int) -> str:
+    """A device's architecture row by its compute capability (9, 0 `sm_90a`)."""
+    return arch_of((10 * major + minor) * 10)
+
+
 def tabulated(cfg: dict | None = None) -> list[str]:
     """The architectures with a capability row, by compute capability."""
     return sorted((cfg or load())["arch"], key=cc_of)
@@ -240,7 +245,7 @@ def _source_findings(where: str, arch: str, rate: Rate) -> list[str]:
         return [] if rate.where else [f"{where}: a {rate.kind} rate names no source"]
     if not rate.on:
         return [f"{where}: a measured rate names no product it was measured on (`on`)"]
-    record = RESULTS / rate.where / f"sm_{cc_of(arch) // 10}.json"
+    record = RESULTS / rate.where / f"{arch}.json"
     if not record.is_file():
         return [f"{where}: its lab record {record.relative_to(ROOT)} does not exist"]
     data = json.loads(record.read_text())

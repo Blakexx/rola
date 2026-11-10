@@ -106,6 +106,7 @@ def _build(name: str, kind: str, spec, calls: int, construction):
     from rola_devtools.timing import Timed
 
     import rola
+    from measure import hardware
     from measure.subjects import SUBJECTS
     from rola.ops import carry as carry_ops
     from rola.ops._ext import extension
@@ -142,7 +143,8 @@ def _build(name: str, kind: str, spec, calls: int, construction):
             "construction": construction and construction.name, "tokens": spec.tokens, "d_v": spec.dv,
             "widths": list(widths),
             "manifest_sha256": BUILD_CONFIG.get("manifest_sha256"), "ptxas": BUILD_CONFIG.get("ptxas"),
-            "family_stamp": int(stamp()), "device": torch.cuda.get_device_name(0), "sm": f"sm_{props.major}{props.minor}",
+            "family_stamp": int(stamp()), "device": torch.cuda.get_device_name(0),
+            "sm": hardware.device_arch(props.major, props.minor),
             "torch": torch.__version__, "rola_file": rola_file.relative_to(CHECKOUT).as_posix(),
             "sm_ghz_at_build": carry_ops.sm_clock_ghz()}
     return Timed(call=call, built=cell, instrument="cuda_events", reset=launch.reset,

@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Iterator
@@ -160,8 +161,10 @@ def device_arch() -> str:
     """The running device's architecture as a cubin names it (`sm_86`): what a launch profiled on this card ran."""
     import torch
 
-    major, minor = torch.cuda.get_device_capability()
-    return f"sm_{major}{minor}"
+    sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
+    from measure import hardware
+
+    return hardware.device_arch(*torch.cuda.get_device_capability())
 
 
 def cubin(path: Path, member: str, arch: str) -> Path:

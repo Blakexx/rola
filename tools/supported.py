@@ -38,7 +38,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(1, str(ROOT))
 from measure import hardware  # noqa: E402 -- the architecture rows' own names
 
-ARCH_TABLE = ROOT / "csrc" / "rola" / "src" / "common" / "hardware.cuh"
 README = ROOT / "README.md"
 
 #: The README's generated regions: `marker -> producer`. TWO of them, because two
@@ -79,25 +78,12 @@ GPUS = {
     "sm_89": "L40S, RTX 40xx",
 }
 
-_TABULATED = re.compile(r"return\s+((?:cc\s*==\s*\d+\s*\|\|\s*)*cc\s*==\s*\d+)\s*;")
-
 
 def tabulated_archs() -> list[str]:
-    """The `sm_XX` the kernel can size itself for, read out of `tabulated`.
-
-    Parsed from the header rather than restated here, because a second list is a
-    list that can disagree with the `static_assert`.
-    """
-    text = ARCH_TABLE.read_text()
-    body = text.split("constexpr bool tabulated", 1)[1]
-    match = _TABULATED.search(body)
-    if match is None:
-        raise SystemExit(
-            "cannot read `tabulated()` from common/hardware.cuh. The supported "
-            "table is GENERATED from that function; if its shape changed, this "
-            "parser must change with it rather than the table being hand-written.")
-    codes = [int(n) for n in re.findall(r"\d+", match.group(1))]
-    return [hardware.arch_of(c) for c in codes]
+    """The architectures the kernel can size itself for: the hardware table's rows, by compute capability
+    (`measure.hardware.tabulated`, which writes `common/hardware.cuh`'s `tabulated`; the hardware lint holds the header
+    to it)."""
+    return hardware.tabulated()
 
 
 def ratified() -> dict[str, list[dict]]:

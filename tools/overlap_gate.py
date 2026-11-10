@@ -212,7 +212,7 @@ def judge(name: str) -> bool:
 
     row = {**ROWS, **PROBES}[name]
     props = torch.cuda.get_device_properties(0)
-    arch = f"sm_{props.major}{props.minor}"
+    arch = hardware.device_arch(props.major, props.minor)
     c = counters(row)
     if row.mma == "shapes":
         c["shapes"] = shapes(row)
