@@ -8,6 +8,33 @@ by the coordinator; each carries the incident that made it and is repealed when 
 contradicts the constitution; where a law is an inference from one moment of development it is marked as such and
 re-examined at the next milestone.
 
+**THE CARDS.** This line's kernels are written for two families, `hopper` (sm_90a) and `blackwell` (sm_100). The
+`ampere` family (sm_80 to sm_89) is the branch `ampere`, frozen: its schedules, its atoms and the labs that measured
+them are that branch's, and its cards stay rows of the hardware table (`csrc/rola/src/common/hardware.json`),
+tabulated and not built. A kernel with no family schedule (the facts pass, decode, paging, entmax) compiles for sm_86
+as it is written for every card, so the development card runs it; nothing is written for sm_86 alone
+(`docs/CONSTITUTION.md#r8`).
+
+**THREE KINDS OF RULE.** Every rule here is one of three kinds, and its kind says what a new card does to it.
+- PROCESS: how a kernel is designed, budgeted, gated, measured and committed. It holds on every card, and it is the
+  kind of every rule that carries no mark.
+- `[COMPILER]`: what ptxas does to a source pattern. Each was measured on sm_86 under CUDA 13.0, by a lab of the
+  branch `ampere` where it names one this tree does not hold; it stands here as the default shape of the code, and its
+  re-check on sm_90a is owed (§26.1) -- on the instruction this line issues, where it was measured around `mma.sync`.
+- `[MACHINE]`: what a card's pipes cost, and the form that cost forces. A card's rates are its rows of the hardware
+  table, each citing its lab record, and are restated nowhere; a rule drawn from them holds for the family it was
+  measured on. The ampere family's are the branch's. The few that stand here were measured on sm_86 on work every card
+  does the same way (a stream of rows from DRAM, a reduction's L2 requests) and are owed their sm_90a run; hopper's
+  are written here as its labs run.
+
+**OWED TO THE FIRST HOPPER SCHEDULE.** No op runs on this line until the carry, the intra and the producer have hopper
+schedules. These land with the first of them, each red or an owed entry until then (§25.3, §32.5):
+1. the SASS gate's hopper machine model and its step cover (§32.4), and each kernel's budget file (§19, §29);
+2. the family's part harness, phase ledger, composer and calibrations (§19, §22);
+3. hopper's rows of the hardware table and of the price list, from its labs (§26, §29.11, §29.14);
+4. every `[COMPILER]` rule's re-check and every `[MACHINE]` rule's run on sm_90a;
+5. the ratified sm_90a manifest (§16).
+
 # ROLA KERNEL STANDARDS — how we write CUDA here (draft for Blake's read, 2026-08-26)
 
 SCOPE. This document is about CRAFT: how a designed piece is realized at the hardware's grain. It is not
@@ -40,8 +67,9 @@ The fp32 accumulator of one GEMM becomes the A operand of the next by reinterpre
 and narrowing the type — no store, no shuffle.
 - FA2: `flash_fwd_kernel.h:378-380` (`make_tensor(rP.data(), convert_layout_acc_Aregs<TiledMma>(rP.layout()))` → `gemm_rs`); the layout math `utils.h:199-211`.
 - FA3: `hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp:1156-1160` (same, plus an explicit register permute for fp8, and a documented fallback through SMEM when the register-sourced GMMA is unavailable, `:1161-1162`).
-RoLA: the hand-off converts the fold's fp32 state to the readout's f16 image (`docs/internals/carry/ampere/handoff.md#store`);
-a phase change that moves state is the transfer the design names, never an ad-hoc copy.
+RoLA: the fold's fp32 accumulators are the readout's bf16 operand by this relayout, narrowed in place -- the form the
+hopper carry's design starts from, its instruction count a lab's to measure; a phase change that moves state is the
+transfer the design names, never an ad-hoc copy.
 
 ## 3. Shared memory: copy atoms, swizzles by composition, transposition as a layout operation
 - `ldmatrix` in both variants is a declared copy atom with an arch fallback chosen at the atom, not inline
@@ -55,24 +83,24 @@ a phase change that moves state is the transfer the design names, never an ad-ho
 RULE: every SMEM tile has a named layout with its swizzle derived from its access pattern (writer's and
 reader's), and a ROUND-TRIP test proving bit-exactness and conflict-freedom (the existing plane gate).
 Changing an access pattern (e.g. 2-byte scattered stores) re-derives the swizzle and re-runs the gate.
-Primitives (`ldmatrix`, `cp.async`, `mma`, `red`) are wrapped ONCE, in their concern's atom (`csrc/rola/src/common/atoms/`,
-all included by `common/ops.cuh`); call sites use the wrapper.
+Primitives (a matrix load, an asynchronous copy, an MMA, a reduction) are wrapped ONCE, in their concern's atom
+(`csrc/rola/src/common/atoms/`, all included by `common/ops.cuh`); call sites use the wrapper.
 
 ## 4. Pipelines: explicit stage state, release immediately after consumption, two stages in flight
 - FA3's producer acquires a stage before issuing, the consumer waits, issues the GEMM, waits for it, and
   releases the stage at once: `hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp:750, 1140-1143`; pipeline types per
   operand `:283-286`; the invariant is documented where it bites (`:787`).
-RULE: overlap requires two stages in flight in ANY form: the second stage is registers
-(single-slot segments: drain by `ldmatrix`, refill, compute from fragments) or a second SMEM slot. Sync
-carries exactly two facts, "landed" and "drained"; on sm_80 by the per-batch barrier (form (b)), on
-sm_90 by mbarrier. No pipeline state is implicit in loop parity without a comment naming the invariant.
+RULE: overlap requires two stages in flight in ANY form: the second stage is a second SMEM slot (a ring's next
+stage), or registers where the operand is register-resident. Sync carries exactly two facts, "landed" and "drained",
+by mbarrier: a stage's full and empty barriers (`docs/CONSTITUTION.md#r21`). No pipeline state is implicit in loop
+parity without a comment naming the invariant.
 
 ## 5. Warp specialization only as register economy
 - FA3 gives the producer warpgroup ~24-56 registers and the consumers 160-256 via `setmaxnreg`
   (`hopper/flash_fwd_kernel_sm90.h:82-83, 308-309, 360-361`), with the budgets `constexpr` per configuration.
-RULE: on sm_80 there is no register redistribution, so a fetcher warp burns a full slice and folds nothing —
-form (b) (role-alternating) everywhere; specialization is the sm_90+ mapping and only where the
-accumulator binds.
+RULE: a warp is specialized only where its registers move with its role -- `setmaxnreg` hands a producer's to the
+consumers -- and only where the accumulator binds: a producer that holds a consumer's slice and folds nothing is
+waste. `[MACHINE]` `setmaxnreg` around a live state is unmeasured here (a hopper lab's).
 THE IDEAL REGIME IS FEW WARPS WITH FILLED REGISTERS (Blake, restated 2026-08-08: "If that doesn't work it means
 something is wrong with the kernel in another way we need to fix. not intentionally avoid the ideal regime"). Warp
 count and the register budget are one knob, swept jointly as a surface and never marginally; occupancy is an output,
@@ -102,12 +130,12 @@ whose bound is a leaf count, a channel count, or a product of them is wrong.
   (`cutlass/python/cutlass_library/manifest.py:290-330`) and prunes the instantiated set for compile cost
   (`media/docs/cpp/profiler.md:14`; `quickstart.md:609`).
 RULE: one arm per TU, generated from the closed-world arm list; an ARM-SUBSET build knob (declared list,
-default all) for iteration; iteration builds are single-arch AND arm-subset; both-arch all-arm builds
+default all) for iteration; iteration builds are single-arch AND arm-subset; every-arch all-arm builds
 once per stage. Each arm has a COMPILE BUDGET (wall time, cicc peak RSS) recorded in the manifest.
 
 ## 8. Arch mapping at the atom, closed-world at the arm
 Feature selection lives where the primitive is defined (`kernel_traits.h:40-44`'s `DefaultCopy` fallback),
-never as `#if` at call sites. RoLA adds: every structural decision states its sm_80/90/100 mapping on the
+never as `#if` at call sites. RoLA adds: every structural decision states its hopper and blackwell mapping on the
 card (§4 of the architecture); only measured binaries run (pinned ptxas, per-arch ratified manifests, device stamp).
 
 TWO LEVELS, ONE HOME EACH (2026-11-07, the family foundation; constitution R8). An INSTRUCTION difference is an atom:
@@ -188,7 +216,7 @@ repeat if still building. Never trust the pid or the notification alone; the mar
 re-wakes stopped agents.
 
 ## 15. Stage cycle budget (recorded 2026-08-27 from the ledger: one stage ran 63 builds and 22 ratifies in 346 min)
-- RATIFY ONCE per stage, after the last source edit. It recompiles every TU on both arches; it is a gate,
+- RATIFY ONCE per stage, after the last source edit. It recompiles every TU on every architecture; it is a gate,
   never an iteration tool.
 - A stage has a budget of THREE full build+gate cycles. Iteration is single-arch, arm-subset, oracle-first.
   When the budget is spent and a gate is still red, the stage STOPS and reports the residual — it does not
@@ -208,7 +236,7 @@ Re-derive the budget if cicc's peak changes (a per-leaf nest can push it back to
 ## <a id="s16"></a>§16 — Ratify at milestones, not stages (Blake, 2026-08-28)
 
 A stage's gate is SMALL: an iteration build (single arch, arm subset), the fp64 oracle on the arms
-it touched, the census on those arms, and the model tests. A stage does NOT run the both-arch
+it touched, the census on those arms, and the model tests. A stage does NOT run the every-arch
 all-arm gate build and does NOT ratify. Manifests go stale between milestones by design; a stage
 commit says "unratified" in its title. RATIFICATION — the full closed-world measurement — runs
 ONCE per cohesive product: at the milestone that merges (the receipt stage), and after the last
@@ -234,20 +262,19 @@ Every stage gate records, per built arm TU, the compile wall and cicc peak RSS b
 stage's; >1.2x on any arm is RED (report, do not rationalize; diagnose against §7 first). Arm TUs never
 include torch headers (the ~34 s header floor lives in the dispatch TU only). Arms are added as reviewed
 rows in the one arm list (TEST-tagged unless shipped). Ratify stays incremental per arm.
+§16 addendum 4 (Blake, 2026-11-09) — A GATE THAT READS PROFILER COUNTERS RUNS ON A HOST THAT GRANTS THEM. The probe's
+and the ledgers' counters (ncu) are the device's host's to grant, and a rented card's may not: such a gate runs on a
+host that does, or its row carries a written exception naming the host and the reading that stands in (the kernel's
+own clocks, the SASS's counts). Whether a rented H100's host grants them is unmeasured.
 
 ## §R addenda — LAWS (coordinator, 2026-08-28; incident-derived, revisable)
-R2. THE FAN-IN'S FIGURE OF MERIT IS 128 B SEGMENTS PER RED INSTRUCTION, not sector fullness and not
-    instruction count: one token's 32 contiguous channels per issue (the staged panel layout) = 1 segment;
-    4 rows x 8 channels = 4 segments at identical RED count = +93%; fragment-direct = 8 half sectors.
-R3. FAN-IN ON AMPERE IS NATIVE GLOBAL RED FROM AN ALIGNED LAYOUT. Shared-memory fp32 atomics are a CAS
-    loop; a locked SMEM ring paid 18x its floor to halve DRAM. The DRAM question belongs to the A100
-    parity-curve receipt, not to the local cell.
+R2, R3. `[MACHINE]` The ampere family's fan-in rules (a global reduction's segments an instruction; its native
+    global RED from an aligned layout), the branch's. A reduction's requests on this line: §26.3 q.
 R4. NO PER-WARP WORK THAT ANOTHER WARP ALSO DOES: CTA-identical derivations (union lists, owner
     ballots) are derived once and published behind a barrier the kernel already pays, or split by
     executor share — never recomputed per warp to avoid a barrier.
-R5. THE SCHEDULE HAS THREE PARTS (fetch over TOKENS once; per-stream SENDS from each stream's own ballot;
-    seal-and-consume). A union over (token, stream) pairs collapses the first two and re-fetches k times.
-R6. A KERNEL'S SASS DEPENDS ON ITS TU NEIGHBORS: byte-identity is a claim about a partition, not a body;
+R5. `[MACHINE]` The ampere carry's three-part schedule, the branch's.
+R6. `[COMPILER]` A KERNEL'S SASS DEPENDS ON ITS TU NEIGHBORS: byte-identity is a claim about a partition, not a body;
     per-arm TUs make each body canonical (7 movers, proven inert and free).
 R7. STAGED-vs-STRAIGHT IS DECIDED BY LATENCY, NOT COUNTS: "identical sectors and issues" lost 9.5% on
     long-scoreboard (e390764). Time, IPC and stall reasons decide; counts describe.
@@ -312,12 +339,11 @@ for every kernel (Blake, 2026-10-01): it does not finish on the mbarrier pipelin
 Rule 12 said "state the floor before building"; nothing enforced it, and a whole kernel was built four
 times to correctness with its schedule machinery at 3x master's instruction count before the floor was
 ever compared. From here the floor is a GATE, per component, before composition:
-- A COMPONENT is a device function with one job (the head, the operand ring's issue, the fold pair body,
-  the readout tile, the re-layout, the sweeps). Each has a BUDGET LINE in the brief before code: its
-  analytic floors (tensor: HMMAs x 32 cycles / schedulers; bandwidth: bytes / BW; latency: chain depth
-  x latency at the stated prefetch distance), its instruction budget derived from the design's own
-  operation count, and WHO EXECUTES IT HOW MANY TIMES (a per-window job is done once per CTA, by one
-  warp or split across warps -- never replicated on every warp).
+- A COMPONENT is a device function with one job (a head, a ring's issue, a step's body, a re-layout, a sweep). Each has
+  a BUDGET LINE in the brief before code: its analytic floors (tensor: its MMAs x the card's cycles an MMA /
+  schedulers; bandwidth: bytes / BW; latency: chain depth x latency at the stated prefetch distance), its instruction
+  budget derived from the design's own operation count, and WHO EXECUTES IT HOW MANY TIMES (a per-window job is done
+  once per CTA, by one warp or split across warps -- never replicated on every warp).
 - Each component is built into its family's PART HARNESS (one `__global__` driver per component over the real device
   functions, inputs shaped by a cell's liveness)
   and measured there -- cycles at the locked clock, instructions, the binding counter -- against its
@@ -349,6 +375,8 @@ ever compared. From here the floor is a GATE, per component, before composition:
 `tools/sass_gate.py` runs after every build (the library's gate action, iteration builds included), on
 every function of every cubin, and fails on any of these -- and on a kernel the source defines that no cubin
 carries; each was re-learned by trial this week and costs a rebuild when missed.
+`[COMPILER]` Every signature below was read from sm_86 cubins, the MMA an `mma.sync`'s HMMA; each is re-read on this
+line's `wgmma` steps (owed).
 - LDL/STL > 0 or a stack frame: LOCAL MEMORY. Causes: a runtime index into a register array or
   struct member array (the layout struct indexed by a runtime level); a `constexpr` helper with a
   runtime argument (`span_base(D, BC, l)` with `l` from a variable evaluates the span rule's arrays);
@@ -396,9 +424,9 @@ carries; each was re-learned by trial this week and costs a rebuild when missed.
 - A warp's copy tasks mapped so its lanes touch different rows: one L2 request per copy. Rule: tasks
   CONTIGUOUS in memory across a warp's lanes; coalescing is checked by `l1tex__t_requests` per
   sector, not assumed.
-- `smsp__inst_executed` / HMMA count above the arm's ceiling (this arm: 16 per HMMA per warp before
-  issue binds the tensor pipe at two warps a scheduler): the kernel is issue-bound; the budget ledger
-  says which component.
+- Instructions executed an MMA (`smsp__inst_executed` over the MMA count) above the arm's ceiling -- what the card's
+  issue rate leaves beside its tensor pipe at the design's warps a scheduler, stated in the budget: the kernel is
+  issue-bound; the budget ledger says which component.
 
 ## <a id="s21"></a>§21 — THE MEASUREMENT PROTOCOL (law, 2026-09-09, after a dense verdict was drawn against the baseline's sparse schedule)
 A comparison is valid only when: the same grid and block (read `launch__grid_size`), the baseline run
@@ -410,10 +438,9 @@ the instruction count; the count is read, never inferred from the ratio.
 A change to a shared body is TIMED AT BOTH ENDS AT SCALE before it is called a win: the sparse and the dense cell,
 in the measurement suite's at-scale sessions (2026-11-02: four commits each faster at sparse cost the dense carry
 +3% at 64K x 4 heads, one of them +3.7% on an identical address; the local dense ledger swings ~2% between runs of
-one binary and could not see it, the sessions repeat within ~0.3%). A design comparison quotes sm_80 and sm_86 from
-the same counts priced at each card's rates (`tools/pipes.py`); a form that wins on one card and loses on the other
-is flagged and taken only with the trade written down (Blake, 2026-10-11: sm_80 a core target; the constitution's
-LEAN ON EVERY AXIS, ON EVERY CARD).
+one binary and could not see it, the sessions repeat within ~0.3%). A design comparison quotes every family this line
+builds, from the same counts priced at each card's rates (`tools/pipes.py`); a form that wins on one card and loses on
+another is flagged and taken only with the trade written down (the constitution's LEAN ON EVERY AXIS, ON EVERY CARD).
 
 ## <a id="s22"></a>§22 — THE MEASUREMENT SUITE, AND HOW A MEASUREMENT IS READ (law, 2026-09-12, after a week in which a register cap, a "spin", a pipe metric and a schedule default were each misattributed)
 WHAT IS MEASURED, on every build, before any component is judged, as one report diffed against the
@@ -422,12 +449,12 @@ previous build's: (1) the SASS composition (§20) and the REGISTER LIFE RANGES (
 argument cites the peak live at the program point, never the allocation; (2) the scoped oracle; (3)
 the phase ledger on the GATE CELLS (the N = L cells, §21's baseline rules) with per-warp rows, so an
 imbalance is seen, not inferred; (4) the region ledger with per-line stalls; (5) tensor utilization as
-the HMMA count times the measured cycles an HMMA holds the pipe, over scheduler cycles -- never a
+the MMA count times the measured cycles an MMA holds the pipe, over scheduler cycles -- never a
 profiler's pipe-active ratio, which is normalized to a rate this kernel does not run at; (6) the A/B
 against the baseline RUN WITH ITS OWN SCHEDULE, named per binary (a spec without one ran the dense
-order and recorded the reap); (7) THE PHASE CENSUS: the HMMAs a phase COUNTED from the profiler's
+order and recorded the reap); (7) THE PHASE CENSUS: the MMAs a phase COUNTED from the profiler's
 per-instruction dump (never the model's), utilization a phase against the phase ledger's cycles, a
-warp's cycles at its HMMA instructions against its other work a unit (a fragment, a pair) -- the
+warp's cycles at its MMA instructions against its other work a unit (a fragment, a pair) -- the
 number that says whether two warps a scheduler can cover each other (the other work must fit under
 the partner's burst), and the instructions a component against its budget with the launch's
 CTA-window divisor (a budget is per CTA-window; a per-launch total against it flagged everything
@@ -435,23 +462,24 @@ red and meant nothing); (8) THE WAVEFRONT CENSUS: shared-memory wavefronts above
 ideal, by source line -- on a shared store or load, bank conflicts on the store side of a layout,
 which the load side's conflict-free `ldmatrix` hides from every other instrument (an 8-way conflict
 sat in the snapshot for a week as "wider stores don't pay"); on an asynchronous copy (`LDGSTS`) the
-count is the GLOBAL LINES the copy touches, not a bank conflict (calibrated 2026-09-18: a line a lane
+count is the GLOBAL LINES the copy touches, not a bank conflict (sm_86, calibrated 2026-09-18: a line a lane
 reads 32 of ideal 4, the fill's sixteen token rows 16 of 4, whole lines 4 of 4, and the rows and the
-lines forms copy at the same rate -- the sectors are what a gather pays); (9) THE COMPOSER (`tools/compose_ledger.py`): a phase's
+lines forms copy at the same rate -- the sectors are what a gather pays); (9) THE COMPOSER (a family's own, built
+with its schedule): a phase's
 time attributed to its PARTS by building compositions in which a part is real or a stub (the stub keeps
-the part's HMMAs, same count, atom and accumulators, and drops its other work), read in wall time rung by
-rung, each composition checked by its HMMA count against the kernel's and by its device instructions
+the part's MMAs, same count, atom and accumulators, and drops its other work), read in wall time rung by
+rung, each composition checked by its MMA count against the kernel's and by its device instructions
 against the kernel's hash. A per-part cost is the difference of two measured times. It exists because
 warp-side instruments cannot say whether the pipe is idle, and the MMA-only composition is the phase's
-measured floor; (10) THE CALIBRATIONS (`measure/harness/bench_carry_calib.py`, `docs/internals/carry/calibration.md`):
-each operation the parts are made of (the kernel's HMMA atom, shared loads and stores, `ldmatrix` loads,
+measured floor; (10) THE CALIBRATIONS (a family's own, built with its schedule):
+each operation the parts are made of (the kernel's MMA atom, shared loads and stores, matrix loads,
 asynchronous copies, global reductions, CTA and shared-memory barriers, warp syncs) alone on every warp,
-as cycles an operation a warp on this card -- reference rows every reading uses in place of a constant (the
-HMMA's 32 cycles was one such constant for eight days); (11) THE PIPE TIMELINE (`tools/pipe_timeline.py`): the
+as cycles an operation a warp on this card -- reference rows every reading uses in place of a constant (an
+MMA's cycles was one such constant for eight days); (11) THE PIPE TIMELINE (`tools/pipe_timeline.py`): the
 tensor pipe's true utilization over a launch, measured on silicon by the profiler's PM sampling (1 us samples), on a
 scale taken from the MMA-only composition's plateau -- the one instrument that says when the pipe idled rather
-than how much in total; validated against the HMMA-count utilization at three points (66.8 / 21.0 / 33.9%
-against 65-66 / 20-21 / 33.7%).
+than how much in total; validated against the MMA-count utilization at three points on sm_86 (66.8 / 21.0 /
+33.9% against 65-66 / 20-21 / 33.7%).
 HOW IT IS READ: a component's THEORY -- what the form must do to the ledger, and why -- is written as
 its budget line before the build; the measurement is read against that theory. A miss is explained
 by a measurement that ISOLATES the mechanism (a line, a counter, a life range, a variant that removes
@@ -506,63 +534,48 @@ manual steps, and the dev container had drifted for two weeks unnoticed.
 
 ## §24 — TWO TIERS: DECIDE COARSELY, BURST STATICALLY (law, 2026-09-17, from the fold's and readout's forms)
 
-The facts, each a calibration or trace row (`docs/internals/carry/calibration.md`, `carry_kernel.md#phase-trace`):
+`[MACHINE]` The ampere family's rule, and the branch's: a synchronous `mma.sync` holds its warp at the pipe, so a
+phase that issues MMAs was split in the source into a DECIDE tier (everything data-dependent, run at a boundary into
+a list and a count) and a BURST tier (a counted loop over the list with no vote, wait or data branch inside it). On
+hopper the split is the hardware's -- an asynchronous `wgmma`, TMA, mbarriers: producer warps decide and stage, a
+consumer warpgroup issues -- and what it asks of the source is unmeasured. The hopper carry's design states its two
+tiers in its steady-state timeline (§32.1), and this section is written from its labs.
 
-1. A warp issues in order and runs one or two HMMAs ahead of the tensor pipe. Loads issued ahead of a burst are
-   free (four `ldmatrix` ahead of nine HMMAs: +0.3 a HMMA alone); a chain placed after a burst is exposed whole on a
-   warp whose partner is not issuing (the fragment's gather: +18% alone, 0 paired).
-2. With two warps a scheduler, every cycle either warp spends outside a burst costs the pipe half a cycle: a lone warp
-   drives it at ~50%. The window equals the pipe work plus one warp's non-MMA work (nl64k-dense: 70.7K + 32.5K).
-3. ptxas schedules within a basic block. A vote, a barrier poll, a data-dependent branch or a rolled loop's back-edge
-   ends the block; under register pressure it sinks loads to their uses and regroups bursts. Registers are the
-   pipelining budget: a set of operands a unit of depth.
-
-The rule: a phase that issues MMAs is two tiers. The DECIDE tier is everything data-dependent -- which units, in what
-order, a barrier's state -- run at a boundary, into a list and a count. The BURST tier is `Burst<Ops>::run`
-(`common/burst.cuh`, `docs/internals/common/burst.md`): a counted loop over the list, two operand sets alternating,
-each unit's gather ordered under the burst before it by a data dependency; no vote, wait or data branch inside it;
-sparsity a shorter list, never a skip. A decision needed mid-way is two bursts with the decision between them. The
-list is built by the lanes at once, never by a serial scan (the readout's sixteen-iteration list cost a tile 12%).
-
-What it forbids, mechanically (`tools/lint/burst_tier.py`, a ratchet): an MMA issued by a function without
-`//: @burst` in its declaration block (`//: @burst-exempt <reason>` names a debt the ratchet holds); inside a burst
-function a vote, a warp sync, a shared-memory barrier, a rendezvous, a `while`, an `if` that is not `constexpr`, or
-`#pragma unroll 1`. The primitive's own pair loop is the one loop a burst runs and is not in a burst function. What it
-measures: the burst's lone-warp rate on the trace, and (when built) the static pipe floor per burst loop in the SASS
-gate.
+What holds on every card is the shape of a step (§27): one block, no data-dependent branch; sparsity a shorter list,
+never a skip; a decision needed mid-way two loops with the decision between them; the list built by the lanes at
+once, never by a serial scan. The source lint of a function that issues MMAs (`tools/lint/burst_tier.py`, a ratchet:
+`//: @burst` in its declaration block, and inside it no vote, warp sync, shared-memory barrier, rendezvous, `while`,
+`if` that is not `constexpr`, or `#pragma unroll 1`; `//: @burst-exempt <reason>` names a debt the ratchet holds)
+keeps that shape, and reads hopper's MMA atoms when they exist (owed).
 
 Precedent: CUTLASS's tile scheduler against its collective mainloop; FlashAttention-2's unrolled, branch-free KV loop
-with masking by predication; ThunderKittens' producer and consumer warpgroups. On Hopper the tier split is the
-hardware (`wgmma` async, TMA, mbarriers); on Ampere it is this rule.
+with masking by predication; ThunderKittens' producer and consumer warpgroups.
 
 ## §23 addendum (law, 2026-09-18, from the research behind the burst: the coordinator's research journal, SASS guidelines)
 
-1. THE EMITTED DISTANCE IS THE LATENCY BUDGET. ptxas sets an instruction's stall count to the producer's latency
-   minus the instructions it placed between producer and first consumer (Huerta et al. 2025, §4, validated on
-   GA102), so a dependence is hidden only by what sits between its ends in the SASS, never by anything in the
-   source. The burst gate reads that accounting (`docs/internals/tools/burst_gate.md#coverage`).
-2. ORDER BY DEPENDENCY, NEVER BY HOPE. There is no scheduling knob (nvcc §4.2.9.1) and no supported ordering; the
-   one sanctioned device is a data dependency, `rola::burst::after`, in one header. No fence for ordering (it
-   orders memory operations and costs runtime), no clock trick. The burst-tier lint refuses a fence in a burst.
-3. LOADS FIRST, ALL OF THEM, THEN THE ARITHMETIC ON THEM. The canonical hand schedule spaces the loads and pushes
-   the stores down (Gray, SGEMM: 98.5% useful cycles); the measured good attention kernel keeps about eight
-   instructions between an `ldmatrix` and its consumer, the bad one one or two, and the cause was register
-   pressure (lubits.ch, A100). The gate's exposed-latency reading is this rule's number.
-4. REGISTERS ARE THE PIPELINING BUDGET, AND THE THRESHOLDS ARE NUMBERS. Allocation is in eights a thread against
-   a 16,384-register partition: 248 a thread buys two warps a scheduler, 168 three (GA102 whitepaper; Jia et al.).
+1. `[COMPILER]` THE EMITTED DISTANCE IS THE LATENCY BUDGET. ptxas sets an instruction's stall count to the producer's
+   latency minus the instructions it placed between producer and first consumer (Huerta et al. 2025, §4, validated on
+   GA102), so a dependence is hidden only by what sits between its ends in the SASS, never by anything in the source.
+   The SASS gate's step cover reads that accounting (§32.4).
+2. `[COMPILER]` ORDER BY DEPENDENCY, NEVER BY HOPE. There is no scheduling knob (nvcc §4.2.9.1) and no supported
+   ordering; the one sanctioned device is a data dependency, one primitive in a common header (§32.6). No fence for
+   ordering (it orders memory operations and costs runtime), no clock trick. The burst-tier lint refuses a fence in a
+   burst.
+3. `[COMPILER]` LOADS FIRST, ALL OF THEM, THEN THE ARITHMETIC ON THEM. The canonical hand schedule spaces the loads and
+   pushes the stores down (Gray, SGEMM: 98.5% useful cycles); the measured good attention kernel keeps about eight
+   instructions between an `ldmatrix` and its consumer, the bad one one or two, and the cause was register pressure
+   (lubits.ch, A100). The gate's exposed-latency reading is this rule's number.
+4. REGISTERS ARE THE PIPELINING BUDGET, AND THE THRESHOLDS ARE NUMBERS. Allocation is in eights a thread against a
+   scheduler's register partition, so the warps a scheduler a count buys is arithmetic (`[MACHINE]` GA102's 16,384:
+   248 a thread buys two warps, 168 three -- its whitepaper; Jia et al.; sm_90a's partition is a lab's to read).
    A component states its live-register cost; the gate prints the arm's distance to the next threshold.
 5. CONTROL BITS ARE THE COMPILER'S UNTIL THE GATE SAYS OTHERWISE. Patching yield and reuse bits gave Hopper 10%
    once and was retired when the compiler learned the interleave (DeepGEMM). Nothing below ptxas is patched
    unless the coverage reading shows the order right and only the bits wrong, and then as a ratified artifact
    with its patch script under the same gate.
-Facts the laws rest on, with their rows: one warp can saturate this card, completion latency (~25) under the
-issue interval (32, the GA102 whitepaper's arithmetic), so a lone warp at half rate is always the chain; a warp's
-MMA throughput is flat to three in flight on A100 (Sun et al.) and one or two on GA102 by our calibration, the
-only measurement there is; the sub-core instruction buffer is three deep, the memory queue four (Huerta et al.).
-
 ## §23 addendum 2 (law, 2026-09-18, from Blake's "either the simulator is wrong, or something is binding the kernel that shouldn't be. we need a way to find that out")
 
-1. A MODEL READS AGAINST THE PROBE BEFORE IT READS THE KERNEL. `tools/pipe_sim.py --calibrate` simulates every
+1. A MODEL READS AGAINST THE PROBE BEFORE IT READS THE KERNEL. A pipe model simulates every
    calibration row's loop as the probe runs it and prints it beside the row's latest clocked measurement; a floor
    is ratcheted on a loop only while the model reproduces the rows that exercise what the loop does (the tensor
    pipe, the memory pipe, a gather chain). The first model passed one point and was called trusted; its own
@@ -578,25 +591,19 @@ only measurement there is; the sub-core instruction buffer is three deep, the me
    that compares a measurement to an ideal states where the ideal's count comes from.
 5. A STALL CENSUS IS READ PER LINE. Per component it says a warp waits; per line it says on what. The isolating
    measurement for a model's miss is the per-line census of the two forms, not a reading of the model.
-6. ONE BODY, A REGISTER SELECT FOR A VARIANT. A large inlined body instantiated twice (a tile called with
+6. `[COMPILER]` ONE BODY, A REGISTER SELECT FOR A VARIANT. A large inlined body instantiated twice (a tile called with
    its two outputs swapped) with four statically named variants inside (a drain pass a compile-time half)
    put twelve copies of one body in the kernel; ptxas outlined the shared body into a real subroutine
    (`CALL.REL.NOINC` from twelve sites), allocated 255 registers and spilled 117 times, and `nvdisasm`
    refused the cubin's life ranges (2026-09-19). One body with the variant a runtime value, its register
    chosen by a select (`hsel ? y[j][2] : y[j][0]`, never an index, which is local memory), took the same
    kernel to one copy, 254 registers, no spill. A form's register cost is read at one arm's compile
-   (`burst_gate.py`: registers, purity's `CALL` count) before its chain runs.
-7. A SHADOW HIDES ISSUE, NOT OCCUPANCY. An instruction between two HMMAs costs nothing only if its issue
-   releases the warp in a cycle: ALU work and register-fed loads do. An asynchronous copy of sixteen global
-   lines, a global reduction (~13 cycles each, the `hmma_reduce` rows), a four-byte `cp.async.ca` (48.8 a run) and
-   a warp sync hold the warp at the instruction while the LSU takes their wavefronts, and in order the HMMAs
-   behind them wait: the fill's copies pinned under the fold's bursts doubled the fragment phase (2026-09-19,
-   +9% dense, +14 to +16% sparse) though every piece sat between HMMAs. Such work is placed where the partner
-   warp is bursting, or made cheaper (fewer lines a copy), never interleaved into a burst.
-8. A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written after a
-   burst was interleaved among its HMMAs by ptxas all the same (the queue rows, 2026-09-18). What a row measures
-   is the placement in its SASS, which the row's reading states; a row whose placement differs from the kernel's
-   measures a different thing.
+   (its registers, its `CALL` count) before its chain runs.
+7. `[MACHINE]` What an instruction between two `mma.sync` MMAs costs its warp: the ampere family's, the branch's.
+8. `[COMPILER]` A PROBE'S PLACEMENT IS READ OFF ITS SASS. `asm volatile` orders nothing below ptxas: a chain written
+   after a burst was interleaved among its HMMAs by ptxas all the same (the queue rows, 2026-09-18). What a row
+   measures is the placement in its SASS, which the row's reading states; a row whose placement differs from the
+   kernel's measures a different thing.
 
 9. A STUB PRICES ONLY ITS OWN ACCESS PATTERN (2026-09-22, four negative builds on the fold and readout bodies): a
    drain stub that writes coalesced lines cannot price a drain that writes the accumulator's scatter -- the stage
@@ -636,160 +643,72 @@ probe that replaced it measured instructions ptxas had folded or turned into cal
    pattern — is a rule only when a lab experiment measured it (`measure/lab/experiments/`, run by `tools/lab.py`;
    docs/internals/tools/lab.md), and the rule names the experiment, its record (`measure/lab/results/<name>/<sm_XX>.json`)
    and the architectures it holds on. An architecture not measured is stated as unmeasured; a new card or toolkit
-   re-runs the experiments its rules cite.
+   re-runs the experiments its rules cite. A RECORD OF A CARD THIS LINE DOES NOT BUILD (sm_80, sm_86) is kept in the
+   tree where a row of the hardware table cites it or its experiment measures a kernel every card runs; an experiment
+   on the ampere family's own instructions is the branch `ampere`'s -- source, record and page -- and a rule that
+   stands here on one names it and is owed its run on this line.
 2. AN EXPERIMENT'S NUMBER COUNTS ONLY AFTER ITS SASS GATE: the declared instructions present, no local memory, no
    undeclared convergence call. The driver refuses to time otherwise.
-3. THE RULES MEASURED SO FAR (sm_86, CUDA 13.0):
-   a. BESIDE THE TENSOR PIPE (`tensor_tax`): an instruction another warp issues on the same scheduler delays an MMA
-      chain, cycles an instruction with two register operands, beside an fp16-accumulate HMMA or int8 IMMA / an
-      fp32-accumulate HMMA: FP32 arithmetic ~1.0 / 0.5; packed f16 or bf16 ~0.48 / 0.21; `IMAD` ~0.19 / 0.10;
-      `LOP3`, `PRMT`, `FMNMX`, conversions ~0.13-0.22 / 0.05-0.08; `LDS` with its address ~0.85 / 0.53. Elementwise work
-      beside MMAs is integer or byte work first, packed half second, FP32 last; every register operand it reads counts
-      (packed half with a constant operand measured ~4x cheaper).
-   b. COLLECTIVES (`collective_branch`): a warp collective under control flow that depends on the thread — a branch on
-      the warp id, or a trip count the warp's role sets — compiles into a CALL into a convergence subroutine (~1.65x
-      the inline shuffle's cycles); under a branch on the block index or a kernel argument it stays inline. A
-      collective's enclosing control flow derives from kernel arguments, the block index or constants.
-   c. PAIRS (`mma_pairing`): two warps a scheduler running HMMA streams sit on the tensor floor in most launches and
-      phase-lock up to 22% slow in some, so one launch's cycles are not a measurement; read the median of repetitions.
-   d. INTEGER ADDS (`tensor_tax`'s SASS): ptxas folds repeated adds, rewrites add recurrences, merges two-input adds into
-      `IADD3` and issues adds as `IMAD.IADD` on the FMA pipe on its own; the source does not choose the integer pipe.
-   e. THE OPERAND CHAIN UNDER MMAs (`mma_overlap`): two or more free-running warps a scheduler hide each other's operand
-      chains (loads, coefficient math, shuffles, packed products) at 1.02-1.07x the tensor floor for every MMA kind,
-      and a register stage adds nothing; one warp a scheduler cannot hide its own (inline 1.23-1.48x), and a stage (the
-      next step's operands formed under this step's MMAs) gets it to 1.14-1.17x.
-   f. A CTA BARRIER REALIGNS THE WARPS (`mma_overlap`, `fold_step`): a barrier every pass of 8 steps puts the warps of
-      a scheduler in lockstep, so their operand chains coincide: +3-6% on the synthetic step, +10% on the fp16 fold's
-      own (1.07x -> 1.17x). A two-stage mbarrier (arrive at a pass's end, wait for the pass before) keeps them
-      free-running and recovers it. Inside a pass loop, warps synchronize by two-stage mbarriers, not CTA barriers.
-   g. A POLLED WAIT TAKES ISSUE SLOTS (`mma_overlap`): at three or four warps a scheduler the two-stage mbarrier's
-      polling loop costs as much as the barrier it replaces; a 64-ns sleep between polls restores the free-running
-      cost. At two warps polling is the cheaper.
-   h. A LONG NON-MMA PHASE IS STAGGERED BETWEEN A SCHEDULER'S WARPS (`pass_pipeline`): a phase both warps of a scheduler
-      run at once leaves the tensor pipe idle and lets the pair fall into lockstep, like a barrier -- the fp16 arm's
-      partial join (256 instructions every two passes) costs 12 points in a burst, ~3 staggered (warps 4-7 on the
-      other passes; warp w shares a scheduler with warp w + 4).
-   i. A TWO-STAGE PASS PIPELINE PLACES ITS RESTAGE MID-PASS (`pass_pipeline`): with two tile slots the restage of pass
-      p + 1 waits for the slot's readers of p - 1 and pass p + 1's steps wait for the restage; mid-pass leaves half a pass
-      of slack each way (fp32 arm 1.05x its floor against 1.20x serial and 1.03x for the steps alone; fp16 arm with a
-      staggered join 1.25x against 1.55x and 1.16x). A restage at the pass's start couples every warp to the slowest at
-      the boundary (1.11x / 1.36x).
-   j. A SWIZZLE MAY SWAP THE 16-BYTE HALVES INSIDE AN ALIGNED 32-BYTE PAIR (`pool_layout`, counters): cp.async's lane
-      pair stays one L2 sector request (7 sectors a token, plain or swapped); a 16-byte shift off the sector's phase
-      costs 29% more sectors and 35% on an L2-resident fill. Rows a multiple of 32 bytes apart read by `ldmatrix` need
-      such a swap on half the rows, or 8 rows of one column share 4 bank groups (192 against 119 cycles a step).
-   k. VALUES READ IN PLACE FROM A POOL NEED A THIRD SLOT (`sparse_pass`): with two, the next fill waits for the slot's
-      pass to drain and the warps couple at the pass boundary (1.33x dense fp32, against 1.09x with three).
-   l. A WARP RELEASES A SHARED SLOT AT ITS LAST LOAD, NOT ITS LAST MMA (`sparse_pass`): holding up to three steps'
-      operands in registers (~16 a step) and signalling drained after the pass's last loads lets the fill and restage
-      run ahead of the slowest warp's MMAs, so warps with uneven work drift instead of waiting: sparse passes 1 in 4
-      1.27-1.30x against 1.55-1.60x, 1 in 16 1.87-2.07x against 2.05-2.26x, ~3% dense. Shared slots hide load latency;
-      register depth hides the warps' divergence.
-   m. A CROSS-WARP PUBLISH COSTS ITS SHARED-MEMORY BYTES (`state_publish`): the fold state's transpose to the readout
-      (64 KB stored, 64 KB pulled a window) takes ~1.5K cycles, bank conflicts on its 32-bit stores or not; after a
-      barrier it is all exposed, behind an mbarrier with independent work between a warp's stores and its pull about
-      half hides (~1% of a dense window, ~4% of a sparse one).
-   n. BUILD A PASS'S ROWS ONCE, NOT A STEP AT A TIME (`sparse_pass`, its phase ledger): a step's rows derived from the
-      union words each step (a word loop, warp syncs, scratch round trips) cost ~650-940 cycles a step a warp in sparse
-      passes, the largest piece of a sparse pass after the MMAs; built once at the pass's start, word-parallel over its
-      words, they cost about half (1 in 4: 1.25x -> 1.20x). Take a pipeline's phases apart with a per-warp lap ledger
-      before choosing its levers.
-   o. A PER-LIST STEP NEEDS A LIST TILE OF 32 x 32 OR MORE (`list_fold`): stepping each list over its own gathered
-      rows runs 1.17x its floor half full at 4 lists x 32 level-S digits x 32 channels a warp, 1.42x full (gathered
-      rows conflict), and 1.7-2.2x at 16 x 32, where the operand loads bind. Where lists share their tokens (dense),
-      load each token's operands once for all lists: per-list reloads cost 1.37x the shared load at the same tile.
-   p. A READOUT'S SHARED OUTPUT ADDS COST ABOUT AS MUCH AS ITS STEP (`read_step`): a per-digit step's adds into the
-      panel double its cost at alt-k4-like density when each is a branch on its token and follows its own MMAs (the
-      atomics alone are ~2 cycles an instruction: rule t; the rest is the branches and the exposed chain, rule s);
-      summing a warp's digits in registers first (merged) adds once a token.
-   q. A DRAIN'S COST IS ITS L2 REQUESTS, AND SPREADING IT DOES NOT HIDE IT (`read_step`): a global reduction request
-      costs per line it touches, so a token's row is drained aligned to its lines with den carried in it, not as its
-      own request (2.3K -> 1.0K cycles a 128-slot pass); spread through the next pass's steps under a double panel the
-      drain cost 0.4-1K more than a burst at the pass's end. Its corollaries (`drain`, 2026-10-18; 2026-11-02): the
-      requests are the drain's floor (~5 SM cycles a line request with every SM draining), so a group of requests past
-      what the union holds is not issued (the loop's warp-uniform bound); inside a warp's last trip a step past it is
-      issued as an exact zero, never branched around (a branch around an add compiles to a predicated `red.global`,
-      which ptxas wraps in a convergence region a request: removing it took the drain 2,758 -> 1,623 cycles a
-      warp-window at nl64k-alt-k4 on sm_86, measured 2026-11-06); a dead lane or step adds its zero at a row of its
-      CTA's own, never at one row every CTA shares (a shared dummy line serialized every CTA ~6x).
-   r. A PUBLISH IN ROUNDS COSTS ITS HANDSHAKES (`publish_rounds`): four 16 KB rounds of the even carve's 64 KB
-      transpose cost 0.4-0.6K cycles a window over publishing it whole when double buffered, 1.0-1.1K single.
-   s. A STEP'S BODY IS ONE BASIC BLOCK (`read_step` modes 6-8, its ncu counters): ptxas schedules within a block and
-      does not speculate a memory operation, so `in ? load : 0`, `if (lane) atomic` and a predicated atomic in inline
-      asm each compile to a branch with a convergence barrier, and a runtime `switch` selecting register-resident
-      state or an `if` around a prefetch splits the block between the next step's loads and this step's MMAs. The
-      per-digit readout step with its adds a step behind runs 3.2x / 3.3x / 2.5x its MMA floor at 8 / 2 / 1 steps a
-      digit with them; with the loads unconditional (a pad's slot a real row, its value masked) and the adds of a value
-      masked to zero, 2.1x / 2.2x / 2.3x; with the whole sequence unrolled so its operand and output rings (two slots)
-      and token slots (three) sit at fixed registers, 1.56x / 1.67x / 1.99x. Rotating a ring by copies in a rolled
-      loop costs ~20 moves a step.
-   t. A SHARED ATOMIC IS THE LARGER OF 2 CYCLES AN INSTRUCTION AND 1 A WAVEFRONT (`smem_rates`): `red.shared.add` with
-      1, 2 or 4 wavefronts a warp costs 2, 2, 4 cycles an instruction on the SM; loads (`ld.shared.v4`, `ldmatrix.x4`)
-      a wavefront a cycle, the documented bank rate.
-   u. THE TAX HOLDS IN A KERNEL, AND THE INTEGER CLASS IS HALF RATE (`read_step` modes 12-18, counters): the per-list
-      readout's fp16 -> s16 conversion (16 `HADD2.F32`, 16 `FFMA`, 8 `PRMT` a warp-step) costs 0.345 of the step's
-      MMA floor -- 0.08 the output-to-atomic chain's latency, 0.26 the instructions, linear in their count, of which
-      the tensor_tax rates price 0.155 and issue pressure the rest. `LOP3`/`PRMT` run at half rate on sm_86 (16 lanes):
-      as many of them load the ALU pipe past the floor (1.66x / 1.76x against 1.52x).
-   v. PTXAS PLACES THE MMAs, AND THE SCHEDULER DOES NOT FAVOR A READY ONE (`read_step` modes 19-21, ncu source
-      counters): ptxas bursts a step's independent MMAs (the readout: 24 back to back, then ~200 instructions without
-      one) whatever the source order, and named barriers fence memory only -- a turn-taking pair (`bar.sync`, the MMAs,
-      `bar.arrive`) compiles with the MMAs outside it (1.73x). Per-instruction samples: a ready MMA loses the issue slot
-      to the other warp 6.7% of warp time (~13% of a scheduler's cycles, the pipe free). A zero-valued dependency
-      (MMA j reads output word j - 1 masked by a run-time zero) cuts the longest MMA-free run 208 -> 83 instructions
-      and those losses to 3.8%, for 1.52x -> 1.49x; tied both ways (each word also reads an MMA's output) the MMA
-      latency lands on the chain (1.55x).
-   w. THE TENSOR PIPE HAS NO QUEUE (`mma_queue`): a warp's K back-to-back independent MMAs take one MMA's pipe time
-      each to issue from the second on (16.0 cycles fp16-accumulate, 32.1 fp32-accumulate on the RTX 3080 Ti), so a
-      warp cannot issue a burst ahead of the pipe and go on to other work: it is held at the burst, and every MMA needs
-      an issue slot the cycle the pipe frees. Turn-taking between a scheduler's warps (FA3's ping-pong, built on
-      sm_90's asynchronous `wgmma`) has no queue to fill here.
-   x. INSTRUCTIONS AN MMA, NOT THEIR ORDER (`read_step` modes 22-23, `lab.py sass --arch`): the per-list readout's
-      step with its level-R operand native f16 (no PRMT/HADD2 unpack) issues 9.6 non-MMA instructions an MMA against
-      12.2 and runs 1.31x its floor against 1.52x -- more than the unpack's tax, since near issue saturation every
-      instruction also costs contention; with fp32 accumulation, 7.6. A step's instructions an MMA are priced against
-      the smallest shadow it must fit: sm_80's 8-cycle MMA leaves 7 issue slots.
-   y. THE PER-LIST FOLD STEP IN §27'S SHAPE IS AT ITS FLOOR (`list_fold` form 5): a pass one block, entries as byte
-      offsets, pads masked, each token's c precomputed as f16 (the facts pass's), the mass accumulated in place, and
-      gathered rows residue-ordered (each 8 of a step distinct mod 8) -- 2.5 / 3.4 / 4.7 non-MMA instructions an MMA at
-      8 / 2 / 1 steps a list (13-17 before) and 1.015-1.030x its floor at every density on sm_86 (1.13-1.42x before).
-      Residue order alone removes the gathered rows' bank conflicts (58M -> 0.06M; 1.37x -> 1.26x).
-   z. A COEFFICIENT FORMED IN THE FOLD COSTS ~2.9 INSTRUCTIONS AN MMA (`list_fold` forms 6-7): the list digit's byte
-      from the token's row times its `(F, m)` f16 pair, against c read precomputed from the entry -- 5.3 / 6.25 / 7.5
-      non-MMA instructions an MMA at 8 / 2 / 1 steps a list (form 5: 2.5 / 3.4 / 4.7), +1.6-2.4% on sm_86, over sm_80's
-      7 issue slots at one step a list; slot entries add ~0.8 of address arithmetic. So a per-entry value the producer
-      can form once stays in the entry.
-   aa. A STREAM READS 128 OR MORE CONTIGUOUS BYTES OF A ROW (`row_span`): a work item owning a 32-byte piece of each
-      row streams at half the DRAM peak (half a burst), 64 bytes at 0.81, 128 and up at the peak, at any block shape
-      (2 x 8, 1 x 16 or 1 x 8 warps an SM). A level's work item spans 128 digits or more of its rows.
-   bb. BYTES KEPT FOR A LATER STAGE ARE APPENDED TO ONE PACKED STREAM, NEVER SCATTERED TO PER-KEY REGIONS
+3. THE RULES THAT STAND (each measured on sm_86 under CUDA 13.0, its sm_90a run owed). The letters a, c, e to p, r
+   and t to z are the ampere family's machine rules -- what an instruction costs beside `mma.sync`, its pass
+   pipelines, pools, lists and readout steps -- and stay the branch's; a card's rates are its rows of the hardware
+   table (item 1). Hopper's rules take new letters as its labs run.
+   b. `[COMPILER]` COLLECTIVES (`collective_branch`): a warp collective under control flow that depends on the thread —
+      a branch on the warp id, or a trip count the warp's role sets — compiles into a CALL into a convergence
+      subroutine (~1.65x the inline shuffle's cycles); under a branch on the block index or a kernel argument it stays
+      inline. A collective's enclosing control flow derives from kernel arguments, the block index or constants.
+   d. `[COMPILER]` INTEGER ADDS (`tensor_tax`'s SASS): ptxas folds repeated adds, rewrites add recurrences, merges
+      two-input adds into `IADD3` and issues adds as `IMAD.IADD` on the FMA pipe on its own; the source does not choose
+      the integer pipe.
+   q. `[MACHINE]` `[COMPILER]` A GLOBAL REDUCTION COSTS ITS L2 LINE REQUESTS (`drain`): ~5 SM cycles a line request
+      with every SM draining (the hardware table's `red_request`), so a row is reduced aligned to its lines and a
+      request past what a union holds is not issued (the loop's warp-uniform bound). Inside a warp's last trip a step
+      past it is issued as an exact zero, never branched around: a branch around an add compiles to a predicated
+      `red.global`, which ptxas wraps in a convergence region a request (removing it took a drain 2,758 -> 1,623
+      cycles a warp-window). A dead lane or step adds its zero at a row of its CTA's own, never at one row every CTA
+      shares (a shared dummy line serialized every CTA ~6x).
+   s. `[COMPILER]` A STEP'S BODY IS ONE BASIC BLOCK (`read_step` modes 6-8, the branch's): ptxas schedules within a
+      block and does not speculate a memory operation, so `in ? load : 0`, `if (lane) atomic` and a predicated atomic
+      in inline asm each compile to a branch with a convergence barrier, and a runtime `switch` selecting
+      register-resident state or an `if` around a prefetch splits the block between the next step's loads and this
+      step's MMAs. On the ampere readout's step: 3.2x its MMA floor with the branches; 2.1x with the loads
+      unconditional (a pad's slot a real row, its value masked) and the adds of a value masked to zero; 1.56x with the
+      whole sequence unrolled so its rings sit at fixed registers. Rotating a ring by copies in a rolled loop costs
+      ~20 moves a step.
+   aa. `[MACHINE]` A STREAM READS 128 OR MORE CONTIGUOUS BYTES OF A ROW (`row_span`): a work item owning a 32-byte
+      piece of each row streams at half the DRAM peak (half a burst), 64 bytes at 0.81, 128 and up at the peak, at any
+      block shape (2 x 8, 1 x 16 or 1 x 8 warps an SM). A level's work item spans 128 digits or more of its rows.
+   bb. `[MACHINE]` BYTES KEPT FOR A LATER STAGE ARE APPENDED TO ONE PACKED STREAM, NEVER SCATTERED TO PER-KEY REGIONS
       (`vote_stash`): each byte stored at its key's own region dirtied a sector that left L2 half written -- 93 MB of
       DRAM writes for a 17 MB stash, the stage at 0.25x; appended lane by lane after a scan of the lanes' counts, the
       writes are the bytes and the stage costs 3% (k 4 of 256) to 8% (k 16). A lane's serial walk over its entries is
       bounded by the warp's busiest lane (0.6x at 25% density): dense key sets want a lane-parallel extraction.
-   cc. A WARP'S BIT WORDS LEAVE THROUGH A TILE AS 64-BYTE RUNS (`facts_block`): a warp storing one 4-byte word to each
-      of 32 rows took ~4K cycles an item -- the facts pass's vote's whole cost; written to a shared tile and stored as
-      each row's 64 contiguous bytes after the item's barrier, the vote runs at 4x its DRAM floor's rate. The 128-byte
-      rule holds even for a run a row the next item re-reads: 128-byte runs read a whole sweep apart still stream at
-      0.98 of the peak, 64-byte ones fall to 0.59 (`row_span`, spans apart).
-   dd. AN sm_86 MBARRIER WAIT POLLS, SO A WAITING WARP SLEEPS BETWEEN POLLS (`facts_block`): eight warps waiting on
-      eight builders spun 26% of the kernel's warp instructions (30.7M of 116.5M) in their LDS/LOP3/branch poll, taking
-      the builders' issue slots; `__nanosleep(64)` between polls returns them. A wait whose producer is busy computing
-      sleeps; only a wait sure to be short spins.
+   cc. `[MACHINE]` A WARP'S BIT WORDS LEAVE THROUGH A TILE AS 64-BYTE RUNS (`facts_block`): a warp storing one 4-byte
+      word to each of 32 rows took ~4K cycles an item -- the facts pass's vote's whole cost; written to a shared tile
+      and stored as each row's 64 contiguous bytes after the item's barrier, the vote runs at 4x its DRAM floor's rate.
+      The 128-byte rule holds even for a run a row the next item re-reads: 128-byte runs read a whole sweep apart still
+      stream at 0.98 of the peak, 64-byte ones fall to 0.59 (`row_span`, spans apart).
+   dd. `[MACHINE]` AN sm_86 MBARRIER WAIT POLLS, SO A WAITING WARP SLEEPS BETWEEN POLLS (`facts_block`): eight warps
+      waiting on eight builders spun 26% of the kernel's warp instructions (30.7M of 116.5M) in their LDS/LOP3/branch
+      poll, taking the builders' issue slots; `__nanosleep(64)` between polls returns them. A wait whose producer is
+      busy computing sleeps; only a wait sure to be short spins.
    ee. A STREAMING PASS'S FLOOR COUNTS ITS WRITES (`facts_block`): the facts pass writes its bitlists (an eighth of
       what it reads), union words and lists; against the read bytes alone its rate looked 0.81 of the peak, against
       the bytes it moves 0.92. Every streaming lab and gate prices the floor on read plus write bytes at a flat
       stream's rate measured in the same run.
-   ff. HOLD ONLY WHAT A LATER PHASE READS, STREAM THE REST (`facts_block`): a pass whose build needs one level's bytes
-      after the vote cannot double-buffer every level's whole window in 99 KB -- holding the write level through its
-      build left nothing in flight (TILED computes at 0.72x its floor at k 4 and streams at 1.28x); holding that level
-      alone and streaming the others through a ring of small stages freed as voted takes it to 1.16x (resident 0.54x).
+   ff. `[MACHINE]` HOLD ONLY WHAT A LATER PHASE READS, STREAM THE REST (`facts_block`): a pass whose build needs one
+      level's bytes after the vote cannot double-buffer every level's whole window in 99 KB -- holding the write level
+      through its build left nothing in flight (TILED computes at 0.72x its floor at k 4 and streams at 1.28x); holding
+      that level alone and streaming the others through a ring of small stages freed as voted takes it to 1.16x
+      (resident 0.54x).
 
 ## <a id="s27"></a>§27 — A STEP IS ONE BLOCK, INTERLEAVED BY CONSTRUCTION (law, 2026-10-06, from Blake's "we should have lints and sass checks that enforce we properly interleave loops by default, and only override if justified")
 The per-list readout ran 3.2x its MMA floor and the cause was the shape of its code, not the hardware: branches the
 source never meant as branches, a block split between a prefetch and the MMAs it should hide under, and a ring
 rotated by copies. The 2026-10-05 `list_fold` finding had said it ("each entry's pad check a branch that fences the
 scheduler") and was not applied. So the step's shape is a rule, the default, enforced, with every exception named.
+`[COMPILER]` The six items are what ptxas does to a step's source, measured on `mma.sync` steps (sm_86): the default
+shape of a step on this line, re-read on its `wgmma` steps (owed).
 1. A STEP BODY IS ONE BASIC BLOCK: no branch between a stage's prefetch and its MMAs, nor around its adds. A padded
    entry is made safe -- its slot a real row, its value masked to zero -- never skipped by a branch.
 2. A LANE-CONDITIONAL SIDE EFFECT IS A MASKED VALUE: never an `if` around a load, store or atomic, and never a
@@ -808,8 +727,7 @@ it names no debt, and an instrument's probe keeps one only where it declares it 
 the experiment declares them (an expectation on BSSY: a comparison baseline kept on purpose). The burst tier's lint
 (§24) holds the source side: no data-dependent `if` inside a burst function, `@burst-exempt <reason>` the only way
 out. Register moves per MMA in a step (the copy-rotation signature) and the MMA gap (the longest MMA-free run in the
-step loop's body, and around it) are reported; the gate on what they cost is §32.4's step cover. Measured: §26.3 s,
-u, v.
+step loop's body, and around it) are reported; the gate on what they cost is §32.4's step cover. Measured: §26.3 s.
 
 ## <a id="s28"></a>§28 — NO PHASE IDLES THE BINDING STREAM (law, 2026-10-07, from Blake's "any kernel we write should be going for maximal pipelining, ilp, etc. we shouldn't be compromising our standards, and if linters are letting us we should be making our linters more powerful and standards more clear")
 The facts pass's list build was priced by instruction count (about 10 an entry, "inside the ~40% issue headroom")
@@ -853,31 +771,33 @@ method is a procedure with a gate, not a memory.
    with a lane constant.
 4. PADDING IS ROUTED BY A BASE, ONCE: a pad token's base is the lane's dummy row, chosen once a token a step; never a
    select per element or per access (with §27.1: never a branch).
-5. THE FACTS PASS EMITS THE STEP'S FINAL FORM: what a step consumes per entry (a pool row's byte offset with its
-   swizzle folded in, a panel row's offset, the coefficient in the operand's format) is computed once by the producer,
-   not per use by the consumer.
-6. CONVERSIONS RUN ON THE FMA PIPE: an fp32 to integer conversion is one FFMA adding 1.5 x 2^23 (the rounded integer
-   in the low bits), a pair packed by one PRMT; the conversion unit (F2I/I2F/F2F/MUFU, 16 lanes a cycle an SM) never
-   in a step. Shared-memory f16x2 atomic adds are a compare-and-swap loop before sm_90 (`ATOMS.CAST.SPIN`): never.
-7. GLOBAL MEMORY NEVER IN A STEP: a step's operands are staged ahead by `cp.async` (LDGSTS); a reduction to global
-   memory is a drain outside the steps.
+5. THE FACTS PASS IS AN INDEXER, AND AN ENTRY IS A SLOT AND A BYTE (Blake, 2026-11-09): the facts pass emits what is
+   the data's alone -- the liveness words and unions, each sparse level's lists (tokens in order, ranks, boundaries,
+   totals), the per-token factor products -- and nothing of a card's: no exponent, no coefficient in an operand's
+   format, no layout offset. What a card's step needs beyond the entry it forms where it expands the byte, once at
+   the outermost level its inputs allow (item 2).
+6. `[MACHINE]` CONVERSIONS RUN ON THE FMA PIPE: an fp32 to integer conversion is one FFMA adding 1.5 x 2^23 (the
+   rounded integer in the low bits), a pair packed by one PRMT; the conversion unit (F2I/I2F/F2F/MUFU; on sm_86 16
+   lanes a cycle an SM) never in a step.
+7. GLOBAL MEMORY NEVER IN A STEP: a step's operands are staged ahead by the family's copy (TMA on hopper); a reduction
+   to global memory is a drain outside the steps.
 8. A LAB'S NUMBERS ARE A CORRECT KERNEL'S: every recorded variant checks its outputs against a host reference
    (`Bench::check`; inputs chosen so the reference is exact), or states why it has none (`Bench::unchecked`: an
    isolation whose outputs fold into a sink); every MMA kernel in a lab has a budget or a stated exemption
    (`Bench::exempt`: a rate probe, an isolation, a baseline). Found 2026-10-11: the readout lab's pad words overran
    into a warp's heads -- in bounds, so memcheck passed, and even a zero atomic add is a read-modify-write that raced
    the next window's copy -- and the corrupted counts were measured as a form's cost; its exact check fails on it.
-9. WHAT PTXAS ADDS IS PREVENTED AT THE SOURCE (measured 2026-10-11 in `read_image`, 13.2 -> 8.2 instructions an
-   MMA): a lane's constants are held in registers (`lab::held`, an empty asm; ptxas otherwise re-derives them from
-   `S2R` at every digit); every branch on loaded data is a vote (`__any_sync`), so ptxas sees it warp-uniform and puts
-   no convergence barrier (BSSY/BSYNC, WARPSYNC, BRA.DIV) around the collectives it guards; a loop whose trip count is
-   data is bottom-tested on a vote, its entry test outside it; a prefetch is issued unconditionally into a pad past
-   the last window, never under a guard; a lane-predicated copy in a loop becomes a branch, so data a few lanes need
-   travels inside what every lane copies. Inside any loop (a block's item or pass loop) no loop sits inside a
-   lane-divergent region and no exit tests a value read from shared memory without a vote: ptxas then cannot prove the
-   warp converged at the enclosing loop's back-edge, and every collective of the body compiles guarded (2026-11-01, the
-   producer: 345 guarded sites from one mass loop under a lane test; 45 from a Newton exit on the partner warp's
-   vote read back). What remains is named in the budget: three never-executed `LDS` before
+9. `[COMPILER]` WHAT PTXAS ADDS IS PREVENTED AT THE SOURCE (measured 2026-10-11 in `read_image`, 13.2 -> 8.2
+   instructions an MMA): a lane's constants are held in registers (`lab::held`, an empty asm; ptxas otherwise
+   re-derives them from `S2R` at every digit); every branch on loaded data is a vote (`__any_sync`), so ptxas sees it
+   warp-uniform and puts no convergence barrier (BSSY/BSYNC, WARPSYNC, BRA.DIV) around the collectives it guards; a
+   loop whose trip count is data is bottom-tested on a vote, its entry test outside it; a prefetch is issued
+   unconditionally into a pad past the last window, never under a guard; a lane-predicated copy in a loop becomes a
+   branch, so data a few lanes need travels inside what every lane copies. Inside any loop (a block's item or pass
+   loop) no loop sits inside a lane-divergent region and no exit tests a value read from shared memory without a vote:
+   ptxas then cannot prove the warp converged at the enclosing loop's back-edge, and every collective of the body
+   compiles guarded (2026-11-01, the producer: 345 guarded sites from one mass loop under a lane test; 45 from a Newton
+   exit on the partner warp's vote read back). What remains is named in the budget: three never-executed `LDS` before
    every `LDGSTS`, a loop's exit `CALL`, alignment NOPs, `UIADD3` fillers between dependent MMAs.
 10. A FREE-RUNNING CTA IS TIMED BY ITS SPAN (`WarpSpan`) against the free floor, the busiest scheduler over all
    windows. The mean warp's cycles undercount it, and a per-window floor overstates what it must take.
@@ -904,9 +824,8 @@ method is a procedure with a gate, not a memory.
    their bytes), issue, the integer, FMA and transcendental pipes at their cycles an instruction, the SM's global path
    (L2's lines and atomic requests, every SM busy) -- and on the local
    card each pipe's busy share, L2 sectors and the stall reasons ([`tools/pipes.py`](internals/tools/pipes.md); its
-   prices checked against `smem_rates` and `handoff` to the percent). The hand-off's old form had been measured only
-   inside the composed window and was bound by the integer pipe, which no gate printed: the lean form cut it 27%
-   (3,059 to 2,248 cycles a window) and still runs 1.7x over its integer pipe's 1,310. A budget states its binding
+   prices checked against `smem_rates` to the percent). The ampere carry's hand-off had been measured only inside the
+   composed window and was bound by the integer pipe, which no gate printed. A budget states its binding
    pipe's cycles beside its instructions; a kernel over 1.3x its binding pipe names the stall that holds it.
 15. A BUDGET LINE NAMES ITS FORM (amended 2026-10-18): each line item cites the cheapest known form for its job from
    docs/internals/tools/budgets.md#forms (integer keys for scaled compares, an atomic a lane for a cross-warp
@@ -915,24 +834,24 @@ method is a procedure with a gate, not a memory.
 ENFORCED: `tools/lab.py run` reads each budgeted kernel's executed instructions by class (ncu's per-opcode counts),
 prints them against the budget, and refuses to record a variant over it (`--force` to record a known-over variant on
 purpose). `tools/sass_gate.py` reds, on every function of every build, conversion-unit instructions and global
-accesses other than `cp.async` inside an innermost MMA loop; the kernels built before the rule whose steps still read
-global memory are its named debts (the produce kernel's unstaged operands, the fold's past-16 records), each with what
-replaces it, and the list only shrinks; no kernel keeps the conversion unit in a step, so it names no such debt. A
+accesses other than the family's staged copy inside an innermost MMA loop; a kernel built before the rule whose steps
+still read global memory is a named debt with what replaces it, and the list only shrinks; no kernel keeps the
+conversion unit in a step, so it names no such debt. A
 lab variant that keeps one on purpose declares STEP_XU or STEP_GLOBAL, and an instrument's probe declares it beside its
 source (§20).
 `tools/lab.py run` also records no variant whose output check failed, and (past the experiments recorded before the
 rule, its named debts) none without a check or a stated reason, and builds no MMA kernel without a budget or exemption.
-Measured: `read_image` (docs/lab/read_image.md).
+Measured: `read_image` (sm_86, the branch's).
 
 ## <a id="s30"></a>§30 — SHARED MEMORY IS CONFLICT-FREE BY CONSTRUCTION (law, 2026-10-11, from Blake's "Should we create principles to ensure things are consistently designed to minimize bank conflicts always from ground up")
 The readout lab's bank conflicts were designed in by accident: the panel's pitch suited one access shape and not the
 other form's, pads went to whatever word was spare, and slot numbers were left to the data, so a digit's tokens
-collided on banks at random. On A100 shared memory binds, so a conflict costs more than an instruction. Fixing all
+collided on banks at random. Where shared memory binds (the A100), a conflict costs more than an instruction. Fixing all
 three cut conflicts from 1.6-2.1 an MMA to 0.02-0.03 and wavefronts 25%, with no instruction added (`read_image`).
-1. EVERY SHARED BUFFER HAS AN ACCESS TABLE BEFORE CODE: each instruction that touches it (loads, `ldmatrix`, atomics,
-   `cp.async` stores) by lanes, addresses and banks; its layout (pitch, swizzle) is chosen to satisfy all its readers
-   and writers, and states the instruction shapes it is conflict-free for. A new access shape on an existing layout
-   gets its own placement rule or layout, never an assumption (§3 extends from fixed tensors to every buffer).
+1. EVERY SHARED BUFFER HAS AN ACCESS TABLE BEFORE CODE: each instruction that touches it (loads, matrix loads, atomics,
+   a copy's stores) by lanes, addresses and banks; its layout (pitch, swizzle) is chosen to satisfy all its readers and
+   writers, and states the instruction shapes it is conflict-free for. A new access shape on an existing layout gets
+   its own placement rule or layout, never an assumption (§3 extends from fixed tensors to every buffer).
 2. WHEN THE DATA PICKS ADDRESSES, A PRODUCER'S FORMAT CARRIES CONFLICT-FREEDOM ONLY WHERE THE COMPOSED CONSUMER EARNS
    IT (amended 2026-10-13): gathered rows and atomic targets indexed by slot can get slots the producer places so each
    instruction's set is conflict-free (a union's slots colored by residue, a slot's residue mod 8 its row's bank group,
@@ -946,15 +865,14 @@ three cut conflicts from 1.6-2.1 an MMA to 0.02-0.03 and wavefronts 25%, with no
    an add -- never a spare word that may share a bank with real traffic.
 4. WAVEFRONTS ARE BUDGETED LIKE INSTRUCTIONS: each §29 budget has a `wavefronts` line, the design's bytes a 128-byte
    wavefront plus what the counter is known to add, and `tools/lab.py` gates ncu's measured count against it (and
-   prints the bank conflicts in it). It is A100's floor, checked on every local run.
+   prints the bank conflicts in it). It is the floor of a card whose shared memory binds, checked on every local run.
 5. A BANK MODEL RUNS BEFORE THE GPU: `tools/bank_model.py` gives an instruction's wavefronts from its lanes'
    addresses; the producer (the facts pass, or a lab's inputs standing in for it) runs it on what it emits and reports
    wavefronts by part, so a format change that adds conflicts is seen without hardware. It is checked per operation
-   against ncu's counters once a layout (measured 2026-10-11: `ldmatrix` and atomics exact, entry loads within 0.03).
+   against ncu's counters once a layout (sm_86, 2026-10-11: matrix loads and atomics exact, entry loads within 0.03).
 6. CONFLICTS ARE PRICED ACROSS DENSITIES: dense, sparse and the W = 1024 lists each, since a data-dependent conflict
    rate moves with the distribution (CONSTITUTION §R10).
-Measured: `read_image`, `read_w1024` (docs/lab/read_image.md, docs/lab/read_w1024.md); the model:
-docs/internals/tools/bank_model.md.
+Measured: `read_image`, `read_w1024` (sm_86, the branch's); the model: docs/internals/tools/bank_model.md.
 
 ## <a id="first-run"></a>NEW DEVICE CODE RUNS FIRST UNDER A KILL TIMEOUT (law, 2026-10-07, after a hang froze the host)
 A warp shuffle placed as an operand of a short-circuit `||` ran on only the lanes that evaluated it; the warp hung, the
@@ -992,7 +910,7 @@ The carry's rebuild passed every component gate and composed into a kernel whose
 busy 40-44% of the time at its two warps a scheduler: the readout's tile loops issue each `ldmatrix` one instruction
 before the MMA that reads it, about 200 registers stay live through every phase (so no phase has room for a second
 stage's operands), and four query heads a write head bought no time per query head. The instruments to see it existed
-and none was in the path: the pipe model (`tools/pipe_sim.py`) read only loops named by function, whose names the
+and none was in the path: the pipe model read only loops named by function, whose names the
 rebuild deleted -- its floors pointed at nothing and nothing failed; the MMA gap was reported "until a lab fixes the
 bound"; §28's per-phase reading and the carry's overlap row were owed; the two builds of a change were compared by
 unlocked times across runs; and a helper the common header had (`ops::fresh`) was reinvented in the carry. Components
@@ -1007,7 +925,7 @@ gated, and an instrument's missing target is a red.
    registers admit.
 2. PREDICT, THEN MEASURE, AND A MISS STOPS: each phase's cycles a warp a window are predicted (its budget line, the
    pipe model) and written to the budget (`phase_cycles` per cell) before a schedule or composition change is built;
-   `tools/phase_ledger.py --budget` reds a phase over 1.3x its prediction or without one. A miss stops work on the
+   the family's phase ledger reds a phase over 1.3x its prediction or without one. A miss stops work on the
    kernel until the price or the model that was wrong is named and corrected (§29.13) -- §22's abandonment rule
    applied to a phase.
 3. REGISTERS ARE BUDGETED PER PHASE: the budget's `registers` line states each component's peak live registers, under
@@ -1016,24 +934,22 @@ gated, and an instrument's missing target is a red.
    its use (`ops::opaque`, docs/internals/common/atoms/warp.md#opaque), a few instructions there instead of a register held
    across the window. A spill is never the signal (§20 reds it); the line is. A RE-DERIVATION IS A PRICED LINE ITEM
    (amended 2026-10-18): its instructions at its trips (§29.11), in the budget beside the register it saves -- the
-   carry's open ledger miss (3,884 instructions a warp-window against ~2,020) is mostly tokens, sources and swizzles
-   re-derived at each use and priced nowhere.
+   ampere carry's ledger miss (3,884 instructions a warp-window against ~2,020) was mostly tokens, sources and
+   swizzles re-derived at each use and priced nowhere.
 4. EVERY STEP LOOP COVERS ITS PIPE: `tools/sass_gate.py` simulates every innermost MMA loop of every function, on every
-   build, from ptxas's control words (`tools/pipe_sim.py`; MMA costs by shape and latencies from labs `tensor_tax`,
-   `mma_queue`, `mma_k8`, `issue_latency`, shared writes from `smem_rates`), and reds a loop whose COVER -- its pipe
-   share with the warps a scheduler its registers admit running it together, sharing the scheduler's issue port and
-   the SM's memory pipe, at most its share alone times those warps and 100% -- is under 1/1.15 (§28's line): a loop
-   under it cannot be covered by the warps the design has (an instrument's probe that sets the pipe's share on purpose
-   declares it, §20). The kernels under it are named debts with what replaces
-   them, each function held at its floor (`tools/budgets/step_floors.json`, by architecture), and the list only
-   shrinks; the floors are the debt's ratchet, never its target -- a kernel is clean only at the line on every
-   architecture (Blake, 2026-11-03). The cover is a model's reading: a floor is lowered (`--write-floors`) only in a
-   commit whose locked comparison shows the kernel no slower on its cells, the numbers in the commit (2026-10-16: the
-   carry's warp and lane made opaque per phase read 42.2% against 44.2% and ran 0.9-2.8% faster), or in the commit
-   that corrects the model, every floor re-read on an unchanged kernel (2026-11-03: the cover read one warp alone
-   times its warps, blind to the shared issue port -- the old arm-2 sm_80 readout 52.8% where 80 pipe cycles over 169
-   instructions allow 47.3%). An architecture the host cannot run is lowered on the local card's comparison, marked
-   owed to its own rented run.
+   build, from ptxas's control words and the family's machine model (its MMA's pipe time, its latencies and its
+   shared-memory rates the hardware table's rows, each a lab's), and reds a loop whose COVER -- its pipe share with
+   the warps a scheduler its registers admit running it together, sharing the scheduler's issue port and the SM's
+   memory pipe, at most its share alone times those warps and 100% -- is under 1/1.15 (§28's line): a loop under it
+   cannot be covered by the warps the design has (an instrument's probe that sets the pipe's share on purpose declares
+   it, §20). A kernel under it is a named debt with what replaces it, each function held at its floor by
+   architecture, and the list only shrinks; the floors are the debt's ratchet, never its target -- a kernel is clean
+   only at the line on every architecture this line builds (Blake, 2026-11-03). The cover is a model's reading: a
+   floor is lowered only in a commit whose locked comparison shows the kernel no slower on its cells, the numbers in
+   the commit, or in the commit that corrects the model, every floor re-read on an unchanged kernel (the first model
+   read one warp alone times its warps, blind to the shared issue port). A floor of an architecture the host cannot
+   run is lowered only on that architecture's own rented run. `[MACHINE]` Hopper's model -- an asynchronous `wgmma`'s
+   pipe time, TMA's rates -- is built from its labs with the first hopper schedule (owed).
 5. A TARGET THAT DISAPPEARS IS RED: a floor, budget line or gate row naming a function, loop or cell the tree no longer
    has fails; it never reads as nothing.
 6. ONE PRIMITIVE A JOB: before writing a helper, the common headers (`common/atoms/*.cuh`, `common/*.cuh`) are read for
@@ -1042,22 +958,19 @@ gated, and an instrument's missing target is a red.
    suite with the baseline as a reference checkout, pruned to the sessions (`rola-bench`) -- or by ncu's cycles of one
    launch each; times from separate unlocked runs are never compared.
 ENFORCED: items 3, 4 and 5 by the tools named; the SASS gate runs inside every build (the library's gate action), so
-an under-line step fails the build. Item 2's predictions are owed for the carry by the window's design (its first form), and its
-ledger check is red until they exist. Measured 2026-10-16 at 87240898: the carry's worst step loops cover 44.2% and
-39.6% (its two arms, sm_86) and 23.6% and 20.4% on sm_80's eight-cycle MMA; its components peak at 204-252 live
-registers.
+an under-line step fails the build. Item 2's predictions are a kernel's design's to state, and its ledger check is red
+until they exist.
 
 ## <a id="s33"></a>§33 — DATA STAYS IN REGISTERS UNLESS SOMETHING STAGES IT (law, 2026-10-18, from Blake's "'Staging rule as a kernel standard' ok")
-Shared memory is the pipe that binds the sparse carry on sm_80 (the staged fold ~2.5-3.9 wavefronts a MMA and the
-readout ~7-10 against sm_80's 2, 2026-10-18), so nothing passes through it without a reason. A value is staged in
-shared memory only when:
-1. other warps read it (a value shared across warps: a stream's stage, the image, the panel);
-2. it must be rearranged on the way (a transpose or relayout an MMA operand needs: `ldmatrix` from a staged row);
+Shared memory is a pipe a kernel can bind on (it bound the ampere family's sparse carry), so nothing passes through it
+without a reason. A value is staged in shared memory only when:
+1. other warps read it (a value shared across warps: a stream's stage, the panel);
+2. it must be rearranged on the way (a transpose or relayout an MMA operand needs);
 3. it must be buffered beyond what the warp's registers hold (a ring deep enough to cover a stream's latency); or
-4. the MMA reads it from shared memory (sm_90's `wgmma` B operand by descriptor; sm_100's `tcgen05` operands).
-Otherwise it stays in the registers that produce and consume it. Staging is not a pipe saving to be had by skipping it:
-a load from L2 into registers is written into the banks and read out, ~1.6 pipe cycles a 128 bytes, as much as a
-`cp.async.cg` copy (0.5) and the `ldmatrix` that reads it (1.0) (`smem_rates`, 2026-10-18), and it holds registers
-for the loads in flight -- so rows an MMA reads from global memory are staged by `.cg` copies (form `budgets.md#forms`),
-and the direct-to-register row path is dropped. sm_80/sm_86 as stated; sm_90: item 4 stages B, TMA's bulk copy
-replaces the per-lane copies; sm_100: accumulators in tensor memory, operands as item 4.
+4. the MMA reads it from shared memory (`wgmma`'s B operand by descriptor; sm_100's `tcgen05` operands).
+Otherwise it stays in the registers that produce and consume it (`wgmma`'s A operand, where it is the warp's own
+accumulators: §2). Staging is not a pipe saving to be had by skipping it: a load from L2 into registers is written into
+the banks and read out as a staged copy and its read are, and it holds registers for the loads in flight (`[MACHINE]`
+sm_86, `smem_rates`: ~1.6 pipe cycles a 128 bytes against a copy's 0.5 and its matrix load's 1.0) -- so rows an MMA
+reads from global memory are staged by the family's copy (TMA's bulk copy on hopper), never loaded to registers
+direct. sm_90: item 4 stages B; sm_100: accumulators in tensor memory, operands as item 4.

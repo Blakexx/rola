@@ -57,9 +57,17 @@ once, with every amendment folded in; the numbers are permanent, so a citation n
 <a id="r8"></a>
 ## R8. Design mechanisms that expand to all architectures
 
-Every mechanism states its sm_80 / sm_90 / sm_100 form at design time (wgmma and tcgen05 shared- and tensor-memory
-operands, TMA box loads, clusters and distributed shared memory, vector RED); a mechanism that exists on one
-architecture only is a workaround, not a design.
+Every mechanism states its hopper (sm_90) and blackwell (sm_100) form at design time (wgmma and tcgen05 shared- and
+tensor-memory operands, TMA box loads, clusters and distributed shared memory, vector RED); a mechanism that exists on
+one architecture only is a workaround, not a design.
+
+THIS LINE IS HOPPER'S AND BLACKWELL'S (Blake, 2026-11-09). The ampere family is the branch `ampere`, the frozen
+reference: its design is no input to a hopper design ("the ampere design is just bad on hopper and not even in
+consideration") and is never run on a hopper card as one. Its cards stay rows of the hardware table, tabulated and not
+built. A kernel with no family schedule (the facts pass, decode, paging, entmax) may compile for sm_86 as it is
+written for every card, so the development card runs it; no sm_86 schedule, atom, branch or plan is ever written to
+make something run there ("never introduce a nonstandard sm86 form just to test something we wont even maintain or
+use").
 
 THE FORM IS NAMED PER FAMILY. The architectures fall into families -- `ampere` (sm_80 to sm_89), `hopper` (sm_90),
 `blackwell` (sm_100) -- and a mechanism's form is named per family: an ATOM where only the instruction differs, the
@@ -125,10 +133,11 @@ in a register-shaped loop; shared memory is never max-sized.
 ## R13. The state owns its format
 
 A descriptor (D, per-level widths that are powers of two from 16, the canonical order, the page rectangle as the
-trailing four canonical bits, d_v) is bound at the first call and checked after. Pages hold each leaf-channel as an
-s24 at its (leaf, 32-channel group)'s power-of-two exponent and the mass in fp32; a kernel converts at its own
-boundary (the fold to fp32 in registers, the readout to its f16 image). The warp sub-box's spans are compile-time from
-the plan; prefill and decode share one admission law; N is a multiple of 16, and a ragged N is refused, never padded.
+trailing four canonical bits, d_v) is bound at the first call and checked after. Pages hold each leaf-channel as an s24
+at its (leaf, 32-channel group)'s power-of-two exponent and the mass in fp32; a kernel converts at its own boundary
+(the fold to fp32 in registers, which the readout reads as its bf16 operand). The warp sub-box's spans are compile-time
+from the plan; prefill and decode share one admission law; N is a multiple of 16, and a ragged N is refused, never
+padded.
 
 TWO CONTRACTS, ONE TRANSLATOR. The API accepts any shape (any width from 2, any d_v, any L) and serves it by padding;
 the kernel accepts only the descriptor's strict shape and its operand formats and refuses the rest -- it never pads or
@@ -159,10 +168,13 @@ declares per architecture; an unknown declaration is admitted by a refusal-check
 <a id="r17"></a>
 ## R17. One family, one form a component
 
-Operands are the fp16 family. Each component has one form across densities and cards, unless measurements show that
-no single form wins or ties everywhere. Accumulation precision is declared per component -- the fold fp32; the readout
-fp32 where that is full rate, fp16 on GeForce; the output's partials exact s16 pairs -- and recorded in
-`docs/architecture/precision.md`.
+Operands are the bf16 family (Blake, 2026-11-09). Every level's rows, either side, dense or sparse, are u8 unit-max
+with the row's fp32 scale; the values are bf16 unit-max with an fp32 scale a token. Every MMA operand is bf16 (a u8
+byte is exact in it) and every accumulation fp32 -- the fold, the readout and the den alike -- and the output's sum is
+fp32, in shared memory and across CTAs: no scale pass, no image, no switch of precision by card or by density. Each
+component has one form across densities and cards, unless measurements show that no single form wins or ties
+everywhere. The family's error is its own class, 0.16 to 0.20% a token against the fp64 oracle on the flagship cells
+(measured), accepted on every card and recorded in `docs/architecture/precision.md`.
 
 <a id="r18"></a>
 ## R18. One body per op family
@@ -186,13 +198,14 @@ accumulator lives (registers, tensor memory) changes how a warp touches its shar
 <a id="r21"></a>
 ## R21. Every asynchronous operation states two edges
 
-An asynchronous write -- `cp.async`; TMA, `cp.async.bulk`, `wgmma` on sm_90 and after -- has two hazards, and a wait
+An asynchronous write -- TMA, `cp.async.bulk`, `wgmma`, `cp.async` -- has two hazards, and a wait
 covers only one. Its COMPLETION edge (read after write) is the wait or barrier phase behind which the first read of
 the new contents stands. Its ISSUE edge (write after read) is the barrier after the last read of the old contents by
 any warp: a warp's wait orders that warp against its own copies, never against another warp's reads of the bytes it is
 about to overwrite. Every shared tenant an asynchronous operation writes states both edges in its ledger, and a review
-refuses a tenant that names only the wait. On sm_90 the two edges are a pipeline stage's empty and full barriers; on
-sm_80 they are the CTA edges the frame already has, the issue placed past the edge that ends the last read.
+refuses a tenant that names only the wait. The two edges are a pipeline stage's empty and full barriers; where a
+kernel has no stage ring (per-lane copies behind the CTA's own edges), the issue is placed past the edge that ends the
+last read.
 
 <a id="r22"></a>
 ## R22. Degrade smoothly, scale, partition into independent units
@@ -225,9 +238,10 @@ coefficients and a shared scale too ... and just use them? ... our producers jus
 doesnt use them, they use our factory which transofrms their input into the form the standard way you do any scaling";
 "the gain is a thing the producer is aware of, not something that our formaat knows about ... ultaimtely qkv are stord
 in the same scale format, and thats what the op uses".
-1. q, k and v are each SCALED BLOCKS: a level's rows (or the values') unit-max in a storage FORM, and the row's max
-   its fp32 scale. A form states the storage type, whether an entry may be negative (a routing form never: the den, the
-   liveness words and the decay's shares need it) and its floor; the factory refuses an entry its form does not hold.
+1. q, k and v are each SCALED BLOCKS: a level's rows (or the values') unit-max in its storage FORM, and the row's max
+   its fp32 scale. The forms are R17's, one a kind: a level's rows u8 -- every level, dense or sparse, a zero a zero
+   and no floor under it -- and the values bf16. A routing entry is never negative (the den, the liveness words and
+   the decay's shares need it); the factory refuses an entry its form does not hold.
 2. The op is defined on the blocks' products alone, the same for every consumer and the fp64 oracle: no level is
    required to sum to 1, and nothing in the format says whether one does.
 3. A producer's own quantities -- a learned gain, an activation that lands on the simplex -- are folded into the
