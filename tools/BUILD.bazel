@@ -79,6 +79,7 @@ cc_binary(
     name = name,
     tool = "tools/%s.py" % name,
 ) for name in [
+    "arith_model",
     "bank_model",
     "burst_gate",
     "carve_model",
