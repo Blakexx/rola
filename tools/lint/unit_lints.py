@@ -32,7 +32,7 @@ _JOINED = ("-I", "-D", "-U", "-std=", "-O")
 #: the path-valued ones, which the editor's database makes absolute
 _PATH_VALUED = ("-I", "-isystem", "-iquote", "-include")
 #: the architecture an nvcc `-gencode` builds (`arch=compute_80,code=sm_80`)
-_GENCODE = re.compile(r"code=sm_(\d+)")
+_GENCODE = re.compile(r"code=sm_(\d+a?)")
 #: a diagnostic: `path:line:col: severity: message`
 _DIAGNOSTIC = re.compile(r"^(?P<path>[^:\s][^:]*):\d+:\d+: (?P<severity>warning|error|fatal error): ")
 #: an action's absolute path, up to the execution root it ran in

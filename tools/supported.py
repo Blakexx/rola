@@ -29,11 +29,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 import toolchains
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(1, str(ROOT))
+from measure import hardware  # noqa: E402 -- the architecture rows' own names
+
 ARCH_TABLE = ROOT / "csrc" / "rola" / "src" / "common" / "hardware.cuh"
 README = ROOT / "README.md"
 
@@ -93,7 +97,7 @@ def tabulated_archs() -> list[str]:
             "table is GENERATED from that function; if its shape changed, this "
             "parser must change with it rather than the table being hand-written.")
     codes = [int(n) for n in re.findall(r"\d+", match.group(1))]
-    return [f"sm_{c // 10}" for c in codes]
+    return [hardware.arch_of(c) for c in codes]
 
 
 def ratified() -> dict[str, list[dict]]:

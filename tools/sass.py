@@ -104,7 +104,7 @@ LINE_INFO = re.compile(r'//## File "([^"]+)", line (\d+)')
 SECTION = re.compile(r"^\s*\.section\s+\.text\.([^,\s]+),")
 #: `Function : NAME` and `arch = sm_XX`, the section headers of `cuobjdump -sass`
 FUNCTION = re.compile(r"^\s*Function : (\S+)")
-ARCH = re.compile(r"^\s*arch = sm_(\d+)\s*$")
+ARCH = re.compile(r"^\s*arch = sm_(\d+a?)\s*$")
 
 
 #: the extracted builds the cache keeps, the one just used among them, by last use

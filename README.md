@@ -102,7 +102,7 @@ is a claim; a generated one is a report.
 | `sm_86` | A10, A40, RTX 30xx | `cu13` | ptxas 13.0.48 | 375 | ratified |
 | `sm_87` | Jetson Orin | — | — | — | **not ratified — will refuse to load** |
 | `sm_89` | L40S, RTX 40xx | — | — | — | **not ratified — will refuse to load** |
-| `sm_90` | — | — | — | — | **not ratified — will refuse to load** |
+| `sm_90a` | — | — | — | — | **not ratified — will refuse to load** |
 <!-- END GENERATED: tools/supported.py -->
 
 The unratified rows are not an apology; they are the product statement. The first

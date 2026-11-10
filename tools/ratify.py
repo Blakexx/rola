@@ -287,7 +287,7 @@ def load_manifest(arches, name: str | None = None) -> dict:
             "sources": sources}
 
 
-ENTRY = re.compile(r"Compiling entry function '([^']+)' for 'sm_(\d+)'")
+ENTRY = re.compile(r"Compiling entry function '([^']+)' for 'sm_(\d+a?)'")
 SPILL = re.compile(r"(\d+) bytes spill stores, (\d+) bytes spill loads")
 REGS = re.compile(r"Used (\d+) registers")
 OUT_OF_RANGE = re.compile(r"Value of threads per SM for entry (\S+) is out of range")

@@ -47,6 +47,11 @@ def cc_of(arch: str) -> int:
     return int(arch.removeprefix("sm_").rstrip("a")) * 10
 
 
+def arch_of(cc: int) -> str:
+    """The architecture row a compute capability x 10 names (900 `sm_90a`): the one map back from `cc_of`."""
+    return next(arch for arch in load()["arch"] if cc_of(arch) == cc)
+
+
 def tabulated(cfg: dict | None = None) -> list[str]:
     """The architectures with a capability row, by compute capability."""
     return sorted((cfg or load())["arch"], key=cc_of)

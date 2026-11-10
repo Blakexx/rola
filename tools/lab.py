@@ -79,7 +79,10 @@ def build(path: Path, arch: str) -> Path:
     """The experiment's binary for `arch`, compiled with the pinned toolkit."""
     out = dev_config.scratch("lab") / f"{path.stem}.{arch}"
     #: the lab's build, its one architecture's own in both passes (`lab.cuh`'s `kLabBuild`)
-    cc = int(arch.removeprefix("sm_")) * 10
+    sys.path.insert(0, str(ROOT))
+    from measure.hardware import cc_of
+
+    cc = cc_of(arch)
     subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", f"-arch={arch}", f"-DROLA_LAB_CC={cc}",
                     "-lineinfo", f"-I{LAB}", f"-I{KERNELS}", "--expt-relaxed-constexpr", "-o", str(out), str(path)],
                    check=True)
