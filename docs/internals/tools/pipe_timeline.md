@@ -30,7 +30,7 @@ workload start:
 saturation. The scale comes from the MMA-only composition (every readout and fold part stubbed): its MMA
 phases issue HMMAs as fast as the pipe takes them. Its full-occupancy busy samples form a flat plateau.
 On 2026-09-12 at flagship-dense that plateau was 49.62% of the modeled peak (p10 48.93, p90 50.11, 336
-samples), stored as `<store>/<hw-profile>/pipe-timeline-scale-<utc>.json` in the measurements store. A reading divided
+samples), stored as the measurements store's `pipe_timeline.scale`, through `rola_results`. A reading divided
 by the plateau is the pipe's true utilization at that moment.
 
 **Validation.** The same scale gives the utilization computed independently from HMMA counts at 32 cycles

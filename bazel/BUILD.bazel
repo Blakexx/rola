@@ -63,7 +63,6 @@ filegroup(
     srcs = [
         "//:measure/__init__.py",
         "//:measure/hardware.py",
-        "//:measure/hw_profile.py",
         "//csrc/rola:src/common/hardware.json",
         "//tools:gen_shards.py",
         "//tools:manifests/decode_set.json",

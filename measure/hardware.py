@@ -13,11 +13,10 @@ measured rate matches the lab record it names, on the product it names. Stdlib o
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-from measure.hw_profile import slugify_gpu
 
 ROOT = Path(__file__).absolute().parents[1]
 COMMON = ROOT / "csrc" / "rola" / "src" / "common"
@@ -35,6 +34,24 @@ TOLERANCE = 0.002
 FAMILIES = ("ampere", "hopper", "blackwell")
 #: the build traits a product may override (each distinct set is a build variant)
 BUILD_TRAITS = ("window",)
+
+#: Vendor words carry no comparability information; stripping them is what turns
+#: `torch.cuda.get_device_properties(0).name` into a slug instead of a sentence.
+_VENDOR_WORDS = ("NVIDIA", "GeForce", "Tesla", "Quadro")
+
+
+def slugify_gpu(name: str) -> str:
+    """`NVIDIA GeForce RTX 3080 Ti` -> `rtx3080ti`; `NVIDIA A100-SXM4-80GB` -> `a100`.
+
+    The cut at the first `-` drops a memory/interconnect suffix (`SXM4-80GB`,
+    `PCIE-40GB`) that does not change which kernel binary applies -- an A100-40GB and
+    an A100-80GB run the identical SASS.
+    """
+    stripped = name
+    for word in _VENDOR_WORDS:
+        stripped = stripped.replace(word, "")
+    stripped = stripped.split("-", 1)[0]
+    return re.sub(r"[^A-Za-z0-9]", "", stripped).lower()
 
 
 def load() -> dict:

@@ -5,7 +5,7 @@
 carry kernel's parts are made of and runs it back to back on every warp of 80 CTAs, one per SM. The
 host times it under the locked clock. A row is the median launch's seconds, times the clock's cycles
 per second, divided by the operations a warp issued: **cycles an operation a warp**. The rows are
-reference data for this card (`<store>/<hw-profile>/calibration-<utc>.json` in the measurements store). The composer's and
+reference data for this card (the measurements store's `calibration`, through `rola_results`). The composer's and
 the tracer's readings use them in place of assumed constants (KERNEL_STANDARDS §22 (10)).
 
 ## RTX 3080 Ti (sm_86), 2026-09-12, 1.665 GHz locked

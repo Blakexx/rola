@@ -18,8 +18,8 @@ dense TFLOPS either way; Table 9, the RTX 3090 at 71 against 142). So the file h
 - `arch.<sm_XX>`: the architecture's defaults -- its `caps` row and its `rates`, each rate at what the SM design
   does (sm_86's fp32-accumulate HMMA at 16 cycles, the full rate).
 - `product.<slug>`: a product's overrides over its architecture's defaults (the RTX 3080 Ti's fp32-accumulate
-  HMMA at 32 cycles, and every rate measured on it). The slug is `measure/hw_profile.py`'s: the device name with
-  the vendor words and the memory suffix dropped (`NVIDIA GeForce RTX 3080 Ti` -> `rtx3080ti`).
+  HMMA at 32 cycles, and every rate measured on it). The slug is `measure/hardware.py`'s `slugify_gpu`: the device
+  name with the vendor words and the memory suffix dropped (`NVIDIA GeForce RTX 3080 Ti` -> `rtx3080ti`).
 
 A product's rates are its architecture's under its overrides (`hardware.resolve(product=...)`); an
 architecture's alone are `hardware.resolve(arch)`. A device with no product row runs on its architecture's

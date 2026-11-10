@@ -24,7 +24,6 @@ exports_files([
     "rola/__init__.py",
     "measure/__init__.py",
     "measure/hardware.py",
-    "measure/hw_profile.py",
 ])
 
 #: THE BUILD'S PARAMETERS. The defaults are the shipped build: every ratified architecture, every arm, every part; any

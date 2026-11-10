@@ -16,7 +16,7 @@ namespace rola {
 
 namespace {
 
-//: A DEVICE NAME'S PRODUCT SLUG: `measure/hw_profile.py`'s `slugify_gpu`. -- see docs/internals/common/select.md#slug
+//: A DEVICE NAME'S PRODUCT SLUG: `measure/hardware.py`'s `slugify_gpu`. -- see docs/internals/common/select.md#slug
 std::string slug_of(const char* name) {
   std::string s = name;
   for (const char* word : {"NVIDIA", "GeForce", "Tesla", "Quadro"}) {

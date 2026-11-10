@@ -39,10 +39,7 @@ def compile_arm(arm: int, arch: str) -> Path:
     """The carry arm's translation unit compiled alone with line info, against the build's generated headers."""
     import dev_config
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from measure.hw_profile import current
-
-    arch = arch or "sm_" + current().rsplit("-sm", 1)[1]
+    arch = arch or sass.device_arch()
     cubin = sass.scratch("life_ranges") / f"carry_arm_{arm}.{arch}.cubin"
     root = Path(__file__).resolve().parents[1]
     subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", f"-arch={arch}", "--expt-relaxed-constexpr",

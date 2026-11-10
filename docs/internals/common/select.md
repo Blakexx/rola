@@ -19,7 +19,7 @@ A device whose build the binary does not carry is refused by name with the build
 never run on another's image (an sm_89 card is not run on the sm_86 image: it was not measured there).
 
 <a id="slug"></a>
-The product is found by the slug of the device's name, `measure/hw_profile.py`'s `slugify_gpu` (the vendor words
+The product is found by the slug of the device's name, `measure/hardware.py`'s `slugify_gpu` (the vendor words
 dropped, cut at the first `-`, alphanumerics lowercased): every A100 memory and interconnect variant is `a100`. The
 product's row names its build variant; a device without a row runs its architecture's variant 0.
 
