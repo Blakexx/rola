@@ -1,14 +1,14 @@
 # Precision
 
-> **Every accumulator that carries state is fp32 or an exact integer.** Storage and operand precision are declared
-> per component, one fp16 family (`docs/CONSTITUTION.md#r17`).
+> **Every accumulator is fp32 or an exact integer.** Storage and operands are one family on every card: u8 rows,
+> bf16 values and operands (`docs/CONSTITUTION.md#r17`).
 
 The distinction is the whole document, so state it first.
 
 | | What it means | Rule |
 |---|---|---|
-| **ACCUMULATION** | the format a value is *added into* across steps and carried: the fold's state, the mass (the state's v+1 channel), the scale pass's write masses | fp32 or exact integer, closed. Not a default, not a knob. |
-| **STORAGE and OPERANDS** | the format a value is *held in* and read, without being accumulated into: routing rows, values, the stored state between calls, the readout's image, the output | declared per component, each with its quality measured against fp64. |
+| **ACCUMULATION** | the format a value is *added into* across steps and carried: the fold's state, the mass (the state's v+1 channel), the readout's and the den's sums, the output's sum across CTAs | fp32 or exact integer, closed. Not a default, not a knob, not a card's. |
+| **STORAGE and OPERANDS** | the format a value is *held in* and read, without being accumulated into: routing rows, values, the stored state between calls, an MMA's operands, the output | declared per component, each with its quality measured against fp64. |
 
 A read-only value that is 1 ULP wrong contributes an error bounded by its own magnitude, once. An accumulator that is
 1 ULP wrong embeds that error and carries it for the state's lifetime: normalization bounds what reads contribute;
@@ -19,45 +19,48 @@ nothing bounds what accumulation embeds.
 
 | component | storage and operands | accumulation |
 |---|---|---|
-| the route bundle | a dense level f16 at its row max, floored at 2^-13 of it; a sparse level u8 at its row max, exact zeros; an fp32 scale a (token, level) | -- |
-| the values | f16 at the token's largest channel = 1, an fp32 scale a token | -- |
+| the route bundle | every level, either side, dense or sparse: u8 at its row max (255), a zero a zero and no floor under it; an fp32 scale a (token, level). A dense level differs from a sparse one only in having no list | -- |
+| the values | bf16 at the token's largest channel = 1, an fp32 scale a token | -- |
 | the stored state | s24 a leaf-channel (an s16 hi plane and a u8 lo plane) at an s8 power-of-two exponent a (leaf, 32-channel group); the mass fp32 | -- |
-| the fold | A the slots' dense slices f16 times c (f16 at `2^(E - unit)`), B the values f16 | fp32 on every card, each list in its running unit |
-| the readout | the state's f16 image at a power of two a digit, the digit's largest value under 2^10; read rows f16; the coefficient f16 | a listed read side: fp32 where fp32 accumulate is full rate (A100, A6000, A40), fp16 on GeForce, chosen per product from `hardware.json`; a dense read side: fp32 on every card today, a departure from this rule on GeForce (its one accumulator over all 512 leaves of a token batch can reach 2^19, past the 2^15 bound the image's 2^10 top gives a listed tile's 32 products; [`carry/ampere/readout_dense.md`](../internals/carry/ampere/readout_dense.md)), owed: fp16 sums kept inside that bound; each token's num into the panel as f16 pairs at its scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`; [`carry/ampere/panel.md#drain`](../internals/carry/ampere/panel.md#drain)) |
-| the scale pass | the rows as stored (a u8 digit over 255, a dense f16), `F` | fp32, the byte by the carry's rule |
+| the fold | the coefficient of a (token, leaf) -- its levels' bytes with the token's scales, multiplied in fp32 where the bytes are expanded -- rounded to bf16 once; the values bf16 as stored | fp32 |
+| the readout | the state as a bf16 operand; the read coefficient bf16 | fp32 |
+| the intra | a window's token pairs' products exact (u8 rows, integer MMAs); the pair's weight bf16; the values bf16 | fp32 |
+| the output's sum | a token's partial sums from every CTA that reads it | fp32, in shared memory and across CTAs |
 | decode | the bundle's token, the stored state | each written element updated in fp32 and rounded to its group's unit (2^-23 of the group's largest) |
-| the output | `y = P x unit / den`, bf16 | -- |
+| the output | `y = P / den`, bf16 | -- |
 
-The image's 2^10 top keeps a 32-list sum of image times read row under 2^15, inside an fp16 accumulator, so one
-placement serves both readout accumulations (`docs/internals/carry/ampere/handoff.md#maxima`). The fp16 readout accumulation is
-not a state accumulator: it sums one tile's 32 lists, and the panel takes its result at the token's scale.
+A u8 byte is exact in bf16 (8 significant bits), so a row costs no rounding as an operand; a scale, a coefficient or a
+power of two is multiplied in fp32 where the byte is expanded. Nothing in the family depends on the card: there is no
+image of the state at a chosen exponent, no pass that bounds a token's sum before it is formed, and no switch of
+accumulation by a card's MMA rates or by a side's density.
 
-OPERAND SCALING AT THE TOKEN'S SCALE DOES NOT FIT f16 (measured 2026-11-09 on the readout reference's states, sm_86):
-with each (token, digit)'s factor `c 2^(e_d - kImageTop - s - 1)` on the read rows before the MMA, the scaled rows under
-f16's normal floor 2^-14 are 32% at flagship-alt-k4, 71% at alt-k16, 57% at cohort-k16 and 100% at flagship-dense
-(3.7%, 11%, 7.6% and 38% with the token's byte left off). The scale byte's frame is the scale pass's bound, about 2^9
-over the real sums, and the image keeps its 2^10 top, so the whole shift lands on the rows. The listed readout
-therefore scales its accumulator, and the dense readout scales its rows at a per-token exponent of its own
-([`readout_scaling.py`](../internals/tools/readout_scaling.md) prices that form).
-
-The readout's partials are an output's, not a state's: each token's num into the panel and across CTAs as f16 pairs at each token's scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`),
-the scale pass's byte bounding the token's whole num so the f16 sum stays in range (Blake, 2026-11-06: the readout's
-exits straight to HBM by f16x2 REDs, no integer panel; the dtype declared 2026-10-19,
-[`carry_api.md#carry-reduce`](../internals/carry/carry_api.md#carry-reduce)). The constitution's R17 still names them
-exact s16 pairs: a departure its text owes.
+WHY NOT 16-BIT FLOAT OPERANDS WITH 5 EXPONENT BITS. The fp16 family (the branch `ampere`'s) kept an unbounded fp32
+state and a token's unbounded sum inside f16's range by machinery: the state's image at an exponent a digit, list
+exponents, pre-scaled coefficients, a dense row's floor at 2^-13, a pass that bounded each token's sum, and a switch of
+accumulation by card. Its last measurement (2026-11-09, sm_86) closed it: with each (token, digit)'s factor on the
+read rows before the MMA, the rows under f16's normal floor 2^-14 were 32% at flagship-alt-k4, 71% at alt-k16, 57% at
+cohort-k16 and 100% at flagship-dense. bf16's 8 exponent bits hold every one of those values with no machinery, at 8
+significant bits where f16 has 11.
 
 <a id="quality"></a>
 ## Quality
 
-Measured per token as `|dy| / |y|` against fp64 on continuous values, median (`docs/testing.md`): the fp16 family
-0.018-0.029% on the flagship cells, bf16 0.16-0.20%; fp16 accumulation of the readout 0.018-0.035%. The f16 image at a
-power of two a digit matches a block prescale and beats a bf16 image 2.6x at alt-k4 and ~8x under a heavy history.
-Those are the October tables' (2026-10-03, 2026-10-12: the carry's own output on their draws). The op's whole output
-by each MMA leg's accumulation ([`tools/quality.py`](../internals/tools/quality.md), sm_86, 2026-11-09), the median a
-token -- both fp32 / the carry's readout fp16 / the intra fp16: flagship-alt-k4 0.032 / 0.032 / 0.057%,
-flagship-alt-k16 0.044 / 0.045 / 0.087%, flagship-cohort-k16 0.045 / 0.045 / 0.088%, flagship-dense 0.054 / (its
-readout fp32 alone) / 0.111%. The listed readout's fp16 accumulation costs nothing measurable; the intra's doubles the
-error.
+Per token, `|dy| / |y|` against fp64 on continuous values (`docs/testing.md`).
+
+MEASURED on kernels (the October tables, 2026-10-03 and 2026-10-12, the carry's own output on their draws, median a
+token): a bf16 family 0.16-0.20% on the flagship cells; the fp16 family 0.018-0.029%. The class is accepted on every
+card (Blake, 2026-11-09): it is the bf16 output store's own.
+
+MODELLED for this family before any kernel of it exists ([`tools/arith_model.py`](../internals/tools/arith_model.md),
+2026-11-09: the fp64 recurrence on the formatted operands, rounded only where a kernel of the family rounds; the
+median / the 99th percentile a token): flagship-alt-k4 0.134 / 0.202%, flagship-dense 0.132 / 0.191%, nl64k-alt-k4
+0.115 / 0.174%, nl64k-dense 0.021 / 0.167%. The intra's weight, rounded once a token pair, carries the worst tokens
+everywhere; the fold's coefficient, the state as an operand and the read coefficient average over the leaves a token
+reads, and each alone costs under 0.02% at the 99th percentile on the dense cells and at most 0.10% on the alt-k4
+ones.
+
+THE SUM ACROSS CTAs is fp32 because an f16 one costs by the CTAs it joins: 0.012% x sqrt(CTAs), about 0.14% at the 128
+CTAs a 64K call reduces over (MEASURED, sm_86), against ~1e-4% for fp32.
 
 <a id="why"></a>
 ## Why accumulation stays fp32

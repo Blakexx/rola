@@ -8,13 +8,13 @@ share it. An `ldmatrix` costs one phase per 8x8 matrix, with its 8 row addresses
 
 It runs where addresses are chosen. A producer that picks slots (the facts pass, or a lab's inputs standing in for it)
 runs the model on what it emits, so a conflict shows up before any hardware run.
-`measure/lab/experiments/read_image.inputs.py` writes `banks.json`: the wavefronts per MMA of a CTA-window's
-gathers, adds, entry loads and state loads, for each step form.
+A lab's inputs write `banks.json` beside their data: the wavefronts per MMA of a CTA-window's gathers, adds, entry
+loads and state loads, for each step form.
 
 ## Checked against ncu
 
 ncu's per-operation counters (`sm__sass_l1tex_data_pipe_lsu_wavefronts_mem_shared_op_{ldsm,ld,atom,st,ldgsts}`),
-on `read_image`'s tokens-on-M kernel at alt-k4 in its earlier layout (2026-10-11):
+on the ampere readout lab's tokens-on-M kernel at alt-k4 in its earlier layout (2026-10-11):
 
 | part | model | ncu |
 |---|---|---|

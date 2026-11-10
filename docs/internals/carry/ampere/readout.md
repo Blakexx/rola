@@ -96,7 +96,7 @@ headroom ([`scale.md`](../../scale/scale.md)), so every piece and every partial 
 the reference's bound carries (a term a piece and an add). The fp32 panel is absolute. Each piece is rounded once into
 the panel's dtype and each add once more.
 
-MEASURED (the part harness [`read_alone`](../../../lab/read_alone.md), sm_86, cycles a warp-window at nl64k-alt-k4's
+MEASURED (the part harness read_alone, sm_86, cycles a warp-window at nl64k-alt-k4's
 draw, the f16 panel at fp16 accumulate): 23.9K as first built (the den on every warp, each token's factor a channel
 group, one tile at a time); the den on its own channel group 21.4K; the factors once a chunk and the tiles a tile ahead
 14.5K; the two tokens' adds overlapped 13.5K; the next digit a lane's, the den in its digits' num tiles, the panel's word

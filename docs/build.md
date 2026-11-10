@@ -112,7 +112,7 @@ and it PASSED. A gate that certifies numbers no shipped binary has is worse than
 The same rule governs `--//:archs=86`: iterate single-arch, gate and measure on the full both-arch build.
 `--//:carry_parts` <a id="carry-parts"></a> builds some of the carry kernel's parts (`readout.stream`, `readout.loads`,
 `readout.drain`, `fold.pool`, `fold.ring`, `fold.loads`) REAL and the rest as STUBS that keep their HMMAs and drop
-their other work; the composer (`tools/compose_ledger.py`, `docs/internals/tools/compose_ledger.md`) drives it. With
+their other work. With
 every part real the arm's instructions are identical to a build without the switch. Never shipped.
 
 ## <a id="compile-ledger"></a>Why the arm units are torch-free

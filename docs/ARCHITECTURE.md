@@ -347,22 +347,26 @@ deleted, and the ratio readout is simply what the readout is.
 
 ## 9. Portability
 
-Every structural mechanism states its form on each architecture; a mechanism that exists on only one is a workaround,
-not a design (CONSTITUTION §R8). A primitive may select different NATIVE instructions per architecture; it may
-never select a wider-type emulation. sm_80 and sm_86 are both core targets, priced at each
-([`internals/common/hardware.md`](internals/common/hardware.md)).
+Every structural mechanism states its hopper and blackwell form; a mechanism that exists on only one is a workaround,
+not a design (CONSTITUTION §R8). A primitive may select different NATIVE instructions per architecture; it may never
+select a wider-type emulation. The ampere family (sm_80 to sm_89) is the branch `ampere`: its cards are tabulated and
+not built ([`internals/common/hardware.md`](internals/common/hardware.md)), and a kernel with no family schedule (the
+facts pass, decode, paging, entmax) compiles for sm_86 as it is written for every card.
 
-| mechanism | sm_80 / sm_86 | sm_90 | sm_100 |
-|---|---|---|---|
-| the fold's operand formation | packed f16 multiplies (`HMUL2`) of a slice by a coefficient | same | same |
-| the tensor products | `mma.sync` from register fragments: f16 with fp32 accumulate, int8 with s32 | shared-memory-sourced `wgmma` operands | tensor-memory-sourced `tcgen05` operands |
-| state in the register file | symmetric warps, in-warp pipelining | producer/consumer specialization with per-warp register repartitioning | the accumulator in tensor memory |
-| operand staging from DRAM | asynchronous copy into shared memory, landed on `mbarrier`s | tensor-memory-accelerator box loads, descriptors built at runtime | same, plus multicast to a cluster |
-| runtime addressing | uniform-datapath registers from the prologue | the same, pairing with runtime descriptors | the same |
-| the readout's cross-CTA join | `red.global` of f16 pairs at the token's scale byte (or fp32) | the same | the same |
-| the box grain | one CTA per multiprocessor | a two-CTA cluster sharing staging through distributed shared memory | the same |
-| decode's walk and combine | per-lane-group gathers, a work queue of visits, global atomics into a head's sums | bulk copies per warp | the same |
-| the closed world | ratified manifest per architecture, device stamp | the same | the same |
+Each row is the form a kernel's design starts from, ESTIMATED from the PTX specification until its lab runs on the
+card; a kernel's schedule is designed, and written into its own page, before it is built.
+
+| mechanism | hopper (sm_90) | blackwell (sm_100) |
+|---|---|---|
+| the operands | u8 rows expanded to bf16 where they are staged, a scale or a coefficient multiplied in fp32 there; bf16 values as stored (`architecture/precision.md`) | the same |
+| the tensor products | `wgmma`: B from shared memory by descriptor, A from shared memory or from registers; fp32 accumulate; int8 for a window's pair products | `tcgen05`, operands and accumulators in tensor memory |
+| state in the register file | producer and consumer warps, the registers moved between them (`setmaxnreg`); the fold's fp32 accumulators the readout's operand, narrowed in place | the accumulator in tensor memory |
+| operand staging from DRAM | TMA box loads into rings, landed on `mbarrier`s, descriptors built at runtime | the same, plus multicast to a cluster |
+| runtime addressing | uniform-datapath registers from the prologue, pairing with runtime descriptors | the same |
+| the output's sum | fp32 in shared memory and across CTAs: a bulk reduction where the panel is contiguous, `red.global` a token where it is not | the same |
+| the box grain | one CTA per multiprocessor | the same |
+| decode's walk and combine | per-lane-group gathers, a work queue of visits, global atomics into a head's sums | the same |
+| the closed world | ratified manifest per architecture, device stamp | the same |
 
 ---
 

@@ -1,7 +1,9 @@
 # `drain`
 
-Mirrors `measure/lab/experiments/drain.cu`, an experiment of the lab
-([`docs/internals/tools/lab.md`](../internals/tools/lab.md)).
+The record of `drain`, an experiment of the lab ([`docs/internals/tools/lab.md`](../internals/tools/lab.md)) run on
+sm_86. Its source is the branch `ampere`'s -- it drained that family's readout panel beside its stream's copies -- and
+its record stays here because the hardware table's `red_request` cites it
+([`docs/KERNEL_STANDARDS.md#s26`](../KERNEL_STANDARDS.md#s26), item 1).
 
 What does the readout's drain -- a pass's panel words added into the head's `num` by `red.global.add` at each slot's
 token, the panel cleared for the next pass's adds -- cost a CTA-window, in the s16 panel's form and in forms that pair
@@ -9,7 +11,7 @@ conflict-free slots, clear by exchange or by a 16-byte sweep, skip the requests 
 copies? And what does a wider or floating `num` cost: each slot's 32 channels as fp32 or s32 (a full line a slot), or
 f16 pairs (the s16 panel's bytes)?
 
-80 CTAs, box b of one head (the carry's order); the inputs (`drain.inputs.py`) are `read_stream`'s three cells, each
+80 CTAs, box b of one head (the carry's order); the inputs are the readout stream lab's three cells, each
 box-window's union in rank order (the facts pass's rank slots). Each pass every thread fills its slot's 16 panel words
 (four 16-byte stores) and its token, a CTA barrier, the drain, a barrier. A warp drains its 32 slots two a
 `red.global` (lanes 0-15 one slot's 16 words, 16-31 another's), each a token's half line of `num` (d_v 64: a token's

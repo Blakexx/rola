@@ -44,8 +44,8 @@ count. The hand-off's lean form (2026-10-18) takes 2,248 cycles a window against
 | the global path, priced | `smem_rates`' L2 streams alone and beside `ldmatrix` (loads into registers, `.cg` and `.ca` copies) | | 84-99% busy |
 | the global path's atomics | `drain`'s skipping form (its price's source) and the forms beside copies | | its drain phase ~85%, 93% with a copy every add |
 
-Records: `measure/lab/results/smem_rates/sm_86.json`, `handoff/sm_86.json`, `read_image/sm_86.json` (2026-10-18,
-sm_86 locked).
+Records: `measure/lab/results/smem_rates/sm_86.json` (2026-10-18, sm_86 locked); the hand-off's and the readout
+lab's are the branch `ampere`'s.
 
 <a id="limits"></a>
 

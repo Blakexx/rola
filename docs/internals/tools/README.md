@@ -7,8 +7,8 @@ column that matters.
 
 **No tool writes a measurement record except through a declared target.** A measurement is a target of
 `declare.py` (`rola_devtools.build`), its result is stored by a store target beside it, and the tool itself prints or
-writes `--json`. The two exceptions are named below: `compose_ledger` is a driver that builds what it measures, and a `--calibrate`
-run of `pipe_timeline` writes the plateau it reads back as every later run's scale.
+writes `--json`. The one exception is named below: a `--calibrate` run of `pipe_timeline` writes the plateau it reads back as every
+later run's scale.
 
 ## The build
 
@@ -62,15 +62,11 @@ run of `pipe_timeline` writes the plateau it reads back as every later run's sca
 | [`op_timeline.py`](op_timeline.md) | a subject's calls under torch's profiler: kernel busy time against the GPU's idle, the gaps and the host work in them | a person | — |
 | [`pipe_counters.py`](pipe_counters.md) | the profiler's pipe and resource counters for one launch | the `counters` target | `--json` |
 | [`pipes.py`](pipes.md) | one counter set for any launch and its pricing per card: each pipe's cycles, the binding one | `lab.py`, `pipe_counters.py` | -- (a module) |
-| [`carve_model.py`](carve_model.md) | the carry's mechanics for any carve on any card, over a real cell's lists (KERNEL_STANDARDS §32.2) | -- (in build: the carve study) | prints |
-| [`design_floor.py`](design_floor.md) | the value-carve carry's counts and floors a CTA-window over a cell's real lists, any box, any card (ESTIMATED: no kernel yet) | a person (the carry's design) | prints |
-| [`readout_scaling.py`](readout_scaling.md) | the readout's output and operand scaling against the fp64 oracle on a cell's real state (the dense side's accumulator form) | a person (the carry's design) | prints |
 | [`overlap_gate.py`](overlap_gate.md) | each kernel's perf rows against the largest of their floors (§28) | -- | exit 1 when red |
 | [`stall_census.py`](stall_census.md) | every warp-stall sample of one launch, by source line | the `census` target | `--json` |
 | [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target | `--json`; a `pipe_timeline.scale` record under `--calibrate`, which it reads back as later runs' scale |
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
 | `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |
-| [`compose_ledger.py`](compose_ledger.md) | a phase's time attributed to its parts by composition — a DRIVER: it builds each part | a person, after a component lands | its own `compose_ledger` record |
 | `roofline.py` | the intra's wall time on one cell beside the device's own u8 IMMA ceiling — the fraction of the machine, not the wall time | the `roofline` target | `--json` |
 | [`budgets/`](budgets.md) | each kernel's instruction budget by class, per MMA (KERNEL_STANDARDS §29) | `region_ledger.py`, the lab | — |
 | [`bank_model.py`](bank_model.md) | the shared-memory wavefronts a warp instruction costs, from its lanes' byte addresses (§30) | a person, before a GPU run; the lab | — |

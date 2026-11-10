@@ -163,7 +163,7 @@ each half of a straight-line Gram's slabs (`gram_dense`'s `refill`), whole after
 the next group. The refill sits under the MMAs, not before them, because every warp's copies issued at the stage's
 start delay the Gram that opens it: the lab's ring runs the dense Gram at 28.0 cycles an MMA with the refill first,
 24.0 with it whole after the MMAs and 23.8 a piece after each slab, the u8 Gram 23.4, 22.9 and 20.0
-([`intra_stream`](../../../lab/intra_stream.md)); in the kernel (sm_86) the halves took the Gram from 304.6K to 266.3K
+(the lab intra_stream); in the kernel (sm_86) the halves took the Gram from 304.6K to 266.3K
 cycles a warp a window at `nl64k-dense` (the intra -8.9%), 276.7K to 259.4K at `nl64k-alt-k4` (-4.2%), the refill
 whole after the MMAs a percent behind on every cell. No mbarrier
 in a step: a per-lane spin compiles to a convergence barrier, and an mbarrier address from a ring index ptxas cannot
@@ -326,8 +326,8 @@ peak, L2 hits 66%, the tensor pipe busy 28%), and a call whose 32 heads alias on
 runs exactly as fast as 32 distinct heads. With the Gram skipped the rest costs 422 of the 513 µs.
 
 What binds is the SM's copy rate beside the MMAs against the bytes an MMA takes. The region ledger
-(`tools/region_ledger.py` against `tools/budgets/intra.json`) and the lab's `intra_stream` probe
-([`../../../lab/intra_stream.md`](../../../lab/intra_stream.md)) agree: the Gram alone on resident stages runs at the tensor
+(`tools/region_ledger.py` against `tools/budgets/intra.json`) and the lab intra_stream's probe
+(`../../../lab/intra_stream.md`) agree: the Gram alone on resident stages runs at the tensor
 rate, but an SM's copy path beside it delivers ~8 bytes a cycle on both cards whatever the ring's depth (3, 6 or 10
 stages measured the same) or who issues the refills, and an 8 KB f16 stage feeds a 64-reader block only 128 HMMAs --
 ~16 bytes a cycle at the tensor rate. So the dense f16 Gram runs at about twice its floor by construction, a u8 writer

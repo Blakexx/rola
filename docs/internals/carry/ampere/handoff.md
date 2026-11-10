@@ -37,7 +37,7 @@ value at most 2^10, so a 32-list sum of image times read row (each at most 1) st
 accumulator, and one placement serves the fp32- and fp16-accumulate readouts. Measured (2026-10-12, the image's quality
 model, per token against fp64 on the flagship cells): the placement at 2^10 and at 2^15 give the same error, as does a
 block prescale; a leaf keeps 11 bits down to 24 octaves under its digit's largest. The form was labbed first
-([`docs/lab/handoff.md`](../../../lab/handoff.md), form 4).
+(`handoff`, form 4).
 
 <a id="image"></a>
 ## The image
@@ -58,7 +58,7 @@ block). At 4 groups (32 x 32 x 32) digit `d` is the group `d mod 4`'s, a block a
 8-row group. At 8 groups (the 64-channel boxes) a group's digits are CONTIGUOUS -- digit `d` the group `d / n_d`'s,
 block `d >> 3`, column `d & 7` (`den_block`, `den_col`; 1 KB a block) -- so a warp's den digits lie in one image half
 and its den pass runs once a chunk: at `d mod 8` each half held one of a warp's two digits, a den pass a half whose
-two-tile trip was mostly dead ([`read_alone`](../../../lab/read_alone.md), 2026-11-07). Row `l` at `l ^ (4 ((l >> 4) & 1)
+two-tile trip was mostly dead (the lab read_alone, 2026-11-07). Row `l` at `l ^ (4 ((l >> 4) & 1)
 | 2 ((l >> 3) & 1) | block)`: a store's 32 lanes (lists `w + 8 t`, digit `g + 8 i` at block `i` and column `g`) meet 16
 banks, two lanes a word, one wavefront, and inside an 8-row group the XOR is one constant, so the reader's `ldmatrix`
 stays one wavefront a matrix. At K 16 (the dense box `[16, 2, 16, 2, 64, 1]`: 16 rows a block, 256 bytes) the same
@@ -83,7 +83,7 @@ readout's digits and its rows the K. A dense fold side takes its coefficients fr
 ([`../engine/carve.md#sides`](../../engine/carve.md#sides)), so its box is the same split too. The image, the readout and
 the den's readout are the same in both: only the keys (`#maxima`), the stores (`#store`) and the den's tables
 (`#den`) read the fold's state the other way round. The readout reads every leaf for its channels, so the hand-off is
-always the image -- at dense its stores are ~1.0K cycles of a ~70K window (`tools/design_floor.py`).
+always the image -- at dense its stores are ~1.0K cycles of a ~70K window (the design-floor model).
 
 ARMS: `[32, 1, 32, 1, 32, 0]` the alternating box, `[32, 1, 32, 1, 32, 1]` both sides listing one level (`[SS, DD]`),
 `[32, 2, 32, 1, 32, 1]` a dense write side over a listed read side (`[SD, DD]`).

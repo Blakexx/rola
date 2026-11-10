@@ -134,15 +134,8 @@ def signatures(binary: Path) -> dict[str, dict]:
 
 #: KERNEL_STANDARDS section 29's debts: the experiments recorded before a lab had to budget its MMA kernels and check
 #: its outputs; each is held to both when it is next changed, and the list only shrinks
-_PRE_29 = {"collective_branch", "facts_block", "fold_step",
-           "list_fold", "mma_k8", "mma_overlap", "mma_pairing", "mma_queue", "pass_fixed", "pass_pipeline",
-           "pool_layout", "publish_rounds", "read_step", "row_span", "smem_rates", "sparse_pass", "state_publish",
-           "tensor_tax", "vote_stash"}
+_PRE_29 = {"collective_branch", "facts_block", "mma_k8", "row_span", "smem_rates", "tensor_tax", "vote_stash"}
 
-
-#: KERNEL_STANDARDS section 29.13's debts: the experiments recorded before a budgeted kernel had to declare the
-#: convergence regions inside its loops; each declares them when it is next changed, and the list only shrinks
-_PRE_29_13 = {"digit_box", "digit_box32", "fold_publish", "image_ring", "list_box", "read_image", "read_w1024"}
 
 #: a branch's target in `cuobjdump -sass` text (function-relative)
 BRANCH = re.compile(r"\bBRA(?:\.[A-Z.]+)?\s+(?:!?U?P[T\d]+,\s*)?(?:~?URZ,\s*)?(0x[0-9a-f]+)")
@@ -189,14 +182,13 @@ def check(binary: Path, table: dict[str, dict]) -> list[str]:
     declared_calls = {k for e in expected for k in table if re.search(e["kernel"], k) and "CALL" in e["op"]}
     declared_branches = {k for e in expected for k in table if re.search(e["kernel"], k) and e["op"] == "BSSY"}
 
-    if binary.name.split(".")[0] not in _PRE_29_13:
-        declared_loops = {k: e["count"] for e in expected if e["op"] == "LOOP_CONVERGENCE"
-                          for k in table if re.search(e["kernel"], k)}
-        budgeted = {k for b in budgets(binary) for k in table if re.search(b["kernel"], k)}
-        for k, n in loop_convergence(binary).items():
-            if k in budgeted and n > declared_loops.get(k, 0):
-                failures.append(f"{k}: {n} convergence instructions inside its loops, {declared_loops.get(k, 0)} "
-                                "declared (KERNEL_STANDARDS 29.13: the source patterns of 29.9, or LOOP_CONVERGENCE)")
+    declared_loops = {k: e["count"] for e in expected if e["op"] == "LOOP_CONVERGENCE"
+                      for k in table if re.search(e["kernel"], k)}
+    budgeted = {k for b in budgets(binary) for k in table if re.search(b["kernel"], k)}
+    for k, n in loop_convergence(binary).items():
+        if k in budgeted and n > declared_loops.get(k, 0):
+            failures.append(f"{k}: {n} convergence instructions inside its loops, {declared_loops.get(k, 0)} "
+                            "declared (KERNEL_STANDARDS 29.13: the source patterns of 29.9, or LOOP_CONVERGENCE)")
 
     if binary.name.split(".")[0] not in _PRE_29:
         stated = budgets(binary) + budgets(binary, "exempt")

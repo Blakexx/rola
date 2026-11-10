@@ -5,7 +5,7 @@ Mirrors `measure/lab/experiments/read_value.cu`, an experiment of the lab
 
 THE QUESTION: what does the value-carve readout of a listed side cost a window against its floor, when the CTA's 8
 warps walk the same digits in lockstep -- each warp its 8 channels of a 64-channel box over every leaf -- at alt-k4's
-~1 tile a (digit, warp) a window? It is the one quantity `tools/design_floor.py` does not model: the readout's
+~1 tile a (digit, warp) a window? It is the one quantity the design-floor model does not model: the readout's
 latency (the design's build order, component 3).
 
 THE FORM: one CTA an SM, 8 warps. A pass is a window: 8 digits (half a 16-digit box: sm_86's area) of 32 lists, each

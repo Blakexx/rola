@@ -22,8 +22,8 @@ as it is written for every card, so the development card runs it; nothing is wri
   branch `ampere` where it names one this tree does not hold; it stands here as the default shape of the code, and its
   re-check on sm_90a is owed (§26.1) -- on the instruction this line issues, where it was measured around `mma.sync`.
 - `[MACHINE]`: what a card's pipes cost, and the form that cost forces. A card's rates are its rows of the hardware
-  table, each citing its lab record, and are restated nowhere; a rule drawn from them holds for the family it was
-  measured on. The ampere family's are the branch's. The few that stand here were measured on sm_86 on work every card
+  table, each citing its lab record: a number quoted beside a rule here is the measurement the rule was drawn from,
+  and the row is the rate. A rule drawn from them holds for the family it was measured on. The ampere family's are the branch's. The few that stand here were measured on sm_86 on work every card
   does the same way (a stream of rows from DRAM, a reduction's L2 requests) and are owed their sm_90a run; hopper's
   are written here as its labs run.
 
@@ -67,9 +67,9 @@ The fp32 accumulator of one GEMM becomes the A operand of the next by reinterpre
 and narrowing the type — no store, no shuffle.
 - FA2: `flash_fwd_kernel.h:378-380` (`make_tensor(rP.data(), convert_layout_acc_Aregs<TiledMma>(rP.layout()))` → `gemm_rs`); the layout math `utils.h:199-211`.
 - FA3: `hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp:1156-1160` (same, plus an explicit register permute for fp8, and a documented fallback through SMEM when the register-sourced GMMA is unavailable, `:1161-1162`).
-RoLA: the fold's fp32 accumulators are the readout's bf16 operand by this relayout, narrowed in place -- the form the
-hopper carry's design starts from, its instruction count a lab's to measure; a phase change that moves state is the
-transfer the design names, never an ad-hoc copy.
+RoLA: the fold's fp32 accumulators become the readout's bf16 operand by this relayout, narrowed in place
+(`docs/ARCHITECTURE.md`, section 9) -- unbuilt, its instruction count a lab's to measure before a hopper carry is
+designed; a phase change that moves state is the transfer the design names, never an ad-hoc copy.
 
 ## 3. Shared memory: copy atoms, swizzles by composition, transposition as a layout operation
 - `ldmatrix` in both variants is a declared copy atom with an arch fallback chosen at the atom, not inline
@@ -538,8 +538,8 @@ manual steps, and the dev container had drifted for two weeks unnoticed.
 phase that issues MMAs was split in the source into a DECIDE tier (everything data-dependent, run at a boundary into
 a list and a count) and a BURST tier (a counted loop over the list with no vote, wait or data branch inside it). On
 hopper the split is the hardware's -- an asynchronous `wgmma`, TMA, mbarriers: producer warps decide and stage, a
-consumer warpgroup issues -- and what it asks of the source is unmeasured. The hopper carry's design states its two
-tiers in its steady-state timeline (§32.1), and this section is written from its labs.
+consumer warpgroup issues -- and what it asks of the source is unmeasured. No hopper schedule is designed yet: its
+design states its two tiers in its steady-state timeline (§32.1), and this section is rewritten from its labs.
 
 What holds on every card is the shape of a step (§27): one block, no data-dependent branch; sparsity a shorter list,
 never a skip; a decision needed mid-way two loops with the decision between them; the list built by the lanes at

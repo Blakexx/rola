@@ -48,7 +48,7 @@ STALLS = ("long_scoreboard", "short_scoreboard", "mio_throttle", "math_pipe_thro
           "sleeping", "tex_throttle", "imc_miss", "misc")
 
 #: ncu's tensor-pipe active cycles a scheduler for one m16n8k16 (an m16n8k8 half), by the architecture it ran on,
-#: whatever the accumulate: a count of the work, not its time (sm_86's fp32 accumulate takes 32; `read_image`'s
+#: whatever the accumulate: a count of the work, not its time (sm_86's fp32 accumulate takes 32; an
 #: `HMMA.16816.F32.BF16` counts 16.0) -- so tensor time is priced from it, never read as the profiler's ratio (§22)
 TENSOR_COUNTED = {"sm_86": 16.0}
 

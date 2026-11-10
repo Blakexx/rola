@@ -113,17 +113,6 @@ def parse(hdr: list[str], vals: list[str]) -> dict:
     return {"duration_us": duration, "series": series, "meta": meta}
 
 
-def bins(points: list[tuple[float, float]], width: float, duration: float) -> list[float | None]:
-    out = []
-    n = max(1, int(duration / width) + 1)
-    acc = [[] for _ in range(n)]
-    for t, x in points:
-        acc[min(n - 1, int(t / width))].append(x)
-    for a in acc:
-        out.append(statistics.fmean(a) if a else None)
-    return out
-
-
 def summary(tl: dict, scale: float | None) -> dict:
     """The tensor pipe over the samples where every SM is fully occupied (warps active at their maximum), so a
     partial last wave does not dilute it; with a scale, as true utilization."""

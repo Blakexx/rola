@@ -61,7 +61,7 @@ times the token's `2^(e_t)`, into the warp's den word of the slot (the drain sum
 <a id="cost"></a>
 ## Cost
 
-MEASURED (the part harness [`read_dense`](../../../lab/read_dense.md), sm_86, a 128-slot chunk over the image in halves,
+MEASURED (the part harness `read_dense`, sm_86, a 128-slot chunk over the image in halves,
 cycles a warp-window): 21,578 against the tensor floor's 16,640 (fp32 accumulate: 32 cycles an m16n8k16 a scheduler),
 1.30x; the nest alone ~19.1K (1.15x), the factors 1,444, the den 1,108. ACROSS CARDS: sm_80 and sm_86 run this form
 (`mma.sync`, `ldmatrix`); sm_80's fp32 accumulate is full rate (8 cycles), so its floor is a quarter of sm_86's.

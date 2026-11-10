@@ -78,7 +78,7 @@ parity), then a group a further read chunk and a group a fold chunk. A read chun
 the staging's where that was committed after it (`wait_group 1`), else for every group; a fold chunk's for every
 group. The window lab measured the groups' form (its record `measure/lab/results/carry_window`); mbarriers, which the step machine landed
 its slots on (an arrive fences the warp's outstanding atomics, the waiters poll; ~2x a hardware barrier a round,
-`docs/lab/image_ring.md`), are gone from the carry.
+the lab image_ring), are gone from the carry.
 
 <a id="barriers"></a>
 ## The barriers
@@ -105,21 +105,21 @@ lists.
 
 | component | a trip's price (sm_86 SASS) | trips a warp-window | design a warp-window |
 |---|---|---|---|
-| readout (`read_chunk`) | the value carve's (`tools/design_floor.py`): a tile 23 (16 entries a warp: rows, 2 MMAs, the panel's adds), a live digit 8, the den's tile 9 | every digit a warp, the token group's entries in 16s | 1,045 |
+| readout (`read_chunk`) | the value carve's (the design-floor model): a tile 23 (16 entries a warp: rows, 2 MMAs, the panel's adds), a live digit 8, the den's tile 9 | every digit a warp, the token group's entries in 16s | 1,045 |
 | fold (`fold_chunk`) | an 8-token step ~30 (8 MMAs, 3 loads, 4 shuffles, 4 HMUL2); a list ~12 and its rescale 32 FMUL | 4 steps, 4 lists | 296 |
 | units (`fold_units`) | once a window | 1 | 30 |
 | stores (`store_batches`) | a batch: 4 lists x (a scale 4, 8 FMUL, 4 packs, one 16-byte store) + 2; a call ~20 | 4 batches, 2 calls | 318 |
 | maxima (`post_keys`) | a (list, digit row): 7 FMNMX with abs, its key ~4; 16 of them, the quad's joins 16, the units and top ~18, one atomic | 1 | 217 |
 | exponents (`post_exps`) | the lane's key to its exponent ~4, the two parities' addresses ~5, the reset, the record, the warp's sync | 1 | 14 |
-| drain (`drain`) | the value carve's (`tools/design_floor.py`): a full line of `num` a request, a den request a 16 tokens | the chunk's slots | 63 |
+| drain (`drain`) | the value carve's (the design-floor model): a full line of `num` a request, a den request a 16 tokens | the chunk's slots | 63 |
 | read fill (`read_fill`) | a 16-byte copy ~13; an entry run ~10 | 6.9 copies a thread, 4 runs | 130 |
 | fold fill (`fold_fill`) | the same | 6.75 copies a thread, 4 runs | 128 |
 | staging (`stage_window`) | its ~240 copies over 256 threads, and its tests | 1 | 40 |
-| barriers (`Flow`) | an arrival ~3, a satisfied wait ~3 | ~27 | 81 |
+| barriers (the flow's edges) | an arrival ~3, a satisfied wait ~3 | ~27 | 81 |
 | glue (the kernel's body) | the plan's fields and the windows' statics read once, loop control | 1 | 150 |
 
 The design is ~2,540 instructions a warp-window (`tools/budgets/carry.json`: 20,328 a CTA-window), ~5.1K cycles of issue
-a window over 8 warps on 4 schedulers; the value carve's readout and drain are priced by `tools/design_floor.py`, the
+a window over 8 warps on 4 schedulers; the value carve's readout and drain are priced by the design-floor model, the
 other components by their 2026-10-14 trip prices. Measured (2026-10-14, carry-k5 839dadb5) for those components: the
 fills 2.3-3.0x their lines (each copy re-derives its token, its source and its swizzle; each run its list's row), the
 glue 2.6x and the barriers' own instructions 2.8x (fields re-read at each use), the fold 1.4x, the maxima 1.3x, the

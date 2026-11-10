@@ -81,7 +81,7 @@ multiplies a lane every window (1.0K warp instructions a CTA-window at alt-k4) b
 ## A dense side's steps
 
 `steps_dense`, the ruled form for a side with no list level ("a declared-dense side merges maximally by structure",
-2026-10-18; lab `list_fold`, 2026-10-05: merged 1.08x its tensor floor, per list reloading 1.37x the merged time): every
+2026-10-18; the lab list_fold, 2026-10-05: merged 1.08x its tensor floor, per list reloading 1.37x the merged time): every
 slot of the chunk once for all four of the warp's lists. A 16-slot step loads its slices (two `ldmatrix.trans`) and
 values (two) once, and each list multiplies the slices by its c (four HMUL2 a list a digit tile) for its eight MMAs --
 32 a step. Lanes `0..15` hold the step's slots: each its token's four lists' c from the row's coefficient slice and the
@@ -106,7 +106,7 @@ An instrument: `fold_chunk`'s `Laps` (default `NoLaps`, whose call is empty) is 
 every list's scale, count and first step's lanes are read, `1 + 2 J` once list `J`'s rescale is guarded, `2 + 2 J` once
 its steps are done; a dense side's (`#dense`) 0 before its rescales, 1 after them, 2 to `2 lists` once its steps are
 done. The kernel passes none and its SASS is identical with the hook; the lab's
-[`fold_alone`](../../../lab/fold_alone.md) passes a recorder.
+the lab fold_alone passes a recorder.
 
 <a id="den"></a>
 ## The den column
@@ -132,7 +132,7 @@ two boxes lists 0-15 or 16-31, of four a quarter -- every list once, the cost sh
 `if` on the box's mask (uniform: formed from the block's place and the call's `dv`); the one-trip loop each way it
 replaced cost ~12 instructions a list a chunk at nl64k-alt-k4 (the region ledger's 12.6M a launch); `lists` takes the
 side's form at compile time, so a side with no list level compiles its lists' steps without the den. MEASURED
-(`fold_alone`, sm_86, nl64k-alt-k4's draw, cycles a warp-window, the carry's shape, the first form): no den 2,471, half
+(the lab fold_alone, sm_86, nl64k-alt-k4's draw, cycles a warp-window, the carry's shape, the first form): no den 2,471, half
 the lists 2,747 (+276), every list 3,039 (+568). MEASURED composed (phase ledger, nl64k-alt-k4, sm_86): the fold 3.57K
 with its den, 2.86K with the box's den lists forced off in the same build (+0.71K: the den MMAs' fp32 tensor work on a
 tensor-bound step, the adds, and the instruction cache's misses on the den steps' second copy).

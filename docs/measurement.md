@@ -301,7 +301,6 @@ and a timing only compares within the session that interleaved it.
 | `timing/null` | a store target over `measure_null_gate` (rola-bench's root) | the gate's semantics: the registration, its cells, the timing parameters | the session of the two copies and, per cell, whether they agree |
 | `calibration` | `measure/harness/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
 | `pipe_timeline.scale` | `tools/pipe_timeline.py --calibrate` | the cell, the binary and the calibration's composition | the plateau the tool reads back as later runs' scale |
-| `compose_ledger` | `tools/compose_ledger.py` | the commit and diff, the cells | the report |
 | `environment` | `bazel run //:container_check` | the devbox image's digest | the steps, each timed, and the cold start |
 | `rola/oracle-tier` | a store target over the tier node | the tier's code, the binary, the environment | the counts, the failed cases, the margins |
 | `diff/<surface>` | a store target over a diff node | both sides' semantics and the rule | the verdict per cell and quantity, never a tensor |
