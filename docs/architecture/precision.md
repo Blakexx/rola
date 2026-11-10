@@ -32,6 +32,14 @@ The image's 2^10 top keeps a 32-list sum of image times read row under 2^15, ins
 placement serves both readout accumulations (`docs/internals/carry/ampere/handoff.md#maxima`). The fp16 readout accumulation is
 not a state accumulator: it sums one tile's 32 lists, and the panel takes its result at the token's scale.
 
+OPERAND SCALING AT THE TOKEN'S SCALE DOES NOT FIT f16 (measured 2026-11-09 on the readout reference's states, sm_86):
+with each (token, digit)'s factor `c 2^(e_d - kImageTop - s - 1)` on the read rows before the MMA, the scaled rows under
+f16's normal floor 2^-14 are 32% at flagship-alt-k4, 71% at alt-k16, 57% at cohort-k16 and 100% at flagship-dense
+(3.7%, 11%, 7.6% and 38% with the token's byte left off). The scale byte's frame is the scale pass's bound, about 2^9
+over the real sums, and the image keeps its 2^10 top, so the whole shift lands on the rows. The listed readout
+therefore scales its accumulator, and the dense readout scales its rows at a per-token exponent of its own
+([`readout_scaling.py`](../internals/tools/readout_scaling.md) prices that form).
+
 The readout's partials are an output's, not a state's: each token's num into the panel and across CTAs as f16 pairs at each token's scale byte (or fp32, the declared `reduce_dtype`), added across CTAs by `red.global.add.noftz.f16x2` (or `.f32`),
 the scale pass's byte bounding the token's whole num so the f16 sum stays in range (Blake, 2026-11-06: the readout's
 exits straight to HBM by f16x2 REDs, no integer panel; the dtype declared 2026-10-19,

@@ -84,7 +84,6 @@ cc_binary(
     "carve_model",
     "compose_ledger",
     "design_floor",
-    "factor_census",
     "gen_shards",
     "header_selfcheck",
     "kernel_targets",
