@@ -1,7 +1,7 @@
 // csrc/rola/src/common/phase_clock.cuh -- THE PHASE LEDGER AND TRACE, one warp's: cycles per phase
 // accumulated by lane 0 into the warp's shared row and added to the launch's ledger at the end; when a
 // trace is bound, a stamp per lap and per stream step. Shared by every kernel family that measures itself.
-// See docs/internals/carry/ampere/carry_kernel.md#phase-ledger
+// See docs/internals/common/phase_clock.md
 #pragma once
 
 #include <cuda_runtime.h>

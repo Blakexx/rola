@@ -11,15 +11,13 @@ calls it per checkout with one shared timing server, and composes its own sessio
 one session and one memory pass over the cells, every result stored.
 
 Per checkout: `binary` (the build graph's library, `bazel run //:library`, every run), `environment` (the
-machine facts, every run), the instruments of `INSTRUMENTS` (SASS and the register walk once, cached; the phase clock,
-pipe counters, stall census, timeline and the intra roofline on every carry cell, and the intra's own
-(`counters-intra`, `census-intra`) on the cells of `LONG_CELL_TOKENS` and
-more, every run, holding the GPU; the output's error against fp64 by each leg's accumulation, `quality`, on the cells
-of tier `both`), and with
-a timing server the timing registrations: `carry_forward`, `carry_intra`, `intra_forward`, `scale_pass` and `prefill` on
-the carry cells, `entmax_solve@layer=C`, `produce@layer=C`, `layer_prefill@layer=C`, `decode_step@layer=C` and the op's
-stages on the layer's own bundle (`layer_facts`, `layer_scale`, `layer_carry`, `layer_intra`, `layer_op`) for each RoLA
-construction on the layer cells declared for it (a decode step on the cells that take steps), and the clock reader. Every
+machine facts, every run), the instruments of `INSTRUMENTS` (the SASS gate and the realized support once, cached; the
+facts pass's pipe counters and stall census on every carry cell, every run, holding the GPU), and with a timing server
+the timing registrations: `prefill` and `facts_pass` on the carry cells, `entmax_solve@layer=C`,
+`layer_prefill@layer=C`, `decode_step@layer=C` and the op's stages on the layer's own bundle (`layer_facts`,
+`layer_op`) for each RoLA construction on the layer cells declared for it (a decode step on the cells that take
+steps), and the clock reader. No carry, intra or producer kernel is built on this line, so the registrations that
+reach one record its refusal. Every
 target depends on the binary and the environment, whose outputs reach its key. Every cell is a NODE (`rola_devtools.cells.declare`) whose output is its record and the digest of the code that drew it;
 a target that runs on cells takes those nodes as its data inputs, so nothing here or in the build system resolves a cell
 by name at run time. This file imports nothing of rola's: it reads the constructions from `measure/cells/layer.py` by
@@ -47,38 +45,16 @@ HERE = Path(__file__).resolve().parent
 EXECUTORS = "measure.executors:"
 #: where this checkout's repository-local imports resolve, for code digests
 IMPORT_ROOTS = ["tools", "."]
-#: the carry's schedule files, its kernel's own first (`tools/kernel_targets.py`'s one derivation)
-CARRY_SOURCES = load(HERE / "tools" / "kernel_targets.py")["schedule_sources"]("carry")
 #: name -> (tool, arguments, runs per carry cell, holds, data files its result depends on)
 INSTRUMENTS = {
     "sass": ("tools/sass_gate.py", ["{binary}"], False, {"host_cpu": 1}, [], 600),
-    "registers": ("tools/life_ranges.py", ["--arm", "0", "--kernel", "carry_kernel",
-                                           *(a for f in CARRY_SOURCES for a in ("--source", f)),
-                                           "--budget", "tools/budgets/carry.json"], False,
-                  {"host_cpu": 1}, ["csrc/rola/src"], 600),
-    "burst": ("tools/burst_gate.py", ["--arm", "0", "--kernel", "carry_kernel", "--source", CARRY_SOURCES[0]], False,
-              {"host_cpu": 1}, ["csrc/rola/src"], 600),
-    "phases": ("tools/phase_ledger.py", ["{cell}", "--launches", "1"], True, {"gpu": "all"}, [], 120),
     "counters": ("tools/pipe_counters.py", ["{cell}"], True, {"gpu": "all"}, [], 900),
-    "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"},
-               ["tools/budgets/carry.json", CARRY_SOURCES[0]], 900),
-    "timeline": ("tools/pipe_timeline.py", ["--cell", "{cell}"], True, {"gpu": "all"}, [], 900),
-    "roofline": ("tools/roofline.py", ["--cells", "{cell}"], True, {"gpu": "all"}, [], 120),
+    "census": ("tools/stall_census.py", ["{cell}"], True, {"gpu": "all"}, ["csrc/rola/src/facts/facts.cu"], 900),
     #: what each layer construction's weights route on its cells (the layer readings' regime), once a binary
     "support": ("tools/realized_support.py", [], False, {"gpu": 1}, ["measure/cells", "rola"], 1800),
-    "counters-intra": ("tools/pipe_counters.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"}, [], 900),
-    "census-intra": ("tools/stall_census.py", ["{cell}", "--kernel", "intra"], True, {"gpu": "all"},
-                     ["tools/budgets/intra.json", "csrc/rola/src/intra/ampere/intra_kernel.cuh"], 900),
-    #: the output's error against the fp64 recurrence at each pairing of the carry's and the intra's accumulations
-    "quality": ("tools/quality.py", ["{cell}"], True, {"gpu": 1}, ["rola", "measure", "tests/oracle"], 900),
 }
-#: THE CELLS AN INSTRUMENT RUNS ON, where not every measurement carry cell: the intra's on the long cells (16K tokens
-#: and more), the output's error on the cells sized for the fp64 recurrence as well (tier `both`)
-INSTRUMENT_CELLS = {"counters-intra": "long", "census-intra": "long", "quality": "both"}
-LONG_CELL_TOKENS = 16384
-CARRY_ARMS = ("carry_forward", "carry_intra", "intra_forward", "scale_pass", "prefill")
-LAYER_ARMS = ("entmax_solve", "produce", "layer_prefill", "decode_step", "layer_facts", "layer_scale", "layer_carry",
-              "layer_intra", "layer_op")
+CARRY_ARMS = ("prefill", "facts_pass")
+LAYER_ARMS = ("entmax_solve", "layer_prefill", "decode_step", "layer_facts", "layer_op")
 #: seconds an instrument may run on one cell
 #: EACH INSTRUMENT'S TIMEOUT IS PER CELL AND SIZED TO THE INSTRUMENT: a phase-clock launch is seconds on the largest
 #: cell (37 cells in 1.1 minutes, measured 2026-09-16), an ncu replay minutes. A hang then costs one timeout and lands
@@ -130,16 +106,13 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
         "oracle-tier", executor=EXECUTORS + "pytest_tier", env=env, deps=facts, holds={"gpu": 1},
         params={"paths": ["tests/oracle"], "timeout": TIER_TIMEOUT_S},
         code={"files": ["tests/oracle", "tests/conftest.py", "rola", "measure"]})
-    long_cells = [c for c in carry if central().cell(c)["params"].get("tokens", 0) >= LONG_CELL_TOKENS]
-    both = [c for c in carry if central().cell(c)["params"].get("tier") == "both"]
     for name in instruments:
         tool, args, per_cell, holds, data, timeout = INSTRUMENTS[name]
-        on = {"long": long_cells, "both": both, None: carry}[INSTRUMENT_CELLS.get(name)]
-        if per_cell and not on:
+        if per_cell and not carry:
             continue
         out["instruments"][name] = g.node(
             name, executor=EXECUTORS + "run_tool", env=env, deps=facts,
-            inputs=cell_nodes(g, on) if per_cell else (), holds=holds,
+            inputs=cell_nodes(g, carry) if per_cell else (), holds=holds,
             params={"tool": tool, "args": args, "per_cell": per_cell, "timeout": timeout},
             cache=not per_cell, code=_code(tool, data))
     if timing is None:
@@ -167,8 +140,8 @@ def declare(g, env: Env, *, timing=None, instruments=tuple(INSTRUMENTS)) -> dict
 #: and, where it has one, a tier), and what the side holds while it runs. Exposed for rola-bench, which pairs a surface
 #: across checkouts and OWNS the rule it compares them under (its `RULES`), as it owns the timing methodology; the
 #: only diff this file declares itself is the kernel against its own oracle, below. What rola states about a surface's
-#: numerics is a FACT, in `NUMERICS`; it states nothing exact of the carry: its readout's f16 (or fp32) REDs from a
-#: token's CTAs land in any order and reassociate, so its ``num`` is compared under its clauses, never bit for bit.
+#: numerics is a FACT, in `NUMERICS`; it states nothing exact of the carry: a token's partial sums from its CTAs land
+#: in any order and reassociate, so its ``num`` is compared under its clauses, never bit for bit.
 SURFACES = {
     "oracle": ("tests.oracle.sides:oracle", "carry", "oracle", {"host_cpu": "all"}),
     "producer": ("tests.oracle.sides:producer", "producer", None, {"host_cpu": "all"}),

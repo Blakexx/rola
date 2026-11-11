@@ -25,11 +25,6 @@ filegroup(
     srcs = glob(["toolchains/*.json"]),
 )
 
-filegroup(
-    name = "budgets",
-    srcs = glob(["budgets/**"]),
-)
-
 #: the tools' Python and the lints', which the gates import
 filegroup(
     name = "python_sources",
@@ -81,7 +76,6 @@ cc_binary(
 ) for name in [
     "arith_model",
     "bank_model",
-    "burst_gate",
     "gen_shards",
     "header_selfcheck",
     "kernel_targets",
@@ -90,19 +84,12 @@ cc_binary(
     "life_ranges",
     "op_timeline",
     "overlap_gate",
-    "phase_ledger",
     "pipe_counters",
-    "pipe_sim",
-    "pipe_timeline",
-    "quality",
     "realized_support",
     "region_ledger",
     "review_gate",
-    "roofline",
-    "sanitize_cell",
     "sass_bodies",
     "sass_gate",
-    "scale_slack",
     "stall_census",
     "supported",
     "wheels",

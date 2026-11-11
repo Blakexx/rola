@@ -362,7 +362,7 @@ struct FactsAt {
       const int n = half_of<kGroups>(at, q);
 #pragma unroll 1
       for (int k = n + tid; k < slots; k += kFactsThreads)
-        out.union_tok[group_index * slots + k] = carry::kGap;
+        out.union_tok[group_index * slots + k] = kGap;
       if (tid == 0) out.union_count[group_index] = (n + kStep - 1) & -kStep;
     }
   }
@@ -505,7 +505,7 @@ struct FactsAt {
               e = make_uint2(sl, cv | cm << 16);
             } else {
               const uint32_t coef = __half_as_ushort(__float2half_rn(b * (1.0f / 256.0f)));
-              e = make_uint2((sl * (row / 16) + carry::pool_chunk(row, sl, 0u))
+              e = make_uint2((sl * (row / 16) + pool_chunk(row, sl, 0u))
                                  | static_cast<uint32_t>(kWindowTokens * j + t) << 16,
                              coef);
             }

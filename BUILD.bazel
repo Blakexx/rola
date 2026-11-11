@@ -46,12 +46,6 @@ string_list_flag(
     visibility = ["//visibility:public"],
 )
 
-string_flag(
-    name = "carry_parts",
-    build_setting_default = "all",
-    visibility = ["//visibility:public"],
-)
-
 rola_extension(
     name = "library",
     cxx11_abi = CXX11_ABI,
@@ -122,19 +116,6 @@ rola_wheels(
     name = "wheels",
     census = ":census",
     library = ":library",
-)
-
-#: THE PART HARNESS'S DRIVER (KERNEL_STANDARDS section 22, `measure/harness/bench_carry_calib.py`): the calibration
-#: kernels as `rola_cu13/_C_parts.abi3.so` beside the extension; `bazel run //:parts_library --//:archs=86` for one card
-rola_instrument(
-    name = "parts_library",
-    kept = "//measure/harness/carry_parts:kept_signatures.json",
-    module = "_C_parts",
-    shared_libraries = ["@rola_env//:torch_libraries"],
-    deps = [
-        "//csrc/rola:runtime",
-        "//measure/harness/carry_parts",
-    ],
 )
 
 #: THE MEASUREMENTS (docs/measurement.md): rola-devtools' build system running this checkout's declarations, and the

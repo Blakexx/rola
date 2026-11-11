@@ -52,8 +52,7 @@ schedule, with a global barrier between them, inside the kernel.
 
 Because the recurrence is input-affine, **the plan is complete before launch**, and
 the work is a *free permutation*: the carry's CTAs are independent units, one a box and
-batch-head, joined only by the drain's atomics
-([`carry/ampere/panel.md#drain`](../internals/carry/ampere/panel.md#drain)), so any order of them is a
+batch-head, joined only by the output's reductions, so any order of them is a
 legal execution. Everything the engine gets from that follows:
 
 - **window parallelism** — the intra computes every window's term at once, with no

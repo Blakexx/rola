@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STANDARDS = ("docs/CONSTITUTION.md", "docs/KERNEL_STANDARDS.md")
 #: generated or recorded bytes a review reads nothing in: measurement records, pinned locks, ratified manifests
-EXCLUDED = ("measure/lab/results", "docs/references.lock.json", "tools/manifests", "tools/budgets/step_floors.json")
+EXCLUDED = ("measure/lab/results", "docs/references.lock.json", "tools/manifests")
 #: the most diff a prompt carries inline; past it the reviewer reads the files the stat names
 DIFF_LIMIT = 200_000
 #: bump when the instructions change, so no cached report outlives them

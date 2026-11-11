@@ -27,7 +27,6 @@ _SETTINGS = {
     "_archs": "//:archs",
     "_carry_arms": "//:carry_arms",
     "_decode_arms": "//:decode_arms",
-    "_carry_parts": "//:carry_parts",
 }
 
 def _setting_attrs():
@@ -40,10 +39,9 @@ def _parameters(ctx, args):
     args.add("--archs", ",".join(_value(ctx, "_archs")))
     args.add("--carry-arms", ",".join(_value(ctx, "_carry_arms")))
     args.add("--decode-arms", ",".join(_value(ctx, "_decode_arms")))
-    args.add("--carry-parts", _value(ctx, "_carry_parts"))
 
 #: the headers `bazel/headers.py` writes, by `tools/gen_shards.py`'s names
-_HEADERS = ["carry_selection.inc", "decode_selection.inc", "carry_parts.inc", "builds.inc"]
+_HEADERS = ["carry_selection.inc", "decode_selection.inc", "builds.inc"]
 
 def _headers_impl(ctx):
     outs = [ctx.actions.declare_file("generated/" + name) for name in _HEADERS]
@@ -69,7 +67,7 @@ rola_headers = rule(
         "_sources": attr.label(default = "//bazel:generator_sources"),
         "_python": attr.label(default = "@rola_env//:python", allow_single_file = True, cfg = "exec"),
     },
-    doc = "The carry and decode arm selections, the carry parts and the carried builds, for the build's parameters.",
+    doc = "The carry and decode arm selections and the carried builds, for the build's parameters.",
 )
 
 def _include_root_impl(ctx):
@@ -364,7 +362,6 @@ def _census_impl(ctx):
             "archs": ",".join(_value(ctx, "_archs")),
             "carry_arms": ",".join(_value(ctx, "_carry_arms")),
             "decode_arms": ",".join(_value(ctx, "_decode_arms")),
-            "carry_parts": _value(ctx, "_carry_parts"),
         },
     }) + "\n")
     files = [record, ctx.file.harness, harness] + tools.values() + [u.report for u in units] + [u.object for u in units]

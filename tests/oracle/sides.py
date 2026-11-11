@@ -126,11 +126,10 @@ def oracle(record: dict, *, batch: int = 1, heads: int = 2, **_params) -> dict:
 def carry_kernel(record: dict, **_params) -> dict:
     """THE CARRY on one carry cell, its ``num`` in the recurrence's units -- the left side of rola's own
     kernel-vs-oracle diff, the same call `test_carry_vs_oracle.py` makes."""
-    from tests.oracle.readout_reference import num_in_truth
-    from tests.oracle.test_carry_vs_oracle import run
+    from tests.oracle.test_carry_vs_oracle import in_truth, run
 
-    routes, _values, unit, num = run(build_cell(record))
-    return {"num": num_in_truth(num, routes, unit)}
+    routes, _values, num, _den = run(build_cell(record))
+    return {"num": in_truth(num, routes)}
 
 
 def carry_reference(record: dict, **_params) -> dict:
@@ -142,7 +141,7 @@ def carry_reference(record: dict, **_params) -> dict:
 
     spec = build_cell(record)
     routes, values, _layout, _statics = bundle_of(spec, realize(spec))
-    return {"num": ref(spec, routes, values), "num_envelope": ref(spec, routes, values, magnitudes=True)}
+    return {"num": ref(spec, routes, values)[0], "num_envelope": ref(spec, routes, values, magnitudes=True)[0]}
 
 
 __all__ = ["NO_GRAD", "carry_kernel", "carry_reference", "oracle", "producer"]

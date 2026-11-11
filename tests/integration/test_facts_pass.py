@@ -1,13 +1,11 @@
-"""Gate for the FACTS PASS (csrc/rola/src/facts/): its words ARE the model's, bit for bit, its list exponents are the
-fp16 fold reference's, per slot, and its lists are the model's final form, bit for bit.
+"""Gate for the FACTS PASS (csrc/rola/src/facts/): its words ARE the model's, bit for bit, and its lists are the
+model's final form, bit for bit.
 
 `tests/unit/test_liveness_contract.py` gates the words' contract and the pure-torch model without a device; this file
 holds the one pass to that model on the bundle's own rows -- u8 and f16, separate tensors and views of one packed plane
 -- at every SPARSE level, which makes every property the model proves (sparse rows are the digits' support, pad digits
 are dead, a token past `L` votes dead) a property of the kernel; a dense level's rows and groups are the static width
-mask, which the folds take from the statics, so the pass neither reads nor writes them. The
-list exponents are held to `fold_reference.list_exponents` per window, digit and batch-head, exactly except where a
-maximum sits within fp32 rounding of a power of two (docs/internals/facts/facts.md#lists). The lists are the model's
+mask, which the folds take from the statics, so the pass neither reads nor writes them. The lists are the model's
 in each of the carry's forms (docs/internals/facts/facts.md#lists-out). The class-2 folds the words feed are
 gated here too: the exact per-page byte against the general box fold at the atom box set and against the leaf-level
 truth.
@@ -31,7 +29,6 @@ from rola.routing.factors import RouteFactors
 from rola.routing.topology import padded_level_width
 from rola.routing.types import OpaqueRouting, Topology
 from rola.values import Values
-from tests.oracle.fold_reference import exponent_bounds, list_exponents
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="the pass is a CUDA kernel")
 
@@ -46,7 +43,6 @@ _SHAPES = (((32,), 32), ((16, 16), 64), ((32, 16), 40), ((16, 16, 16), 96), ((64
 _MODES = ("alternating", "tied", "all")
 
 #: the list maxima's bound, relative: the kernel's fp32 product of at most seven factors, a rounding each.
-_LIST_RTOL = 2.0 ** -20
 
 #: THE CARRY'S READ POOL ROWS the read entries address (`rola.ops.carry.form`'s ``read_row``): the even arm's 64 bytes,
 #: the dense-dense arm's 128 and a 192-byte row, each pool swizzle the entries fold in.
@@ -393,36 +389,7 @@ def test_the_gains_are_the_model_bit_for_bit(widths, L):
     assert torch.equal(got.gains16.cpu().view(torch.int16), want16.view(torch.int16))
 
 
-# --------------------------------------------------------------- the list exponents are the reference's
-
-
-def _list_exp(routes, values, layout, read_statics, write_statics):
-    """``(got, lo, hi)`` as ``[BH, windows, B_list, 2]`` int64: the pass's exponents and the reference's bounds."""
-    got = _facts(routes, values, layout, read_statics, write_statics).list_exp.long()
-    level = facts_ops.list_level(write_statics)
-    lo, hi = exponent_bounds(routes, values, level, window_of(), layout.B[level], _LIST_RTOL)
-    return got, lo.reshape(got.shape), hi.reshape(got.shape)
-
-
-@pytest.mark.parametrize(("widths", "L"), [shape for shape in _SHAPES if len(shape[0]) <= 2])
-@pytest.mark.parametrize("dense", _MODES)
-def test_the_list_exponents_are_the_reference_per_window(widths, L, dense):
-    """Per window and digit of the write list level, the smallest K with every token's ``b m`` (and ``b m s``) at most
-    2^K, within the fp32 rounding of the products; a call whose write side has no sparse level lists nothing."""
-    layout = _layout(widths, L)
-    read_statics, write_statics = _sides(layout, dense, widths)
-    routes, values = _bundle(widths, L, (read_statics, write_statics), B=2)
-    level = facts_ops.list_level(write_statics)
-    if level < 0:
-        got = _facts(routes, values, layout, read_statics, write_statics).list_exp
-        assert got.shape[2] == 0
-        return
-    got, lo, hi = _list_exp(routes, values, layout, read_statics, write_statics)
-    assert ((got >= lo) & (got <= hi)).all(), (got - lo).abs().max()
-    want = list_exponents(routes, values, level, window_of(), layout.B[level]).reshape(got.shape)
-    away = lo == hi
-    assert torch.equal(got[away], want[away]), "an exponent off a power of two's rounding band differs"
-    assert (got > -126).any(), "every list dead: the cell is vacuous"
+# --------------------------------------------------------------- the list exponents' floor
 
 
 def test_a_dead_window_keeps_the_floor():

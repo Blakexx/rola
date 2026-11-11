@@ -1754,12 +1754,6 @@
    "count": 1
   },
   {
-   "path": "tools/sanitize_cell.py",
-   "message": "names the work code 'K2'",
-   "line_sha256": "9e288d23dec896bc",
-   "count": 1
-  },
-  {
    "path": "tools/sanitize_oracle.py",
    "message": "names the work code 'K39'",
    "line_sha256": "6cbe638aaff87b66",

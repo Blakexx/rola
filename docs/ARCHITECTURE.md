@@ -45,24 +45,15 @@ the same recurrence run on ones — one state, one recurrence, one readout, `col
 readout is the only normalization the family has.
 
 **The operands are the bundle's internal format** ([`api.md`
- §2.1](api.md#21-the-bundle-is-the-contract-and-it-is-the-internal-format)):
-each routing level's rows are u8 digits unit-max against the row's fp32 maximum (a dense level's rows f16 at 1,
-the dense floor stored: [`liveness_contract.md#floor`](internals/facts/liveness_contract.md#floor)), and each token's
-values are f16 against its largest channel with an fp32 scale (`rola/values.py`). Nothing floating is stored between
-the producer and the kernels.
+ §2.1](api.md#21-the-bundle-is-the-contract-and-it-is-the-internal-format)): every routing level's rows, dense or
+sparse, are u8 digits unit-max against the row's fp32 maximum, a zero a zero, and each token's values are bf16 against
+its largest channel with an fp32 scale (CONSTITUTION §R17, §R23). Nothing floating but those values is stored between
+the producer and the kernels. The factory and the kernels in the tree still hold the f16 dense form and its floor
+([`open-work.md`](open-work.md)).
 
-**Declared arithmetic, per kernel.** Every kernel's arithmetic is declared and mirrored by its gate's reference; a
-state's accumulation is fp32 or exact integer, and the readout's partials, an output's, meet at each token's scale
-byte ([`architecture/precision.md`](architecture/precision.md)):
-
-| kernel | operands | accumulation |
-|---|---|---|
-| the carry's fold | the write operand f16 (a dense slice times the record's coefficient), the values f16 | fp32 state in registers ([`carry/ampere/fold.md`](internals/carry/ampere/fold.md)) |
-| the carry's hand-off | the fp32 state rounded to an f16 image at a power of two a digit | — |
-| the carry's readout | the f16 image against the read rows | fp32 MMAs (a listed side fp16 where fp32 accumulate is half rate; a dense side fp32 on every card), each piece into the panel as f16 pairs at the token's scale byte or fp32, added across CTAs in that dtype ([`carry/ampere/panel.md#drain`](internals/carry/ampere/panel.md#drain)) |
-| the intra | the rows' u8 digits and the values' digit planes, int8 tensor ops | each level's Gram exact in s32, the levels multiplied in fp32 ([`intra/ampere/intra_kernel.md`](internals/intra/ampere/intra_kernel.md)) |
-| decode | the stored state's s24 (a written leaf) or its s16 hi plane (a read-only leaf), the staged amplitudes | fp32 |
-| the stored state, between calls | s24 mantissas at a power-of-two exponent a 32-channel group, fp32 mass | — ([§3](#3-the-state)) |
+**Declared arithmetic, per kernel.** Every kernel's arithmetic is declared and mirrored by its gate's reference: every
+accumulation fp32 or an exact integer, the operands one family on every card
+([`architecture/precision.md`](architecture/precision.md#components)).
 
 **The window decomposition.** A call's token axis is cut into fixed windows of `W` tokens, global to every box. The
 carry computes each window's readout against the state as of that window's start and then folds that window's
@@ -253,10 +244,11 @@ survives.
 ### 6.1 The producer
 
 ONE launch from a stretch of tokens to the bundle: every routing level's projection, its exact entmax or softmax
-solve and its unit-max rows, the write gain, and the f16 values, compiled from the layer's declared `Routing` into a
-job table so every width, kind and offset is a runtime field and the family is one instantiation. The torch
-composition behind the same call is the fp64 reference and the path a gradient takes
-([`internals/produce/produce.md`](internals/produce/produce.md)).
+solve and its unit-max rows, the write gain, and the values, compiled from the layer's declared `Routing` so every
+width, kind and offset is a runtime field and the family is one instantiation. No producer kernel is built on this
+line (its hopper form: section 9); the solves are their own kernels
+([`internals/entmax/entmax.md`](internals/entmax/entmax.md)), and the torch composition behind the same call is the
+fp64 reference and the path a gradient takes (`rola/ops/produce.py`).
 
 ### 6.2 The facts pass
 
@@ -280,28 +272,20 @@ and per (token, sparse digit) planes pass the asymptotic test but are priced aga
 
 ### 6.3 The carry — the inter-window term
 
-One CTA a box and batch-head, eight warps, one CTA an SM; the box's fp32 state lives in the warps' registers for the
-whole call. Per window, in sm_86's phase order with shared memory time-shared by phase: the lists and the readout
-units in; the PUBLISH of the state to the readout's f16 operand (through shared memory where the two plans' warps own
-different leaves); the READOUT passes, each slot's read operand against the f16 state into a panel DRAINED to `num`
-as f16 pairs at the token's scale byte (or fp32), added by f16x2 (or fp32) REDs (CTAs join only there, R22); then the
-FOLD, the
-window's write slots in units of passes ringing two shared slots, each a burst of fp32-accumulate MMAs into the state.
-The mass is the carry's own v+1 channel, read out beside `num` as each token's `den` (ruled 2026-11-02); the f16 sum's
-scale bytes come from the scale pass, the write-aligned bound ([`internals/scale/scale.md`](internals/scale/scale.md),
-[`open-work.md`](open-work.md),
-[`internals/carry/carry.md`](internals/carry/carry.md),
-[`internals/carry/ampere/carry_kernel.md`](internals/carry/ampere/carry_kernel.md)).
+One CTA a box and batch-head, one CTA an SM; the box's fp32 state lives in the CTA for the whole call. Per window: the
+READOUT of the state as of the window's start by the window's readers, each token's partial sums added in fp32 into
+`num` and, as the v+1 channel, `den` (CTAs join only there, R22); then the FOLD of the window's writes into the state.
+No carry kernel is built on this line: its hopper schedule is a design of its own, written before it is built
+(section 9's forms; [`open-work.md`](open-work.md)).
 
 ### 6.4 The intra — the within-window term
 
 The causal term inside a window, its own kernel over the bundle, reducing into the output planes the carry reduces
-into. A CTA owns 128 readers of one window and walks the writer tiles up to its diagonal; per tile pair each level's
-Gram accumulates EXACTLY in s32 over its u8 digits by int8 tensor ops, the levels multiply in fp32, and the value
-product follows in int8. The `[W × W]` matrix is never materialized, and a tile pair or 32-digit slab whose digits
-meet nowhere is skipped on the facts pass's tile unions, an exact certificate. The kernel reads no state: every pair
-it computes is written and read inside the one window
-([`internals/intra/ampere/intra_kernel.md`](internals/intra/ampere/intra_kernel.md)).
+into: per tile pair each level's Gram accumulates EXACTLY over its u8 digits by integer tensor ops, the levels multiply
+in fp32, and the value product follows in bf16 against fp32 sums. The `[W × W]` matrix is never materialized, and a
+tile pair whose digits meet nowhere is skipped on the facts pass's tile unions, an exact certificate. The kernel reads
+no state: every pair it computes is written and read inside the one window. No intra kernel is built on this line
+([`open-work.md`](open-work.md)).
 
 ### 6.5 Decode — the `T = 1` step
 
@@ -359,12 +343,12 @@ card; a kernel's schedule is designed, and written into its own page, before it 
 | mechanism | hopper (sm_90) | blackwell (sm_100) |
 |---|---|---|
 | the operands | u8 rows expanded to bf16 where they are staged, a scale or a coefficient multiplied in fp32 there; bf16 values as stored (`architecture/precision.md`) | the same |
-| the tensor products | `wgmma`: B from shared memory by descriptor, A from shared memory or from registers; fp32 accumulate; int8 for a window's pair products | `tcgen05`, operands and accumulators in tensor memory |
+| the tensor products | `wgmma`: B from shared memory by descriptor, A from shared memory or from registers; fp32 accumulate; int8 for a window's pair products of rows, exact | `tcgen05`, operands and accumulators in tensor memory; the same two products |
 | state in the register file | producer and consumer warps, the registers moved between them (`setmaxnreg`); the fold's fp32 accumulators the readout's operand, narrowed in place | the accumulator in tensor memory |
-| operand staging from DRAM | TMA box loads into rings, landed on `mbarrier`s, descriptors built at runtime | the same, plus multicast to a cluster |
+| operand staging from DRAM | TMA box loads into rings, landed on `mbarrier`s, descriptors built at runtime | the same |
 | runtime addressing | uniform-datapath registers from the prologue, pairing with runtime descriptors | the same |
 | the output's sum | fp32 in shared memory and across CTAs: a bulk reduction where the panel is contiguous, `red.global` a token where it is not | the same |
-| the box grain | one CTA per multiprocessor | the same |
+| the box grain | one CTA per multiprocessor; a cluster sharing staging through distributed shared memory (TMA multicast) only where a lab shows it pays | the same |
 | decode's walk and combine | per-lane-group gathers, a work queue of visits, global atomics into a head's sums | the same |
 | the closed world | ratified manifest per architecture, device stamp | the same |
 
@@ -386,10 +370,7 @@ card; a kernel's schedule is designed, and written into its own page, before it 
 | the arena, the page table, the slack pool | [`internals/paging/paging.md`](internals/paging/paging.md) |
 | the carve: the box and the operation plans | [`internals/engine/rules.md#carve`](internals/engine/rules.md#carve), [`internals/engine/carve.md`](internals/engine/carve.md) |
 | the host order of a call | [`internals/engine/prefill_dag.md`](internals/engine/prefill_dag.md), [`internals/engine/decode_dag.md`](internals/engine/decode_dag.md) |
-| the producer | [`internals/produce/produce.md`](internals/produce/produce.md) |
 | the facts pass and the liveness words | [`internals/facts/facts.md`](internals/facts/facts.md), [`internals/facts/liveness_contract.md`](internals/facts/liveness_contract.md) |
-| the carry | [`internals/carry/carry.md`](internals/carry/carry.md) and its pages |
-| the within-window term | [`internals/intra/ampere/intra_kernel.md`](internals/intra/ampere/intra_kernel.md) |
 | decode: the step, the walk, growth, capture | [`internals/decode/decode.md`](internals/decode/decode.md), [`internals/decode/decode_lattice.md`](internals/decode/decode_lattice.md) |
 | the entmax solves | [`internals/entmax/entmax.md`](internals/entmax/entmax.md), [`internals/entmax/factor.md`](internals/entmax/factor.md) |
 | the architecture capability table and the per-product rates | [`internals/common/arch_caps.md`](internals/common/arch_caps.md), [`internals/common/hardware.md`](internals/common/hardware.md) |

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""THE BUILD'S GENERATED HEADERS for one build's parameters: the carry and decode arm selections, the carry kernel's
-parts and the builds the binary carries -- `tools/gen_shards.py`'s and `measure/hardware.py`'s. Run by the graph's
+"""THE BUILD'S GENERATED HEADERS for one build's parameters: the carry and decode arm selections and the
+builds the binary carries -- `tools/gen_shards.py`'s and `measure/hardware.py`'s. Run by the graph's
 header action (`bazel/defs.bzl`'s `rola_headers`).
 Docs: docs/build-graph.md#compile.
 """
@@ -26,14 +26,11 @@ def main() -> int:
     ap.add_argument("--archs", required=True, help="the build's architectures, comma-separated (`80,86`)")
     ap.add_argument("--carry-arms", default="", help="carry arm indices, comma-separated; empty is every arm")
     ap.add_argument("--decode-arms", default="", help="decode arm indices, comma-separated; empty is every arm")
-    ap.add_argument("--carry-parts", default="all", help="gen_shards.carry_parts_spec's spec")
     a = ap.parse_args()
     carry = gen_shards.family_arms(gen_shards.CARRY, a.carry_arms, "--//:carry_arms")
     decode = gen_shards.family_arms(gen_shards.DECODE, a.decode_arms, "--//:decode_arms")
-    parts = gen_shards.carry_parts_spec(a.carry_parts, "--//:carry_parts")
     texts = {gen_shards.CARRY_SELECTION_INC: gen_shards.carry_selection_header(carry),
              gen_shards.DECODE.header: gen_shards.decode_selection_header(decode),
-             gen_shards.CARRY_PARTS_INC: gen_shards.carry_parts_header(*parts),
              gen_shards.BUILDS_INC: hardware.builds_header([x for x in a.archs.split(",") if x])}
     for name, text in texts.items():
         (a.out_dir / name).write_text(text)

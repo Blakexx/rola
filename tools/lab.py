@@ -11,7 +11,7 @@ spread, and writes a record keyed by the architecture.
     bazel run //tools:lab -- list
     bazel run //tools:lab -- sass tensor_tax [KERNEL_REGEX] [--full]
     bazel run //tools:lab -- run tensor_tax [--reps 7] [--record] [--force]
-    bazel run //tools:lab -- ncu pool_layout --metric lts__t_sectors_srcunit_tex_op_read.sum [--record]
+    bazel run //tools:lab -- ncu smem_rates --metric lts__t_sectors_srcunit_tex_op_read.sum [--record]
 
 `--record` writes `measure/lab/results/<name>/<sm_XX>.json` (or `<sm_XX>.counters.json` for `ncu`), the file a
 KERNEL_STANDARDS rule cites; without it the record goes to the scratch space. `ncu` reads hardware counters per kernel

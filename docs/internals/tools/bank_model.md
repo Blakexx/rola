@@ -7,9 +7,8 @@ Each phase costs as many wavefronts as the most distinct bank rows any single ba
 share it. An `ldmatrix` costs one phase per 8x8 matrix, with its 8 row addresses of 16 bytes each.
 
 It runs where addresses are chosen. A producer that picks slots (the facts pass, or a lab's inputs standing in for it)
-runs the model on what it emits, so a conflict shows up before any hardware run.
-A lab's inputs write `banks.json` beside their data: the wavefronts per MMA of a CTA-window's gathers, adds, entry
-loads and state loads, for each step form.
+runs the model on what it emits, so a conflict shows up before any hardware run, and writes the report beside its
+data as `banks.json`: the wavefronts per MMA of each instruction that touches the buffer, for each form it models.
 
 ## Checked against ncu
 

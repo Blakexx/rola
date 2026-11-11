@@ -36,12 +36,11 @@ def _card_of(index: int) -> Card:
     return Card(cc, product, variant, FAMILIES[family], window)
 
 
-def card_of(device=None) -> Card:
-    """``device``'s card -- a device, its index, or ``None`` for the current device; refused by name where the binary
-    carries no build for it."""
-    return _card_of(device_index(device))
+def card_of() -> Card:
+    """The current device's card; refused by name where the binary carries no build for it."""
+    return _card_of(device_index(None))
 
 
-def window_of(device=None) -> int:
-    """``device``'s window in tokens -- a device, its index, or ``None`` for the current device."""
-    return card_of(device).window
+def window_of() -> int:
+    """The current device's window in tokens."""
+    return card_of().window

@@ -10,8 +10,7 @@ script with something to say ([the tools map](tools/README.md)).
 
 **Exemptions, stated.** A directory of GENERATED sources — `csrc/rola/src/instantiations/`, the per-arm carry units —
 is documented by its own README instead of one page a file, and the lint checks that exemption rather than granting it
-([`docs/testing.md`](../testing.md#the-documentation-gates)). `carry/calibration.md` mirrors no source: it holds the
-calibration rows `measure/harness/bench_carry_calib.py` writes.
+([`docs/testing.md`](../testing.md#the-documentation-gates)).
 
 The mirror rule runs SOURCE → DOC, so a deleted source leaves an orphan doc unless the doc is deleted with it: deleting
 the doc is part of deleting the source, and the removal is recorded in `DELETIONS.md` like any other.

@@ -75,12 +75,5 @@ in the wrong place; a switch is justified by coverage at additive cost, not by s
 
 ## Users
 
-- `produce/produce.cu`'s projection: `uniform_switch<5>` over a one-row job's column-tile class (the shape word's,
-  `1 << index` tiles), outside the k-loop, so a class's tile count and stage depth are immediates.
-- `produce/produce.cu`'s solve: `uniform_switch<4>` over the row's width class (`2 << index` tiles), around one
-  n-tile's activation, probe and bundle -- the large body, its lambda `always_inline`.
-- `intra/ampere/intra_kernel.cuh`'s value step: `uniform_switch<kValueWidth / 16>` over the
-  channel group inside a `#pragma unroll 1` loop, one member an iteration, so a group's
-  swizzled address is an immediate and its loads are not hoisted over the others'.
 - `tests/unit/test_structure_switch.py` compiles a toy `__global__` against it and runs
   every layer, the `__trap()` included, in its own process.

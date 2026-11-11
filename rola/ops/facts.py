@@ -22,8 +22,20 @@ from rola.engine.facts import lists as list_model
 from rola.engine.facts.liveness import LivenessLayout, SideStatics, mask_words, side_statics
 from rola.ops._ext import extension
 
-__all__ = ["COMPOSITE", "LEDGER_PHASES", "LEDGER_WARPS", "Facts", "ListsForm", "call_layout", "call_statics",
-           "facts", "ledger_bind", "list_level", "side_lists"]
+__all__ = [
+    "COMPOSITE",
+    "LEDGER_PHASES",
+    "LEDGER_WARPS",
+    "UNIT_FORM",
+    "Facts",
+    "ListsForm",
+    "call_layout",
+    "call_statics",
+    "facts",
+    "ledger_bind",
+    "list_level",
+    "side_lists",
+]
 
 
 #: THE PHASE LEDGER'S SHAPE: ``[warps][phases]``, the kernel's own `FactsPhase` order, booked over every CTA.
@@ -65,6 +77,11 @@ class ListsForm(NamedTuple):
     read_row: int
     read_list_group: int
     write_list_group: int
+
+
+#: THE FORM A CALL WITH NO CARRY ARM TAKES: a 64-byte read pool row and whole 32-digit list groups -- what the pass's
+#: own gates and measurements launch it at while no carry arm is built to name another
+UNIT_FORM = ListsForm(read_row=64, read_list_group=32, write_list_group=32)
 
 
 def call_layout(routes) -> LivenessLayout:

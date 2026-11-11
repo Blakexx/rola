@@ -19,8 +19,7 @@ the digit masks' wait). `lap` therefore loads the previous mark first and reads 
 for it. Measured on the decode step (sm_86): the digit masks 0.5K -> 5.8K, the owner masks
 6.3K -> 1.7K, the total unchanged.
 
-The carry aliases it at its phase count (`carry_kernel.md#phase-ledger`). The struct is
-inlined wherever it is used.
+The struct is inlined wherever it is used.
 
 <a id="on"></a>**`on`**, the constructor's third argument (default true), says whether anything will read the
 row. Off, lane 0 is not the lead. The compiler if-converts a lap into lane 0's predicated

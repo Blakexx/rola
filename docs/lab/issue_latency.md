@@ -22,6 +22,5 @@ sm_86 (RTX 3080 Ti), cycles a link:
 The FFMA row reads the documented 4, so the method holds. The fp32-accumulate chain runs at its pipe time on this
 card (32.1, [`tensor_tax`](tensor_tax.md)), so its latency is at most that; the fp16-accumulate chain, at 16.1 a
 pipe slot, shows the MMA's latency, 24. An `ldmatrix` of four matrices lands 6 cycles after a 32-bit load. These are
-`common/hardware.json`'s `latency` rates on sm_86 ([`hardware.md`](../internals/common/hardware.md)) and the pipe
-model's HMMA and FFMA latencies ([`pipe_sim.md`](../internals/tools/pipe_sim.md#machine)). Record:
+`common/hardware.json`'s `latency` rates on sm_86 ([`hardware.md`](../internals/common/hardware.md)). Record:
 `measure/lab/results/issue_latency/sm_86.json`.

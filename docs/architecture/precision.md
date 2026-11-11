@@ -47,8 +47,7 @@ significant bits where f16 has 11.
 
 Per token, `|dy| / |y|` against fp64 on continuous values (`docs/testing.md`).
 
-MEASURED on kernels (the October tables, 2026-10-03 and 2026-10-12, the carry's own output on their draws, median a
-token): a bf16 family 0.16-0.20% on the flagship cells; the fp16 family 0.018-0.029%. The class is accepted on every
+MEASURED on kernels (2026-10-03 and 2026-10-12, sm_86, the carry's own output, median a token): a bf16 family 0.16-0.20% on the flagship cells; the fp16 family 0.018-0.029%. The class is accepted on every
 card (Blake, 2026-11-09): it is the bf16 output store's own.
 
 MODELLED for this family before any kernel of it exists ([`tools/arith_model.py`](../internals/tools/arith_model.md),

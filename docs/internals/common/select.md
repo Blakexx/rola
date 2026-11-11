@@ -43,5 +43,4 @@ runtime (an invalid device function) and, before that, by `card_of`.
 ## `build_switch(card, body)`
 
 The host's one branch to the card's build: `body(BuildTag<B>{})`, `B` the card's build as a compile-time value and
-`BuildTag<B>::traits` its traits, over `ROLA_BUILDS`. The carry's launch and census take their build here
-([`../carry/carry_arm.md#plan`](../carry/carry_arm.md#plan)).
+`BuildTag<B>::traits` its traits, over `ROLA_BUILDS`: where a kernel's launch takes its build.

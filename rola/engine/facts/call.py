@@ -27,12 +27,10 @@ def widths_of(routes) -> tuple[int, ...]:
 
 def prefill_clauses(routes, decay: Any = None, *, d_v: int, stateful: bool = False) -> tuple:
     """The facts :func:`rola.engine.rules.envelope.prefill_envelope` folds, for this segment: the call's shape,
-    whether the intra reads its widths, the carve's arm where the binary's own census carries it, the scale pass's
-    refusal and whether a state rides the call."""
+    whether the intra reads its widths, the carve's arm where the binary carries it and whether a state rides the call."""
     from rola.engine.carve import plan_carve
     from rola.ops import carry as carry_ops
     from rola.ops import intra as intra_ops
-    from rola.ops import scale as scale_ops
 
     widths = widths_of(routes)
     key = None
@@ -43,7 +41,7 @@ def prefill_clauses(routes, decay: Any = None, *, d_v: int, stateful: bool = Fal
             key = None
         key = key if key is not None and tuple(key) in {tuple(arm) for arm in carry_ops.arms()} else None
     return (widths, d_v, decay, intra_ops.admits(widths, intra_ops.VALUE_WIDTH),
-            intra_ops.VALUE_WIDTH, key, scale_ops.serves(routes), stateful)
+            intra_ops.VALUE_WIDTH, key, stateful)
 
 
 def arm_refusal(routes, decay: Any = None, *, d_v: int, stateful: bool = False) -> str | None:

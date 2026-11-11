@@ -1,7 +1,7 @@
 """rola's runner (measure/provider.py): it reads central cells, names an arm by its subject, its call count
 and a layer arm's construction, offers the arms this binary carries at the cell's shape, and refuses a cell by name --
 an uncarried carry arm, an iteration build, a cell of another kind. No GPU: nothing here builds an arm, and the binary's
-arm tables are planted."""
+arm tables are planted (the carry's as the arms the cells' own carves select: this line declares none)."""
 from __future__ import annotations
 
 import sys
@@ -14,24 +14,23 @@ ROOT = Path(__file__).resolve().parents[2]
 for path in (ROOT, ROOT / "measure", ROOT / "tools"):
     sys.path.insert(0, str(path))
 
-import gen_shards  # noqa: E402
-
 from measure import hardware, provider, subjects  # noqa: E402
 from measure.cells import by_name  # noqa: E402
 from measure.cells.layer import CONSTRUCTIONS  # noqa: E402
 from measure.subjects import SUBJECTS  # noqa: E402
 
-SHIPPED = [tuple(row) for row in gen_shards.CARRY_ARMS]
+CARRY_CELLS = ("flagship-alt-k4", "flat-small-alt-k16")
 DECODE_CELL = "layer-B2-T128-H2-h128-dv64-fp32-s4-dec8"
 
 
 @pytest.fixture
 def binary(monkeypatch):
-    """A binary carrying the shipped carry arms and every decode arm (the intra reads its widths by rule)."""
+    """A binary carrying the carry arms `CARRY_CELLS`' carves select and every decode arm (the intra reads its widths
+    by rule)."""
     import rola.ops.carry as carry
     import rola.ops.decode as decode
 
-    tables = SimpleNamespace(carry=list(SHIPPED),
+    tables = SimpleNamespace(carry=[carry.arm_key(subjects.cell_carve(by_name(name))) for name in CARRY_CELLS],
                              decode=[(dv, d, decay) for dv in (32, 64) for d in (1, 2, 3, 4) for decay in (False, True)])
     monkeypatch.setattr(carry, "arms", lambda: tables.carry)
     monkeypatch.setattr(decode, "arms", lambda: tuple(tables.decode))
@@ -41,17 +40,17 @@ def binary(monkeypatch):
 
 
 def test_an_arm_is_named_by_its_subject_its_call_count_and_its_construction():
-    assert provider.arm_name("carry_forward") == "carry_forward"
-    assert provider.arm_name("intra_forward", calls=4) == "intra_forward@calls=4"
+    assert provider.arm_name("facts_pass") == "facts_pass"
+    assert provider.arm_name("prefill", calls=4) == "prefill@calls=4"
     assert provider.arm_name("decode_step", construction="chunk-decode-w16") == "decode_step@layer=chunk-decode-w16"
 
 
 def test_a_cells_arms_are_the_subjects_it_takes(binary):
     names = set(provider.arms(by_name("flagship-alt-k4")))
-    assert {"carry_forward", "facts_pass", "intra_forward"} <= names
+    assert {"prefill", "facts_pass"} <= names
     assert all(name.split("@")[0] in SUBJECTS for name in names)
-    #: a call shorter than a window runs the intra's partial-window arms: the intra is offered
-    assert any(name.startswith("intra_forward") for name in provider.arms(by_name("flat-small-alt-k16")))
+    #: a call shorter than a window is a call: the prefill is offered
+    assert "prefill" in provider.arms(by_name("flat-small-alt-k16"))
 
 
 def test_a_layer_cells_arms_are_its_declared_constructions(binary):
@@ -67,15 +66,17 @@ def test_an_arm_is_offered_only_where_the_binary_carries_its_kernel(binary, monk
 
     monkeypatch.setattr(intra, "reads", lambda widths: False)
     names = set(provider.arms(by_name("flagship-alt-k4")))
-    assert "carry_forward" in names and not any(name.startswith("intra_forward") for name in names)
+    assert "facts_pass" in names and "prefill" not in names
     assert "decode_step@layer=chunk-decode-w16" in provider.arms(by_name(DECODE_CELL))
     binary.decode = []
     assert not any(name.startswith("decode_step") for name in provider.arms(by_name(DECODE_CELL)))
 
 
-def test_a_cell_is_refused_by_name(binary):
-    with pytest.raises(LookupError, match=r"deep3-dense: this binary carries no carry arm \(16, 3, 16, 3, 64, 1\)"):
-        provider.arms(by_name("deep3-dense"))
+def test_a_cell_is_refused_by_name(binary, monkeypatch):
+    import gen_shards
+
+    assert "prefill" not in provider.arms(by_name("deep3-dense"))
+    monkeypatch.setattr(gen_shards, "CARRY_ARMS", tuple(binary.carry))
     with pytest.raises(TypeError, match="rola's runner takes a central carry cell or layer cell"):
         provider.arms(by_name("qkv-L1024-dv64"))
     binary.carry = []

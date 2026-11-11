@@ -44,7 +44,7 @@ Kronecker broadcast rather than storing one).
 
 | Object | Factored form stored | Expansion, and where it lives |
 |---|---|---|
-| **Routing gates** | the bundle's per-level rows `[B, T, H, b_l]` | the carry's operand, a token's dense slices times its list coefficient, formed in registers for one MMA ([`carry/ampere/fold.md#step`](../internals/carry/ampere/fold.md#step)); the intra's per-level Grams; decode's per-unit amplitude products. The gates are **never materialized** as `[L, N]`. |
+| **Routing gates** | the bundle's per-level rows `[B, T, H, b_l]` | a carry's operand, a token's rows times its coefficient, formed where the rows are staged for one MMA; the intra's per-level Grams; decode's per-unit amplitude products. The gates are **never materialized** as `[L, N]`. |
 | **The Kronecker ledger** — the leaf-index arithmetic | the widths and the box's extents | shifts and masks evaluated where a leaf is addressed; decode's unit fixes every level but the innermost, so their product is formed once a unit ([`decode/decode_lattice.md#the-unit`](../internals/decode/decode_lattice.md#the-unit)). |
 | **Liveness words** | per-level digit words and tile unions, sized by `Σ_l b_l` | a box's liveness for a token is **evaluated** as the AND over levels by the consumer, never stored ([`facts/liveness_contract.md`](../internals/facts/liveness_contract.md)). |
 | **The schedule** | the same per-level bitmaps | the per-owner work set, re-evaluated in kernel. Storing it would be the `O(L·N)` wall. |

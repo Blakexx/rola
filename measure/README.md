@@ -44,12 +44,6 @@ stopwatch and the GPU and clock locks (`rola_devtools.timing`, `docs/measurement
 samples; whether a stored difference is a regression is `bazel run //:results -- verdict`.
 
 ```bash
-bazel run //:measure -- run declare.py:all --only 'rola/phases' --only 'rola/sass'
+bazel run //:measure -- run declare.py:all --only 'rola/counters' --only 'rola/sass'
 ```
-
-**`measure/harness/` — the carry's calibration** (`bench_carry_calib.py`).
-
-The ROOFLINE instrument moved to `tools/roofline.py`, where every other instrument lives: it is one of
-`declare.py`'s instruments and never was a bench, and being the only one outside `tools/` is what kept it off the
-tools map (`docs/internals/tools/README.md`).
 

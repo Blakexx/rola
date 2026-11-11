@@ -25,8 +25,8 @@ def declared() -> dict:
 def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_stores():
     out = declared()
     labels = set(out["targets"])
-    assert {"rola/binary", "rola/environment", "rola/sass", "rola/registers", "rola/phases", "rola/roofline",
-            "rola/carry_forward", "rola/clock", "session", "memory", "store/session", "store/memory",
+    assert {"rola/binary", "rola/environment", "rola/sass", "rola/counters", "rola/census", "rola/support",
+            "rola/prefill", "rola/facts_pass", "rola/clock", "session", "memory", "store/session", "store/memory",
             "store/sass", "timing-server", "timing-server-stop"} <= labels
     assert {"rola/entmax_solve@layer=chunk-sparse-gain8", "rola/entmax_solve@layer=chunk-decode-w16",
             "rola/decode_step@layer=chunk-decode-w16"} <= labels
@@ -39,12 +39,12 @@ def test_the_root_declares_the_checkout_its_session_its_memory_pass_and_their_st
     #: surfaces' and the tier node's, never an instrument's
     carry = {f"cells/{n}" for n, r in central().cells.items()
              if r["data"].endswith("carry_cell") and r["params"].get("tier") in ("probe", "both")}
-    assert {t.label for t in out["targets"]["rola/phases"].inputs} == carry
+    assert {t.label for t in out["targets"]["rola/counters"].inputs} == carry
     assert out["targets"]["cells/flagship-dense"].params == {"cell": "flagship-dense"}
-    assert {t.label for t in out["targets"]["rola/carry_forward"].inputs} == carry
+    assert {t.label for t in out["targets"]["rola/facts_pass"].inputs} == carry
     #: the graph's front door takes the host budget for the build: a holder never starts a Bazel build
     assert out["targets"]["rola/binary"].holds == {} and not out["targets"]["rola/binary"].cache
-    assert out["targets"]["rola/phases"].holds == {"gpu": "all"}
+    assert out["targets"]["rola/counters"].holds == {"gpu": "all"}
     assert out["targets"]["timing-server-stop"].always_run
     assert set(out["public"]) == {"all"}
 

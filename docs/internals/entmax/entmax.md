@@ -428,8 +428,7 @@ ordering is the reason the read side needs no saved tensor.
 
 <a id="union-write"></a>**PHASE E — log-weights IN PLACE over `delta`, then the write normalization**
 (`union_write<LW, IPT, kFast>` in the header). A max-subtracted `exp` / sum over the support, with `has_mass` and
-`has_weight` guards so an empty support produces exact zeros rather than `0/0`. `kFast` is the fused producer's policy
-(`docs/internals/produce/ampere/produce_kernel.md#solve`): the logarithms, exponentials and quotient on the special-function unit,
+`has_weight` guards so an empty support produces exact zeros rather than `0/0`. `kFast` is a fused producer's policy: the logarithms, exponentials and quotient on the special-function unit,
 since its fp32 levels only feed u8 digits; this family keeps the libm forms.
 
 ## <a id="bf16-support-boundary"></a>10. HAZARD — support is defined at the native bf16 storage boundary

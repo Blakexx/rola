@@ -7,8 +7,7 @@ column that matters.
 
 **No tool writes a measurement record except through a declared target.** A measurement is a target of
 `declare.py` (`rola_devtools.build`), its result is stored by a store target beside it, and the tool itself prints or
-writes `--json`. The one exception is named below: a `--calibrate` run of `pipe_timeline` writes the plateau it reads back as every
-later run's scale.
+writes `--json`.
 
 ## The build
 
@@ -43,31 +42,24 @@ later run's scale.
 | [`derivation.py`](ratify.md#graph) | the derivation's golden harness, rendered from the declared cases | `ratify.py`, the graph's `derivation_harness_source` genrule | the harness source |
 | `sass.py` | THE DISASSEMBLER SEAM: the one `cuobjdump`/`nvdisasm` invocation and line grammar; a frame map is one function's (`section`: offsets restart in every function) | `ratify.py`, `sass_gate.py`, `region_ledger.py`, `life_ranges.py` | — |
 | `kernel_targets.py` | the instruments' kernel families: each one's profiler filter, provider arm, cubin member, sources, budget and unit (`kernel_targets.md`) | `stall_census.py`, `pipe_counters.py`, `phase_ledger.py` | — |
-| [`scale_slack.py`](scale_slack.md) | whether a bound looser than the exact read product can be the carry's f16 scale: each candidate's slack over it, and the carry's spread at its scale against two runs at the exact bound's (the scale pass's own bytes among them) | a person | `--json` |
 | [`arith_model.py`](arith_model.md) | the bf16 family's arithmetic (u8 rows, bf16 values and operands, fp32 sums) modelled against the fp64 recurrence on a cell's draw, each rounding alone and all together | a person (a precision form's design) | prints, `--json` |
-| `quality.py` | the output's per-token error against the fp64 recurrence at each pairing of the carry's and the intra's accumulations (`quality.md`) | `declare.py` (`quality`) | `rola/quality` |
 | `realized_support.py` | a layer construction's realized routing support: each level's and side's nonzero digits a token in the bundle the producer emits (`realized_support.md`) | `declare.py` (`support`) | `rola/support` |
 | `sass_gate.py` | the ptxas signatures of KERNEL_STANDARDS §20, red on any of them; guarded convergence fallbacks counted; an unchanged cubin's verdict replayed (`sass_gate.md`) | every iteration build; the graph's SASS gate action (`--cuobjdump`/`--nvdisasm`, its toolkit); the `sass` instrument | `--json`, `--loops` (each step loop's reading and the lines its lints count), `--no-cache` |
 | `sass_bodies.py` | per-instantiation SASS body hashes, the codegen-equivalence instrument | a person, comparing two builds | `--json` |
 | `sass_control.py` | the SASS control words (stall count, yield, scoreboards, reuse) and the loop a function compiles to; its `MACHINES` table is the static simulator's per-architecture model | `pipe_sim.py`, `burst_gate.py` | — |
-| [`burst_gate.py`](burst_gate.md) | what every burst loop's SASS must satisfy, deterministically (KERNEL_STANDARDS §23) | the `sass` instrument | exit 1 when red |
-| [`pipe_sim.py`](pipe_sim.md) | a burst loop's steady-state tensor-pipe occupancy from its SASS alone | a person, before a kernel runs | `--json` |
 | `header_selfcheck.py` | every header compiles alone | a person, after moving a declaration | — |
 
 ## The instruments (each a target of `declare.py`)
 
 | tool | what it is | called by | writes |
 |---|---|---|---|
-| [`phase_ledger.py`](phase_ledger.md) | one carry launch with the kernel's phase clock bound | the `phases` target | `--json` |
 | [`op_timeline.py`](op_timeline.md) | a subject's calls under torch's profiler: kernel busy time against the GPU's idle, the gaps and the host work in them | a person | — |
 | [`pipe_counters.py`](pipe_counters.md) | the profiler's pipe and resource counters for one launch | the `counters` target | `--json` |
 | [`pipes.py`](pipes.md) | one counter set for any launch and its pricing per card: each pipe's cycles, the binding one | `lab.py`, `pipe_counters.py` | -- (a module) |
 | [`overlap_gate.py`](overlap_gate.md) | each kernel's perf rows against the largest of their floors (§28) | -- | exit 1 when red |
 | [`stall_census.py`](stall_census.md) | every warp-stall sample of one launch, by source line | the `census` target | `--json` |
-| [`pipe_timeline.py`](pipe_timeline.md) | the pipes' activity over one launch, measured on silicon | the `timeline` target | `--json`; a `pipe_timeline.scale` record under `--calibrate`, which it reads back as later runs' scale |
 | [`life_ranges.py`](life_ranges.md) | peak LIVE registers per source region, beside ptxas's allocation | the `registers` target | `--json` |
-| `region_ledger.py` | executed instructions and stall samples per COMPONENT, against `tools/budgets/` | a person, attributing a phase | `--json` |
-| `roofline.py` | the intra's wall time on one cell beside the device's own u8 IMMA ceiling — the fraction of the machine, not the wall time | the `roofline` target | `--json` |
+| `region_ledger.py` | executed instructions and stall samples per COMPONENT, against the kernel's budget file | a person, attributing a phase | `--json` |
 | [`budgets/`](budgets.md) | each kernel's instruction budget by class, per MMA (KERNEL_STANDARDS §29) | `region_ledger.py`, the lab | — |
 | [`bank_model.py`](bank_model.md) | the shared-memory wavefronts a warp instruction costs, from its lanes' byte addresses (§30) | a person, before a GPU run; the lab | — |
 | [`lab.py`](lab.md) | the lab: small SASS-gated CUDA experiments whose measurements become kernel rules ([`docs/lab/`](../../lab/README.md)) | a person | `measure/lab/results/` |
@@ -76,8 +68,7 @@ later run's scale.
 
 | tool | what it is | called by | writes |
 |---|---|---|---|
-| `sanitize_oracle.py` | the compute-sanitizer gate on the facts, intra, decode, producer and entmax oracle cells | the sanitizer lane, `//tests:sanitizer`, which passes it the toolkit's own compute-sanitizer | — |
-| `sanitize_cell.py` | one cell, one launch, no test framework — the racecheck lane's driver | `sanitize_oracle.py` | — |
+| `sanitize_oracle.py` | the compute-sanitizer gate on the facts, decode and entmax oracle cells | the sanitizer lane, `//tests:sanitizer`, which passes it the toolkit's own compute-sanitizer | — |
 | [`docrefs.py`](docrefs.md) | every citation a doc makes, pinned to the content it was read against | the commit gate | `docs/references.lock.json` |
 
 `tools/lint/` is its own family with its own page ([`lint.md`](lint.md)): the ratchets, the standards lint and their

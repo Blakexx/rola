@@ -11,22 +11,6 @@ runs on the first launch, reads the device the process is actually holding, and
 refuses if that architecture was never tabulated or if the driver's own numbers
 disagree with the row a compiled derivation was closed over.
 
-<a id="mma-quanta"></a>
-## `mma_quanta(device)`
-
-The device's MMA rates, quanta of 1/256 cycle a scheduler in `denseref::arch::Mma` order, from the binary's
-`kMmaRows` (`hardware.cuh`, generated from `hardware.json`): the row of the device's card's product (`card_of`, the
-one product match: [`select.md#slug`](select.md#slug)), else its architecture's defaults, else null (no rates tabulated). Resolved once a device a process.
-
-<a id="readout-f16"></a>
-## `readout_f16(device)`
-
-THE ACCUMULATION RULE the carry's readout and the intra share: fp16 where the device's fp32-accumulate MMA runs slower
-than its fp16-accumulate one by its `mma_quanta`, fp32 where they are equal or no rates are tabulated. It lives here
-rather than in either kernel because both must choose alike for one call (the inter and intra terms of one sum); each
-entry applies it when its caller passes no form, and `carry_readout_accumulate` reports it
-([`../carry/carry_api.md#carry-readout-accumulate`](../carry/carry_api.md#carry-readout-accumulate)).
-
 <a id="segment-tokens"></a>
 ## `segment_tokens(budget, state, per_token, batch, length, device)`
 

@@ -2,12 +2,6 @@
  "lint": "drift_guards",
  "findings": [
   {
-   "path": "csrc/rola/src/carry/carry.cu",
-   "message": "'carry_stamp_kernel' is a second body beside 'carry_kernel' in the same family",
-   "line_sha256": "f0a376ec6c2edcbd",
-   "count": 1
-  },
-  {
    "path": "csrc/rola/src/decode/decode_lattice.cuh",
    "message": "a device switch on 'kind' that is not a uniform_switch<Set>",
    "line_sha256": "6e3e44e259f5b70b",

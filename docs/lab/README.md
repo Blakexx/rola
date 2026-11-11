@@ -14,7 +14,5 @@ about the machine cites the experiment it rests on ([`docs/KERNEL_STANDARDS.md#s
 | [`vote_stash`](vote_stash.md) | experiment |
 | [`facts_block`](facts_block.md) | experiment |
 | [`facts_two`](facts_two.md) | experiment |
-| [`mma_k8`](mma_k8.md) | part harness |
 | [`issue_latency`](issue_latency.md) | experiment |
-| [`read_value`](read_value.md) | experiment |
 | [`drain`](drain.md) | experiment |

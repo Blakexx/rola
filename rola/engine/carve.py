@@ -215,14 +215,6 @@ def _planned(widths, read_sparse, write_sparse, d_v: int) -> Carve:
     return carve_
 
 
-def carve_at(widths, read_sparse, write_sparse, extents, channels: int, d_v: int) -> Carve:
-    """THE CARVE AT A GIVEN BOX: the declaration's sides at ``extents`` a level and ``channels``, refused as
-    :func:`check_carve` refuses (the gates' way to a box the planner does not pick)."""
-    carve_ = _build(tuple(widths), tuple(read_sparse), tuple(write_sparse), tuple(extents), int(channels))
-    check_carve(carve_, widths, read_sparse, write_sparse, d_v)
-    return carve_
-
-
 def check_carve(carve: Carve, widths, read_sparse, write_sparse, d_v: int) -> None:
     """Refuse a carve the declaration does not admit, naming what is wrong (the kernels refuse the same)."""
     _declared(widths, read_sparse, write_sparse, d_v)

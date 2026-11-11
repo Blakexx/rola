@@ -5,9 +5,11 @@
 
 #include <torch/headeronly/util/Exception.h>
 
+#include <cstdint>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "carry_selection.inc"
 #include "common/arm.cuh"
@@ -26,6 +28,8 @@ struct CarryArmSet {
 
   template <class Body>
   static int visit(const CarryKey& k, Body&& body) {
+    (void)k;
+    (void)body;
     int hits = 0;
 #define ROLA_ARM_VISIT(I, FR_, FF_, RR_, RF_, CH_, SS_)                                                       \
   if (k.fold_rows == (FR_) && k.fold_factors == (FF_) && k.read_rows == (RR_) && k.read_factors == (RF_) \
@@ -49,8 +53,18 @@ struct CarryArmSet {
     return out.empty() ? std::string("none") : out;
   }
 
+  //: THE BUILT SET AS ROWS, each an arm's key: the binary's own answer to what it carries.
+  static std::vector<std::vector<int64_t>> rows() {
+    std::vector<std::vector<int64_t>> out;
+#define ROLA_ARM_ROW(I, FR_, FF_, RR_, RF_, CH_, SS_) out.push_back({FR_, FF_, RR_, RF_, CH_, SS_});
+    ROLA_CARRY_ARM_SET_X(ROLA_ARM_ROW)
+#undef ROLA_ARM_ROW
+    return out;
+  }
+
   //: WHICH FIELD HAS NO MEMBER AT ALL -- see docs/internals/common/arm_switch.md#offending-field
   static std::string offending_field(const CarryKey& k) {
+    (void)k;
     bool seen[6] = {false, false, false, false, false, false};
 #define ROLA_ARM_FIELD(I, FR_, FF_, RR_, RF_, CH_, SS_) \
   seen[0] = seen[0] || k.fold_rows == (FR_);           \

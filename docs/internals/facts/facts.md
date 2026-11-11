@@ -6,8 +6,7 @@ level's exponents, and each side's lists in the carry's final form, in one launc
 the folds over them and why each is the grain it is — is [`liveness_contract.md`](liveness_contract.md), which this
 kernel does not restate and must not contradict; its host seam is [`facts_api.md`](facts_api.md).
 `rola.engine.facts.liveness.liveness_words` is the words' pure-torch MODEL, `rola.engine.facts.lists.final_lists` the
-lists', `list_exponents` in `tests/oracle/fold_reference.py` the exponents' definition, and
-`tests/integration/test_facts_pass.py` holds the kernel to all three.
+lists', and `tests/integration/test_facts_pass.py` holds the kernel to both.
 
 Vocabulary, defined here and used unqualified below: `D` = routing depth; `B_l` = level `l`'s PADDED width; `b_l` =
 its LOGICAL width, the rows' own; `L` = tokens in the call; `BH` = batch × heads; `rows = Σ_l B_l`; **word** = 32
@@ -62,7 +61,7 @@ level, which this pass does not build.
 ## The list groups: a unit's whole group or each half
 
 A side's LIST GROUP `G` (`FactsParams::list_group`, the call's: the digits of the side's list level that one box of
-the carry arm reads, `rola.ops.carry.lists_form`, [`plan.md`](../carry/ampere/plan.md#list-groups)) is the digits one union
+a carry arm reads, `rola.ops.carry.lists_form`) is the digits one union
 and its prefix rows span: 32, a unit's whole group, or 16, each half (`kListGroupMin`; `kUnitGroups` = 2 at most a
 unit); the host refuses any other. The unit stays a 32-digit group -- its load, vote, words and tile unions are the
 liveness contract's at every `G` -- and at 16 it ranks two unions, list group `q` its digits `16q .. 16q + 15`, each
@@ -216,16 +215,15 @@ them, row `l` the boundaries of lists `< l` summed) modulo 2^16, beside the grou
 planner's counts). Any chunk of the union whose bounds are multiples of 64 finds each list's run and its place among the
 lists' runs by four loads, each a difference of two columns: a chunk's entries fit in shared memory, fewer than 2^16, so
 the differences are exact although a union of grouped queries' rows passes 16 bits. A scan of the runs per chunk instead
-cost the window 4% (2026-10-16); no chunk size of the carry's reaches this pass (`carry/carry.cuh` `kListBound`; the
-carry plans its chunks per window, `docs/internals/carry/carry.md#lists`).
+cost the window 4% (2026-10-16); no chunk size of a consumer's reaches this pass (`kListBound`: a
+consumer plans its chunks per window).
 
 An entry is 8 bytes, the carry's `uint2`:
 - READ: the slot's pool row offset in the union in 16-byte chunks, the row's swizzle folded in
   (`slot × row / 16 + chunk0`, `chunk0` the carry's `pool_chunk` of chunk 0: an 8-chunk row XORs by the residue, a row
   of an odd number of 64-byte quarters by the residue's high bits), its ROW (`512 j + t`, the token's window place `t`
   ungrouped: the readout looks up the token's scale byte by it); the coefficient `f16(byte / 256)`, 0. A chunk starting
-  at a multiple of 64 takes the offset back by its first slot's, modulo 2^16, and its slot from the row
-  (`docs/internals/carry/ampere/readout.md#chunk`): the swizzle depends on a slot's low bits only, and a chunk's own span is
+  at a multiple of 64 takes the offset back by its first slot's, modulo 2^16, and its slot from the row: the swizzle depends on a slot's low bits only, and a chunk's own span is
   far inside 16 bits.
 - WRITE: the slot, 0; `c_v = f16(fp32(b F) 2^(4 - E_v))`, `c_m = f16(fp32(b m) 2^(4 - E_m))`, `E = max(K, -123)` the
   list's exponent.
@@ -284,7 +282,7 @@ exponents, the factor products and
 gains -- are 398 µs at k 4 and 455 µs at k 16 at the lab's flat read (854 GB/s); the line was set at 516 and 665 µs
 from the colored lists' larger outputs and stands.
 
-MEASURED (`measure/harness/bench_facts_block.py`, RTX 3080 Ti at its boost clock, medians, 2026-10-14):
+MEASURED (the lab `facts_block`, RTX 3080 Ti at its boost clock, medians, 2026-10-14):
 
 | | k 4 | k 16 |
 |---|---|---|

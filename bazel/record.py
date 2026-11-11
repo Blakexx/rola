@@ -32,7 +32,6 @@ def main() -> int:
     ap.add_argument("--archs", required=True)
     ap.add_argument("--carry-arms", default="")
     ap.add_argument("--decode-arms", default="")
-    ap.add_argument("--carry-parts", default="all")
     ap.add_argument("--torch", required=True, help="the environment's torch version")
     ap.add_argument("--torch-cuda", required=True, help="the CUDA release the environment's torch was built for")
     ap.add_argument("--cxx11-abi", required=True, choices=("True", "False"))
@@ -49,14 +48,13 @@ def main() -> int:
     print(f"rule 1 OK  toolchain {toolchain.name}, torch CUDA {a.torch_cuda}, ptxas: {ptxas}")
     carry = gen_shards.family_arms(gen_shards.CARRY, a.carry_arms, "--//:carry_arms")
     decode = gen_shards.family_arms(gen_shards.DECODE, a.decode_arms, "--//:decode_arms")
-    parts, trivial = gen_shards.carry_parts_spec(a.carry_parts, "--//:carry_parts")
     cutlass = build_record.vendored_pin(ROOT / "csrc" / "third_party" / "cutlass")
     shards = gen_shards.check_generated()
     if shards:
         raise SystemExit("\n".join(shards))
     a.out.write_text(build_record.render(build_record.config(
         version=build_record.version(ROOT / "rola" / "__init__.py"), archs=archs,
-        iteration=gen_shards.is_iteration(carry, decode, parts, trivial, archs, toolchain.archs()),
+        iteration=gen_shards.is_iteration(carry, decode, archs, toolchain.archs()),
         toolchain=toolchain.name,
         ptxas=ptxas, torch=a.torch, cxx11_abi=a.cxx11_abi == "True", manifest=manifest,
         cutlass_pin=cutlass)))

@@ -23,12 +23,12 @@ silently.
 
 ```bash
 bazel run //:library                                   # every ratified architecture and arm, into rola_cu13/
-bazel run //:library --//:archs=86 --//:carry_arms=3   # an iteration build (below)
+bazel run //:library --//:archs=86 --//:decode_arms=3  # an iteration build (below)
 bazel run //:wheels                                    # the two wheels of a clean, ratified commit (below)
 ```
 
-A build's PARAMETERS are the graph's settings -- `--//:archs`, `--//:carry_arms`, `--//:decode_arms`,
-`--//:carry_parts` ([`build-graph.md`](build-graph.md#compile)) -- and everything about the MACHINE is the dev config.
+A build's PARAMETERS are the graph's settings -- `--//:archs`, `--//:carry_arms`,
+`--//:decode_arms` ([`build-graph.md`](build-graph.md#compile)) -- and everything about the MACHINE is the dev config.
 `host.nvcc_threads` is `nvcc --threads`, default 2, the number of `-gencode` targets: beyond the target count it buys
 nothing and multiplies the resident set, since the two parallelism axes multiply. Every build runs under the
 machine-wide host budget, which the front door takes for it ([`build-graph.md`](build-graph.md#front-door)); any other
@@ -109,17 +109,13 @@ takes them from its own run, never from a build. Measured when a decode subset w
 inherited it and wrote a manifest of 393 entries carrying ONE decode arm, while the library carried all sixteen --
 and it PASSED. A gate that certifies numbers no shipped binary has is worse than no gate.
 
-The same rule governs `--//:archs=86`: iterate single-arch, gate and measure on the full both-arch build.
-`--//:carry_parts` <a id="carry-parts"></a> builds some of the carry kernel's parts (`readout.stream`, `readout.loads`,
-`readout.drain`, `fold.pool`, `fold.ring`, `fold.loads`) REAL and the rest as STUBS that keep their HMMAs and drop
-their other work. With
-every part real the arm's instructions are identical to a build without the switch. Never shipped.
+The same rule governs `--//:archs`: iterate on one architecture, gate and measure on the build of every ratified one.
 
 ## <a id="compile-ledger"></a>Why the arm units are torch-free
 
 Instantiation is the dominant build resource, and with per-arm units it is not the kernels that dominate but the
 tensor library's headers: a translation unit that includes them parses longer, and holds a larger resident set, than an
-arm's own codegen. So the carry family's per-arm ABI (`csrc/rola/src/carry/carry_arm_abi.cuh`) speaks POINTERS and not
+arm's own codegen. So a family's per-arm ABI speaks POINTERS and not
 tensors, and only the dispatch unit includes the torch seam: a tensor-typed seam would re-pay the headers once per arm
 and pin every arm unit's resident set at theirs. The ast-grep rule `tools/lint/rules/torch_include_in_arm_tu.yml`
 refuses a torch header in a per-arm unit. MEASURED per `cicc` (sm_86, `--threads=1`):

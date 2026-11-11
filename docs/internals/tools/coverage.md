@@ -14,7 +14,7 @@ met:
 |---|---|
 | `oracle` | a test grading the kernel against a reference per slot -- an fp64 oracle, or a bit-exact model of a discrete function (the liveness pass) |
 | `sanitizer` | a row of `tools/sanitize_oracle.py`'s family table, present, whose test launches the kernel |
-| `budget` | a budget line under `tools/budgets/` (KERNEL_STANDARDS §19) |
+| `budget` | a budget line in the kernel's budget file (KERNEL_STANDARDS §19) |
 | `phases` | a phase ledger the kernel books, and the test or tool that reads it (§22) |
 | `ratified` | the committed manifests record it (`"manifest"`, checked per arch), or owed until the next milestone ratify (§16) |
 

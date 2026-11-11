@@ -16,7 +16,6 @@
 #include "common/atoms/barrier.cuh"
 #include "common/atoms/warp.cuh"
 #include "common/atoms/clock.cuh"
-#include "common/atoms/mma.cuh"
 #include "common/atoms/math.cuh"
 #include "common/atoms/reduce.cuh"
 #include "common/atoms/memory.cuh"

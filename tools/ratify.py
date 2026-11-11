@@ -173,8 +173,7 @@ def graph_parameters() -> tuple[tuple[str, ...], bool]:
     archs = tuple(x for x in p["archs"].split(",") if x)
     carry = gen_shards.family_arms(gen_shards.CARRY, p["carry_arms"], "--//:carry_arms")
     decode = gen_shards.family_arms(gen_shards.DECODE, p["decode_arms"], "--//:decode_arms")
-    parts, trivial = gen_shards.carry_parts_spec(p["carry_parts"], "--//:carry_parts")
-    return archs, gen_shards.is_iteration(carry, decode, parts, trivial, archs, toolchain().archs())
+    return archs, gen_shards.is_iteration(carry, decode, archs, toolchain().archs())
 
 
 MANIFEST_DIR = Path(__file__).resolve().parent / "manifests"
@@ -933,8 +932,6 @@ def measure_units(arches, objdir: str, sources: list[Path], arms=None) -> tuple[
     with host.file_lock("carry_selection_header"):
         (gen_shards.GENERATED_DIR / gen_shards.CARRY_SELECTION_INC).write_text(
             gen_shards.carry_selection_header(want_arms))
-        (gen_shards.GENERATED_DIR / gen_shards.CARRY_PARTS_INC).write_text(
-            gen_shards.carry_parts_header(gen_shards.CARRY_PARTS, ()))
         (gen_shards.GENERATED_DIR / gen_shards.DECODE.header).write_text(
             gen_shards.decode_selection_header(range(len(gen_shards.DECODE_ARMS))))
         gen_shards.write_builds(arches)

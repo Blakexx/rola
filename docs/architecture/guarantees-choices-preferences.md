@@ -44,9 +44,8 @@ same week.
 
 **Numerics**
 
-- **State accumulators are fp32 or exact integer** — the fold's state, the mass, the scale pass's write masses, decay
-  dials. The readout's partials are an output's: f16 pairs at the token's scale byte (or fp32), bounded by the scale
-  pass. → [precision.md](precision.md).
+- **State accumulators are fp32 or exact integer** — the fold's state, the mass, the readout's and the den's sums, the output's sum
+  across CTAs, decay dials. → [precision.md](precision.md).
 - **The amplitude is never logged.** The direct staged-factor lowering is required,
   not preferred: a product of factors is formed from the factors, never through a
   log-space sum, in every kernel.
@@ -73,13 +72,10 @@ so a launch that fails part way through leaves that state part advanced rather t
 it was. Recovering a pre-call state is `clone()` before the call
 ([`../internals/state.md`](../internals/state.md#the-dense-continuation)). The output
 `y` is **not** bit-reproducible run to run: the carry's, the intra's and the decode step's
-fan-ins add partials in arrival order (the carry's f16 pairs or fp32, the others' fp32), and
-bitwise run-to-run reproducibility is not worth a
+fan-ins add fp32 partials in arrival order, and bitwise run-to-run reproducibility is not worth a
 cost (Blake, 2026-09-30). The **state** *is* byte-equal and is gated as such; every `y`
-comparison is held to a reassociation bound: the fp32 fan-ins'
-([`decode.md#determinism`](../internals/decode/decode.md#determinism)) and the carry's f16 sum's,
-which grows with the CTAs adding into a slot
-([`carry_api.md#carry-reduce`](../internals/carry/carry_api.md#carry-reduce)).
+comparison is held to the fp32 fan-ins' reassociation bound
+([`decode.md#determinism`](../internals/decode/decode.md#determinism)).
 
 ## 2. Choices — measured, and revisable
 
@@ -88,9 +84,6 @@ beat.
 
 | Choice | The measurement | Where it could move |
 |---|---|---|
-| **Every input a carry chunk reads lands in its buffer first** (its rows, its lists' entries, its zeroed panel: no inner loop reads global memory) | the readout fell from 6.3K to 5.4K cycles a warp-window and the fold from 4.6K to 3.2K at nl64k-alt-k4 against entries read in place (2026-10-14, [`schedule.md#buffers`](../internals/carry/ampere/schedule.md#buffers)) | A card whose global latency the fills cannot hide behind a chunk's work. |
-| **Each window's plan is a rule, not a search: the largest chunks that fit, the image whole where it fits, entries in two alternating slots with the next filled while one computes wherever the two fit** (`rule_plan`, `window_plan_kernel`) | at nl64k-alt-k4 on sm_86 the rule's form timed fastest of every named form (3.22-3.26 ms a call), an extra fold chunk ~500 us slower, a cost-model search ranked them inverted at 661 us a call; evaluated once a window by the plan pass rather than by every warp at every step (~3,500 cycles a warp-window, 2026-10-16); every form gated per slot on its cell (`tests/oracle/carry_fixtures.py`'s `FORM_CELLS`) ([`schedule.md#planner`](../internals/carry/ampere/schedule.md#planner)) | A component whose chunks cost little apart (an interleaved fold or readout), where smaller chunks that land beside their partner beat one exposed fill. |
-| **The producer's entmax threshold is Newton from the left, not a sort** | a 256-wide row at one decoded token: sorted 13.8K cycles, twelve-round multisection 10K, Newton 2.7K ([`produce_kernel.md#threshold`](../internals/produce/ampere/produce_kernel.md#threshold)) | Prefill, where a CTA holds many live rows and the sort's straight-line network is no longer run once from a cold instruction cache. |
 
 **A choice is only as good as the regime it was measured in**, and this record
 contains its own cautionary tale: perf claims that scale with routing sparsity

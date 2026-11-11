@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
-"""The compute-sanitizer NAMED gate on the facts, carry, intra, decode, produce and entmax oracle cells.
+"""The compute-sanitizer NAMED gate on the facts, decode and entmax oracle cells.
 
 `docs/testing.md`'s "sanitizer lane" section records the shape (a SCHEDULED lane
 over a named subset, never a PR gate -- the tools cost one to two orders of
@@ -14,7 +14,7 @@ This is that measurement, promoted from an ad-hoc invocation (recorded once, by
 hand, in FINDINGS `## PROBE-K35` under "memcheck on paging") to a script anyone
 can run and CI can schedule: `racecheck`/`synccheck`/`initcheck` (memcheck already
 ran, ad hoc, on paging -- K39 card) against ONE named oracle cell per family
-(facts, carry, intra, decode, produce, entmax), each run as its own
+(facts, decode, entmax), each run as its own
 `compute-sanitizer`-wrapped pytest process so a hang or an error in one tool
 cannot block another, under the GPU lock every campaign shares.
 
@@ -62,10 +62,6 @@ class Family:
     test: str
     kernel: str
     present: bool
-    #: RACECHECK'S OWN DRIVER, when pytest's own footprint is what the tool cannot afford:
-    #: an argv suffix run in place of the pytest command, printing `sanitize_cell:` and the
-    #: word LAUNCHED. -- see tools/sanitize_cell.py
-    racecheck_driver: tuple = ()
 
 
 #: one cell per family, chosen for being ALREADY a named, gated test -- this script
@@ -88,68 +84,24 @@ class Family:
 #: `-k`-free ids: each row names ONE parametrization so a pair is one launch, not a
 #: whole file serialized under the heaviest instrumentation this repo has.
 _FAMILIES = {
-    #: THE FACTS PASS is the one bit-exact device fact the whole carry line rests on: the vote's transposes, the
+    #: THE FACTS PASS is the one bit-exact device fact every consumer of the lists rests on: the vote's transposes, the
     #: union's ranks and the passes' bounds, the lists' walks and their pads, on both sides' lists at two levels of
     #: unequal width and a tail word.
     "facts": Family(
         test="tests/integration/test_facts_pass.py::"
              "test_the_lists_are_the_model_bit_for_bit[list_groups1-alternating-widths3-33]",
         kernel="rola::facts::rola_facts_forward", present=True),
-    #: THE CARRY on the facts pass's final-form lists: the readout ring and the image's parts, the fold ring, the
-    #: staged heads, the gap slots' zero-filled rows -- one launch of the even arm over four windows.
-    "carry": Family(
-        test="tests/oracle/test_carry_fold.py::test_the_fold_is_the_reference_per_slot[0-0]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE CARRY AT THE 64-CHANNEL BOX, one box a batch-head over two windows: one token group of eight channel groups,
-    #: the den image's 8-group layout, the 128-byte panel rows, the 160-byte write rows and the 16-digit list group.
-    "carry64": Family(
-        test="tests/oracle/test_carry_readout.py::test_one_box_reads_out_at_the_64_channel_box[f16]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE CARRY AT A DENSE WRITE SIDE'S 64-CHANNEL BOX, one box a batch-head over two windows: two fold lists a warp,
-    #: the dense steps' one coefficient word, the den's quads through shared memory, the 224-byte write rows.
-    "carry64-dense": Family(
-        test="tests/oracle/test_carry_readout.py::test_one_box_of_a_dense_write_side_reads_out[f16]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE CARRY AT THE SAME SPLIT'S 64-CHANNEL BOX, one box a batch-head over two windows: a listed fold of two lists a
-    #: warp, both sides' 16-digit list groups, the 192-byte write rows.
-    "carry64-same": Family(
-        test="tests/oracle/test_carry_readout.py::test_one_box_of_the_same_split_reads_out[f16]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE CARRY AT A DENSE READ SIDE'S BOX, one box a batch-head over two windows: the dense factors' four lanes a token,
-    #: the nest's transit groups, the den's tiles over the warps, the 96-byte read rows and their exit words.
-    "carry-dense": Family(
-        test="tests/oracle/test_carry_readout.py::test_one_box_of_a_dense_read_side_reads_out[f16]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE CARRY OVER A WHOLE CALL on cohort routing, eight windows: the plan's chunked unions and the readout's
-    #: gathers where the lists cluster -- the cell the oracle's whole-call gate runs (`test_carry_vs_oracle.py`).
+    #: THE CARRY OVER A WHOLE CALL, absent: no carry kernel is built on this line, so the oracle's whole-call cell
+    #: refuses by name, and the row flips when a schedule lands.
     "carry_call": Family(
         test="tests/oracle/test_carry_vs_oracle.py::"
-             "test_the_inter_numerator_is_the_fp64_reference[flagship-cohort-k4-L4096-f16]",
-        kernel="rola::carry::carry_forward", present=True),
-    #: THE INTRA KERNEL alone on the bundle: the stage buffers' full barriers and release counts, the reader's parts,
-    #: the value tile's hand-off and the deposit's staging, every level form at fp16 accumulation -- one launch each.
-    "intra": Family(
-        test="tests/integration/test_intra_kernel.py::"
-             "test_every_level_form_is_the_bundle_arithmetic[write_dense0-read_dense0-fp16]",
-        kernel="rola::intra::rola_intra_forward", present=True,
-        racecheck_driver=("tools/sanitize_cell.py", "--kernel", "intra", "--cell", "flagship-alt-k4")),
-    #: THE INTRA ON A PARTIAL CALL: its last window ending inside a tile, every row past the end bounded -- the
-    #: zero-filled copies read nothing past the call's rows, the deposit writes none.
-    "intra-partial": Family(
-        test="tests/integration/test_intra_kernel.py::"
-             "test_a_partial_last_window_is_the_bundle_arithmetic[a partial tile-fp16]",
-        kernel="rola::intra::rola_intra_forward", present=True),
+             "test_the_inter_numerator_is_the_fp64_reference[flagship-cohort-k4-L4096]",
+        kernel="rola::carry::carry_forward", present=False),
     #: THE DECODE STEP on the whole resident grid: the work queue's visits, claims and head switches.
     "decode": Family(
         test="tests/oracle/test_decode_vs_oracle.py::"
              "test_g1_the_state_is_byte_reproducible_against_itself[widths0-64]",
         kernel="rola::decode::rola_decode_forward", present=True),
-    #: THE FUSED PRODUCER on a union routing: the projection's burst, the solve and bundle rows under uniform passes,
-    #: the write gain's pass, the value digits -- every component, one launch.
-    "produce": Family(
-        test="tests/integration/test_produce_kernel.py::"
-             "test_the_bundle_matches_the_reference_on_the_kernels_logits[union-2-5-True-True]",
-        kernel="rola::produce::rola_produce_forward", present=True),
     #: THE PRODUCER'S SOLVES: their own block-wide reductions, on the routing path.
     "entmax": Family(
         test="tests/oracle/test_entmax_cuda_gates.py::"
@@ -278,10 +230,7 @@ def adjudicate(decl: AssertedRaces, out: str) -> tuple[bool, str]:
 
 def run_one(sanitizer: str, python: str, family: str, tool: str, timeout: int) -> tuple[bool, str]:
     row = _FAMILIES[family]
-    driver = tool == "racecheck" and row.racecheck_driver
-    payload = [python, *row.racecheck_driver] if driver else [
-        python, "-m", "pytest", row.test, "-x", "-q"]
-    cmd = [sanitizer, f"--tool={tool}", "--error-exitcode=1", *payload]
+    cmd = [sanitizer, f"--tool={tool}", "--error-exitcode=1", python, "-m", "pytest", row.test, "-x", "-q"]
     #: ITS OWN SESSION, killed whole on a timeout: compute-sanitizer runs the target under a subreaper, so killing the
     #: direct child left the target running on the GPU under the next pair's lock.
     proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -297,8 +246,7 @@ def run_one(sanitizer: str, python: str, family: str, tool: str, timeout: int) -
     #: A SKIPPED CELL EXITS ZERO AND READS AS CLEAN (the carved family once reported
     #: CLEAN on a binary that did not carry its TEST arm, so the kernel never ran).
     #: The tool refuses the vacuous pass rather than reporting coverage it does not have.
-    want = r"sanitize_cell:.*LAUNCHED" if driver else r"\b[1-9]\d* passed"
-    if ok and not re.search(want, out):
+    if ok and not re.search(r"\b[1-9]\d* passed", out):
         return False, ("VACUOUS: the wrapped pytest exited 0 without passing a test (a skip "
                        "or an empty selection). The kernel never ran, so this pair measures "
                        "nothing -- build the cell's arm (`bazel run //:library`, every arm) and re-run.\n"

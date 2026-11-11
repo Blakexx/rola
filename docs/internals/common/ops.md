@@ -26,7 +26,6 @@ Each concern of the operations is an atom header under `common/atoms/`, its body
 - [`atoms/barrier.cuh`](atoms/barrier.md): the CTA's and named rendezvous, the mbarrier's phases, the warp's edge and the publish fence.
 - [`atoms/warp.cuh`](atoms/warp.md): lane votes and their readings, the warp-uniform index, the lane prefix and broadcast, and the controls ptxas cannot see through.
 - [`atoms/clock.cuh`](atoms/clock.md): the SM's cycle counter for the phase ledgers.
-- [`atoms/mma.cuh`](atoms/mma.md): the MMA's shape and unit, its fragment loads and the register transpose, and the bf16, f16 and int8 atoms.
 - [`atoms/math.cuh`](atoms/math.md): the special-function unit's roots and powers, byte and halfword selects and packs, the f16 and bf16 pair arithmetic.
 - [`atoms/reduce.cuh`](atoms/reduce.md): contributions into an accumulator others also add into, in global or shared memory.
 - [`atoms/memory.cuh`](atoms/memory.md): shared and global accesses addressed rather than indexed, plain and predicated in the instruction.

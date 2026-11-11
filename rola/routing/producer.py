@@ -50,8 +50,9 @@ def dense_routing(width: int) -> IndependentRouting:
     return IndependentRouting(width=width, read=SoftmaxActivation(), write=SoftmaxActivation())
 
 
-def union_routing(width: int, alpha: float = 1.5) -> UnionRouting:
-    """One exact entmax solve determining a shared support, split across duties."""
+def union_routing(width: int, alpha: float = 1.5) -> UnionRouting:  #: reserved: the solve's order (2.0: sparsemax)
+    """One exact entmax solve determining a shared support, split across duties. ``alpha`` is reserved: the solve's
+    order, 1.5 or 2.0 (sparsemax), a declaration's to choose."""
     return UnionRouting(width=width, alpha=alpha)
 
 

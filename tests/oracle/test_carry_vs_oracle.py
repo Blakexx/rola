@@ -2,20 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """THE CARRY AGAINST THE fp64 RECURRENCE: the inter term of a whole call, per slot, on every central oracle cell.
 
-THE GATE IS THE TRUTH, NOT A DECLARED ARITHMETIC. The components' gates (`test_carry_readout.py`, `test_carry_fold.py`)
-hold the kernel to references of its own rounding; this file holds it to `tests/oracle/reference.py`'s inter term on
-the bundle's own dequantized operands, so a shared misreading of the math by a kernel and its fidelity reference has
-nowhere to hide. ``num`` is compared in the recurrence's units (`readout_reference.num_in_truth`: the per-token factor
-the epilogue cancels against ``den``), against each slot's envelope (the same reference on ``|v|``), at both of the
-cross-CTA sum's dtypes (`rola.ops.carry.reduce_dtype_for`): f16 pairs at the den pass's scale (``_units`` stands in
-for the pass: any bound on the token's output is a valid range) and fp32.
+THE GATE IS THE TRUTH, NOT A DECLARED ARITHMETIC: this file holds the kernel to `tests/oracle/reference.py`'s inter
+term on the bundle's own dequantized operands, so a shared misreading of the math by a kernel and a fidelity reference
+has nowhere to hide. ``num`` and ``den`` are compared in the recurrence's units -- the kernel's fp32 sums leave each
+token's reader factor ``r`` out (`rola.ops.prefill`), so each is multiplied by it (:func:`in_truth`) -- against each
+slot's envelope (the same reference on ``|v|``).
 
-RED BY PLAN (ruling 2026-09-29): a cell whose carve the carry has no arm for, whose depth is not two, whose length is
-off the window, or whose entry state the carry cannot yet take (the segment boundary is unbuilt) fails, by name. The carry's ``den`` and its state reach the oracle through the op
-(`test_prefill_vs_oracle.py`): the den pass and the state's hand-off write them.
+RED BY PLAN: no carry kernel is built on this line, so every launch here fails by name
+(`rola.ops._ext.KernelNotBuilt`) until a hopper schedule lands; the decomposition test runs no kernel and holds.
 
-Symbols: ``W`` the window (`rola.ops.window.window_of`, the device's), ``L`` tokens, ``C`` value channels, ``u(t)`` a token's unit byte
-(the f16 sum's scale).
+Symbols: ``W`` the window (`rola.ops.window.window_of`, the device's), ``L`` tokens, ``C`` value channels.
 """
 from __future__ import annotations
 
@@ -25,21 +21,13 @@ import pytest
 import torch
 
 from measure.cells import carry_cells, realize
-from measure.subjects import carry_operands
+from measure.subjects import bundle_of, cell_carve
 from rola.ops import carry as carry_ops
+from rola.ops import facts as facts_ops
+from rola.ops.prefill import reader_factor
 from rola.ops.window import window_of
 from tests.oracle import reference
 from tests.oracle.fixtures import assert_planted_errors_fail, assert_slots_close, relative, with_gain
-from tests.oracle.fold_reference import unit_scale
-from tests.oracle.readout_reference import (
-    UNIT_HEADROOM,
-    UNIT_LEVELS,
-    UNIT_NONE,
-    _read_rows,
-    fold_level,
-    num_in_truth,
-    truth_scale,
-)
 from tests.oracle.tolerances import CARRY_DEN, CARRY_NUM
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
@@ -54,89 +42,58 @@ def _entry(spec, routes):
     return None if entry is None else entry.double().reshape(routes.batch, routes.write_heads, *entry.shape[-2:])
 
 
-def _units(spec, routes, values):
-    """``[BH, windows x W]`` int8: each token's unit byte as the den pass sizes it (`readout_reference.units`' rule), from the
-    TRUE state before its window -- so the gate leans on no fidelity reference, and a partial window is a window."""
-    level_s = routes.level_s
-    x, a = _read_rows(routes, level_s)
-    read, write = routes.dequantized()
-    state = reference.inter_reference(tuple(r.double() for r in read), tuple(w.double() for w in write), values.dequantized().double(), routes.topology.widths, window_of(), state_in=_entry(spec, routes), states=True)
-    B, T, H, _ = x.shape
-    widths, kappa = routes.topology.widths, unit_scale(routes, fold_level(routes, level_s))
-    num = torch.zeros(B, T, H, dtype=torch.float64, device=x.device)
-    for w, before in enumerate(state):
-        before = before.repeat_interleave(routes.group, 1)                         # a query head its write head's
-        top = before[..., :-1].abs().amax(-1).reshape(B, H, *widths) / kappa
-        top = top if level_s == 0 else top.transpose(-1, -2)                          # [B, H, B_S, B_R]
-        sl = slice(w * window_of(), (w + 1) * window_of())
-        num[:, sl] = torch.einsum("bthd,bthr,bhdr->bth", x[:, sl], a[:, sl], top)
-    u = torch.where(num > 0, torch.ceil(torch.log2(UNIT_HEADROOM * num.clamp_min(1e-300))) - UNIT_LEVELS,
-                    torch.full_like(num, UNIT_NONE))
-    #: the den pass writes the window grid whole: a partial window's tail reads nothing
-    grid = torch.full((B * H, len(state) * window_of()), UNIT_NONE, dtype=torch.int8, device=x.device)
-    grid[:, :T] = u.clamp(-128, 127).to(torch.int8).permute(0, 2, 1).reshape(B * H, T)
-    return grid
-
-
-def run(spec, reduce_dtype=None, with_den=False):
-    """``(routes, values, unit, num)`` (and ``den`` where asked): one carry launch over the cell at ``reduce_dtype``
-    (None: the auto rule's), the f16 sum's scale bytes a bound from the true state (:func:`_units`)."""
-    routes, values, facts, carve, zero = carry_operands(spec)
-    if routes.topology.D != 2:
-        #: the launch first, so the carry's own refusal or fault is what the cell reports where it has one
-        carry_ops.carry(routes, values, facts, carve, zero)
-        torch.cuda.synchronize()
-        raise NotImplementedError(f"{spec.name}: the carry's level S is defined at depth two (`carry_level_s`)")
-    unit = _units(spec, routes, values)
-    num, den, _, _ = carry_ops.carry(routes, values, facts, carve, unit, reduce_dtype=reduce_dtype)
+def run(spec):
+    """``(routes, values, num, den)``: one carry launch over the cell, from its bundle, the facts pass's lists in the
+    form of the arm its carve selects, and the carve."""
+    routes, values, layout, statics = bundle_of(spec, realize(spec))
+    carve = cell_carve(spec)
+    facts = facts_ops.facts(routes, values, layout, *statics, carry_ops.lists_form(carry_ops.arm_key(carve)))
+    num, den = carry_ops.carry(routes, values, facts, carve)[:2]
     torch.cuda.synchronize()
-    return (routes, values, unit, num, den) if with_den else (routes, values, unit, num)
+    return routes, values, num, den
 
 
-def den_in_truth(den: torch.Tensor, routes) -> torch.Tensor:
-    """``[B, T, H]`` fp64: the carry's ``den`` (each CTA's at its tokens' units already) times the per-token factor
-    the epilogue cancels against ``num`` (`readout_reference.truth_scale` at unit 0)."""
+def in_truth(x: torch.Tensor, routes) -> torch.Tensor:
+    """The carry's ``num`` ``[BH, L, C]`` or ``den`` ``[BH, L]`` in the recurrence's units, ``[B, T, H(, C)]`` fp64:
+    times each token's reader factor, which the kernels leave out of both sums."""
     B, T, H = routes.batch, routes.tokens, routes.heads
-    got = den[:, :T].double().reshape(B, H, T).permute(0, 2, 1)
-    return got * truth_scale(routes, torch.zeros((B * H, T), dtype=torch.int8, device=den.device), routes.level_s)
+    r = reader_factor(routes).double()
+    got = x[:, :T].double() * (r if x.dim() == 2 else r.unsqueeze(-1))
+    return got.reshape(B, H, T, *x.shape[2:]).transpose(1, 2)
 
 
 def ref(spec, routes, values, magnitudes=False):
-    """The inter term's numerator in fp64 from the bundle's own operands and the cell's entry state; with
+    """The inter term's ``(num, den)`` in fp64 from the bundle's own operands and the cell's entry state; with
     ``magnitudes``, the same on ``|v|`` and ``|entry|``: each slot's envelope."""
     read, write = routes.dequantized()
     v = values.dequantized().double()
     state = _entry(spec, routes)
     if magnitudes:
         v, state = v.abs(), None if state is None else state.abs()
-    num, _den, _state = reference.inter_reference(tuple(x.double() for x in read), tuple(x.double() for x in write), v, routes.topology.widths, window_of(), state_in=state)
-    return num
+    num, den, _state = reference.inter_reference(tuple(x.double() for x in read), tuple(x.double() for x in write), v,
+                                                 routes.topology.widths, window_of(), state_in=state)
+    return num, den
 
 
-def check(spec, routes, values, unit, num):
+def check(spec, routes, values, num, _den):
     """``num`` in the recurrence's units, per slot against the inter term's numerator and its envelope."""
-    assert_slots_close(num_in_truth(num, routes, unit), ref(spec, routes, values), output=CARRY_NUM,
-                       envelope=ref(spec, routes, values, magnitudes=True), what=f"{spec.name} num")
+    assert_slots_close(in_truth(num, routes), ref(spec, routes, values)[0], output=CARRY_NUM,
+                       envelope=ref(spec, routes, values, magnitudes=True)[0], what=f"{spec.name} num")
 
 
-@pytest.mark.parametrize("reduce_dtype", [torch.float16, torch.float32], ids=["f16", "fp32"])
 @pytest.mark.parametrize("spec", ORACLE_CELLS, ids=IDS)
-def test_the_inter_numerator_is_the_fp64_reference(spec, reduce_dtype):
+def test_the_inter_numerator_is_the_fp64_reference(spec):
     """Every token and channel of ``num`` over the whole call, in the recurrence's units, against the inter term's
-    numerator: the state before each window read by the window's tokens, nothing within the window -- at each of the
-    cross-CTA sum's dtypes."""
-    check(spec, *run(spec, reduce_dtype))
+    numerator: the state before each window read by the window's tokens, nothing within the window."""
+    check(spec, *run(spec))
 
 
 @pytest.mark.parametrize("spec", ORACLE_CELLS, ids=IDS)
 def test_the_inter_denominator_is_the_fp64_reference(spec):
-    """Every token's ``den`` over the whole call -- the v+1 channel the carry reads out beside ``num``
-    (`docs/internals/carry/ampere/handoff.md#den`) -- in the recurrence's units, against the inter term's denominator."""
-    from tests.oracle.test_den_vs_oracle import refs
-
-    routes, values, _unit, _num, den = run(spec, with_den=True)
-    den_ref, _ = refs(routes, values)
-    assert_slots_close(den_in_truth(den, routes), den_ref, output=CARRY_DEN, envelope=den_ref, what=f"{spec.name} den")
+    """Every token's ``den`` over the whole call, in the recurrence's units, against the inter term's denominator."""
+    routes, values, _num, den = run(spec)
+    den_ref = ref(spec, routes, values)[1]
+    assert_slots_close(in_truth(den, routes), den_ref, output=CARRY_DEN, envelope=den_ref, what=f"{spec.name} den")
 
 
 def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
@@ -145,9 +102,9 @@ def test_the_rule_fails_planted_errors_on_the_kernels_own_output():
     #: two windows at least, at the card's W: a one-window call's inter term is identically zero, nothing to plant
     base = next(c for c in ORACLE_CELLS if c.name == "flagship-alt-k4")
     spec = dataclasses.replace(base, tokens=max(base.tokens, 2 * window_of()))
-    routes, values, unit, num = run(spec)
-    assert_planted_errors_fail(num_in_truth(num, routes, unit), ref(spec, routes, values), output=CARRY_NUM,
-                               envelope=ref(spec, routes, values, magnitudes=True), what=f"{spec.name} num")
+    routes, values, num, _den = run(spec)
+    assert_planted_errors_fail(in_truth(num, routes), ref(spec, routes, values)[0], output=CARRY_NUM,
+                               envelope=ref(spec, routes, values, magnitudes=True)[0], what=f"{spec.name} num")
 
 
 def test_the_decomposition_is_exact():

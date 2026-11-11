@@ -76,10 +76,9 @@ of its name and runs the product's variant, or its architecture's variant 0 when
   carries every tabulated architecture's `Caps` row, `tabulated(cc)` and `caps_of(cc)`, and every build's
   `traits_of(Build)`; [`arch_caps.cuh`](arch_caps.md) includes it and names the compiling target's row, and
   [`arch_runtime.cu`](arch_runtime.md) checks the row against the driver.
-- RUN TIME reads rates: the readout's accumulation compares the device's fp16- and fp32-accumulate MMA rates on the
-  host (`readout_f16`) -- the binary carries every architecture's and product's MMA rates (`kMmaRows`), found by the
-  device's name ([`arch_runtime.md#mma-quanta`](arch_runtime.md#mma-quanta)): the same device always gets the same
-  form.
+- RUN TIME may read rates: the binary carries every architecture's and product's MMA rates (`kMmaRows`), a
+  product's found by the device's name. No entry reads them on this line: no form is chosen by a card's rates
+  (`docs/CONSTITUTION.md#r17`).
 
 `hardware.cuh` also carries the MMA kinds (`Mma`), the order a product's quanta carry their MMA rates in.
 

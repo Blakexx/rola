@@ -55,7 +55,7 @@ is free), in `RouteFactors`' check and the facts seam's; `quant.ROW_ALIGN` and t
 (`rola.routing.quant.row_slot`: a level's width rounded up), the slot's tail zero — at power-of-two widths of 32 and up
 the slots are the widths, so the law costs nothing there. It is what lets a kernel move a token's run as 16-byte
 asynchronous quanta whose source is 16-byte aligned and whose 32-byte run is one sector: the facts pass's ring
-([`facts.md`](facts.md#load)) and the intra's stages ([`../intra/ampere/intra_kernel.md`](../intra/ampere/intra_kernel.md)). A level whose width is not a multiple of 16 is copied whole
+([`facts.md`](facts.md#load)). A level whose width is not a multiple of 16 is copied whole
 up to its last digit and no further (a partial quantum zero-fills the rest).
 
 ## <a id="floor"></a>The dense floor

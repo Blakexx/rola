@@ -170,4 +170,15 @@ def device_index(device) -> int:
     return torch.cuda.current_device() if index is None else index
 
 
-__all__ = ["device_index", "extension", "is_available"]
+class KernelNotBuilt(NotImplementedError):
+    """An op this line has no kernel for: its fp64 definition stands (`rola.ops.naive`), its launch raises this."""
+
+
+def not_built(kernel: str):
+    """Raise :class:`KernelNotBuilt` for ``kernel``, by name."""
+    raise KernelNotBuilt(
+        f"the {kernel} kernel is not built on this line: no hopper or blackwell schedule of it is written yet, and the "
+        "ampere family's is the branch `ampere`'s. The op's fp64 definition is rola.ops.naive.naive_rola.")
+
+
+__all__ = ["KernelNotBuilt", "device_index", "extension", "is_available", "not_built"]

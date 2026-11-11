@@ -39,63 +39,6 @@
    1
   ]
  },
- "shipped": [
-  [
-   16,
-   1,
-   32,
-   1,
-   64,
-   0
-  ],
-  [
-   16,
-   2,
-   16,
-   2,
-   64,
-   1
-  ],
-  [
-   32,
-   1,
-   32,
-   1,
-   32,
-   0
-  ],
-  [
-   32,
-   1,
-   32,
-   1,
-   32,
-   1
-  ],
-  [
-   32,
-   1,
-   32,
-   1,
-   64,
-   1
-  ],
-  [
-   32,
-   2,
-   32,
-   1,
-   32,
-   1
-  ],
-  [
-   32,
-   2,
-   32,
-   1,
-   64,
-   1
-  ]
- ],
- "note": "THE DECLARED SHIPPED SET of the carry family, as DATA. A row is the carve's operation-plan pair (docs/internals/engine/rules.md#carve): the fold's dense rows a warp and the number of dense levels its operand names, the readout's the same (its K: the readout's warps hold every leaf for their channels), the box's channel extent, and whether both sides list the same level (the fold's lists the readout's digits; else its K: the hand-off's form). An arm's box is its plan's (`Plan<Arm>`: the fold's rows and the channels, the lists the state's rest); per-level extents, the depth and the widths are runtime addressing. [32, 1, 32, 1, 32, 0] is the alternating D = 2 box (each side lists its sparse level, its rows the other), [32, 1, 32, 1, 32, 1] the same-split one (both sides list one level, their rows the other), [32, 2, 32, 1, 32, 1] a dense write side's (its coefficients the read side's list level, so the same split), [16, 1, 32, 1, 64, 0] the alternating box at 64 channels (32 lists x 16 digits x 64 channels, one token group), [32, 2, 32, 1, 64, 1] a dense write side's at 64 channels (16 lists x 32 rows x 64 channels, two lists a warp), [32, 1, 32, 1, 64, 1] the same split's at 64 channels (both sides listing one level of 16, its rows 32) -- each the value-carve readout over a listed read side -- and [16, 2, 16, 2, 64, 1] both sides dense at 64 channels (32 digits x K 16 x 64 channels, the same split): the dense read side's readout (readout_dense.cuh). Rows are canonical-sorted and the generator refuses any other spelling, so an arm's INDEX is a property of the declaration."
+ "shipped": [],
+ "note": "THE DECLARED SHIPPED SET of the carry family, as DATA: EMPTY. No carry kernel is written on this line -- the ampere family's schedules and their arms are the branch `ampere`'s -- so no arm is declared, none is built, and the carry op refuses by name. The key and its domains stand as the carve's operation-plan pair (docs/internals/engine/rules.md#carve) until a hopper carry's design re-keys the declaration. Rows are canonical-sorted and the generator refuses any other spelling, so an arm's INDEX is a property of the declaration."
 }

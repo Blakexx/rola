@@ -13,7 +13,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
-import gen_shards  # noqa: E402
 import ratify  # noqa: E402
 import sass  # noqa: E402
 
@@ -24,7 +23,7 @@ ptxas info    : Function properties for _Z1kPi
 ptxas info    : Used 8 registers, used 0 barriers, 360 bytes cmem[0]
 """
 
-SHIPPED = {"archs": "80,86", "carry_arms": "", "decode_arms": "", "carry_parts": "all"}
+SHIPPED = {"archs": "80,86", "carry_arms": "", "decode_arms": ""}
 
 
 @pytest.fixture()
@@ -70,8 +69,7 @@ def test_the_shipped_parameters_are_not_an_iteration_build(graph):
     assert ratify.graph_parameters() == (("80", "86"), False)
 
 
-@pytest.mark.parametrize("change", [{"archs": "86"}, {"carry_arms": "3"}, {"carry_parts": "none"},
-                                    {"carry_parts": f"{gen_shards.CARRY_PARTS[0]}=trivial"}])
+@pytest.mark.parametrize("change", [{"archs": "86"}, {"decode_arms": "0"}])
 def test_any_other_parameter_is_an_iteration_build(graph, change):
     graph({**SHIPPED, **change})
     assert ratify.graph_parameters()[1] is True

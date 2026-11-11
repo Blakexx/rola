@@ -2,11 +2,11 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
 """THE STALL CENSUS (KERNEL_STANDARDS §22 (7), (8)): every warp-stall sample of one launch of a kernel family on a
-cell (the carry by default), by source line's component and stall reason; the phase census and the wavefront census --
+cell (the facts pass by default), by source line's component and stall reason; the phase census and the wavefront census --
 raw counts.
 
     bazel run //tools:stall_census -- flagship-dense --json census.json
-    bazel run //tools:stall_census -- nl64k-alt-k4 --kernel intra --json census.json   # any family of kernel_targets.py
+    bazel run //tools:stall_census -- nl64k-alt-k4 --kernel facts --json census.json   # any family of kernel_targets.py
 
 One oneshot launch through the probe worker under `ncu --section SourceCounters` with the stall-reason group and the
 kernel's source imported, exported per SASS line, then attributed by `tools/region_ledger.py` against the installed
@@ -37,18 +37,13 @@ ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
 
 
-def measure(cell: str, out: Path, keep_csv: Path | None, family: str = "carry") -> None:
+def measure(cell: str, out: Path, keep_csv: Path | None, family: str) -> None:
     from measure.cells import by_name
 
     ncu = dev_config.ncu()
     t = kernel_targets.target(family)
     launch_cell, arm = kernel_targets.launch(t, cell)
-    if family == "produce":
-        fn, per, mem = t.symbol, kernel_targets.produce_units(cell), t.member
-    else:
-        spec = by_name(cell)
-        fn, per = kernel_targets.function(t, spec), kernel_targets.units(t, spec)
-        mem = kernel_targets.member(t, spec)
+    fn, per, mem = t.symbol, kernel_targets.units(t, by_name(cell)), t.member
     with tempfile.TemporaryDirectory(prefix="stall_census_", dir=dev_config.scratch("stall_census")) as tmp:
         rep = Path(tmp) / "rep"
         done = process.run([ncu, "--target-processes", "all", "-k", f"regex:{t.symbol}", "-c", "1", "--section",
@@ -81,7 +76,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cell")
     ap.add_argument("--json", type=Path, required=True)
-    ap.add_argument("--kernel", default="carry", choices=sorted(kernel_targets.TARGETS),
+    ap.add_argument("--kernel", default="facts", choices=sorted(kernel_targets.TARGETS),
                     help="the kernel family launched and attributed (tools/kernel_targets.py)")
     ap.add_argument("--csv", type=Path, default=None,
                     help="keep ncu's per-SASS-line export here (the warp timeline joins it); "

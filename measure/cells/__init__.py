@@ -19,8 +19,9 @@ def by_name(name: str):
     return build(central().cell(name))
 
 
-def carry_cells(*, tier: str | None = None) -> tuple[CarryCell, ...]:
-    """Every central carry cell; ``tier`` keeps the cells sized for that reader (`oracle`, `probe`; `both` is either)."""
+def carry_cells(*, tier: str | None = None) -> tuple[CarryCell, ...]:  #: reserved: the oracle tests' tier
+    """Every central carry cell; ``tier`` keeps the cells sized for that reader (`oracle`, `probe`; `both` is either).
+    ``tier`` is reserved: the oracle tier's tests select by it."""
     cells = tuple(c for c in map(build, central().cells.values()) if isinstance(c, CarryCell))
     return cells if tier is None else tuple(c for c in cells if c.tier in (tier, "both"))
 

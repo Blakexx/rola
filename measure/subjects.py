@@ -90,112 +90,9 @@ def cell_carve(spec):
     return plan_carve(tuple(spec.widths), *(tuple(level[side] for level in declared) for side in (0, 1)), spec.dv)
 
 
-def lists_form_of(spec):
-    """What a cell's lists are built for: the carry arm its carve selects, on the device's card
-    (`rola.ops.carry.lists_form`)."""
-    from rola.ops import carry as carry_ops
-
-    return carry_ops.lists_form(carry_ops.arm_key(cell_carve(spec)))
-
-
-def carry_operands(spec):
-    """``(routes, values, facts, carve, unit)``: what the carry launch takes for a cell, from the bundle's rows and
-    values, the facts pass's lists, the carve the planner picks and the scale bytes (zeros: the launch reads them,
-    the pass that writes them is not timed)."""
-    from measure.cells import realize
-    from rola.ops import facts as facts_ops
-
-    routes, values, layout, statics = bundle_of(spec, realize(spec))
-    carve = plan_carve_of(routes, values)
-    facts = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec))
-    unit = _zero_scale(routes)
-    return routes, values, facts, carve, unit
-
-
-def _zero_scale(routes) -> torch.Tensor:
-    """The carry's scale bytes at zero, ``[B H, windows x W]`` int8: the plane covers whole windows of the device's ``W``
-    (the scale pass's output, which these subjects do not time)."""
-    from rola.ops.window import window_of
-
-    W = window_of(routes.device)
-    return torch.zeros((routes.batch * routes.heads, -(-routes.tokens // W) * W), dtype=torch.int8, device="cuda")
-
-
-def carry_forward(fx) -> Launch:
-    """The inter term: one carry launch over a whole cell (`carry_operands`)."""
-    from rola.ops import carry as carry_ops
-
-    spec = fx["cell"]
-    operands = carry_operands(spec)
-
-    def run():
-        return carry_ops.carry(*operands)
-
-    return Launch(name=f"carry_forward|{spec.name}", call=run)
-
-
-def carry_intra(fx) -> Launch:
-    """THE TWO KERNELS AS ONE OPERATOR: the carry and the intra over one cell's bundle, facts the caller built.
-
-    A KERNEL-LEVEL SUBJECT, not the op (Blake, 2026-09-15): the facts pass runs once here, untimed, as the prefill's
-    contract says it is the caller's; producing the bundle, the scale pass, the epilogue and the pages are not timed. At
-    ``calls`` above one the sequence runs as that many calls over whole windows, the state carried between them: what a
-    chunked prefill pays. A chain refuses until the carry's segment boundary carries a state between calls.
-    """
-    from measure.cells import realize
-    from rola.ops import carry as carry_ops
-    from rola.ops import facts as facts_ops
-    from rola.ops import intra as intra_ops
-
-    spec = fx["cell"]
-    calls = fx.get("calls", 1)
-    if calls > 1:
-        raise NotImplementedError(f"carry_intra at calls={calls}: the carry's segment boundary is unbuilt, so a chain "
-                                  "carries no state between its calls")
-    routes, values, layout, statics = bundle_of(spec, realize(spec))
-    carve = plan_carve_of(routes, values)
-    facts = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec))
-    unit = _zero_scale(routes)
-    bh = routes.batch * routes.heads
-    num = torch.zeros(bh, spec.tokens, intra_ops.VALUE_WIDTH, device="cuda")
-    den = torch.zeros(bh, spec.tokens, device="cuda")
-
-    def run():
-        carry_ops.carry(routes, values, facts, carve, unit)
-        return intra_ops.intra_forward(routes, values, facts, layout, *statics, num, den)
-
-    def reset():
-        num.zero_()
-        den.zero_()
-
-    return Launch(name=f"carry_intra|{spec.name}", call=run, reset=reset)
-
-
-def scale_pass(fx) -> Launch:
-    """Each token's scale byte for the carry's f16 sum, the write-aligned bound from the bundle's rows and the facts
-    pass's ``(F, m)`` (built once, here): the pass the prefill runs before the carry."""
-    from measure.cells import realize
-    from rola.ops import facts as facts_ops
-    from rola.ops import scale as scale_ops
-    from rola.ops.prefill import carry_factor
-
-    spec = fx["cell"]
-    routes, values, layout, statics = bundle_of(spec, realize(spec))
-    refusal = scale_ops.serves(routes)
-    if refusal is not None:
-        raise LookupError(f"{spec.name}: {refusal}")
-    facts = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec))
-    factor = carry_factor(routes)
-
-    def run():
-        return scale_ops.scale(routes, facts, factor)
-
-    return Launch(name=f"scale_pass|{spec.name}", call=run)
-
-
 def prefill_op(fx) -> Launch:
     """THE PREFILL AS THE OP RUNS IT: `rola.interface.rola_op` over the cell's bundle, stateless -- the validation, the
-    facts pass, the scale pass, the carry, the intra, the glue between them and the readout. A cell the envelope refuses
+    facts pass, the carry, the intra, the glue between them and the readout. A cell the envelope refuses
     raises its refusing clause at the first call."""
     from measure.cells import realize
     from rola.interface import rola_op
@@ -208,41 +105,6 @@ def prefill_op(fx) -> Launch:
 
     run()
     return Launch(name=f"prefill|{spec.name}", call=run)
-
-
-def plan_carve_of(routes, values):
-    """The carve the planner picks for a bundle (`rola.engine.carve.plan_carve`)."""
-    from rola.engine.carve import plan_carve
-
-    return plan_carve(tuple(routes.topology.padded_widths), *routes.sparse, values.v.shape[-1])
-
-
-def intra_forward(fx) -> Launch:
-    """The within-window term on the cell's bundle, at the window the two kernels share, over the facts pass's unions.
-
-    THE WINDOW IS THE CARRY'S CONSTANT: the two kernels run ONE grid, a call's partial last window included (the intra's
-    `kEven` false arms). The bundle and the facts pass's output are built once, here; the planes the launch reduces
-    into are zeroed untimed before every call.
-    """
-    from measure.cells import realize
-    from rola.ops import facts as facts_ops
-    from rola.ops import intra as intra_ops
-
-    spec = fx["cell"]
-    routes, values, layout, statics = bundle_of(spec, realize(spec))
-    facts = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec))
-    bh = routes.batch * routes.heads
-    num = torch.zeros(bh, spec.tokens, intra_ops.VALUE_WIDTH, device="cuda")
-    den = torch.zeros(bh, spec.tokens, device="cuda")
-
-    def run():
-        return intra_ops.intra_forward(routes, values, facts, layout, *statics, num, den)
-
-    def reset():
-        num.zero_()
-        den.zero_()
-
-    return Launch(name=f"intra_forward|{spec.name}", call=run, reset=reset)
 
 
 def bundle_of(spec, drawn, tokens: slice = slice(None)):
@@ -277,7 +139,7 @@ def facts_pass(fx) -> Launch:
 
     spec = fx["cell"]
     routes, values, layout, statics = bundle_of(spec, realize(spec))
-    form = lists_form_of(spec)
+    form = facts_ops.UNIT_FORM
 
     def run():
         return facts_ops.facts(routes, values, layout, *statics, form)
@@ -308,19 +170,6 @@ def entmax_solve(fx) -> Launch:
     return Launch(name=f"entmax_solve|{spec.name}|{fx['construction'].name}", call=run)
 
 
-def produce(fx) -> Launch:
-    """THE PRODUCER'S LAUNCH: the cell's prefill tokens to the bundle -- the routing projection, every level's solve, the
-    write gain, the quantization and the value digits -- as the layer calls it."""
-    spec, layer = fx["cell"], fx["layer"]
-    x = fx["x"][:, :spec.tokens].contiguous()
-
-    def run():
-        with torch.no_grad():
-            return layer._produce(x)
-
-    return Launch(name=f"produce|{spec.name}|{fx['construction'].name}", call=run)
-
-
 def layer_prefill(fx) -> Launch:
     """THE LAYER'S STATELESS PREFILL, one segment: the hidden states to the op's output -- the producer (every
     projection in) and the op. The output projection is the same GEMM as attention's and is outside both entries."""
@@ -344,9 +193,8 @@ def _one_segment(spec, layer) -> None:
 def _layer_bundle(fx):
     """``(routes, values, layout, statics, carve, form)``: the layer's producer run once on the cell's prefill
     tokens, untimed, and what the op builds from its bundle before the facts pass, as the prefill DAG's facts node does
-    -- the layout, both sides' statics, the planner's carve and its carry arm's lists form."""
+    -- the layout, both sides' statics, the planner's carve and the lists' form."""
     from rola.engine.carve import plan_carve
-    from rola.ops import carry as carry_ops
     from rola.ops import facts as facts_ops
 
     spec, layer = fx["cell"], fx["layer"]
@@ -356,15 +204,7 @@ def _layer_bundle(fx):
     layout = facts_ops.call_layout(routes)
     statics = facts_ops.call_statics(routes, layout)
     carve = plan_carve(tuple(routes.topology.padded_widths), *routes.sparse, values.v.shape[-1])
-    return routes, values, layout, statics, carve, carry_ops.lists_form(carry_ops.arm_key(carve))
-
-
-def _layer_facts(fx):
-    """`_layer_bundle` and the facts pass over it, built once."""
-    from rola.ops import facts as facts_ops
-
-    routes, values, layout, statics, carve, form = _layer_bundle(fx)
-    return routes, values, layout, statics, carve, facts_ops.facts(routes, values, layout, *statics, form)
+    return routes, values, layout, statics, carve, facts_ops.UNIT_FORM
 
 
 def layer_facts(fx) -> Launch:
@@ -380,61 +220,9 @@ def layer_facts(fx) -> Launch:
     return Launch(name=f"layer_facts|{spec.name}|{fx['construction'].name}", call=run)
 
 
-def layer_scale(fx) -> Launch:
-    """THE OP'S SCALE PASS on the layer's own bundle and facts (both built once, untimed)."""
-    from rola.ops import scale as scale_ops
-    from rola.ops.prefill import carry_factor
-
-    spec = fx["cell"]
-    routes, _values, _layout, _statics, _carve, facts = _layer_facts(fx)
-    factor = carry_factor(routes)
-
-    def run():
-        return scale_ops.scale(routes, facts, factor)
-
-    return Launch(name=f"layer_scale|{spec.name}|{fx['construction'].name}", call=run)
-
-
-def layer_carry(fx) -> Launch:
-    """THE OP'S CARRY on the layer's own bundle, at the scale pass's bytes (the producer, the facts pass and the scale
-    pass run once, untimed)."""
-    from rola.ops import carry as carry_ops
-    from rola.ops import scale as scale_ops
-    from rola.ops.prefill import carry_factor
-
-    spec = fx["cell"]
-    routes, values, _layout, _statics, carve, facts = _layer_facts(fx)
-    scale = scale_ops.scale(routes, facts, carry_factor(routes))
-
-    def run():
-        return carry_ops.carry(routes, values, facts, carve, scale)
-
-    return Launch(name=f"layer_carry|{spec.name}|{fx['construction'].name}", call=run)
-
-
-def layer_intra(fx) -> Launch:
-    """THE OP'S INTRA on the layer's own bundle and facts (built once, untimed), into planes zeroed before every call."""
-    from rola.ops import intra as intra_ops
-
-    spec = fx["cell"]
-    routes, values, layout, statics, _carve, facts = _layer_facts(fx)
-    bh = routes.batch * routes.heads
-    num = torch.zeros(bh, spec.tokens, intra_ops.VALUE_WIDTH, device="cuda")
-    den = torch.zeros(bh, spec.tokens, device="cuda")
-
-    def run():
-        return intra_ops.intra_forward(routes, values, facts, layout, *statics, num, den)
-
-    def reset():
-        num.zero_()
-        den.zero_()
-
-    return Launch(name=f"layer_intra|{spec.name}|{fx['construction'].name}", call=run, reset=reset)
-
-
 def layer_op(fx) -> Launch:
     """THE OP ALONE on the layer's own bundle (the producer run once, untimed): `rola.interface.rola_op`, stateless --
-    the facts pass, the scale pass, the carry, the intra, the glue and the readout. Beside `layer_prefill` it splits the
+    the facts pass, the carry, the intra, the glue and the readout. Beside `layer_prefill` it splits the
     layer into the producer and the op; beside the stage subjects, the op into its launches and its glue."""
     from rola.interface import rola_op
 
@@ -474,7 +262,7 @@ def decode_step(fx) -> Launch:
     layout = facts_ops.call_layout(routes)
     statics = facts_ops.call_statics(routes, layout)
     words = facts_ops.facts(routes, rola.Values.from_projection(fx["v_prefill"]), layout, *statics,
-                            lists_form_of(spec)).words
+                            facts_ops.UNIT_FORM).words
     bits = lv.page_bits(words, layout, *statics)
     seeded: dict = {}
 
@@ -507,22 +295,9 @@ def decode_step(fx) -> Launch:
 
 #: THE ROSTER: one entry per kernel this line carries.
 SUBJECTS = {
-    "carry_forward": Subject("carry_forward", "carry", carry_forward,
-                             "the inter term: one carry launch over a whole cell",
-                             level="kernel", symbol="carry_kernel", stamp="carry_build_stamp"),
-    "carry_intra": Subject("carry_intra", "carry", carry_intra,
-                           "the carry and the intra as one operator, over facts the caller built: the two kernels, "
-                           "never the op's facts, scale pass, epilogue or paging",
-                           level="kernel", symbol="carry_kernel", stamp="carry_build_stamp", calls=(1, 4)),
-    "intra_forward": Subject("intra_forward", "carry", intra_forward,
-                             "the within-window term at the shared window",
-                             level="kernel", symbol="intra_kernel", stamp="intra_build_stamp"),
-    "scale_pass": Subject("scale_pass", "carry", scale_pass,
-                          "each token's scale byte for the carry's f16 sum, from the rows and the facts pass's (F, m)",
-                          level="kernel", symbol="scale_(writes|scan|reads)", stamp="csrc_build_stamp"),
     "prefill": Subject("prefill", "carry", prefill_op,
-                       "the stateless prefill as rola_op runs it: facts, scale, carry, intra, glue and readout",
-                       level="op", symbol="carry_kernel", stamp="carry_build_stamp"),
+                       "the stateless prefill as rola_op runs it: facts, carry, intra, glue and readout",
+                       level="op", symbol="facts_pass", stamp="csrc_build_stamp"),
     "facts_pass": Subject("facts_pass", "carry", facts_pass,
                           "both sides' class-1 liveness words and the fold's window scales, from the bundle",
                           level="kernel", symbol="facts_pass", stamp="csrc_build_stamp"),
@@ -530,28 +305,16 @@ SUBJECTS = {
                             "the producer's batched multi-level solve",
                             level="kernel", symbol="(union|factor|softmax)_forward_kernel",
                             stamp="csrc_build_stamp"),
-    "produce": Subject("produce", "layer", produce,
-                       "the producer's one launch: the projection, every level's solve, the gain, the digits",
-                       level="kernel", symbol="produce_kernel", stamp="csrc_build_stamp"),
     "layer_prefill": Subject("layer_prefill", "layer", layer_prefill,
                              "the layer's stateless prefill, one segment: the producer and the op, the output "
                              "projection outside it as it is outside attention's",
-                             level="layer", symbol="carry_kernel", stamp="carry_build_stamp"),
+                             level="layer", symbol="facts_pass", stamp="csrc_build_stamp"),
     "layer_facts": Subject("layer_facts", "layer", layer_facts,
                            "the op's facts pass on the layer's own bundle",
                            level="kernel", symbol="facts_pass", stamp="csrc_build_stamp"),
-    "layer_scale": Subject("layer_scale", "layer", layer_scale,
-                           "the op's scale pass on the layer's own bundle and facts",
-                           level="kernel", symbol="scale_(writes|scan|reads)", stamp="csrc_build_stamp"),
-    "layer_carry": Subject("layer_carry", "layer", layer_carry,
-                           "the op's carry on the layer's own bundle, at the scale pass's bytes",
-                           level="kernel", symbol="carry_kernel", stamp="carry_build_stamp"),
-    "layer_intra": Subject("layer_intra", "layer", layer_intra,
-                           "the op's within-window term on the layer's own bundle and facts",
-                           level="kernel", symbol="intra_kernel", stamp="intra_build_stamp"),
     "layer_op": Subject("layer_op", "layer", layer_op,
                         "the op alone on the layer's own bundle: facts, den, carry, intra, glue and readout",
-                        level="op", symbol="carry_kernel", stamp="carry_build_stamp"),
+                        level="op", symbol="facts_pass", stamp="csrc_build_stamp"),
     "decode_step": Subject("decode_step", "layer", decode_step,
                            "one carried single-token step through the engine: the facts pass, the pages it commits "
                            "and the kernels, as the op runs them",
@@ -587,7 +350,7 @@ def applicable(spec, kind: str, calls: int = 1) -> list[str]:
         if name == "decode_step" and getattr(spec, "decode_steps", 0) == 0:
             continue
         #: the intra runs at widths it reads (any length: a partial last window has its own arms)
-        if name in ("intra_forward", "carry_intra", "prefill") and not _intra_reads(spec.widths):
+        if name == "prefill" and not _intra_reads(spec.widths):
             continue
         out.append(name)
     return out

@@ -450,5 +450,4 @@ The carry family's state addressing is a 32-bit byte displacement from a pinned 
 origin, which bounds a plane at 4 GiB (~1,032,192 pages) and is refused loudly above it.
 The dense backing hits it first and the paged backing IS the answer to it; when a cell
 does reach it, the two backings need different lifts (one per-`bh` 64-bit base for dense,
-arena sharding for paged). Stated at
-[`carry/ampere/carry_kernel.md`](carry/ampere/carry_kernel.md).
+arena sharding for paged).

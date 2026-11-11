@@ -1,9 +1,0 @@
-{
- "about": "THE SCALE PASS'S FORMS, declared as data (tools/lint/unused_instantiations.py reads the row count): scale_writes and scale_reads each compiled for a side's two level dtypes, u8 (a sparse level) or f16 (a dense one), four bodies a kernel (docs/internals/scale/scale.md#params).",
- "shipped": [
-  {"level_s": "u8", "level_r": "u8"},
-  {"level_s": "u8", "level_r": "f16"},
-  {"level_s": "f16", "level_r": "u8"},
-  {"level_s": "f16", "level_r": "f16"}
- ]
-}

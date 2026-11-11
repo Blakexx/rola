@@ -4,7 +4,7 @@ KERNEL_STANDARDS [§29](../../KERNEL_STANDARDS.md#s29) asks for every kernel's i
 class before code. This page is how a budget is built, checked and corrected, and holds the two pieces of data the
 method runs on: the PRICES of the primitives kernels are written in, and the LEDGER of stated budgets against measured
 counts. A lab states its budget with `Bench::budget` (per MMA, or per declared unit with `Bench::units`); a production
-kernel in `tools/budgets/<kernel>.json` ([phase_ledger.md](phase_ledger.md) reads those).
+kernel in `tools/budgets/<kernel>.json`.
 
 ## Building a budget
 
@@ -18,8 +18,8 @@ kernel in `tools/budgets/<kernel>.json` ([phase_ledger.md](phase_ledger.md) read
 4. The line item is trips x price, by class; the budget is the sum, stated before the code (`Bench::budget`).
 5. A production kernel's budget also states, before the code, each component's peak live registers (`registers`,
    gated by `tools/life_ranges.py --budget`, [`life_ranges.md#budget`](life_ranges.md#budget)) and, per cell, each
-   ledger phase's predicted cycles a warp a window (`phase_cycles`, gated by `tools/phase_ledger.py --budget`,
-   [`phase_ledger.md#budget`](phase_ledger.md#budget)): KERNEL_STANDARDS §32.
+   ledger phase's predicted cycles a warp a window (`phase_cycles`, gated by the family's phase ledger):
+   KERNEL_STANDARDS §32.
 
 A COMPONENT is a definition the region ledger's function map finds (`tools/region_ledger.py`): a function, a struct or a struct's method, nested structs included; a kernel whose device code is a class over its plan (the intra's `IntraAt<Walk<B>>`) keeps its components by their own names.
 
@@ -107,5 +107,3 @@ the entry's last column.
 | `color_union` batched (a box-window) | 1.8K / 3.7K / 1.1K | 3.8K / 7.8K / 1.6K | the warp's longest lane, swizzled addresses, both-sided selects, conditional stores |
 | `handoff` 16-byte form, integer/address (a CTA-window) | 960 | 1,085 -> budget 1,088 | each scale's float bits are one instruction (16 a warp), priced first as address forms a held base removes |
 | the carry's hand-off at nl64k-alt-k4 (a CTA-window: keys, exponents, stores) | 4,360 | 4,431 | the exponents 10 -> 14 a warp: the two parities' addresses, the warp's sync |
-| the carry at nl64k-alt-k4 (a warp-window) | ~2,020 | 3,884 | open: every copy's token, source and swizzle re-derived; plan and window fields re-read at each use ([`carry_kernel.md#budget`](../carry/ampere/carry_kernel.md#budget)) |
-| the producer at nl64k-alt-h4-g4 (a job tile) | 17.5K | 39.1K -> 29.5K -> 27.0K | the solve's member mask a value a pass and its selects (an ALU-pipe instruction each) removed; a u8 digit one FFMA (`F2I` and two multiplies before); open: the k-loop's 5.6K besides its HMMAs, the gain's serial loads ([`produce.md#budget`](../produce/ampere/produce_kernel.md#budget)) |

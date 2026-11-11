@@ -5,8 +5,10 @@
 
 #include <cstdint>
 
-#include "carry/carry.cuh"
+#include <cuda_runtime.h>
+
 #include "common/hardware.cuh"
+#include "common/window.cuh"
 #include "facts/liveness_contract.cuh"
 
 namespace rola::facts {
@@ -50,13 +52,16 @@ __host__ __device__ constexpr int unit_head(uint32_t c) { return (c >> 8) & 15; 
 //: THE LIST EXPONENTS' FLOOR, the smallest normal fp32. -- see docs/internals/facts/facts.md#lists
 constexpr float kListFloor = 1.17549435e-38f;
 
-//: THE LISTS OUT, the carry's final form (`carry/carry.cuh` owns its addresses), a write entry's coefficients at
-//: 2^(kCoefTop - E) with E floored at `kUnitMin`. -- see docs/internals/facts/facts.md#lists-out
-constexpr int kListBound = carry::kListBound;
+//: THE LISTS OUT: a boundary every 64th union slot, a gap slot's token, a pool row's swizzled chunk, and a write
+//: entry's coefficients at 2^(kCoefTop - E) with E floored at `kUnitMin`. -- see docs/internals/facts/facts.md#lists-out
+constexpr int kListBound = 64;
+constexpr uint16_t kGap = 0x8000;
 constexpr int kCoefTop = 4;
 constexpr int kUnitMin = kCoefTop - 127;
-static_assert(kFactsWarps == carry::kWarps && kGroupDigits == carry::kMaxExtent,
-              "the lists are the carry's: its box lists, a boundary every 64 slots");
+
+__host__ __device__ __forceinline__ constexpr uint32_t pool_chunk(int row, uint32_t s, uint32_t k) {
+  return row == 128 ? k ^ (s & 7u) : (k & ~3u) | ((k ^ (s >> 1)) & 3u);
+}
 
 //: THE STEP: a union's extent is its size in whole steps of the carry's 8 entries.
 constexpr int kStep = 8;

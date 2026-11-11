@@ -191,15 +191,13 @@ its rows and scales (`[B, T, H_w]`), and with it the values, the decay dials and
 order); `H_w = H` is the ungrouped layer. The oracle reads grouped bundles (`tests/oracle/test_oracle_grouped.py`: a
 grouped run is the ungrouped run with each write head's side repeated for its query heads). The facts pass reads them,
 a write head's read side one union a window over its query heads' rows (`docs/internals/facts/facts.md#lists-out`), and
-the carry reads them: a CTA a write head, its query heads' rows with it (`docs/internals/carry/carry.md#sides`), as do
-the scale pass and the intra, so the prefill reads them. The decode step and the carried state read one head count
+a carry reads them a CTA a write head, its query heads' rows with it, as does the intra, so the prefill reads them. The decode step and the carried state read one head count
 today, and each refuses a grouped bundle by name (`RouteFactors.refuse_grouped`).
 `RouteFactors.rows(level, side)` is a level's rows, and its scale the row's max: the level as its producer handed it
 over, whatever its sum ([§2.2](#22-the-scaled-block-and-the-gain)). This is what
 the int carry, the intra and the decode kernels read, and it is written by the framework's producer
 alone: the fused kernel's epilogue, and the reference's (`rola/routing/quant.py`, `RouteFactors.from_levels`),
-gated against each other (`tests/integration/test_produce_kernel.py`). The fp64
-statement of the arithmetic is `tests/oracle/int_reference.py`, and the op's oracle takes the
+the first gated against the second where it is built. The op's oracle takes the
 bundle itself as its input.
 
 **Nothing floating is stored.** `RouteFactors.dequantized()` computes the levels, `rows x scale`
@@ -295,8 +293,9 @@ the projection bias -- and the layer compiles it once into its producer plan and
 packed per-head routing projection `route_W`, its bias, the write gain's bias, `v_proj` and `o_proj`. One producer
 call (`rola.ops.produce.produce`) turns a stretch of tokens into the bundle -- the projection, the exact
 entmax/softmax solves, the write gain, the unit-max rows and the f16 values -- and on CUDA with no gradient
-that call is ONE LAUNCH of the fused producer kernel (`docs/internals/produce/produce.md`), the bundle's rows and
-scales views of the planes it writes. The torch composition behind the same call is the reference: fp64, the host,
+that call is ONE LAUNCH of the fused producer kernel, the bundle's rows and scales views of the planes it writes --
+a kernel not built on this line, so the call raises `rola.ops._ext.KernelNotBuilt` there
+([`open-work.md`](open-work.md)). The torch composition behind the same call is the reference: fp64, the host,
 and -- until the native backward -- the path a gradient takes. Construction validates the whole declaration --
 widths in range, a buildable topology, a gain layout -- so an unbuildable model fails on the line that built it.
 

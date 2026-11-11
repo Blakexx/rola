@@ -80,17 +80,9 @@ _LAUNCHLESS = {
     "vmm_reset": "a logical reset of a driver allocation",
     "vmm_close": "releases a driver allocation",
     "vmm_facts": "reads a driver allocation's bookkeeping",
-    "carry_census": "a cudaFuncGetAttributes query of the compiled arms, not a kernel launch",
-    "carry_ledger_bind": "binds the device buffer the next carry launch adds into; issues no launch",
-    "carry_probe_bind": "binds the device buffer the next carry launch writes its final state into; issues no launch",
-    "carry_capture_bind": "binds the host buffer the next carry launch copies its operand block into; issues no launch",
-    "carry_capture_bytes": "returns a compiled-in size",
     "rola_decode_ledger_bind": "binds the device buffer the next decode step books into; issues no launch",
-    "rola_produce_ledger_bind": "binds the device buffer the next producer launch books into; issues no launch",
     "rola_facts_ledger_bind": "binds the device buffer the next facts pass books into; issues no launch",
-    "rola_intra_ledger_bind": "binds the device buffer the next intra launch books into; issues no launch",
     "device_card": "admits the device's card (the closed-world checks, common/select.cu) and reads it; no device work",
-    "intra_block_rows": "the device's build's walk, read on the host; no device work",
 }
 
 

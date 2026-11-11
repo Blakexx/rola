@@ -18,19 +18,16 @@
 #include <vector>
 
 #include "common/arch_runtime.cuh"
+#include "common/arm_switch.cuh"
 #include "common/build_stamp.cuh"
 #include "common/select.cuh"
 #include "common/torch_seam.cuh"
-#include "src/carry/carry_api.cuh"
 #include "src/common/geom_api.cuh"
 #include "src/decode/decode_api.cuh"
 #include "src/entmax/entmax.cuh"
 #include "src/entmax/factor.cuh"
-#include "src/scale/scale_api.cuh"
 #include "src/facts/facts_api.cuh"
-#include "src/intra/intra_api.cuh"
 #include "src/paging/vmm_owner.cuh"
-#include "src/produce/produce_api.cuh"
 
 using rola::check_arch_table;
 using rola::Tensor;
@@ -103,32 +100,10 @@ std::vector<int64_t> device_card_op(int64_t device) {
 }  // namespace
 
 STABLE_TORCH_LIBRARY(rola, m) {
-  // ---- the intra: the within-window pairs over the bundle -------------------
-  m.def(
-      "rola_intra_forward(Tensor[] read, Tensor[] write, Tensor values, Tensor fm, Tensor unions, Tensor(a!) num, "
-      "Tensor(b!) den, int[] widths, int dense_read, int dense_write, int accumulate) -> ()");
-  m.def("rola_intra_ledger_bind(Tensor? ledger) -> ()");
-  m.def("intra_build_stamp() -> int");
-  m.def("intra_footprint(int[] widths, int[] forms, int device) -> int");
-  m.def("intra_block_rows(int device) -> int");
-
-  // ---- the CARRY LAUNCH SURFACE --------------------------------------------
-  m.def(
-      "carry_forward(Tensor[] read_rows, Tensor[] write_rows, Tensor values, Tensor[] write_lists, Tensor write_exp, "
-      "Tensor factors, Tensor factor_shift, Tensor[] read_lists, "
-      "Tensor scale, Tensor(a!) num, Tensor(d!) den, Tensor(b!) check, int[] widths, int[] extents, int channels, "
-      "int write_list, int[] write_operand, int read_list, int[] read_operand, int[] key, int accumulate, int reduce, "
-      "int forced) -> Tensor");
-  m.def("carry_readout_accumulate(int device) -> int");
+  // ---- the device's card, the segment law and the stamps -------------------
   m.def("device_card(int device) -> int[]");
   m.def(
       "segment_tokens(int budget, int state, int per_token, int batch, int length, int device) -> int");
-  m.def("carry_ledger_bind(Tensor? ledger) -> ()");
-  m.def("carry_probe_bind(Tensor? probe, Tensor? den) -> ()");
-  m.def("carry_capture_bind(Tensor? out) -> ()");
-  m.def("carry_capture_bytes() -> int");
-  m.def("carry_build_stamp() -> int");
-  m.def("carry_census() -> int[][]");
   m.def("carry_arms() -> int[][]");
   m.def("csrc_build_stamp() -> int");
   m.def("sm_clock_ghz(int spin_cycles=20000000) -> float");
@@ -144,20 +119,6 @@ STABLE_TORCH_LIBRARY(rola, m) {
       "int[] widths, int dense_read, int[] mask_read, int dense_write, int[] mask_write, int write_list_level, "
       "int read_list_level, int read_row, int read_list_group, int write_list_group) -> Tensor[]");
   m.def("rola_facts_ledger_bind(Tensor? ledger) -> ()");
-
-  // ---- the scale pass: each token's scale byte for the carry's f16 sum, the write-aligned bound --
-  m.def(
-      "scale_forward(Tensor[] read_rows, Tensor[] write_rows, Tensor fm, int[] widths, int level_s, int heads, "
-      "float inv_factor) -> Tensor");
-
-  // ---- the producer: one launch from the tokens to the bundle -------------
-  m.def(
-      "rola_produce_forward(Tensor x, Tensor route_W, Tensor? route_bias, Tensor gain_bias, Tensor v_W, Tensor jobs, "
-      "Tensor(a!) amp_read, Tensor(b!) amp_write, Tensor(o!)? dense_read, Tensor(n!)? dense_write, Tensor(c!) scale_read, "
-      "Tensor(d!) scale_write, Tensor(i!) v, Tensor(j!) v_scale, Tensor(l!)? logit_probe, Tensor(m!)? level_probe, "
-      "Tensor shapes, int levels, int dense_read_mask, int dense_write_mask) -> ()");
-
-  m.def("rola_produce_ledger_bind(Tensor? ledger) -> ()");
 
   // ---- the producer's solves -----------------------------------------------
   m.def(
@@ -215,32 +176,16 @@ STABLE_TORCH_LIBRARY(rola, m) {
 }
 
 STABLE_TORCH_LIBRARY_IMPL(rola, CompositeExplicitAutograd, m) {
-  m.impl("rola_intra_forward", TORCH_BOX(&rola::intra::rola_intra_forward));
-  m.impl("rola_intra_ledger_bind", TORCH_BOX(&rola::intra::rola_intra_ledger_bind));
-  m.impl("intra_build_stamp", TORCH_BOX(&rola::intra::intra_build_stamp));
-  m.impl("intra_footprint", TORCH_BOX(&rola::intra::intra_footprint));
-  m.impl("intra_block_rows", TORCH_BOX(&rola::intra::intra_block_rows));
-  m.impl("carry_forward", TORCH_BOX(&rola::carry::carry_forward));
-  m.impl("scale_forward", TORCH_BOX(&rola::scale::scale_forward));
-  m.impl("carry_readout_accumulate", TORCH_BOX(&rola::carry::carry_readout_accumulate));
   m.impl("device_card", TORCH_BOX(&device_card_op));
   m.impl("segment_tokens", TORCH_BOX(&rola::segment_tokens));
 
-  m.impl("carry_ledger_bind", TORCH_BOX(&rola::carry::carry_ledger_bind));
-  m.impl("carry_probe_bind", TORCH_BOX(&rola::carry::carry_probe_bind));
-  m.impl("carry_capture_bind", TORCH_BOX(&rola::carry::carry_capture_bind));
-  m.impl("carry_capture_bytes", TORCH_BOX(&rola::carry::carry_capture_bytes));
-  m.impl("carry_build_stamp", TORCH_BOX(&rola::carry::carry_build_stamp));
-  m.impl("carry_census", TORCH_BOX(&rola::carry::carry_census));
-  m.impl("carry_arms", TORCH_BOX(&rola::carry::carry_arms));
+  m.impl("carry_arms", TORCH_BOX(&rola::CarryArmSet::rows));
   m.impl("csrc_build_stamp", TORCH_BOX(&rola::csrc_build_stamp));
   m.impl("sm_clock_ghz", TORCH_BOX(&rola::sm_clock_ghz));
   m.impl("carry_geometry", TORCH_BOX(&rola::carry::geometry));
   m.impl("carry_sub_boxes", TORCH_BOX(&rola::carry::sub_box_set));
   m.impl("rola_facts_forward", TORCH_BOX(&rola::facts::rola_facts_forward));
   m.impl("rola_facts_ledger_bind", TORCH_BOX(&rola::facts::rola_facts_ledger_bind));
-  m.impl("rola_produce_forward", TORCH_BOX(&rola::produce::rola_produce_forward));
-  m.impl("rola_produce_ledger_bind", TORCH_BOX(&rola::produce::rola_produce_ledger_bind));
   m.impl("entmax_union_forward", TORCH_BOX(&rola::entmax::union_forward));
   m.impl("entmax_union_backward", TORCH_BOX(&rola::entmax::union_backward));
   m.impl("entmax_factor_forward", TORCH_BOX(&rola::entmax::factor_forward));

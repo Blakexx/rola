@@ -2,7 +2,6 @@
 
 #: the hand-written units (tools/kernels.py's hand_units)
 HAND_UNITS = [
-    "src/carry/carry.cu",
     "src/common/arch_runtime.cu",
     "src/common/build_stamp.cu",
     "src/common/geom.cu",
@@ -12,11 +11,7 @@ HAND_UNITS = [
     "src/entmax/entmax.cu",
     "src/entmax/factor.cu",
     "src/facts/facts.cu",
-    "src/intra/ampere/intra_partial.cu",
-    "src/intra/intra.cu",
     "src/paging/vmm_owner.cu",
-    "src/produce/produce.cu",
-    "src/scale/scale.cu",
 ]
 
 #: the runtime's units among them (tools/kernels.py's runtime_units)
@@ -28,14 +23,7 @@ RUNTIME_UNITS = [
 
 #: each generated carry unit and the arm indices it carries
 CARRY_ARM_UNITS = {
-    "carry_arm_0.cu": [0],
-    "carry_arm_1.cu": [1],
-    "carry_arm_2.cu": [2],
-    "carry_arm_3.cu": [3],
-    "carry_arm_4.cu": [4],
-    "carry_arm_5.cu": [5],
-    "carry_arm_6.cu": [6],
 }
 
 #: the declared carry arms
-CARRY_ARM_COUNT = 7
+CARRY_ARM_COUNT = 0

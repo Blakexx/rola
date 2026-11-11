@@ -169,8 +169,10 @@ declares per architecture; an unknown declaration is admitted by a refusal-check
 ## R17. One family, one form a component
 
 Operands are the bf16 family (Blake, 2026-11-09). Every level's rows, either side, dense or sparse, are u8 unit-max
-with the row's fp32 scale; the values are bf16 unit-max with an fp32 scale a token. Every MMA operand is bf16 (a u8
-byte is exact in it) and every accumulation fp32 -- the fold, the readout and the den alike -- and the output's sum is
+with the row's fp32 scale; the values are bf16 unit-max with an fp32 scale a token. An MMA's operands are bf16 (a u8
+byte is exact in it) and its accumulation fp32 -- the fold, the readout and the den alike -- but for a window's pair
+products of rows, which are integer MMAs of the bytes, exact (the data model locked 2026-11-09 has the intra so);
+the output's sum is
 fp32, in shared memory and across CTAs: no scale pass, no image, no switch of precision by card or by density. Each
 component has one form across densities and cards, unless measurements show that no single form wins or ties
 everywhere. The family's error is its own class, 0.16 to 0.20% a token against the fp64 oracle on the flagship cells

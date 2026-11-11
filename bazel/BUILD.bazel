@@ -46,13 +46,12 @@ exports_files([
     "record.py",
 ])
 
-#: what the SASS gate reads: the tree's tools (the gate and the modules it imports), its budgets, and every kernel the
-#: source defines (a kernel no cubin carries is red)
+#: what the SASS gate reads: the tree's tools (the gate and the modules it imports) and every kernel the source defines
+#: (a kernel no cubin carries is red)
 filegroup(
     name = "gate_sources",
     srcs = [
         "//csrc/rola:sources",
-        "//tools:budgets",
         "//tools:python_sources",
     ],
 )

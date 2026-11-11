@@ -25,12 +25,10 @@ against the state the call is handed. `rola.rola_op` validates the context in th
 
 ## The seam
 
-The DAG is seeded with the bundle itself. The facts pass, the scale pass, the carry and the intra read its rows and f16
-values where the producer stores them, grouped or not (`docs/api.md#grouped-queries`). The `launch` node is one
-composition (`rola.ops.prefill.prefill`): the scale pass gives each token's scale byte (the write-aligned bound,
-`docs/internals/scale/scale.md`), the carry reduces its partials at those bytes and reads each token's earlier-window
-denominator out as its v+1 channel, and the intra reduces its in-window pairs
-into the same two planes; each kernel's sums are brought to one unit, the recurrence's over the reader factor
-(`rola/ops/prefill.py`'s header). A stateless segment runs end to end. A stateful one is refused by the envelope until
-the carry reads and writes a segment boundary, and so is a cell no carry arm is built for
+The DAG is seeded with the bundle itself. The facts pass, the carry and the intra read its rows and values where the
+producer stores them, grouped or not (`docs/api.md#grouped-queries`). The `launch` node is one composition
+(`rola.ops.prefill.prefill`): the carry reduces its partials and reads each token's earlier-window denominator out as
+its v+1 channel, and the intra reduces its in-window pairs into the same two planes, both sums the recurrence's over
+the reader factor (`rola/ops/prefill.py`'s header). No carry or intra kernel is built on this line: the envelope
+refuses every segment for want of a carry arm, and the composition raises by name
 ([`docs/open-work.md`](../../open-work.md)).

@@ -727,7 +727,7 @@ sys.exit(1)
 PY""",
     "the library builds and imports": f"""set -e
 arch=$({CONTAINER_PYTHON} -c 'import torch; from measure import hardware; print(hardware.device_arch(*torch.cuda.get_device_capability()).removeprefix("sm_"))')
-bazel run //:library --//:archs=$arch --//:carry_arms=0
+bazel run //:library --//:archs=$arch --//:decode_arms=0
 {CONTAINER_PYTHON} -c 'import rola; from rola_cu13._build_config import BUILD_CONFIG as c; print("built", c["archs"])'""",
 }
 #: the steps a fresh machine takes before it can work: the cold start a rented box pays

@@ -266,14 +266,9 @@ timing session:
 | target | tool | what it reads |
 |---|---|---|
 | `sass` | `tools/sass_gate.py` | the build's SASS signatures (KERNEL_STANDARDS §20) |
-| `registers` | [`tools/life_ranges.py`](internals/tools/life_ranges.md) | peak live registers per source region |
-| `phases` | [`tools/phase_ledger.py`](internals/tools/phase_ledger.md) | the kernel's phase clock on a cell |
 | `counters` | [`tools/pipe_counters.py`](internals/tools/pipe_counters.md) | the profiler's pipe and resource counters |
 | `census` | [`tools/stall_census.py`](internals/tools/stall_census.md) | every warp-stall sample, by source line |
-| `timeline` | [`tools/pipe_timeline.py`](internals/tools/pipe_timeline.md) | the pipes' activity over a launch |
-| `counters-intra`, `census-intra` | the same tools' `--kernel` ([`tools/kernel_targets.py`](internals/tools/kernel_targets.md)) | the intra's launches, on the cells of 16K tokens and more |
-| `roofline` | `tools/roofline.py` | the intra's time beside the device's u8 IMMA ceiling |
-| `quality` | [`tools/quality.py`](internals/tools/quality.md) | the output's error against fp64 by each leg's accumulation, on the cells of tier `both` |
+| `support` | [`tools/realized_support.py`](internals/tools/realized_support.md) | what each layer construction's weights route on its cells |
 | `oracle-tier` | the oracle battery | the counts, the failed cases, the margins |
 
 A question about the machine itself, rather than a shipped kernel, is a lab experiment ([`lab/`](lab/README.md)).
@@ -299,8 +294,6 @@ and a timing only compares within the session that interleaved it.
 | `rola/<instrument>` | a store target of `declare.py` or rola-bench's root | the instrument target's semantics: its tool and arguments, code digest, the cells, the binary's and environment's outputs | the instrument's JSON per cell, with each cell's failure |
 | `timing/session`, `timing/memory` | a store target over `measure_timing` / `measure_memory` | the session's semantics: every registration's executor, cells, code and binary, the timing parameters | every sample in order with its round, rep and position, each entry's status, the clock reads; each entry's peak memory |
 | `timing/null` | a store target over `measure_null_gate` (rola-bench's root) | the gate's semantics: the registration, its cells, the timing parameters | the session of the two copies and, per cell, whether they agree |
-| `calibration` | `measure/harness/bench_carry_calib.py` | the parts binary, device, owners, sizes, clock | the calibration rows |
-| `pipe_timeline.scale` | `tools/pipe_timeline.py --calibrate` | the cell, the binary and the calibration's composition | the plateau the tool reads back as later runs' scale |
 | `environment` | `bazel run //:container_check` | the devbox image's digest | the steps, each timed, and the cold start |
 | `rola/oracle-tier` | a store target over the tier node | the tier's code, the binary, the environment | the counts, the failed cases, the margins |
 | `diff/<surface>` | a store target over a diff node | both sides' semantics and the rule | the verdict per cell and quantity, never a tensor |

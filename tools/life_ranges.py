@@ -7,13 +7,11 @@ point it concerns, never the allocation. The reads and writes are `nvdisasm --pr
 marks; the liveness is this tool's own, over the function's real control flow
 (docs/internals/tools/life_ranges.md#liveness).
 
-    bazel run //tools:life_ranges -- --cubin <cubin> --source csrc/rola/src/carry/ampere/carry_kernel.cuh
-    bazel run //tools:life_ranges -- --so <extension .so> --source ... \
-        [--member carry_arm] [--kernel carry_kernel] [--top N]
-    bazel run //tools:life_ranges -- --arm 0 --source ... [--arch sm_86]   # compiles the carry arm with -lineinfo first
-    bazel run //tools:life_ranges -- --arm 0 --kernel carry_kernel \
-        --source csrc/rola/src/carry/ampere/carry_kernel.cuh \
-        --source csrc/rola/src/carry/ampere/parts.cuh ... --budget tools/budgets/carry.json   # the register budget
+    bazel run //tools:life_ranges -- --cubin <cubin> --source csrc/rola/src/facts/facts.cu
+    bazel run //tools:life_ranges -- --so <extension .so> --member facts --kernel facts_pass \
+        --source csrc/rola/src/facts/facts.cu [--arch sm_86] [--top N]
+    bazel run //tools:life_ranges -- --so <extension .so> --member <member> --kernel <regex> --source <kernel file> \
+        --source <component files>... --budget tools/budgets/<kernel>.json   # the register budget
 
 The cubin must carry line info (`-lineinfo`); an extension built without it reports the peak
 and the histogram but no regions. Regions are the innermost source function (struct methods as
@@ -26,27 +24,12 @@ import collections
 import json
 import re
 import struct
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).absolute().parent))
 import sass  # noqa: E402
 from region_ledger import fn_of, function_map, owner_of  # noqa: E402
-
-
-def compile_arm(arm: int, arch: str) -> Path:
-    """The carry arm's translation unit compiled alone with line info, against the build's generated headers."""
-    import dev_config
-
-    arch = arch or sass.device_arch()
-    cubin = sass.scratch("life_ranges") / f"carry_arm_{arm}.{arch}.cubin"
-    root = Path(__file__).resolve().parents[1]
-    subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", f"-arch={arch}", "--expt-relaxed-constexpr",
-                    "-lineinfo", f"-DROLA_CARRY_BUILD_{arm}", "-I", "csrc/rola/src", "-I", "build/generated", "-cubin",
-                    f"csrc/rola/src/instantiations/carry_arm_{arm}.cu", "-o", str(cubin)], cwd=root, check=True,
-                   capture_output=True, timeout=1800)
-    return cubin
 
 
 def component_peaks(cubin: Path, kernel: str | None, rows: list[tuple[int, str, int]], sources: list[Path],
@@ -70,8 +53,6 @@ def component_peaks(cubin: Path, kernel: str | None, rows: list[tuple[int, str, 
 
 
 def cubin_of(args) -> Path:
-    if args.arm is not None:
-        return compile_arm(args.arm, args.arch)
     if args.cubin:
         return Path(args.cubin)
     return sass.cubin(Path(args.so), args.member, args.arch or sass.device_arch())
@@ -245,9 +226,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cubin", type=Path, default=None)
     ap.add_argument("--so", type=Path, default=None)
-    ap.add_argument("--arm", type=int, default=None, help="compile this carry arm with -lineinfo and read it")
-    ap.add_argument("--arch", default=None, help="with --arm: the architecture (default: this machine's GPU)")
-    ap.add_argument("--member", default="carry_arm")
+    ap.add_argument("--arch", default=None, help="with --so: the architecture (default: this machine's GPU)")
+    ap.add_argument("--member", required=False, default=None, help="with --so: the cubin member's name")
     ap.add_argument("--kernel", default=None,
                     help="the function to read, a regex over the cubin's (needed where it holds several)")
     ap.add_argument("--source", type=Path, required=True, action="append",
@@ -258,8 +238,8 @@ def main() -> int:
     ap.add_argument("--top", type=int, default=16)
     ap.add_argument("--json", type=Path, default=None, help="also write the peak and every region's live counts here")
     a = ap.parse_args()
-    if sum(x is not None for x in (a.cubin, a.so, a.arm)) != 1:
-        ap.error("give exactly one of --cubin, --so or --arm")
+    if (a.cubin is None) == (a.so is None) or (a.so is not None and a.member is None):
+        ap.error("give --cubin, or --so with --member")
     cubin = cubin_of(a)
     rows = live_counts(cubin, a.kernel)
     if not rows:

@@ -6,13 +6,12 @@
 and returns a builder for every arm this checkout runs on it, or refuses the cell by raising:
 - any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
   (`--//:carry_arms`) measures a subset of the tree;
-- a carry cell whose carry arm (the key its carve selects, `rola.ops.carry.arm_key`) the binary does not carry;
 - data that is neither kind.
 `measure/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
 through `oneshot_argv`.
 An arm is a subject that applies to the cell (`measure.subjects.applicable`, the cell's own facts) and whose kernel this
-binary carries at the cell's shape (the intra arm at the cell's depth and level width for `intra_forward`, the decode
-arm for `decode_step`), with its call count: its name is the subject, then `@calls=N` for a call count other than one
+binary carries at the cell's shape (the carry arm the cell's carve selects for `prefill`, the decode arm for
+`decode_step`), with its call count: its name is the subject, then `@calls=N` for a call count other than one
 (`Subject.calls`), and on a layer cell `@layer=C` for each RoLA construction declared for that input
 (`measure.cells.layer.CONSTRUCTIONS`). Only the arm asked for is built.
 Building one proves two things before anything is timed, and refuses the arm by name when either fails: from a fact the
@@ -48,16 +47,11 @@ def arms(data) -> dict:
     from rola_devtools.cells.layer import LayerCell
 
     from measure.cells.layer import CONSTRUCTIONS
-    from measure.subjects import SUBJECTS, applicable, cell_carve
-    from rola.ops import carry
+    from measure.subjects import SUBJECTS, applicable
 
     _refuse_a_partial_binary()
     if isinstance(data, CarryCell):
         kind, constructions = "carry", [None]
-        key = carry.arm_key(cell_carve(data))
-        if key not in {tuple(arm) for arm in carry.arms()}:
-            raise LookupError(f"{data.name}: this binary carries no carry arm {key} (see rola.ops.carry.arm_key); it "
-                              f"carries {sorted(tuple(arm) for arm in carry.arms())}")
     elif isinstance(data, LayerCell):
         kind, constructions = "layer", [c for c in CONSTRUCTIONS.values() if data.name in c.cells]
         if not constructions:
@@ -90,10 +84,13 @@ def _refuse_a_partial_binary() -> None:
 def _kernel_carried(subject: str, spec, construction) -> bool:
     """Whether this binary carries the kernel `subject` launches at the cell's shape, or a layer cell's construction
     (the cell's own facts are `measure.subjects.applicable`'s)."""
-    from rola.ops import decode, intra
+    from rola.ops import carry, decode
 
-    if subject == "intra_forward":
-        return intra.reads(spec.widths)
+    #: the op's prefill launches the carry arm the cell's carve selects
+    if subject == "prefill":
+        from measure.subjects import cell_carve
+
+        return carry.arm_key(cell_carve(spec)) in {tuple(arm) for arm in carry.arms()}
     if subject == "decode_step":
         rows = decode.arms()
         padded = [dv for dv, _d, _decay in rows if dv >= spec.dv]
@@ -157,7 +154,7 @@ def _layer_fixture(spec, construction):
     return build(spec, construction)
 
 
-def oneshot_argv(cell: str, arm: str = "carry_forward") -> list[str]:
+def oneshot_argv(cell: str, arm: str) -> list[str]:
     """One untimed launch of `arm` on `cell` by this checkout's runner, under this interpreter: what a profiler wraps.
     The arm is built exactly as a comparison builds it, so what a profile counts is the launch a comparison times."""
     #: AS A MODULE, from the checkout: a package file run by path has its own directory for a root and cannot import

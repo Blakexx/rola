@@ -58,11 +58,10 @@ else from the work the tensor-pipe counter counts and the one MMA kind the SASS 
 * `lab::Bench` — the host runner: `expect(kernel, op, cmp, count)` declares SASS (printed under `--expect`, run by the
   driver before anything is timed), `variant(launch, measure)` warms up and repeats a launch, `record(name, unit,
   samples)` prints a result, `cycles(warps)` and `mean(...)` read the warps' clocks. `--blocks N` holds the grid an experiment launches over `Bench::sms` to N CTAs, so a sanitizer
-  can run an experiment at one CTA (racecheck's host memory grows with the CTAs it tracks: the carry's readout part
-  harness, `read_alone`, at one CTA).
+  can run an experiment at one CTA (racecheck's host memory grows with the CTAs it tracks).
 * `Bench::budget(kernel, class, max)` — KERNEL_STANDARDS §29's instruction budget, per MMA, gated on ncu's executed
   counts by `run`; `Bench::units(kernel, unit, n)` makes a kernel with no MMAs budgeted per unit, its first launch
-  doing `n` of them (`color_union`: a box-window colored).
+  doing `n` of them.
 * `lab::kernel("tax", {3, 17})` — a kernel's demangled name as an expectation's pattern.
 
 ## What goes wrong, and what guards it
@@ -92,7 +91,7 @@ Every item below cost a wrong number before the lab existed; each is now a guard
 * **The mean warp undercounts.** When warps finish apart, the mean warp's cycles read below the tensor floor; the
   block's span is the throughput. Habit: `WarpSpan` wherever warps can drift.
 * **Light register pressure.** A step that runs at its floor beside 150 registers may spill beside the kernel's 255.
-  Habit: an experiment about a kernel's step holds the kernel's live accumulators (`fold_step`).
+  Habit: an experiment about a kernel's step holds the kernel's live accumulators.
 * **Runtime choices inside a timed loop.** A `kind` argument switched at run time inside the loop measured branches, not
   MMAs. Habit: every variant is a template parameter.
 * **The operand pattern.** An instruction's cost beside the tensor pipe grows with the registers it reads: packed f16
@@ -121,6 +120,5 @@ a source in `measure/lab/experiments/`. The anchors below are where the sources'
 - <a id="vote-stash"></a>[`vote_stash`](../../lab/vote_stash.md)
 - <a id="facts-block"></a>[`facts_block`](../../lab/facts_block.md)
 - <a id="facts-two"></a>[`facts_two`](../../lab/facts_two.md)
-- <a id="mma-k8"></a>[`mma_k8`](../../lab/mma_k8.md)
 - <a id="issue-latency"></a>[`issue_latency`](../../lab/issue_latency.md)
 - <a id="drain"></a>[`drain`](../../lab/drain.md)

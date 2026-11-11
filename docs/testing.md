@@ -44,8 +44,7 @@ a reader can check against any linear-attention paper, with normalization carrie
 than as a second recurrence. The feature map's hard part, entmax, is the DeepSPIN authors' own package, pinned. What is
 OURS is the glue -- the leaf address map, the gate values, the ratio readout -- and it is deliberately small, because it
 is the one shared blind spot the factoring does not remove. The oracle takes the bundle itself as its input, so a kernel
-and its reference read the same quantized operands (`tests/oracle/int_reference.py` states the declared integer
-arithmetic in fp64).
+and its reference read the same quantized operands.
 
 Three promises a caller can rely on:
 
@@ -125,8 +124,9 @@ recurrence's units (`tests/oracle/test_carry_vs_oracle.py`, its drawn-cell suppl
 `test_carry_hypothesis_cells.py`), the op's readout and handed-back state against `naive_rola`
 (`tests/oracle/test_prefill_vs_oracle.py`), and the state's backings bit-identical through a fresh call and a
 continuation (`tests/integration/test_chunk_paging_equivalence.py`, red by plan). Its readouts' bit-identity is an
-assertion the carry cannot meet -- the carry's num differs run to run (its f16 sums reassociate) -- so the test's port
-re-points it to the carry's f16 sum's bound; the state's bit-identity stands. `declare.py`'s `carry-vs-oracle` diff stores the
+assertion a carry cannot meet -- its num differs run to run (its fp32 sums across CTAs reassociate) -- so the test's
+port re-points it to that sum's bound; the state's bit-identity stands. Every one of them is red on this line by the
+ops' named error (`rola.ops._ext.KernelNotBuilt`): no carry, intra or producer kernel is built. `declare.py`'s `carry-vs-oracle` diff stores the
 carry's verdict per cell beside the instruments.
 
 Decode is its own family (`tests/oracle/test_decode_family.py`): the prefill-to-decode hand-off, a 32-step horizon with
@@ -146,12 +146,12 @@ performance-only under drifting realized routing.
 2. **A rule that cannot fail is the same defect as a tolerance that cannot fail**, so each gate plants errors on the
    kernel's own output that must fail (`fixtures.assert_planted_errors_fail`), and `tests/unit/test_oracle_rule.py`
    holds the rule itself. `tests/oracle/tolerances.py` records the measured margins.
-3. **A kernel whose arithmetic is declared is graded against a reference that mirrors it** (the fold's
-   `tests/oracle/fold_reference.py`, the intra's `int_reference.py`, the state's `state_rounded`), so the tolerance
+3. **A kernel whose arithmetic is declared is graded against a reference that mirrors it** (the state's
+   `state_rounded`), so the tolerance
    charges only accumulation order, never a rounding the reference skipped. Where a third party's arithmetic is opaque
    (a cuBLAS reduction order), the gate sits at the seam: the production intermediate is fed to the reference. A fused
-   kernel is gated through a shipped probe composed of its own device components (the carry's `fold_probe`), so the
-   agreement is a fact of the call graph and the gate runs the shipped binary.
+   kernel is gated through a shipped probe composed of its own device components, so the agreement is a fact of the
+   call graph and the gate runs the shipped binary.
 4. **Every tolerance is either DECLARED with its derivation in a module comment or DERIVED in code.** A number with
    neither is a defect.
 5. **Loosening a tolerance is a semantic change**: changelog entry, derivation, reviewer sign-off. Tightening needs none
@@ -355,8 +355,7 @@ publication read before its join, an inner join standing in for an outer one, a 
 
 `bazel test //tests:sanitizer` runs `tools/sanitize_oracle.py`, passing it the toolkit's own `compute-sanitizer`
 (`@cuda_tools`, the release the library is built by; the script refuses any whose `--version` is not the toolchain
-record's `sanitizer`, and takes none from PATH) over ONE named oracle cell per family (the facts pass, the
-carry's fold and a whole call, the intra, decode, the producer and the entmax solves), each pair in its own process
+record's `sanitizer`, and takes none from PATH) over ONE named oracle cell per family (the facts pass, decode and the entmax solves), each pair in its own process
 with a timeout, under the GPU lock; `--test_arg=--tool --test_arg=racecheck` or `--family` narrows or widens it. It is
 `manual`: no suite holds it.
 It runs **when a component lands, before a ratify, and on a schedule, never per commit**

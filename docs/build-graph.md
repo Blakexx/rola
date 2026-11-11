@@ -66,8 +66,7 @@ headers into `build/generated`.
 
 - THE BUILD'S PARAMETERS are the root package's settings: `--//:archs` (default `@rola_env//:flags.bzl`'s
   `RATIFIED_ARCHS`, the toolchain's ratified manifests), `--//:carry_arms` and `--//:decode_arms` (arm indices; empty is
-  every arm) and `--//:carry_parts` (`tools/gen_shards.py`'s `carry_parts_spec`). Any value but a default makes an
-  iteration build, which its record says.
+  every arm). Any value but a default makes an iteration build, which its record says.
 - THE FLAGS ARE `tools/build_flags.py`'S: the environment repository writes `@rola_env//:flags.bzl` from it
   (`bazel/flags.py`) -- the nvcc codegen flags and torch's extension defines, the host C++ flags -- and the graph states
   none of its own. rules_cuda's own additions are off on every unit (its extended lambdas, compilation-mode flags,
@@ -109,9 +108,8 @@ headers into `build/generated`.
   `rola_cu13/<module>.abi3.so` beside the extension, linked as it is and SASS-gated as it is (`--instrument`: it owes
   none of the source's kernels, and its probes keep only the step signatures their declarations name, the rule's
   `kept`, [`internals/tools/sass_gate.md`](internals/tools/sass_gate.md#instrument)), for the architectures `--//:archs` names; never shipped, so no record, arm gate or
-  ratify. `//:parts_library` is the part harness's driver (`_C_parts`, KERNEL_STANDARDS section 22): the calibration
-  kernels (`//measure/harness/carry_parts`, with `-lineinfo` for the ledgers) and the runtime's units, the library's own
-  objects.
+  ratify. No instrument's library is declared on this line: a family's part harness (KERNEL_STANDARDS section 19) is
+  the rule's user, with the family's first schedule.
 ## <a id="gates"></a>The library's gates
 
 Building `//:library` runs the gates below; their verdicts are its outputs and its runfiles, so neither a build nor
@@ -206,12 +204,11 @@ The tree keeps the layout of a Python package with a native extension, as FlashA
 2026-11-08): `rola/` beside `csrc/`, and the tests that drive the kernels through the op against the oracle in `tests/`,
 since the kernels serve the op alone and those tests grade the two as one. A BUILD file sits beside what it describes,
 its lints among it, and `bazel/` holds only the graph's own machinery:
-- the root package: the build's parameters, the extension and the part harness's library, the devbox image, the
+- the root package: the build's parameters, the extension, the devbox image, the
   repo-wide checks and the gate;
 - `csrc/rola`: the kernel tree, its units and its own lints; `csrc/third_party`: the vendored trees;
 - `tools`: the pins and records the graph reads, the generators it runs, and each tool's run target; `tools/lint`: the
   linters, the modes a person runs by hand and each linter's self-test;
-- `measure/harness`: the part harness's run target; `measure/harness/carry_parts`: its driver's calibration kernels;
 - `tests`: the tiers.
 
 A C++ API of the kernels' own would make a split by language right.
@@ -279,8 +276,7 @@ names one).
     bazel run //:compile_commands                                   # the editor's compile_commands.json
     bazel test //:lane                                              # every test tier
     bazel run //:library                                            # the shipped build, into rola_cu13/
-    bazel run //:library --//:archs=86 --//:carry_arms=3            # an iteration build
-    bazel run //:parts_library --//:archs=86                        # the part harness's driver, beside the library
+    bazel run //:library --//:archs=86 --//:decode_arms=3           # an iteration build
     bazel run //:image_load                                         # the devbox image, into Docker (docs/setup.md)
     bazel run //:image_push                                         # the devbox image, published to Docker Hub
     bazel run //tools:<tool> -- <its arguments>                     # a tree tool, in the checkout on its own venv

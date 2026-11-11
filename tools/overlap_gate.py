@@ -12,8 +12,7 @@ sustained peak. Its FLOORS, each a time:
 - issue: instructions over the SMs' schedulers at one a clock (`common/hardware.json`'s `schedulers`, `issue`);
 - tensor: the row's MMA kind's instructions at the product's calibrated cycles each, over the SMs' schedulers
   (never the profiler's pipe ratio: §22); a row of several shapes (`mma="shapes"`) prices each executed MMA by its
-  own (ncu's source counters: its accumulate type's rate, an m16n8k8 or an int8 k16 half its k16 or k32, lab
-  `mma_k8`);
+  own (ncu's source counters: its accumulate type's rate, an m16n8k8 or an int8 k16 half its k16 or k32);
 - shared: wavefronts at the product's `wavefront` cycles each, over the SMs;
 - DRAM: the bytes at the profiler's sustained DRAM peak (`dram__throughput` x elapsed).
 The ratio is elapsed / max(floors): 1.0 is a kernel at its binding floor. A kernel whose phases take turns -- one
@@ -57,13 +56,6 @@ class Row:
 ROWS = {
     "facts-alt-k4": Row(kernel="facts_pass", launch="facts", cell="nl64k-alt-k4", heads=4),
     "facts-dense": Row(kernel="facts_pass", launch="facts", cell="nl64k-dense", heads=4),
-    "carry-alt-k4": Row(kernel="carry_kernel", launch="carry", cell="nl64k-alt-k4", heads=1, mma="shapes"),
-    "carry-dense": Row(kernel="carry_kernel", launch="carry", cell="nl64k-dense", heads=1, mma="shapes"),
-    "carry-alt-k4-g4": Row(kernel="carry_kernel", launch="carry", cell="nl64k-alt-k4-g4", heads=1, mma="shapes"),
-    "scale-writes-alt-k4": Row(kernel="scale_writes", launch="scale", cell="nl64k-alt-k4", heads=4),
-    "scale-reads-alt-k4": Row(kernel="scale_reads", launch="scale", cell="nl64k-alt-k4", heads=4),
-    "scale-writes-dense": Row(kernel="scale_writes", launch="scale", cell="nl64k-dense", heads=4),
-    "scale-reads-dense": Row(kernel="scale_reads", launch="scale", cell="nl64k-dense", heads=4),
 }
 #: THE PROBE ROWS: the instrument's own check, a kernel known to run at one floor (`--probe`)
 PROBES = {
@@ -75,45 +67,14 @@ def _launch_facts(cell: str, heads: int, repeat: int) -> None:
     import torch
 
     from measure.cells import by_name, realize
-    from measure.subjects import bundle_of, lists_form_of
+    from measure.subjects import bundle_of
     from rola.ops import facts as facts_ops
 
     spec = by_name(cell)
     routes, values, layout, statics = bundle_of(spec, realize(spec, H=heads))
-    form = lists_form_of(spec)
+    form = facts_ops.UNIT_FORM
     for _ in range(repeat):
         facts_ops.facts(routes, values, layout, *statics, form)
-    torch.cuda.synchronize()
-
-
-def _launch_carry(cell: str, heads: int, repeat: int) -> None:
-    import torch
-
-    from measure.cells import by_name
-    from measure.subjects import carry_operands
-    from rola.ops import carry as carry_ops
-
-    operands = carry_operands(by_name(cell))
-    for _ in range(repeat):
-        carry_ops.carry(*operands)
-    torch.cuda.synchronize()
-
-
-def _launch_scale(cell: str, heads: int, repeat: int) -> None:
-    import torch
-
-    from measure.cells import by_name, realize
-    from measure.subjects import bundle_of, lists_form_of
-    from rola.ops import facts as facts_ops
-    from rola.ops import scale as scale_ops
-    from rola.ops.prefill import carry_factor
-
-    spec = by_name(cell)
-    routes, values, layout, statics = bundle_of(spec, realize(spec, H=heads))
-    facts = facts_ops.facts(routes, values, layout, *statics, lists_form_of(spec))
-    factor = carry_factor(routes)
-    for _ in range(repeat):
-        scale_ops.scale(routes, facts, factor)
     torch.cuda.synchronize()
 
 
@@ -127,7 +88,7 @@ def _launch_gemm(cell: str, heads: int, repeat: int) -> None:
     torch.cuda.synchronize()
 
 
-LAUNCHES = {"facts": _launch_facts, "carry": _launch_carry, "scale": _launch_scale, "gemm": _launch_gemm}
+LAUNCHES = {"facts": _launch_facts, "gemm": _launch_gemm}
 
 
 def _mma_cycles(opcode: str, rates: dict) -> float:

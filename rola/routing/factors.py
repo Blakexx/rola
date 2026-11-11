@@ -186,11 +186,6 @@ class RouteFactors:
         return cls(topology=topology, amp_read=amp_read, amp_write=amp_write, scale_read=scale_read,
                    scale_write=scale_write, source=source, sparse=sparse)
 
-    @property
-    def level_s(self) -> int:
-        """The carry's level S (:func:`carry_level_s`), ``-1`` where there is none."""
-        return carry_level_s(self.sparse[0])
-
     def form(self, level: int, side: str) -> quant.Form:
         """``level``'s storage form on ``side`` (:func:`level_form`)."""
         return level_form(self.sparse[side == "write"][level])

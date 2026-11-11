@@ -264,3 +264,11 @@ def frames(text: str) -> dict[int, list[tuple[str, int]]]:
 
 __all__ = ["ARCH", "ENCODING", "FUNCTION", "INSTRUCTION", "LINE_INFO", "SECTION", "cubin", "cubins", "device_arch",
            "disassemble", "frames", "one_kernel", "sass_lines", "section", "sections"]
+
+
+def machine(cubin: Path) -> str:
+    """The cubin's architecture off its disassembly's `.target` line, refused where it names none."""
+    m = re.search(r"\.target\s+(sm_\d+a?)", disassemble(cubin)[:4000])
+    if not m:
+        raise SystemExit(f"{cubin}: its disassembly names no target architecture")
+    return m.group(1)

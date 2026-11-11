@@ -8,8 +8,7 @@ Mirrors `csrc/rola/src/common/atoms/math.cuh`, a concern of the baseline operati
   error class as the `__fdividef` beside it.
 
 - <a id="exp2-approx"></a>`exp2_approx`: `ex2.approx.ftz.f32`, one special-function instruction: `2^x` within two
-  units in the last place, a denormal result flushed to zero, `2^-inf = 0` (the softmax's dead columns,
-  [produce.md#solve](../../produce/ampere/produce_kernel.md#solve)).
+  units in the last place, a denormal result flushed to zero, `2^-inf = 0` (the softmax's dead columns).
 
 - <a id="prmt"></a>`prmt`, `pack_byte4`: `prmt.b32` picks four of two words' eight bytes by a selector nibble each;
   `pack_byte4` takes the same byte of four words with three of them (pair selectors `0x0040`, `0x0051`, `0x0062`, then
@@ -17,11 +16,10 @@ Mirrors `csrc/rola/src/common/atoms/math.cuh`, a concern of the baseline operati
 
 - <a id="hmul2"></a>`hmul2`, `hfma2`, `pack_half2`: two f16 products or fused products each rounded once to nearest,
   two fp32 to an f16 pair rounded to nearest (`cvt.rn.f16x2.f32`, `lo` in the low half). Every rounding is explicit so
-  `tests/oracle/fold_reference.py` can mirror it.
+  a reference can mirror it.
 - <a id="hmul2-by"></a>`hmul2_by`: an f16 pair times one half, each product rounded once (`__hmul2_rn` on the half
   broadcast): ptxas folds the broadcast into HMUL2's operand selector, its price in
-  [budgets.md#prices](../../tools/budgets.md#prices). The dense readout scales its rows by it
-  (`docs/internals/carry/ampere/readout_dense.md#nest`).
+  [budgets.md#prices](../../tools/budgets.md#prices).
 
 The bf16 pair helpers, `hi_bf16` through `or_run`, have no shipped caller.
 
