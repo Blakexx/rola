@@ -1,24 +1,86 @@
 {
  "experiment": "byte_expand",
- "question": "what does a warp take to expand a tile of u8 bytes into bf16 times each token's fp32 scale, with nothing else in its loop -- no ring, no barrier?",
+ "question": "what does a warp take to expand a tile of u8 bytes into bf16 times each token's fp32 scale, with nothing else in its loop -- no ring, no barrier -- and what holds an SM's rate?",
  "arch": "sm_90a",
  "device": "NVIDIA H100 80GB HBM3",
  "checks": [
   {
    "lab": "check",
-   "variant": "1 warp a CTA",
+   "variant": "the expansion, 1 warp a CTA",
    "ok": true,
    "detail": "0 of 135168 operand words differ from the host's"
   },
   {
    "lab": "check",
-   "variant": "4 warps a CTA",
+   "variant": "the expansion, 4 warps a CTA",
    "ok": true,
    "detail": "0 of 540672 operand words differ from the host's"
   },
   {
    "lab": "check",
-   "variant": "8 warps a CTA",
+   "variant": "the expansion, 8 warps a CTA",
+   "ok": true,
+   "detail": "0 of 1081344 operand words differ from the host's"
+  },
+  {
+   "lab": "check",
+   "variant": "the pair packed by truncation, 4 warps a CTA",
+   "ok": true,
+   "detail": "0 of 540672 operand words differ from the host's"
+  },
+  {
+   "lab": "check",
+   "variant": "the pair packed by truncation, 8 warps a CTA",
+   "ok": true,
+   "detail": "0 of 1081344 operand words differ from the host's"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "no product, 4 warps a CTA",
+   "reason": "an isolation: one instruction class is dropped, so the tile is not the product"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "no product, 8 warps a CTA",
+   "reason": "an isolation: one instruction class is dropped, so the tile is not the product"
+  },
+  {
+   "lab": "check",
+   "variant": "no reload of the bytes, 4 warps a CTA",
+   "ok": true,
+   "detail": "0 of 540672 operand words differ from the host's"
+  },
+  {
+   "lab": "check",
+   "variant": "no reload of the bytes, 8 warps a CTA",
+   "ok": true,
+   "detail": "0 of 1081344 operand words differ from the host's"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "no store of the tile, 4 warps a CTA",
+   "reason": "an isolation: one instruction class is dropped, so the tile is not the product"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "no store of the tile, 8 warps a CTA",
+   "reason": "an isolation: one instruction class is dropped, so the tile is not the product"
+  },
+  {
+   "lab": "check",
+   "variant": "the expansion, a warp's lanes on eight bank groups, 1 warp a CTA",
+   "ok": true,
+   "detail": "0 of 135168 operand words differ from the host's"
+  },
+  {
+   "lab": "check",
+   "variant": "the expansion, a warp's lanes on eight bank groups, 4 warps a CTA",
+   "ok": true,
+   "detail": "0 of 540672 operand words differ from the host's"
+  },
+  {
+   "lab": "check",
+   "variant": "the expansion, a warp's lanes on eight bank groups, 8 warps a CTA",
    "ok": true,
    "detail": "0 of 1081344 operand words differ from the host's"
   }
@@ -26,118 +88,503 @@
  "driver": "595.91.07",
  "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
  "git": {
-  "sha": "6286046643d17ec1a3cb881dc414dcc2ed866cf6",
+  "sha": "dc21ff38b0daeaf27eb8fd022a60d4d20885cddf",
   "dirty": false
  },
  "reps": 7,
- "date": "2026-11-11T04:54:45+00:00",
+ "date": "2026-11-11T05:47:41+00:00",
  "utilization_before": 0,
  "inputs": {},
  "results": [
   {
    "lab": "result",
-   "name": "1 warp a CTA",
+   "name": "the expansion, 1 warp a CTA",
    "unit": "cycles a tile a warp",
    "samples": [
-    202.075608,
-    202.075578,
-    202.075608,
-    202.077158,
-    202.075704,
-    202.07566,
-    202.07588
+    210.079059,
+    210.079044,
+    210.079055,
+    210.079164,
+    210.079163,
+    210.079164,
+    210.079161
    ],
-   "median": 202.07566,
-   "min": 202.075578,
-   "max": 202.077158,
+   "median": 210.079161,
+   "min": 210.079044,
+   "max": 210.079164,
    "unstable": false
   },
   {
    "lab": "result",
-   "name": "4 warps a CTA",
+   "name": "the expansion, 4 warps a CTA",
    "unit": "cycles a tile a warp",
    "samples": [
-    224.114452,
-    224.114446,
-    224.114452,
-    224.114424,
-    224.114452,
-    224.114446,
-    224.114452
+    224.121795,
+    224.121782,
+    224.121787,
+    224.121782,
+    224.121787,
+    224.121782,
+    224.121787
    ],
-   "median": 224.114452,
-   "min": 224.114424,
-   "max": 224.114452,
+   "median": 224.121787,
+   "min": 224.121782,
+   "max": 224.121795,
    "unstable": false
   },
   {
    "lab": "result",
-   "name": "8 warps a CTA",
+   "name": "the expansion, 8 warps a CTA",
    "unit": "cycles a tile a warp",
    "samples": [
-    448.128758,
-    448.128686,
-    448.128784,
-    448.12879,
-    448.12893,
-    448.128686,
-    448.128618
+    448.099047,
+    448.099088,
+    448.099506,
+    448.099069,
+    448.099101,
+    448.099095,
+    448.09903
    ],
-   "median": 448.128758,
-   "min": 448.128618,
-   "max": 448.12893,
+   "median": 448.099088,
+   "min": 448.09903,
+   "max": 448.099506,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the pair packed by truncation, 4 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    224.115928,
+    224.115928,
+    224.115928,
+    224.115922,
+    224.115934,
+    224.115926,
+    224.115932
+   ],
+   "median": 224.115928,
+   "min": 224.115922,
+   "max": 224.115934,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the pair packed by truncation, 8 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    448.122781,
+    448.122769,
+    448.122827,
+    448.123152,
+    448.12306,
+    448.123152,
+    448.122503
+   ],
+   "median": 448.122827,
+   "min": 448.122503,
+   "max": 448.123152,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no product, 4 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    224.085166,
+    224.085161,
+    224.085166,
+    224.085164,
+    224.085166,
+    224.085164,
+    224.08517
+   ],
+   "median": 224.085166,
+   "min": 224.085161,
+   "max": 224.08517,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no product, 8 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    448.066952,
+    448.066976,
+    448.066939,
+    448.066817,
+    448.067024,
+    448.066734,
+    448.066963
+   ],
+   "median": 448.066952,
+   "min": 448.066734,
+   "max": 448.067024,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no reload of the bytes, 4 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    128.080772,
+    128.080762,
+    128.080774,
+    128.080766,
+    128.080768,
+    128.080766,
+    128.080772
+   ],
+   "median": 128.080768,
+   "min": 128.080762,
+   "max": 128.080774,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no reload of the bytes, 8 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    256.109971,
+    256.11,
+    256.109974,
+    256.109885,
+    256.109974,
+    256.109922,
+    256.110002
+   ],
+   "median": 256.109974,
+   "min": 256.109885,
+   "max": 256.110002,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no store of the tile, 4 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    64.08077,
+    64.080766,
+    64.080774,
+    64.080766,
+    64.080772,
+    64.08077,
+    64.080774
+   ],
+   "median": 64.08077,
+   "min": 64.080766,
+   "max": 64.080774,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "no store of the tile, 8 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    128.108014,
+    128.10801,
+    128.108017,
+    128.108016,
+    128.108016,
+    128.108016,
+    128.108017
+   ],
+   "median": 128.108016,
+   "min": 128.10801,
+   "max": 128.108017,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the expansion, a warp's lanes on eight bank groups, 1 warp a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    67.074176,
+    67.074167,
+    67.074176,
+    67.074282,
+    67.07428,
+    67.074285,
+    67.07428
+   ],
+   "median": 67.07428,
+   "min": 67.074167,
+   "max": 67.074285,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the expansion, a warp's lanes on eight bank groups, 4 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    99.076133,
+    99.076127,
+    99.076137,
+    99.076127,
+    99.076133,
+    99.076127,
+    99.076133
+   ],
+   "median": 99.076133,
+   "min": 99.076127,
+   "max": 99.076137,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the expansion, a warp's lanes on eight bank groups, 8 warps a CTA",
+   "unit": "cycles a tile a warp",
+   "samples": [
+    192.108631,
+    192.108626,
+    192.108633,
+    192.10863,
+    192.108637,
+    192.108626,
+    192.108631
+   ],
+   "median": 192.108631,
+   "min": 192.108626,
+   "max": 192.108637,
    "unstable": false
   }
  ],
  "kernels": {
-  "void byte_expand::tiles<(int)8>(long long *, unsigned short *, int)": {
+  "void byte_expand::tiles<(int)8, (int)5>(long long *, int *, unsigned short *, int)": {
    "regs": 40,
    "ops": {
-    "LOP3.LUT": 57,
+    "LOP3.LUT": 53,
     "PRMT": 36,
     "VIADD": 32,
     "FFMA": 32,
     "IMAD.IADD": 27,
     "SHF.R.S32.HI": 26,
     "LEA.HI": 24,
-    "IMAD.SHL.U32": 17,
+    "IMAD": 17,
     "F2FP.BF16.F32.PACK_AB": 16,
-    "IMAD": 14,
-    "NOP": 14,
-    "IMAD.U32": 9
+    "IMAD.SHL.U32": 13,
+    "IMAD.U32": 9,
+    "NOP": 9
    }
   },
-  "void byte_expand::tiles<(int)4>(long long *, unsigned short *, int)": {
+  "void byte_expand::tiles<(int)4, (int)5>(long long *, int *, unsigned short *, int)": {
    "regs": 40,
    "ops": {
-    "LOP3.LUT": 57,
+    "LOP3.LUT": 53,
     "PRMT": 36,
     "VIADD": 32,
     "FFMA": 32,
     "IMAD.IADD": 27,
     "SHF.R.S32.HI": 26,
     "LEA.HI": 24,
-    "IMAD.SHL.U32": 17,
+    "IMAD": 17,
     "F2FP.BF16.F32.PACK_AB": 16,
-    "IMAD": 14,
-    "NOP": 14,
-    "IMAD.U32": 9
+    "IMAD.SHL.U32": 13,
+    "IMAD.U32": 9,
+    "NOP": 9
    }
   },
-  "void byte_expand::tiles<(int)1>(long long *, unsigned short *, int)": {
+  "void byte_expand::tiles<(int)1, (int)5>(long long *, int *, unsigned short *, int)": {
    "regs": 40,
    "ops": {
-    "LOP3.LUT": 57,
+    "LOP3.LUT": 53,
     "PRMT": 36,
+    "VIADD": 34,
     "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 13,
+    "IMAD.U32": 9,
+    "NOP": 8
+   }
+  },
+  "void byte_expand::tiles<(int)8, (int)4>(long long *, int *, unsigned short *, int)": {
+   "regs": 32,
+   "ops": {
+    "LOP3.LUT": 53,
+    "IMAD.IADD": 39,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 12,
+    "NOP": 12,
+    "IMAD.MOV.U32": 8
+   }
+  },
+  "void byte_expand::tiles<(int)4, (int)4>(long long *, int *, unsigned short *, int)": {
+   "regs": 32,
+   "ops": {
+    "LOP3.LUT": 53,
+    "IMAD.IADD": 39,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 12,
+    "NOP": 12,
+    "IMAD.MOV.U32": 8
+   }
+  },
+  "void byte_expand::tiles<(int)8, (int)3>(long long *, int *, unsigned short *, int)": {
+   "regs": 32,
+   "ops": {
+    "LOP3.LUT": 54,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 25,
+    "LEA.HI": 24,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD": 15,
+    "IMAD.SHL.U32": 14,
+    "NOP": 14,
+    "IMAD.U32": 8
+   }
+  },
+  "void byte_expand::tiles<(int)4, (int)3>(long long *, int *, unsigned short *, int)": {
+   "regs": 32,
+   "ops": {
+    "LOP3.LUT": 54,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 25,
+    "LEA.HI": 24,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD": 15,
+    "IMAD.SHL.U32": 14,
+    "NOP": 14,
+    "IMAD.U32": 8
+   }
+  },
+  "void byte_expand::tiles<(int)8, (int)2>(long long *, int *, unsigned short *, int)": {
+   "regs": 37,
+   "ops": {
+    "LOP3.LUT": 51,
+    "PRMT": 32,
     "VIADD": 31,
+    "SHF.R.S32.HI": 26,
+    "IMAD.IADD": 25,
+    "LEA.HI": 24,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 15,
+    "IMAD": 11,
+    "NOP": 11,
+    "IMAD.U32": 9,
+    "IADD3": 6
+   }
+  },
+  "void byte_expand::tiles<(int)4, (int)2>(long long *, int *, unsigned short *, int)": {
+   "regs": 37,
+   "ops": {
+    "LOP3.LUT": 51,
+    "PRMT": 32,
+    "VIADD": 31,
+    "SHF.R.S32.HI": 26,
+    "IMAD.IADD": 25,
+    "LEA.HI": 24,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 15,
+    "IMAD": 11,
+    "NOP": 11,
+    "IMAD.U32": 9,
+    "IADD3": 6
+   }
+  },
+  "void byte_expand::tiles<(int)8, (int)1>(long long *, int *, unsigned short *, int)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 55,
+    "PRMT": 52,
+    "VIADD": 34,
+    "FFMA": 32,
     "IMAD.IADD": 27,
     "SHF.R.S32.HI": 26,
     "LEA.HI": 24,
-    "IMAD.SHL.U32": 17,
+    "IMAD": 17,
+    "IMAD.SHL.U32": 15,
+    "NOP": 11,
+    "IMAD.U32": 9,
+    "IADD3": 6
+   }
+  },
+  "void byte_expand::tiles<(int)4, (int)1>(long long *, int *, unsigned short *, int)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 55,
+    "PRMT": 52,
+    "VIADD": 34,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "IMAD.SHL.U32": 15,
+    "NOP": 11,
+    "IMAD.U32": 9,
+    "IADD3": 6
+   }
+  },
+  "void byte_expand::tiles<(int)8, (int)0>(long long *, int *, unsigned short *, int)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 55,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
     "F2FP.BF16.F32.PACK_AB": 16,
-    "NOP": 15,
-    "IMAD": 14,
+    "IMAD.SHL.U32": 15,
+    "NOP": 11,
+    "IMAD.U32": 9
+   }
+  },
+  "void byte_expand::tiles<(int)4, (int)0>(long long *, int *, unsigned short *, int)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 55,
+    "PRMT": 36,
+    "VIADD": 34,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 15,
+    "NOP": 11,
+    "IMAD.U32": 9
+   }
+  },
+  "void byte_expand::tiles<(int)1, (int)0>(long long *, int *, unsigned short *, int)": {
+   "regs": 40,
+   "ops": {
+    "LOP3.LUT": 55,
+    "PRMT": 36,
+    "VIADD": 33,
+    "FFMA": 32,
+    "IMAD.IADD": 27,
+    "SHF.R.S32.HI": 26,
+    "LEA.HI": 24,
+    "IMAD": 17,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "IMAD.SHL.U32": 15,
+    "NOP": 12,
     "IMAD.U32": 9
    }
   }

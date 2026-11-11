@@ -1,19 +1,24 @@
 // measure/lab/experiments/byte_expand.cu -- QUESTION: what does a warp take to expand a tile of u8 bytes into bf16
-// times each token's fp32 scale, with nothing else in its loop -- no ring, no barrier -- and which of its
-// instruction classes holds an SM's rate? METHOD: 1, 4 or 8 warps a CTA, a CTA an SM; each warp expands its own 1 KB
-// of bytes (64 tokens x 16 K, in shared memory) into its own 2 KB operand tile, over and over: a lane's two tokens,
-// a byte to 2^23 + byte by one PRMT, the product by one FFMA, a pair to a bf16 word by one conversion (`row_ring`'s
-// expansion). Four more forms at 4 and 8 warps each drop one class: the pair packed by truncation (a PRMT), no
-// product, no reload of the bytes, no store of the tile. The checked forms' last tile is the host's.
+// times each token's fp32 scale, with nothing else in its loop -- no ring, no barrier -- and what holds an SM's rate?
+// METHOD: 1, 4 or 8 warps a CTA, a CTA an SM; each warp expands its own 1 KB of bytes (64 tokens x 16 K, in shared
+// memory) into its own 2 KB operand tile, over and over: a lane's two tokens, a byte to 2^23 + byte by one PRMT, the
+// product by one FFMA, a pair to a bf16 word by one conversion (`row_ring`'s expansion). Four forms each drop a
+// class: the pair packed by truncation, no product, no store and reload of the bytes, no store of the tile. One
+// form changes only which tokens a lane takes, so a warp's 16-byte accesses fall on eight bank groups, not four.
 // see docs/internals/tools/lab.md#byte-expand
 #include "lab.cuh"
 
 namespace byte_expand {
 
 constexpr int kN = 64, kK = 16, kRawBytes = kN * kK, kTileBytes = 2 * kRawBytes, kMaxWarps = 8;
-enum Form : int { kWhole = 0, kTruncated, kNoProduct, kNoReload, kNoStore, kForms };
+enum Form : int { kWhole = 0, kTruncated, kNoProduct, kNoReload, kNoStore, kSpread, kForms };
 const char* kFormName[kForms] = {"the expansion", "the pair packed by truncation", "no product", "no reload of the bytes",
-                                 "no store of the tile"};
+                                 "no store of the tile", "the expansion, a warp's lanes on eight bank groups"};
+
+//: A LANE'S TOKEN `j`: two neighbours (a warp's 16-byte accesses 32 bytes apart: 8 lanes a bank group), or (`kSpread`)
+//: tokens `lane` and `lane + 32` (16 bytes apart: 4 lanes a bank group, the fewest a 512-byte access can take)
+template <int FORM>
+__device__ __forceinline__ int token(int lane, int j) { return FORM == kSpread ? lane + 32 * j : 2 * lane + j; }
 
 constexpr int byte_of(int warp, int n, int k) { return (warp * 31 + n * 7 + k * 3 + 1) % 256; }
 constexpr int line_at(int n, int q) { return 16 * ((n % 8) + 16 * (n / 8) + 8 * q); }
@@ -47,7 +52,7 @@ __global__ void tiles(long long* times, int* sinks, uint16_t* out, int rounds) {
   float s[2], c[2];
 #pragma unroll
   for (int j = 0; j < 2; ++j) {
-    const int n = 2 * lane + j;
+    const int n = token<FORM>(lane, j);
     uint32_t w[4];
 #pragma unroll
     for (int q = 0; q < 4; ++q)
@@ -66,7 +71,7 @@ __global__ void tiles(long long* times, int* sinks, uint16_t* out, int rounds) {
   for (int r = 0; r < rounds; ++r) {
 #pragma unroll
     for (int j = 0; j < 2; ++j) {
-      const int n = 2 * lane + j;
+      const int n = token<FORM>(lane, j);
       //: THE BYTES, stored then loaded: the round's own, as a landed copy's would be
       uint4 in = mine[j];
       if constexpr (FORM != kNoReload) {
@@ -85,7 +90,7 @@ __global__ void tiles(long long* times, int* sinks, uint16_t* out, int rounds) {
         o.y = pack<FORM>(expand<FORM>(w[2 * q], 2, s[j], c[j]), expand<FORM>(w[2 * q], 3, s[j], c[j]));
         o.z = pack<FORM>(expand<FORM>(w[2 * q + 1], 0, s[j], c[j]), expand<FORM>(w[2 * q + 1], 1, s[j], c[j]));
         o.w = pack<FORM>(expand<FORM>(w[2 * q + 1], 2, s[j], c[j]), expand<FORM>(w[2 * q + 1], 3, s[j], c[j]));
-        if constexpr (FORM == kNoStore) seen ^= (o.x + o.y) ^ (o.z + o.w) ^ static_cast<uint32_t>(r);
+        if constexpr (FORM == kNoStore) seen = 3u * seen + ((o.x + o.y) ^ (o.z + o.w)) + static_cast<uint32_t>(r);
         else *reinterpret_cast<uint4*>(tile + line_at(n, q)) = o;
       }
     }
@@ -105,7 +110,7 @@ template <int kWarps, int FORM>
 void run(lab::Bench& b, uint16_t* out) {
   using namespace byte_expand;
   constexpr int kRounds = 4096;
-  constexpr bool kChecked = FORM == kWhole || FORM == kTruncated || FORM == kNoReload;
+  constexpr bool kChecked = FORM == kWhole || FORM == kTruncated || FORM == kNoReload || FORM == kSpread;
   const std::string name = std::string(kFormName[FORM]) + ", " + std::to_string(kWarps)
                            + (kWarps == 1 ? " warp" : " warps") + " a CTA";
   bool checked = false;
@@ -141,7 +146,7 @@ int main(int argc, char** argv) {
   lab::Bench b(argc, argv);
   for (int w : {1, 4, 8})
     for (int f = 0; f < kForms; ++f) {
-      if (w == 1 && f != kWhole) continue;
+      if (w == 1 && f != kWhole && f != kSpread) continue;
       const std::string k = lab::kernel("tiles", {w, f});
       b.expect(k, "FFMA", "==", f == kNoProduct ? 0 : 32);
       b.expect(k, "F2FP", "==", f == kTruncated ? 0 : 16);
@@ -161,5 +166,8 @@ int main(int argc, char** argv) {
   run<8, kNoReload>(b, out);
   run<4, kNoStore>(b, out);
   run<8, kNoStore>(b, out);
+  run<1, kSpread>(b, out);
+  run<4, kSpread>(b, out);
+  run<8, kSpread>(b, out);
   return 0;
 }

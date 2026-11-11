@@ -1394,7 +1394,7 @@
   {"doc": "docs/lab/bulk_drain.md", "pinned_at": "20cd894f95bc", "reviewed": true, "sha256": "", "target": "measure/lab/results/bulk_drain/sm_90a.json"},
   {"doc": "docs/lab/byte_expand.md", "pinned_at": "26774ad1f6d5", "reviewed": true, "sha256": "", "target": "docs/internals/tools/lab.md"},
   {"doc": "docs/lab/byte_expand.md", "pinned_at": "26774ad1f6d5", "reviewed": true, "sha256": "", "target": "docs/lab/row_ring.md"},
-  {"doc": "docs/lab/byte_expand.md", "pinned_at": "6286046643d1", "reviewed": true, "sha256": "", "target": "docs/lab/wgmma_rate.md"},
+  {"doc": "docs/lab/byte_expand.md", "pinned_at": "dc21ff38b0da", "reviewed": true, "sha256": "", "target": "docs/lab/wgmma_rate.md"},
   {"doc": "docs/lab/byte_expand.md", "pinned_at": "26774ad1f6d5", "reviewed": true, "sha256": "", "target": "measure/lab/experiments/byte_expand.cu"},
   {"doc": "docs/lab/byte_expand.md", "pinned_at": "6286046643d1", "reviewed": true, "sha256": "", "target": "measure/lab/results/byte_expand/sm_90a.json"},
   {"doc": "docs/lab/collective_branch.md", "pinned_at": "4d9938a2040f", "reviewed": true, "sha256": "", "target": "docs/internals/tools/lab.md"},
