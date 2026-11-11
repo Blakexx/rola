@@ -75,14 +75,15 @@ ENCODING = re.compile(r"^\s*/\*\s*0x[0-9a-f]+\s*\*/\s*$")
 #: `REDUX`, the warp reduction, is a shuffle before `RED` would make it global, and `LDGDEPBAR`, the `cp.async` commit,
 #: is control before `LDG` would)
 OPCODE_CLASSES = {
-    "mma": ("HMMA", "IMMA"),
+    "mma": ("HMMA", "IMMA", "HGMMA"),
     "shared load": ("LDSM", "LDS"),
     "shared store": ("STS",),
     "shared atomic": ("ATOMS",),
     "control": ("BRA", "BSSY", "BSYNC", "BAR", "WARPSYNC", "EXIT", "CALL", "RET", "NOP", "DEPBAR", "YIELD",
-                "LDGDEPBAR"),
+                "LDGDEPBAR", "WARPGROUP", "SETMAXREG"),
     "shuffle": ("SHFL", "REDUX", "MATCH"),
     "global": ("LDGSTS", "LDG", "STG", "RED", "ATOMG", "ATOM"),
+    "bulk copy": ("UBLKCP", "UBLKRED"),
     "pack": ("PRMT", "F2FP"),
     "conversion unit": ("F2I", "I2F", "F2F", "MUFU"),
     "float": ("FFMA", "FMUL", "FADD", "FMNMX", "HFMA2", "HMUL2", "HADD2", "HMNMX2"),

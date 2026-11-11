@@ -1,0 +1,350 @@
+{
+ "experiment": "bulk_drain",
+ "question": "a CTA's fp32 output panel leaves shared memory for a global sum other CTAs add into too; what does a token cost by one asynchronous bulk reduction a panel, by one a token's span, and by the warps' own reductions a value straight from registers?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "unchecked",
+   "variant": "the panel's stores alone, one sum for every CTA",
+   "reason": "the base: it writes shared memory alone"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a panel, one sum for every CTA",
+   "ok": true,
+   "detail": "0 of 4096 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a panel, one in flight, one sum for every CTA",
+   "ok": true,
+   "detail": "0 of 4096 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a token, one sum for every CTA",
+   "ok": true,
+   "detail": "0 of 4096 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "a reduction a value, no panel, one sum for every CTA",
+   "ok": true,
+   "detail": "0 of 4096 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the panel's stores alone, each CTA its own sum",
+   "reason": "the base: it writes shared memory alone"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a panel, each CTA its own sum",
+   "ok": true,
+   "detail": "0 of 540672 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a panel, one in flight, each CTA its own sum",
+   "ok": true,
+   "detail": "0 of 540672 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "one bulk add a token, each CTA its own sum",
+   "ok": true,
+   "detail": "0 of 540672 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "a reduction a value, no panel, each CTA its own sum",
+   "ok": true,
+   "detail": "0 of 540672 sums differ from the exact ones at 16 rounds"
+  }
+ ],
+ "driver": "595.91.07",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "20cd894f95bcdc881af63b5cfb9bb3a241f9c141",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T04:39:59+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "the panel's stores alone, one sum for every CTA",
+   "unit": "cycles a token",
+   "samples": [
+    3.192498,
+    3.192487,
+    3.192771,
+    3.19278,
+    3.192525,
+    3.19274,
+    3.192766
+   ],
+   "median": 3.19274,
+   "min": 3.192487,
+   "max": 3.19278,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a panel, one sum for every CTA",
+   "unit": "cycles a token",
+   "samples": [
+    46.08074,
+    46.087784,
+    46.099749,
+    46.094655,
+    46.067145,
+    46.042376,
+    46.059726
+   ],
+   "median": 46.08074,
+   "min": 46.042376,
+   "max": 46.099749,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a panel, one in flight, one sum for every CTA",
+   "unit": "cycles a token",
+   "samples": [
+    46.085361,
+    46.019074,
+    46.033307,
+    46.014691,
+    46.017285,
+    46.005768,
+    46.049118
+   ],
+   "median": 46.019074,
+   "min": 46.005768,
+   "max": 46.085361,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a token, one sum for every CTA",
+   "unit": "cycles a token",
+   "samples": [
+    45.952819,
+    45.981109,
+    45.969667,
+    45.986647,
+    45.998584,
+    45.97882,
+    45.971726
+   ],
+   "median": 45.97882,
+   "min": 45.952819,
+   "max": 45.998584,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a reduction a value, no panel, one sum for every CTA",
+   "unit": "cycles a token",
+   "samples": [
+    45.958468,
+    45.94003,
+    45.955116,
+    45.949172,
+    45.941428,
+    45.933427,
+    45.960046
+   ],
+   "median": 45.949172,
+   "min": 45.933427,
+   "max": 45.960046,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the panel's stores alone, each CTA its own sum",
+   "unit": "cycles a token",
+   "samples": [
+    3.191646,
+    3.191657,
+    3.191648,
+    3.191678,
+    3.19166,
+    3.191656,
+    3.191681
+   ],
+   "median": 3.191657,
+   "min": 3.191646,
+   "max": 3.191681,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a panel, each CTA its own sum",
+   "unit": "cycles a token",
+   "samples": [
+    19.879218,
+    19.876492,
+    19.859329,
+    19.87931,
+    19.880458,
+    19.887437,
+    19.873078
+   ],
+   "median": 19.879218,
+   "min": 19.859329,
+   "max": 19.887437,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a panel, one in flight, each CTA its own sum",
+   "unit": "cycles a token",
+   "samples": [
+    19.795328,
+    19.804249,
+    19.803681,
+    19.80428,
+    19.800237,
+    19.801567,
+    19.794536
+   ],
+   "median": 19.801567,
+   "min": 19.794536,
+   "max": 19.80428,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "one bulk add a token, each CTA its own sum",
+   "unit": "cycles a token",
+   "samples": [
+    30.389267,
+    30.389261,
+    30.380121,
+    30.380145,
+    30.389241,
+    30.389256,
+    30.380137
+   ],
+   "median": 30.389241,
+   "min": 30.380121,
+   "max": 30.389267,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "a reduction a value, no panel, each CTA its own sum",
+   "unit": "cycles a token",
+   "samples": [
+    19.795794,
+    19.781441,
+    19.791433,
+    19.79022,
+    19.788127,
+    19.800292,
+    19.793404
+   ],
+   "median": 19.791433,
+   "min": 19.781441,
+   "max": 19.800292,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void bulk_drain::drain<(int)4>(long long *, int *, float *, int, int)": {
+   "regs": 64,
+   "ops": {
+    "VIADD": 46,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "REDG.E.ADD.F32.FTZ.RN.STRONG.GPU": 32,
+    "IADD3": 18,
+    "IMAD.MOV.U32": 15,
+    "NOP": 11,
+    "HFMA2.MMA": 4,
+    "MOV": 4
+   }
+  },
+  "void bulk_drain::drain<(int)3>(long long *, int *, float *, int, int)": {
+   "regs": 63,
+   "ops": {
+    "VIADD": 50,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "STS": 32,
+    "IMAD.MOV.U32": 15,
+    "IADD3": 14,
+    "NOP": 8,
+    "LDC": 4,
+    "BRA": 4
+   }
+  },
+  "void bulk_drain::drain<(int)2>(long long *, int *, float *, int, int)": {
+   "regs": 48,
+   "ops": {
+    "VIADD": 47,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "STS": 32,
+    "IADD3": 17,
+    "NOP": 15,
+    "IMAD.MOV.U32": 13,
+    "BRA": 5,
+    "LDC": 4
+   }
+  },
+  "void bulk_drain::drain<(int)1>(long long *, int *, float *, int, int)": {
+   "regs": 47,
+   "ops": {
+    "VIADD": 43,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "STS": 32,
+    "IMAD.MOV.U32": 22,
+    "IADD3": 20,
+    "NOP": 15,
+    "PLOP3.LUT": 4,
+    "BRA": 4
+   }
+  },
+  "void bulk_drain::drain<(int)0>(long long *, int *, float *, int, int)": {
+   "regs": 56,
+   "ops": {
+    "VIADD": 45,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "STS": 32,
+    "IADD3": 20,
+    "IMAD.MOV.U32": 18,
+    "NOP": 13,
+    "LDC": 3,
+    "BRA": 3
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai container, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

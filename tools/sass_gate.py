@@ -123,7 +123,7 @@ def convergence_calls(lines: list[tuple[int, str, str, str]], labels: dict[str, 
     return hot, guarded
 
 
-_MMA = re.compile(r"^(HMMA|IMMA)")
+_MMA = re.compile(r"^(HMMA|IMMA|HGMMA)")
 
 
 def _resolver(lines: list[tuple[int, str, str, str]], labels: dict[str, int]):
@@ -274,8 +274,9 @@ def gate(cubin: Path, kernel: str | None, max_per_hmma: float | None) -> tuple[b
         branches = mma_loop_branches(whole[name], labels[name])
         gap, around = mma_gap(whole[name], labels[name])
         xu, memory = step_classes(whole[name], labels[name])
-        phmma = sum(1 for i in ins if re.match(r"@!?P\d+ HMMA", i))
-        hmma = sum(1 for i in ins if " HMMA" in i or i.startswith("HMMA"))
+        #: the tensor instructions `_MMA` names, predicated and all (the report keeps its historical `hmma` keys)
+        phmma = sum(1 for i in ins if (m := re.match(r"@!?U?P\d+ (\S+)", i)) and _MMA.match(m.group(1)))
+        hmma = sum(1 for i in ins if _MMA.match(i.split()[1] if i.startswith("@") and len(i.split()) > 1 else i))
         per = (n / hmma) if hmma else float("nan")
         reds = []
         if ldl:

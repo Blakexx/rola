@@ -55,6 +55,7 @@ class Row:
 #: THE ROWS: every kernel's gate row, named in `tools/coverage.json`'s `overlap` obligation
 ROWS = {
     "facts-alt-k4": Row(kernel="facts_pass", launch="facts", cell="nl64k-alt-k4", heads=4),
+    "facts-dense": Row(kernel="facts_pass", launch="facts", cell="nl64k-dense", heads=4),
 }
 #: THE PROBE ROWS: the instrument's own check, a kernel known to run at one floor (`--probe`)
 PROBES = {

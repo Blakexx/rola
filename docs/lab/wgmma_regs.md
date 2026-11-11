@@ -20,6 +20,33 @@ values `2j`, `2j + 1` are register A's word `j`, so the narrowing is one instruc
 threads: 4 `PRMT` a thread a step truncated (each value's high 16 bits), or 4 `F2FP.BF16.F32.PACK` rounded. The step
 loop is the wait (`WARPGROUP.DEPBAR.LE`), those 4, `WARPGROUP.ARRIVE`, the two `HGMMA` and the branch.
 
-UNMEASURED: no hopper card has run it. Its cycles a step, and so whether the narrowing leaves the tensor pipe
-covered, are owed to its first run (`bazel run //tools:lab -- pack wgmma_regs --arch sm_90a`, then `carried` on the
-card), which writes its sm_90a record beside the other experiments'.
+MEASURED (H100 SXM, 132 SMs, a rented box: vast.ai instance 60164819, driver 595.91.07; 2026-11-11, one session, 7
+repetitions, every form's accumulators exact against the host's; cycles a step, the median -- the spread under 0.3%):
+
+| a step | one warpgroup | two warpgroups |
+|---|---|---|
+| the fold alone (`m64n16k16`) | 81.1 | 81.1 |
+| the readout alone (`m64n64k16`), A shared | 105.1 | 103.1 |
+| the readout alone, A registers loaded once | 136.4 | 139.9 |
+| fold + readout, A shared | 121.1 | 124.1 |
+| fold + readout, A registers loaded once | 165.4 | 174.8 |
+| fold + readout, A the state TRUNCATED | 110.1 | 118.1 |
+| fold + readout, A the state ROUNDED | 110.1 | 118.1 |
+
+WHAT IT SHOWS.
+- The register map is CUTLASS's: every accumulator matched through it, so the state is the readout's operand with no
+  relayout, on the device as in the SASS.
+- Truncating and rounding cost the same step. Which one the kernel takes is the accuracy model's question
+  ([`arith_model`](../internals/tools/arith_model.md)), not a cost's.
+- The narrowed step, 110, is under the fold alone plus the readout alone (186) and under the step with A shared (121):
+  the two MMAs of one commit group overlap.
+- A second warpgroup in the CTA costs a step nothing to 7%, so at these steps one warpgroup does not hold the SM's
+  tensor pipe: a step that waits for its own group is bound by the group's round trip. The pipe's own time a wgmma is
+  not read here (owed with the family's machine model, KERNEL_STANDARDS §32.4).
+- NOT ATTRIBUTED: the readout with A in registers loaded ONCE is slower than with A shared (136 against 105 alone, 165
+  against 121 with the fold), while the narrowed form -- also A in registers -- is the fastest. The loops' SASS differs
+  only in where the wait sits and in the four narrowing instructions. No design rests on the fixed-register rows until
+  that is explained.
+
+Record: `measure/lab/results/wgmma_regs/sm_90a.json`; its counters are the written exception (no profiler on that
+box).

@@ -36,6 +36,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+import build_flags
 import dev_config
 import region_ledger
 import sass
@@ -79,8 +80,8 @@ def build(path: Path, arch: str) -> Path:
     from measure.hardware import cc_of
 
     cc = cc_of(arch)
-    #: an architecture-specific row (`sm_90a`) names its own virtual architecture: `-arch` alone targets `sm_90`
-    target = f"-gencode=arch=compute_{arch.removeprefix('sm_')},code={arch}" if arch.endswith("a") else f"-arch={arch}"
+    #: the extension's own target form: an architecture-specific row (`sm_90a`) names its own virtual architecture
+    target, = build_flags.gencodes([arch.removeprefix("sm_")])
     subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", target, f"-DROLA_LAB_CC={cc}",
                     "-lineinfo", f"-I{LAB}", f"-I{KERNELS}", "--expt-relaxed-constexpr", "-o", str(out), str(path)],
                    check=True)
@@ -195,7 +196,10 @@ def check(binary: Path, table: dict[str, dict]) -> list[str]:
     if binary.name.split(".")[0] not in _PRE_29:
         stated = budgets(binary) + budgets(binary, "exempt")
         for k, info in table.items():
-            if count(info["ops"], "HMMA|IMMA") and not any(re.search(b["kernel"], k) for b in stated):
+            if count(info["ops"], "HGMMA") and any(re.search(b["kernel"], k) for b in budgets(binary)):
+                failures.append(f"{k}: a budgeted wgmma kernel -- its per-MMA divisor is read from counters the "
+                                "hopper model does not name yet (owed with that model); exempt it or budget by units")
+            if count(info["ops"], "HMMA|IMMA|HGMMA") and not any(re.search(b["kernel"], k) for b in stated):
                 failures.append(f"{k}: an MMA kernel with no instruction budget (KERNEL_STANDARDS 29: `Bench::budget`, "
                                 "or `Bench::exempt` with its reason)")
     declared = {op: {k for e in expected for k in table if re.search(e["kernel"], k) and e["op"] == op}
@@ -393,10 +397,11 @@ def inputs(name: str) -> tuple[list[str], dict[str, str]]:
     return ["--inputs", str(directory)], digests
 
 
-def execute(binary: Path, reps: int, extra: list[str]) -> tuple[dict, list[dict]]:
-    """The experiment's device line and its results, each with its samples summarized."""
-    out = subprocess.run([str(binary), "--reps", str(reps), *extra], capture_output=True, text=True,
-                         check=True).stdout
+def execute(binary: Path, reps: int, extra: list[str], timeout: int) -> tuple[dict, list[dict]]:
+    """The experiment's device line and its results, each with its samples summarized; killed at `timeout` seconds
+    (KERNEL_STANDARDS: device code runs under a kill timeout)."""
+    out = subprocess.run([str(binary), "--reps", str(reps), *extra], capture_output=True, text=True, check=True,
+                         timeout=timeout).stdout
     device, results = {}, []
     for line in out.splitlines():
         if not line.startswith('{"lab"'):
@@ -487,10 +492,56 @@ def pack(name: str, arch: str, into: Path) -> int:
     return 0
 
 
-def carried(name: str, source: Path, reps: int, into: Path, force: bool) -> int:
+def measure(name: str, arch: str, binary: Path, table: dict, opts, *, built: dict | None = None,
+            into: Path | None = None) -> int:
+    """THE DEVICE'S HALF OF A RUN, the one sequence `run` and `carried` share: the inputs, a quiet GPU, the timed
+    repetitions under the kill timeout, the checks, then the counters -- the profiler's, gated against the budgets, or,
+    where the caller DECLARES a host that grants none (`--no-counters HOST`, KERNEL_STANDARDS section 16 addendum 4),
+    the written exception naming that host. A profiler that fails undeclared fails the run."""
+    extra, digests = inputs(name)
+    utilization = quiet()
+    if utilization > QUIET_PERCENT and not opts.force:
+        print(f"lab: the GPU is {utilization}% busy before the run; another consumer would inflate every cycle "
+              "(--force to measure anyway)")
+        return 1
+
+    device, results = execute(binary, opts.reps, extra, opts.timeout)
+    report(name, arch, device, results, opts.reps)
+    for c in device.get("_checks", []):
+        print(f"  {'checked' if c['lab'] == 'check' else 'unchecked'} {c['variant']}: "
+              f"{'ok' if c.get('ok') else 'FAILED' if c['lab'] == 'check' else c['reason']}"
+              + (f" ({c['detail']})" if c["lab"] == "check" else ""))
+    wrong = unverified(name, device, results)
+    if wrong:
+        print(f"lab: {name}'s outputs are not verified, not recorded:", *wrong, sep="\n  ")
+        return 1
+
+    raw, refused = {}, None
+    if opts.no_counters:
+        if built is None and budgets(binary):
+            print(f"lab: {name} has budgeted kernels, whose gate reads executed counts: not recorded on a host "
+                  "that grants no counters (KERNEL_STANDARDS section 16 addendum 4)")
+            return 1
+        refused = {"host": opts.no_counters, "instead": "the kernels' own clocks and the SASS's static counts"}
+        print(f"lab: no counters on {opts.no_counters}: recorded with the exception, no pipes report")
+    else:
+        raw = counters_of(binary, extra)
+        units, mmas = declared(binary, table)
+        pipes_report(raw, table, units, mmas)
+        over = over_budget(binary, table, raw, units)
+        if over and not opts.force:
+            print(f"lab: {name} OVER ITS INSTRUCTION BUDGET, not recorded (--force to record anyway):", *over,
+                  sep="\n  ")
+            return 1
+    target = keep(name, arch, device, results, table, opts.reps, utilization, opts.record, digests, raw, refused,
+                  built, into)
+    print(f"lab: recorded {target.relative_to(ROOT) if opts.record else target}")
+    return 0
+
+
+def carried(name: str, source: Path, into: Path, opts) -> int:
     """A PACKED EXPERIMENT RUN ON THIS CARD, a box with no toolkit: the pack's binary by its digest, on the pack's
-    architecture, timed and checked as `run` does; the record's counters are the written exception of KERNEL_STANDARDS
-    section 16 addendum 4 (no profiler here), its build facts the pack's."""
+    architecture, through `measure` with the host declared; its build facts are the pack's."""
     arch = sass.device_arch()
     binary = source / f"{name}.{arch}"
     if not binary.exists():
@@ -500,30 +551,10 @@ def carried(name: str, source: Path, reps: int, into: Path, force: bool) -> int:
     if hashlib.sha256(binary.read_bytes()).hexdigest() != built["sha256"]:
         print(f"lab: {binary} is not the binary its pack describes")
         return 1
-    extra, digests = inputs(name)
-    utilization = quiet()
-    if utilization > QUIET_PERCENT and not force:
-        print(f"lab: the GPU is {utilization}% busy before the run (--force to measure anyway)")
-        return 1
-    device, results = execute(binary, reps, extra)
-    report(name, arch, device, results, reps)
-    for c in device.get("_checks", []):
-        print(f"  {'checked' if c['lab'] == 'check' else 'unchecked'} {c['variant']}: "
-              f"{'ok' if c.get('ok') else 'FAILED' if c['lab'] == 'check' else c['reason']}"
-              + (f" ({c['detail']})" if c["lab"] == "check" else ""))
-    wrong = unverified(name, device, results)
-    if wrong:
-        print(f"lab: {name}'s outputs are not verified, not recorded:", *wrong, sep="\n  ")
-        return 1
-    refused = {"host": device.get("name"), "ncu": "not run: the box carries a driver and no toolkit",
-               "instead": "the kernels' own clocks and the SASS's static counts"}
-    target = keep(name, arch, device, results, built["kernels"], reps, utilization, False, digests, {}, refused,
-                  built, into)
-    print(f"lab: recorded {target}")
-    return 0
+    return measure(name, arch, binary, built["kernels"], opts, built=built, into=into)
 
 
-def run(name: str, reps: int, record: bool, force: bool) -> int:
+def run(name: str, opts) -> int:
     arch = sass.device_arch()
     binary = build(experiments()[name], arch)
     table = kernels(binary)
@@ -531,48 +562,7 @@ def run(name: str, reps: int, record: bool, force: bool) -> int:
     if failures:
         print(f"lab: {name} REFUSED -- its SASS is not what it measures:", *failures, sep="\n  ")
         return 1
-
-    extra, digests = inputs(name)
-    utilization = quiet()
-    if utilization > QUIET_PERCENT and not force:
-        print(f"lab: the GPU is {utilization}% busy before the run; another consumer would inflate every cycle "
-              "(--force to measure anyway)")
-        return 1
-
-    device, results = execute(binary, reps, extra)
-    report(name, arch, device, results, reps)
-    for c in device.get("_checks", []):
-        print(f"  {'checked' if c['lab'] == 'check' else 'unchecked'} {c['variant']}: "
-              f"{'ok' if c.get('ok') else 'FAILED' if c['lab'] == 'check' else c['reason']}"
-              + (f" ({c['detail']})" if c["lab"] == "check" else ""))
-    wrong = unverified(name, device, results)
-    if wrong:
-        print(f"lab: {name}'s outputs are not verified, not recorded:", *wrong, sep="\n  ")
-        return 1
-    try:
-        raw, refused = counters_of(binary, extra), None
-    except subprocess.CalledProcessError as failure:
-        #: THE HOST GRANTS NO COUNTERS (KERNEL_STANDARDS section 16 addendum 4): the profiler failed on a binary that
-        #: just ran, so the record carries the exception -- the host, the profiler's own words, what stands in
-        said = [line for line in (failure.stderr or failure.stdout or "").splitlines() if line.strip()]
-        raw, refused = {}, {"host": device.get("name"), "ncu": said[-1] if said else f"exit {failure.returncode}",
-                            "instead": "the kernels' own clocks and the SASS's static counts"}
-        print(f"lab: NO COUNTERS on this host ({refused['ncu']}): recorded with the exception, no pipes report")
-        if budgets(binary):
-            print(f"lab: {name} has budgeted kernels, whose gate reads executed counts: not recorded on a host "
-                  "that grants no counters (KERNEL_STANDARDS section 16 addendum 4)")
-            return 1
-    if refused is None:
-        units, mmas = declared(binary, table)
-        pipes_report(raw, table, units, mmas)
-        over = over_budget(binary, table, raw, units)
-        if over and not force:
-            print(f"lab: {name} OVER ITS INSTRUCTION BUDGET, not recorded (--force to record anyway):", *over,
-                  sep="\n  ")
-            return 1
-    target = keep(name, arch, device, results, table, reps, utilization, record, digests, raw, refused)
-    print(f"lab: recorded {target.relative_to(ROOT) if record else target}")
-    return 0
+    return measure(name, arch, binary, table, opts)
 
 
 def ncu_counters(binary: Path, metrics: list[str], extra: list[str]) -> dict[str, dict[str, float]]:
@@ -719,9 +709,7 @@ def main() -> int:
     s.add_argument("--arch", help="compile for this architecture (sm_80, ...) in place of the device's: SASS only")
     r = sub.add_parser("run")
     r.add_argument("experiment")
-    r.add_argument("--reps", type=int, default=7)
     r.add_argument("--record", action="store_true", help="write the record into measure/lab/results")
-    r.add_argument("--force", action="store_true", help="measure on a busy GPU")
     k = sub.add_parser("pack", help="build and check an experiment here for a card elsewhere")
     k.add_argument("experiment")
     k.add_argument("--arch", required=True)
@@ -730,8 +718,14 @@ def main() -> int:
     c.add_argument("experiment")
     c.add_argument("--from", dest="source", required=True, type=Path)
     c.add_argument("--into", required=True, type=Path)
-    c.add_argument("--reps", type=int, default=7)
-    c.add_argument("--force", action="store_true")
+    c.set_defaults(record=False)
+    for timed in (r, c):
+        timed.add_argument("--reps", type=int, default=7)
+        timed.add_argument("--force", action="store_true", help="measure on a busy GPU")
+        timed.add_argument("--timeout", type=int, default=900, help="seconds before the experiment is killed")
+        timed.add_argument("--no-counters", metavar="HOST", required=timed is c,
+                           help="this host grants no profiler counters: name it, and the record carries the "
+                                "exception in their place")
     g = sub.add_parser("ledger", help="a kernel's executed instructions by phase (KERNEL_STANDARDS 29.13)")
     g.add_argument("experiment")
     g.add_argument("--kernel", help="a regex over the demangled kernel names")
@@ -751,14 +745,14 @@ def main() -> int:
     if args.cmd == "pack":
         return pack(args.experiment, args.arch, args.into)
     if args.cmd == "carried":
-        return carried(args.experiment, args.source, args.reps, args.into, args.force)
+        return carried(args.experiment, args.source, args.into, args)
     if args.cmd == "sass":
         return show_sass(args.experiment, args.kernel, args.full, args.arch)
     if args.cmd == "ncu":
         return counters(args.experiment, args.metric, args.record)
     if args.cmd == "ledger":
         return ledger(args.experiment, args.kernel)
-    return run(args.experiment, args.reps, args.record, args.force)
+    return run(args.experiment, args)
 
 
 if __name__ == "__main__":

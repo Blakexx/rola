@@ -123,7 +123,7 @@ __global__ void step(long long* times, float* out, int steps) {
   for (int i = 0; i < 8; ++i) lab::wg_hold(s[i]);
 #pragma unroll
   for (int i = 0; i < 32; ++i) lab::wg_hold(d[i]);
-  clock.stop(times + 2 * (blockIdx.x * (blockDim.x >> 5) + warp));
+  clock.stop(times);
 
   float* mine = out + (static_cast<long long>(blockIdx.x) * blockDim.x + tid) * kOut;
 #pragma unroll

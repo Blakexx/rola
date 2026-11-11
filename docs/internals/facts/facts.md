@@ -70,7 +70,7 @@ with its own slots, bounds, prefix rows (`G + 1`), totals, gap tail and size, at
 `ceil(B / G)` groups of the window (`list_group_index`); a half past the level's width is none (`list_group_in`). The
 vote ORs a block's words into both halves' union words (a half's words zero at 32); the ranks scan both halves' counts
 as the 16-bit halves of one word, so one shuffle scan serves both, and a unit keeps both halves' slots before a head the
-same way (`half_of`; a group's slots a window, every head's, are at most 8,192) -- at W = 1,024 the pass sits at its
+same way (`half_of`; a group's slots a window are `max_group` heads' at most) -- at W = 1,024 the pass sits at its
 128-register cap, and a pair of counts a half held apart spilled; a list lane takes its own digit's half; warp `q`
 writes half `q`'s prefix rows.
 
@@ -170,7 +170,7 @@ shared memory (`kWindowTokens` past the union): a list's tokens before bound `k`
 which the lists count without walking.
 
 A GROUPED read side ranks its write head's query heads' rows as one union a list group, head-major: head `j`'s union
-tokens take the slots past the heads before it (`at`, a list group's own), each slot's ROW `512 j + t` its `union_tok`
+tokens take the slots past the heads before it (`at`, a list group's own), each slot's ROW `W j + t` its `union_tok`
 (the carry's fills and drains decode a row by a shift and a mask). A head's bounds are the tokens at the merged union's
 64th slots that fall in its rows -- at most eight, from boundary `k0 = at / 64` -- the rest `kWindowTokens`; the gaps
 and the size are written after the last head.
@@ -253,8 +253,9 @@ products written.
 
 MEASURED (sm_86, RTX 3080 Ti, 2026-11-10, `tools/overlap_gate.py`'s rows, one `ncu` launch each on its locked clock,
 4 heads at 65,536 tokens, whole list groups): `facts-alt-k4` 337.5 µs, 1.58x its DRAM floor of 213.8 µs -- OVER THE
-LINE, RED, and what holds it there is not attributed (owed: the row's stall census). A call with no sparse level runs
-the columns unit alone (12.7 µs at that shape, a launch's fixed time), so the gate holds no dense row.
+LINE, RED, and what holds it there is not attributed (owed: the row's stall census); `facts-dense` 12.7 µs, 3.52x its
+3.6 µs floor, RED -- a call with no sparse level runs the columns unit alone, and what holds that unit over its floor
+is not measured either (owed: the row at a second length).
 
 Per architecture: sm_80 runs the same form at five CTAs an SM (registers); on sm_90 the window fills by TMA (a
 `[512 tokens × 32 bytes]` box of the head's plane in one instruction) under an mbarrier, the rest unchanged. Scaling:

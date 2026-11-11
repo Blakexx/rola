@@ -1,0 +1,145 @@
+{
+ "experiment": "reg_trade",
+ "question": "two warpgroups of a CTA trade registers with `setmaxnreg`, one down and one up; when does the compiler honour it, what does the trade cost, and does state held in registers across it survive?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "untraded: both at the entry count, three sets",
+   "ok": true,
+   "detail": "0 of 3244032 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "traded: one warpgroup at 24, one at 232, five sets",
+   "ok": true,
+   "detail": "0 of 2703360 accumulators differ from the host's at 16 steps"
+  }
+ ],
+ "driver": "595.91.07",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "20cd894f95bcdc881af63b5cfb9bb3a241f9c141",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T04:40:02+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "untraded: both at the entry count, three sets, the readout",
+   "unit": "cycles a wgmma",
+   "samples": [
+    75.73312,
+    78.259829,
+    76.108331,
+    77.799371,
+    77.105417,
+    77.771604,
+    77.110973
+   ],
+   "median": 77.110973,
+   "min": 75.73312,
+   "max": 78.259829,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "untraded: both at the entry count, three sets, the trade",
+   "unit": "cycles a warp",
+   "samples": [
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0
+   ],
+   "median": 2.0,
+   "min": 2.0,
+   "max": 2.0,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "traded: one warpgroup at 24, one at 232, five sets, the readout",
+   "unit": "cycles a wgmma",
+   "samples": [
+    52.512987,
+    52.533257,
+    52.565321,
+    52.575798,
+    52.484521,
+    52.573062,
+    52.523034
+   ],
+   "median": 52.533257,
+   "min": 52.484521,
+   "max": 52.575798,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "traded: one warpgroup at 24, one at 232, five sets, the trade",
+   "unit": "cycles a warp",
+   "samples": [
+    200.956439,
+    200.901515,
+    201.017045,
+    200.901515,
+    201.017045,
+    200.901515,
+    201.017045
+   ],
+   "median": 200.956439,
+   "min": 200.901515,
+   "max": 201.017045,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void reg_trade::trade<(int)1>(long long *, long long *, int *, float *, int)": {
+   "regs": 128,
+   "ops": {
+    "STG.E": 161,
+    "CS2R": 87,
+    "SHF.R.S32.HI": 18,
+    "LOP3.LUT": 17,
+    "IMAD": 17,
+    "BRA": 15,
+    "LEA.HI": 15,
+    "IMAD.IADD": 11,
+    "NOP": 11,
+    "VIADD": 10,
+    "SHF.R.U32.HI": 8,
+    "S2R": 6
+   }
+  },
+  "void reg_trade::trade<(int)0>(long long *, long long *, int *, float *, int)": {
+   "regs": 126,
+   "ops": {
+    "STG.E": 96,
+    "IMAD.MOV.U32": 90,
+    "CS2R": 52,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "LOP3.LUT": 13,
+    "IMAD": 13,
+    "NOP": 13,
+    "MOV": 11,
+    "BRA": 10,
+    "IMAD.IADD": 10,
+    "VIADD": 9
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai container, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

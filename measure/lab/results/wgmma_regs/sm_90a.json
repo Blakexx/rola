@@ -1,0 +1,482 @@
+{
+ "experiment": "wgmma_regs",
+ "question": "a fold's fp32 accumulators (an m64n16 wgmma's output) are the next wgmma's register operand A once each pair is narrowed to bf16 in place; what does the narrowing cost a step, by truncation and by rounding, beside A read from shared memory?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "fold alone, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "readout alone, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "readout alone, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A the state truncated, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A the state rounded, one warpgroup",
+   "ok": true,
+   "detail": "0 of 675840 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold alone, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "readout alone, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "readout alone, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A the state truncated, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "fold + readout, A the state rounded, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1351680 accumulators differ from the host's at 24 steps"
+  }
+ ],
+ "driver": "595.91.07",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "20cd894f95bcdc881af63b5cfb9bb3a241f9c141",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T04:39:56+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "fold alone, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    81.049984,
+    81.049895,
+    81.049975,
+    81.049975,
+    81.04991,
+    81.049955,
+    81.049949
+   ],
+   "median": 81.049955,
+   "min": 81.049895,
+   "max": 81.049984,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "readout alone, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    105.050718,
+    105.0507,
+    105.050731,
+    105.050717,
+    105.050724,
+    105.050717,
+    105.050648
+   ],
+   "median": 105.050717,
+   "min": 105.050648,
+   "max": 105.050731,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "readout alone, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    136.49879,
+    136.347418,
+    136.453443,
+    136.438181,
+    136.332172,
+    136.438347,
+    136.301922
+   ],
+   "median": 136.438181,
+   "min": 136.301922,
+   "max": 136.49879,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    121.055642,
+    121.05566,
+    121.055551,
+    121.055577,
+    121.05569,
+    121.055644,
+    121.055829
+   ],
+   "median": 121.055644,
+   "min": 121.055551,
+   "max": 121.055829,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    165.303121,
+    165.48488,
+    165.24238,
+    165.394098,
+    165.333461,
+    165.424566,
+    165.394006
+   ],
+   "median": 165.394006,
+   "min": 165.24238,
+   "max": 165.48488,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A the state truncated, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    110.05247,
+    110.052522,
+    110.052559,
+    110.052553,
+    110.052733,
+    110.052538,
+    110.052638
+   ],
+   "median": 110.052553,
+   "min": 110.05247,
+   "max": 110.052733,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A the state rounded, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    110.052827,
+    110.05279,
+    110.052777,
+    110.052843,
+    110.052758,
+    110.05281,
+    110.052868
+   ],
+   "median": 110.05281,
+   "min": 110.052758,
+   "max": 110.052868,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold alone, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    81.062372,
+    81.062428,
+    81.062518,
+    81.062341,
+    81.062441,
+    81.062487,
+    81.062409
+   ],
+   "median": 81.062428,
+   "min": 81.062341,
+   "max": 81.062518,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "readout alone, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    103.075131,
+    103.074973,
+    103.075338,
+    103.07534,
+    103.074936,
+    103.075132,
+    103.074999
+   ],
+   "median": 103.075131,
+   "min": 103.074936,
+   "max": 103.07534,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "readout alone, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    139.898147,
+    139.934374,
+    139.943703,
+    139.921218,
+    139.874625,
+    139.818358,
+    139.860372
+   ],
+   "median": 139.898147,
+   "min": 139.818358,
+   "max": 139.943703,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    124.089542,
+    124.089544,
+    124.089235,
+    124.089759,
+    124.089141,
+    124.089505,
+    124.089185
+   ],
+   "median": 124.089505,
+   "min": 124.089141,
+   "max": 124.089759,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    174.770706,
+    174.983269,
+    174.740854,
+    174.846593,
+    174.467622,
+    174.877084,
+    174.588958
+   ],
+   "median": 174.770706,
+   "min": 174.467622,
+   "max": 174.983269,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A the state truncated, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    118.07317,
+    118.073092,
+    118.073283,
+    118.073322,
+    118.073274,
+    118.073272,
+    118.073148
+   ],
+   "median": 118.073272,
+   "min": 118.073092,
+   "max": 118.073322,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fold + readout, A the state rounded, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    118.079004,
+    118.078578,
+    118.078365,
+    118.078525,
+    118.079098,
+    118.078844,
+    118.078623
+   ],
+   "median": 118.078623,
+   "min": 118.078365,
+   "max": 118.079098,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void wgmma_regs::step<(int)6>(long long *, float *, int)": {
+   "regs": 70,
+   "ops": {
+    "STG.E": 40,
+    "IMAD.MOV.U32": 37,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "IMAD.IADD": 14,
+    "IMAD": 14,
+    "NOP": 14,
+    "LOP3.LUT": 13,
+    "BRA": 9,
+    "SHF.R.U32.HI": 9,
+    "LDC": 6,
+    "UMOV": 6
+   }
+  },
+  "void wgmma_regs::step<(int)5>(long long *, float *, int)": {
+   "regs": 70,
+   "ops": {
+    "STG.E": 40,
+    "IMAD.MOV.U32": 36,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "IMAD.IADD": 14,
+    "IMAD": 14,
+    "NOP": 14,
+    "LOP3.LUT": 13,
+    "BRA": 9,
+    "SHF.R.U32.HI": 9,
+    "LDC": 6,
+    "UMOV": 6
+   }
+  },
+  "void wgmma_regs::step<(int)4>(long long *, float *, int)": {
+   "regs": 70,
+   "ops": {
+    "CS2R": 42,
+    "STG.E": 40,
+    "IMAD.IADD": 30,
+    "LEA.HI": 28,
+    "LOP3.LUT": 23,
+    "IMAD": 22,
+    "SHF.R.U32.HI": 18,
+    "SHF.R.S32.HI": 16,
+    "VIADD": 13,
+    "I2FP.F32.S32": 12,
+    "NOP": 12,
+    "IMAD.WIDE.U32": 10
+   }
+  },
+  "void wgmma_regs::step<(int)3>(long long *, float *, int)": {
+   "regs": 66,
+   "ops": {
+    "CS2R": 42,
+    "STG.E": 40,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "IMAD.IADD": 14,
+    "IMAD": 14,
+    "NOP": 14,
+    "LOP3.LUT": 13,
+    "UMOV": 10,
+    "BRA": 9,
+    "SHF.R.U32.HI": 9,
+    "ULOP3.LUT": 8
+   }
+  },
+  "void wgmma_regs::step<(int)2>(long long *, float *, int)": {
+   "regs": 62,
+   "ops": {
+    "STG.E": 40,
+    "CS2R": 34,
+    "IMAD.IADD": 30,
+    "LEA.HI": 28,
+    "LOP3.LUT": 23,
+    "IMAD": 22,
+    "SHF.R.U32.HI": 18,
+    "SHF.R.S32.HI": 16,
+    "NOP": 14,
+    "VIADD": 13,
+    "I2FP.F32.S32": 12,
+    "IMAD.WIDE.U32": 10
+   }
+  },
+  "void wgmma_regs::step<(int)1>(long long *, float *, int)": {
+   "regs": 58,
+   "ops": {
+    "STG.E": 40,
+    "CS2R": 34,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "IMAD.IADD": 14,
+    "IMAD": 14,
+    "LOP3.LUT": 13,
+    "NOP": 12,
+    "BRA": 9,
+    "SHF.R.U32.HI": 9,
+    "LDC": 6,
+    "S2R": 5
+   }
+  },
+  "void wgmma_regs::step<(int)0>(long long *, float *, int)": {
+   "regs": 34,
+   "ops": {
+    "STG.E": 40,
+    "SHF.R.S32.HI": 16,
+    "LEA.HI": 15,
+    "IMAD.IADD": 14,
+    "IMAD": 14,
+    "NOP": 14,
+    "LOP3.LUT": 13,
+    "CS2R": 10,
+    "BRA": 9,
+    "SHF.R.U32.HI": 9,
+    "LDC": 6,
+    "S2R": 4
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai container, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

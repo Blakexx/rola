@@ -31,15 +31,17 @@ the `//:` headings of the experiment's source -- per declared unit (KERNEL_STAND
 [budgets.md](budgets.md)). `run` also refuses a budgeted kernel whose loops hold convergence instructions (`BSSY`,
 `BSYNC`, `BRA.DIV`) beyond what it declares as `LOOP_CONVERGENCE`.
 
-<a id="pack"></a>A CARD ELSEWHERE. A rented box carries a driver and no toolkit, so an experiment for it is built and checked
-here and run there: `bazel run //tools:lab -- pack <name> --arch sm_90a --into DIR` compiles it for that architecture,
+<a id="pack"></a>A CARD ELSEWHERE. A box that is not started from the devbox image ([`setup.md`](../../setup.md)) carries a driver and
+no toolkit, so an experiment for it is built and checked here and run there: `bazel run //tools:lab -- pack <name> --arch sm_90a --into DIR` compiles it for that architecture,
 holds its SASS to the same checks as `run`, and writes the binary with a pack file beside it (the kernels' registers
 and opcodes, the toolkit, the commit, the binary's digest); on the card, `tools/lab.py carried <name> --from DIR --into
-OUT` runs the pack's binary by its digest, times and checks it as `run` does, and writes the record with the pack's
-build facts. No profiler runs there, so the record's counters are a written exception (`counters_exception`: the
-host, why, what stands in -- `docs/KERNEL_STANDARDS.md` §16 addendum 4), and an experiment with budgeted kernels,
-whose gate reads executed counts, is not packed. `run` writes the same exception where a toolkit's profiler is
-refused by the host.
+OUT --no-counters HOST` runs the pack's binary by its digest through the sequence `run` runs (`measure`: the inputs, a
+quiet GPU, the repetitions under a kill timeout, `--timeout`, the checks) and writes the record with the pack's build
+facts. `--no-counters HOST` is the caller's DECLARATION that the named host grants no profiler counters: the record
+then carries the written exception in their place (`counters_exception`: the host, what stands in --
+`docs/KERNEL_STANDARDS.md` §16 addendum 4). `run` takes the same flag; without it a profiler that fails fails the
+run. An experiment with budgeted kernels, whose gate reads executed counts, is neither packed nor recorded under
+the exception.
 
 An experiment that reads data -- a cell's routing, say -- has a `<name>.inputs.py` beside it whose `write(directory)`
 writes the files and returns their names. `run` and `ncu` call it first (in the scratch space), pass the binary
@@ -68,8 +70,15 @@ else from the work the tensor-pipe counter counts and the one MMA kind the SASS 
 * <a id="wgmma"></a>Hopper's atoms, each one PTX instruction of sm_90a (an experiment calling one compiles for sm_90a
   only): `wg_desc` (wgmma's unswizzled K-major shared operand: lines in bricks of 8, 16 bytes a line, the K halves and
   the bricks at stated offsets), `wg_fence`, `wg_commit`, `wg_wait<N>`, `wg_hold` (a register an asynchronous MMA
-  wrote, held behind its wait), `wg_bf16_n16_ss`, `wg_bf16_n64_ss`, `wg_bf16_n64_rs` (A from registers), and the two
-  narrowings of an fp32 pair to bf16, `bf16x2_trunc` (one `PRMT`) and `bf16x2_round` (one conversion).
+  wrote, held behind its wait), `wg_bf16_n16_ss`, `wg_bf16_n64_ss`, `wg_bf16_n64_rs` (A from registers); the two
+  narrowings of an fp32 pair to bf16, `bf16x2_trunc` (one `PRMT`) and `bf16x2_round` (one conversion) -- the common
+  atoms' `hi_bf16x2` and `pack_bf16x2`, spelled here until the common atoms admit a hopper build; and the bulk reduction
+  out of shared memory, `bulk_add_f32` (`cp.reduce.async.bulk`, fp32 added into global) with the writers' proxy fence
+  before it (`bulk_fence`), `bulk_commit`,
+  `bulk_wait<N>`, beside `red_add_f32` (one value by its thread); the bulk copy in, `bulk_load`, under a barrier whose
+  arrival states its bytes (`mbar_expect`); and a warpgroup's registers a thread,
+  `regs_down<N>` and `regs_up<N>` (`setmaxnreg`). The lab's MMA checks read `HGMMA` as they read `HMMA`
+  and `IMMA`.
 * `lab::Bench` — the host runner: `expect(kernel, op, cmp, count)` declares SASS (printed under `--expect`, run by the
   driver before anything is timed), `variant(launch, measure)` warms up and repeats a launch, `record(name, unit,
   samples)` prints a result, `cycles(warps)` and `mean(...)` read the warps' clocks. `--blocks N` holds the grid an experiment launches over `Bench::sms` to N CTAs, so a sanitizer
@@ -86,7 +95,7 @@ Every item below cost a wrong number before the lab existed; each is now a guard
 * <a id="build"></a>**A launch sized at the host pass's card.** The host pass compiles at the pinned card, so a
   harness that sized its launch from a plan at the compiling architecture launched the A100 with sm_86's shared bytes
   (2026-11-07, `read_alone`, `read_dense`). An experiment compiles for one architecture (`tools/lab.py`'s `build`:
-  `-arch=sm_XX`, C++20 as the extension) and `-DROLA_LAB_CC` names it to both passes, so `lab::kLabBuild` -- that
+  the extension's own `-gencode` form for that one row, C++20 as the extension) and `-DROLA_LAB_CC` names it to both passes, so `lab::kLabBuild` -- that
   architecture's own build ([`common/hardware.md#builds`](../common/hardware.md#builds)) -- is the one plan a harness
   reads on the device and on the host.
 * **Dead work.** ptxas deletes an instruction whose result is dead — including a result only tested against a value it
@@ -138,3 +147,6 @@ a source in `measure/lab/experiments/`. The anchors below are where the sources'
 - <a id="issue-latency"></a>[`issue_latency`](../../lab/issue_latency.md)
 - <a id="drain"></a>[`drain`](../../lab/drain.md)
 - <a id="wgmma-regs"></a>[`wgmma_regs`](../../lab/wgmma_regs.md)
+- <a id="bulk-drain"></a>[`bulk_drain`](../../lab/bulk_drain.md)
+- <a id="reg-trade"></a>[`reg_trade`](../../lab/reg_trade.md)
+- <a id="row-ring"></a>[`row_ring`](../../lab/row_ring.md)

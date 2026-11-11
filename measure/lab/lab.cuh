@@ -284,18 +284,74 @@ __device__ __forceinline__ void wg_bf16_n64_rs(float (&d)[32], const uint32_t (&
                : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "l"(b), "r"(1));
 }
 
-//: two fp32 narrowed to a bf16 pair by TRUNCATION: each value's high 16 bits, one byte permute
+//: two fp32 narrowed to a bf16 pair by TRUNCATION, each value's high 16 bits in one byte permute, and ROUNDED to
+//: nearest in one conversion: `common/atoms/math.cuh`'s `hi_bf16x2` and `pack_bf16x2`, spelled here because the common
+//: atoms refuse a hopper build until that family's are written (`common/arch_caps.cuh`)
 __device__ __forceinline__ uint32_t bf16x2_trunc(float lo, float hi) {
   uint32_t r;
   asm volatile("prmt.b32 %0, %1, %2, 0x7632;" : "=r"(r) : "r"(__float_as_uint(lo)), "r"(__float_as_uint(hi)));
   return r;
 }
 
-//: two fp32 narrowed to a bf16 pair ROUNDED to nearest, one conversion
 __device__ __forceinline__ uint32_t bf16x2_round(float lo, float hi) {
   uint32_t r;
   asm volatile("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(r) : "f"(hi), "f"(lo));
   return r;
+}
+
+//: A WARPGROUP'S REGISTERS A THREAD, lowered or raised (sm_90): 24 to 256 in eights; a raise waits for registers
+//: another warpgroup of the CTA released. Honoured only in a kernel whose `__launch_bounds__` give the count at entry,
+//: each role's whole body in its own branch (docs/lab/reg_trade.md)
+template <int N>
+__device__ __forceinline__ void regs_down() {
+  asm volatile("setmaxnreg.dec.sync.aligned.u32 %0;" : : "n"(N));
+}
+
+template <int N>
+__device__ __forceinline__ void regs_up() {
+  asm volatile("setmaxnreg.inc.sync.aligned.u32 %0;" : : "n"(N));
+}
+
+//: A BULK COPY IN (sm_90): `bytes` of global memory at `src` into shared memory at `dst`, asynchronous; the bytes
+//: complete the barrier `bar`'s phase once its one arrival has stated them (`mbar_expect`). Multiples of 16 bytes
+__device__ __forceinline__ void bulk_load(uint32_t dst, const void* src, uint32_t bytes, uint32_t bar) {
+  asm volatile("cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes [%0], [%1], %2, [%3];"
+               :
+               : "r"(dst), "l"(src), "r"(bytes), "r"(bar)
+               : "memory");
+}
+
+//: an arrival that also states the bytes a bulk copy will complete the phase with
+__device__ __forceinline__ void mbar_expect(uint32_t bar, uint32_t bytes) {
+  asm volatile("{\n.reg .b64 st;\nmbarrier.arrive.expect_tx.shared::cta.b64 st, [%0], %1;\n}"
+               :
+               : "r"(bar), "r"(bytes)
+               : "memory");
+}
+
+//: A BULK REDUCTION OUT (sm_90): `bytes` of shared memory at `src` ADDED into global `dst`, fp32 by fp32,
+//: asynchronous, in this thread's bulk group; both addresses and the size multiples of 16 bytes
+__device__ __forceinline__ void bulk_add_f32(void* dst, uint32_t src, uint32_t bytes) {
+  asm volatile("cp.reduce.async.bulk.global.shared::cta.bulk_group.add.f32 [%0], [%1], %2;"
+               :
+               : "l"(dst), "r"(src), "r"(bytes)
+               : "memory");
+}
+
+//: THE WRITERS' EDGE to a bulk copy out: a thread's ordinary stores to shared memory made visible to the bulk engine
+__device__ __forceinline__ void bulk_fence() { asm volatile("fence.proxy.async.shared::cta;" ::: "memory"); }
+
+__device__ __forceinline__ void bulk_commit() { asm volatile("cp.async.bulk.commit_group;" ::: "memory"); }
+
+//: wait until at most `N` of this thread's committed bulk groups are in flight
+template <int N>
+__device__ __forceinline__ void bulk_wait() {
+  asm volatile("cp.async.bulk.wait_group %0;" : : "n"(N) : "memory");
+}
+
+//: one fp32 added into global memory by its thread
+__device__ __forceinline__ void red_add_f32(float* dst, float v) {
+  asm volatile("red.global.add.f32 [%0], %1;" : : "l"(dst), "f"(v) : "memory");
 }
 
 // --------------------------------------------------------------------------------------------------- host
