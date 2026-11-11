@@ -23,13 +23,11 @@ of the sustained DRAM peak, 1.04x, so the DRAM floor is reachable. The tensor fl
 `--probe probe-gemm-f16`): torch's cuBLAS fp16 GEMM at 8192 reads 1.02x its tensor floor, priced by shape, so the
 tensor floor is reachable and its arithmetic holds.
 
-THE ROWS' FIRST READING (2026-10-07, ncu's locked clock): `facts-alt-k4` 300.4 us, 1.48x its DRAM floor (202.7 us;
-issue 166.5, shared 89.3) -- the list build's serial phase; `facts-dense` 185.0 us, 1.15x its DRAM floor.
-
-THE INDEXER'S READING (2026-11-10, sm_86, the same clock; whole 32-digit list groups, `rola.ops.facts.WHOLE_GROUPS`):
-`facts-alt-k4` 337.2 us, 1.58x its DRAM floor (213.7 us; issue 194.1, shared 72.6) -- red against the 1.15 line as the
-first reading was, at a different lists form, so the two times are not one comparison. What holds it over its floor
-is not attributed yet (owed: the stall census of the row).
+THE ROWS' READING (2026-11-10, sm_86, ncu's locked clock; whole 32-digit list groups, `rola.ops.facts.WHOLE_GROUPS`):
+`facts-alt-k4` 337.5 us, 1.58x its DRAM floor (213.8 us; issue 193.8, shared 72.6) -- red against the 1.15 line, and
+what holds it over its floor is not attributed yet (owed: the stall census of the row); `facts-dense` 12.7 us against a
+3.6 us floor (issue 2.4, shared 0.4) -- a call with no sparse level runs the pass's columns unit alone, so the row reads
+a launch's fixed time and its ratio is no verdict on the line.
 
 `tools/lint/coverage.py` reads `ROWS` by AST: every kernel's `overlap` obligation in `tools/coverage.json` names a row
 gating it, or is exempt or owed with its reason.

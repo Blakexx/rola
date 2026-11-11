@@ -23,8 +23,8 @@ load the skill an action names before taking it (§31).
 ## The instruments
 - Perf: `bazel run //:measure -- run declare.py:all` (this checkout's declared measurement: its instruments and one
   clock-locked interleaved timing session on the cells, `docs/measurement.md`); attribution:
-  `bazel run //tools:region_ledger -- --csv <ncu SourceCounters> --so <.so> --source <kernel.cuh>
-  --budget tools/budgets/<k>.json`.
+  `bazel run //tools:region_ledger -- --csv <ncu SourceCounters> --so <.so> --member <cubin member>
+  --source <kernel.cuh> --budget tools/budgets/<k>.json`.
 - Correctness: `tests/oracle/` (scoped runs only; never a bare `tests/`).
 - Build: `bazel run //:library` with `--//:archs`; the machine is `bazel run //:check`
   (`docs/build.md`); the device stamp proves the binary is the source.

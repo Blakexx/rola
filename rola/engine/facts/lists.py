@@ -6,7 +6,7 @@
 A side's LIST LEVEL (its one sparse level) gets, per window and LIST GROUP -- ``G`` consecutive digits, the side's
 ``list_group`` (16 or 32: a box's extent at the level, `LIST_GROUPS`) -- a UNION -- the tokens live in any of the
 group's digits -- RANKED: ``union[slot]`` is the token of union rank ``slot`` (``GAP`` past the union), ``count`` the
-union's EXTENT, its size in whole steps of 8. Per digit, its LIST: its tokens in token order (slot order), no pads.
+union's size. Per digit, its LIST: its tokens in token order (slot order), no pads.
 Its BOUNDARIES are its entries before union slot ``64 (j + 1)``, ``j < 8`` (the last its length), out in PREFIX FORM
 over the group's lists modulo 2^16 (``pre[l][j]`` the boundaries of lists ``< l`` summed, row ``G`` the group's), beside
 the group's exact TOTALS (``totals[j]``, for a planner): any chunk of the union whose bounds are multiples of 64 finds
@@ -17,7 +17,7 @@ AN ENTRY IS A SLOT AND A BYTE, one int32: the token's union slot in the low 16 b
 on either side. Nothing of a card is in it -- no exponent, no coefficient in an operand's format, no layout offset --
 and its token is ``union[slot]``.
 
-Mirrors ``csrc/rola/src/facts/facts.cuh`` (``kListCap``, ``kListAt``, ``kStep``, ``kListBound``, ``kGap``).
+Mirrors ``csrc/rola/src/facts/facts.cuh`` (``kListCap``, ``kListAt``, ``kListBound``, ``kGap``).
 """
 from __future__ import annotations
 
@@ -31,8 +31,6 @@ from rola.engine.facts import liveness as lv
 LIST_BOUND = 64
 #: A SIDE'S LIST GROUP: the digits one union and its prefix rows span, a liveness group (`lv.GROUP_DIGITS`) or its half
 LIST_GROUPS = (16, 32)
-#: the step: a union's extent is its size in whole steps
-STEP = 8
 #: a gap slot's token: token 0 flagged (``0x8000`` as int16), so a row fetch masked to the window stays inside it
 GAP = -0x8000
 
@@ -48,7 +46,7 @@ class Lists(NamedTuple):
     ``[BH, windows, groups, G + 1, W / 64]`` int16 the boundaries
     in prefix form modulo 2^16, ``totals`` ``[BH, windows, groups, W / 64]`` int32 the group's exact, ``union``
     ``[BH, windows, groups, W]`` (a slot's token, ``GAP`` in a gap) and
-    ``count`` ``[BH, windows, groups]`` the unions' extents. Past a list's end and a union's extent nothing is
+    ``count`` ``[BH, windows, groups]`` the unions' sizes. Past a list's end and a union's size nothing is
     defined."""
 
     entries: torch.Tensor
@@ -56,15 +54,6 @@ class Lists(NamedTuple):
     totals: torch.Tensor
     union: torch.Tensor
     count: torch.Tensor
-
-
-def columns(routes, values) -> tuple[torch.Tensor, torch.Tensor]:
-    """``(m, m s)`` ``[B, T, H]`` fp32, multiplied as the facts pass does: each write level's scale in order (the
-    write side's shared scale), then the value scale."""
-    m = routes.scale_write[0].float()
-    for scale in routes.scale_write[1:]:
-        m = m * scale.float()
-    return m, m * values.scale.float()
 
 
 def final_lists(bits: torch.Tensor, layout: lv.LivenessLayout, level: int, *, rows, window: int,
@@ -99,7 +88,7 @@ def final_lists(bits: torch.Tensor, layout: lv.LivenessLayout, level: int, *, ro
                 lo, hi = base + g * G, base + min(B, g * G + G)
                 union = [(j, t) for j in range(heads) for t in bits[bh, j, lo:hi, t0:t1].any(0).nonzero().flatten().tolist()]
                 slot_of = {row: s for s, row in enumerate(union)}
-                count[bh, w, g] = -(-len(union) // STEP) * STEP
+                count[bh, w, g] = len(union)
                 union_out[bh, w, g, :len(union)] = torch.tensor([j * window + t for j, t in union], dtype=torch.int64)
                 for dd in range(hi - lo):
                     digit = g * G + dd

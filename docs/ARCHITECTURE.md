@@ -213,7 +213,7 @@ The compiled key is the family's own:
 | carry | the carve's operation-plan pair: `fold_rows, fold_factors, read_rows, read_factors, channels, same_split` (`tools/manifests/shipped_set.json`, [`build.md#carry-arm-lists`](build.md#carry-arm-lists)) | the box's per-level extents, the depth, the widths |
 | decode | `DV × D × decay` (`tools/manifests/decode_set.json`) | the `(k, m)` lattice, the widths, the operand storage types |
 | intra | the depth, one or two levels | each level's width in 16-digit granules |
-| facts pass | none: one instantiation | every width, kind and offset, from the layout |
+| producer, facts pass | none: one instantiation each | every width, kind and offset, from the plan or the layout |
 | entmax solves | the padded width class, alpha, the operand dtypes | the level table |
 
 The window `W`, the warp counts and the register budgets are constants. **Structure is branched on, never a

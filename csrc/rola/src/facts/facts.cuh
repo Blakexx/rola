@@ -23,11 +23,13 @@ constexpr int kRowAlign = 32;
 constexpr int kMaxWidth = 256;
 constexpr int kMaxGroups = kMaxWidth / kGroupDigits;
 constexpr int kMaxMaskWords = kMaxLevels * kMaxWidth / 32;
-//: THE QUERY HEADS a write head's read side merges: the parameter block's bound, and a window's at W (every head's rows
-//: at a 16-bit pool offset). -- see docs/internals/facts/facts.md#window
+//: THE QUERY HEADS a write head's read side merges: the parameter block's bound, and a window's at W (a union's row
+//: `W j + t` under the gap's bit 15). -- see docs/internals/facts/facts.md#window
 constexpr int kMaxGroup = 16;
 
-__host__ __device__ constexpr int max_group(int w) { return 8192 / w; }
+__host__ __device__ constexpr int max_group(int w) {
+  return 32768 / w < kMaxGroup ? 32768 / w : kMaxGroup;
+}
 
 //: A UNIT, coded (kind, side, level, group, head in the group). -- see docs/internals/facts/facts.md#the-plan
 enum UnitKind : int { kUnitVote = 0, kUnitList = 1, kUnitColumns = 2 };
@@ -52,9 +54,6 @@ __host__ __device__ constexpr int unit_head(uint32_t c) { return (c >> 8) & 15; 
 //: THE LISTS OUT: a boundary every 64th union slot, and a gap slot's token. -- see docs/internals/facts/facts.md#lists-out
 constexpr int kListBound = 64;
 constexpr uint16_t kGap = 0x8000;
-
-//: THE STEP: a union's extent is its size in whole steps of 8 entries.
-constexpr int kStep = 8;
 
 //: A SIDE'S LIST GROUP: a union's digits, a unit's group or each half. -- see docs/internals/facts/facts.md#list-groups
 constexpr int kListGroupMin = 16;
@@ -115,7 +114,7 @@ struct FactsPlan {
 };
 
 //: A SIDE'S LISTS OUT at its list level: entries (`slot | byte << 16`), prefix rows (mod 2^16), exact totals, the union
-//: by slot, its extent.
+//: by slot, its size.
 //: -- see docs/internals/facts/facts_api.md#rola-facts-forward
 struct ListsOut {
   uint32_t* entries;

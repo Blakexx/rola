@@ -313,8 +313,7 @@ struct FactsAt {
     return rk;
   }
 
-  //: THE UNIONS' TAILS, after their heads: every slot past each list group's union `kGap`, its extent its size in whole
-  //: steps.
+  //: THE UNIONS' TAILS, after their heads: every slot past each list group's union `kGap`, and its size.
   template <int kGroups>
   static __device__ __forceinline__ void union_tail(const FactsParams& p, const Unit& x,
                                                     uint32_t at, int tid) {
@@ -329,7 +328,7 @@ struct FactsAt {
 #pragma unroll 1
       for (int k = n + tid; k < slots; k += kFactsThreads)
         out.union_tok[group_index * slots + k] = kGap;
-      if (tid == 0) out.union_count[group_index] = (n + kStep - 1) & -kStep;
+      if (tid == 0) out.union_count[group_index] = n;
     }
   }
 
@@ -728,7 +727,7 @@ std::vector<Tensor> rola_facts_forward(std::vector<Tensor> read, std::vector<Ten
   p.words = reinterpret_cast<uint32_t*>(outs[0].mutable_data_ptr<int32_t>());
   p.unions = reinterpret_cast<uint32_t*>(outs[1].mutable_data_ptr<int32_t>());
   p.fm = static_cast<float2*>(outs[2].mutable_data_ptr());
-  //: THE LISTS OUT, a side's at its list level (none: width 0): entries, boundaries, the union by slot, its extent
+  //: THE LISTS OUT, a side's at its list level (none: width 0): entries, boundaries, the union by slot, its size
   for (const int side : {kWrite, kRead}) {
     const int64_t width = p.list_level[side] >= 0 ? p.B[p.list_level[side]] : 0,
                   G = p.list_group[side], groups = (width + G - 1) / G,

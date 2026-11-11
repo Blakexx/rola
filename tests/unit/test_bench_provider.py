@@ -1,6 +1,6 @@
 """rola's runner (measure/provider.py): it reads central cells, names an arm by its subject, its call count
 and a layer arm's construction, offers the arms this binary carries at the cell's shape, and refuses a cell by name --
-an uncarried carry arm, an iteration build, a cell of another kind. No GPU: nothing here builds an arm, and the binary's
+an iteration build of either arm family, a cell of another kind -- while a missing carry arm leaves `prefill` unoffered. No GPU: nothing here builds an arm, and the binary's
 arm tables are planted (the carry's as the arms the cells' own carves select: this line declares none)."""
 from __future__ import annotations
 

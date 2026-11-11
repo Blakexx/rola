@@ -28,9 +28,9 @@ its write side; [`liveness_contract.md`](liveness_contract.md#tile-unions)), `fm
 over its write head's `h = g` query heads' rows (the write side's `h = 1`), `groups = ceil(B / G)` at the side's list
 group `G` -- entries `[B·H_w, windows, B, W h]` int32 (`slot | byte << 16`), the boundaries' prefix rows
 `[B·H_w, windows, groups, G + 1, W h / 64]` int16, the groups' totals
-`[B·H_w, windows, groups, W h / 64]` int32, the union by slot `[B·H_w, windows, groups, W h]` int16 and the extents
+`[B·H_w, windows, groups, W h / 64]` int32, the union by slot `[B·H_w, windows, groups, W h]` int16 and the unions' sizes
 `[B·H_w, windows, groups]` int32 ([`facts.md`](facts.md#lists-out)); width 0 for a side that lists nothing. The pass writes `fm` in
-full, the prefix rows and totals, the unions by slot and the extents in full, each list's
+full, the prefix rows and totals, the unions by slot and their sizes in full, each list's
 entries to its end, and of `words` and `unions`
 every sparse level's rows and groups; a dense level's are left as allocated (its words are the width mask, which a
 reader takes from the statics, [`liveness_contract.md`](liveness_contract.md#statics)). `widths` are the layout's PADDED

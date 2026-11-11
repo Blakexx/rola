@@ -33,7 +33,7 @@ allocated. Every sparse level's rows are read once, whole, whatever their suppor
 ## The grid: a CTA a unit
 
 `kFactsWarps` = 8 warps a CTA, one CTA a UNIT; at W = 1,024 two CTAs an SM by `kFactsCtasMin` (a list lane holds
-twice the words and boundary pairs, which spill under four CTAs' 64 registers); at W = 512 four CTAs an SM on sm_86 (its 23 KB of shared memory a CTA; its
+twice the words and boundary pairs, which spill under four CTAs' 64 registers); at W = 512 four CTAs an SM on sm_86 (its 18.7 KB of shared memory a CTA; its
 registers a thread held to four CTAs by `kFactsCtasMin`, 46 used, which allow five) and five on sm_80 (registers): a
 unit is a plan-fixed load
 and its work, independent of every other unit, so the hardware's block scheduler balances the units' unequal costs and
@@ -66,7 +66,7 @@ a carry arm reads, `rola.ops.carry.lists_form`) is the digits one union
 and its prefix rows span: 32, a unit's whole group, or 16, each half (`kListGroupMin`; `kUnitGroups` = 2 at most a
 unit); the host refuses any other. The unit stays a 32-digit group -- its load, vote, words and tile unions are the
 liveness contract's at every `G` -- and at 16 it ranks two unions, list group `q` its digits `16q .. 16q + 15`, each
-with its own slots, bounds, prefix rows (`G + 1`), totals, gap tail and extent, at its index among the side's
+with its own slots, bounds, prefix rows (`G + 1`), totals, gap tail and size, at its index among the side's
 `ceil(B / G)` groups of the window (`list_group_index`); a half past the level's width is none (`list_group_in`). The
 vote ORs a block's words into both halves' union words (a half's words zero at 32); the ranks scan both halves' counts
 as the 16-bit halves of one word, so one shuffle scan serves both, and a unit keeps both halves' slots before a head the
@@ -104,8 +104,8 @@ same passes (the window's words double at W = 1,024, the halves' scan with them)
 A unit's window is 512 tokens × 32 bytes, the group's digits of each token's row: two `cp.async` 16-byte quanta a
 token, a lane pair a token (one L2 sector request: [`ops.md`](../common/atoms/copy.md#stage-tile-n)), token `t` at region
 `t / 32` (1 KB each) row `ring_row(t % 32)` = `4 (t % 8) + t / 8` of 32 bytes, so the vote's lanes meet 32 banks.
-Bytes past the rows' width or a token past `L` are zero-filled (`ops::stage_tile_n`), never read. A write list unit
-loads its window's columns beside it into registers (two tokens a thread), so their latency hides under the window's.
+Bytes past the rows' width or a token past `L` are zero-filled (`ops::stage_tile_n`), never read. A list unit loads
+nothing else: the scales are the columns unit's, which loads no window.
 
 <a id="vote"></a>
 
@@ -128,9 +128,11 @@ of 32 tokens, and the stages map onto that window by four counts derived from it
 (`kWarpBlocks`), a thread's tokens (`kThreadTokens`), a list lane's words (`kLaneWords`, eight lanes a list) and
 boundaries (`kLaneBounds`) -- so a stage's loop runs over its count and at W = 512 every count is the 512-token pass's
 own. The shared tenants are `FactsSmemAt<W>`; the device code is `FactsAt<FactsPlan<B>>` and the host launches the
-card's build (`build_switch`) at that plan's tenants. An
-entry's slot is 16 bits, so a write head's read side merges at most `max_group(W) = 8192 / W` query heads (16 at
-512, 8 at 1,024); `kMaxGroup` stays the parameter block's bound, the same in both compile passes.
+card's build (`build_switch`) at that plan's tenants. A
+union's row `W j + t` sits under the gap's bit 15 and an entry's slot is 16 bits, so a write head's read side merges at
+most `max_group(W) = min(16, 32,768 / W)` query heads (16 up to W = 2,048); `kMaxGroup` = 16 is the parameter block's
+bound, the same in both compile passes. MEASURED at W = 512 only (sm_86, 16 heads: 8,192 slots a union); a wider window's
+16 heads first run on its card.
 
 <a id="tiles"></a>
 
@@ -162,8 +164,8 @@ token order (ruled 2026-10-13). After the vote's barrier every warp scans the 16
 groups' as the 16-bit halves of one word (a 16-lane shuffle scan), and its two words' tokens go out to each group's
 `union_tok` at their slots -- a word's tokens at consecutive slots, so the
 stores coalesce -- every slot past the union `kGap` (`carry/carry.cuh`: token 0 with bit 15 set, so a row fetch masked
-to the window stays inside it). The union's EXTENT (`union_count`, int32) is its size in whole steps of `kStep` = 8:
-the carry stages the extent's slots and zero-fills a gap's row. The token at every 64th slot is a BOUND, posted in
+to the window stays inside it). The union's size is `union_count` (int32); a consumer
+rounds it to its own step. The token at every 64th slot is a BOUND, posted in
 shared memory (`kWindowTokens` past the union): a list's tokens before bound `k` are its entries before slot `64 k`,
 which the lists count without walking.
 
@@ -171,7 +173,7 @@ A GROUPED read side ranks its write head's query heads' rows as one union a list
 tokens take the slots past the heads before it (`at`, a list group's own), each slot's ROW `512 j + t` its `union_tok`
 (the carry's fills and drains decode a row by a shift and a mask). A head's bounds are the tokens at the merged union's
 64th slots that fall in its rows -- at most eight, from boundary `k0 = at / 64` -- the rest `kWindowTokens`; the gaps
-and the extent are written after the last head.
+and the size are written after the last head.
 
 The slots are not colored. A coloring that put each step's 8 tokens on distinct residues mod 8 (the bank groups of
 every slot-indexed row) made the carry's gathers conflict-free, but it padded each list's passes to its most-used
@@ -244,28 +246,16 @@ digit past a level's rows.
 
 ## The budget line and the floor
 
-THE LINE (ruled 2026-10-12, restated 2026-10-13): the whole pass at <= 1.15x its required bytes' DRAM floor on the
-lab's `facts_block` cell (rows `[4 level-sides, 65,536, 4, 256]` u8, 268 MB, k live digits a token-head; the write side
-lists level 0 and the read side level 1, the other level of each voted). Its required bytes -- the rows, the columns,
-the words and tile unions, every list's entries, the boundaries' prefix rows, the groups' totals, union and extent and
-the factor products -- were 398 µs at k 4 and 455 µs at k 16 at the lab's flat read (854 GB/s) when an entry was 8
-bytes and the pass also wrote exponents and gains; the line was set at 516 and 665 µs. The indexer's own bytes and time
-are unmeasured: the readings below are the pass's before it shed them.
+THE LINE (ruled 2026-10-12, restated 2026-10-13): the whole pass at <= 1.15x its required bytes' DRAM floor. Its
+required bytes are the sparse levels' rows and the scales read, and the words and tile unions, every list's entries (4
+bytes each), the boundaries' prefix rows, the groups' totals, the unions by slot with their sizes and the factor
+products written.
 
-MEASURED, the 8-byte-entry pass (the lab `facts_block`, RTX 3080 Ti at its boost clock, medians, 2026-10-14):
-
-| | k 4 | k 16 |
-|---|---|---|
-| the pass | 437 µs (1.10x the floor) | 500 µs (1.10x) |
-| phase share: load, vote, ranks, lists | 0.54, 0.23, 0.08, 0.16 | 0.43, 0.22, 0.07, 0.27 |
-
-Everything but the lists is fixed a unit; the lists' walks run each warp's longest lane.
-
-MEASURED, the list groups (sm_86, 2026-11-06; `bench_facts_block.py --read-list-group 32 16`, the two timed launch by
-launch): the read side at 32 runs 442.3 / 502.7 µs (k 4 / k 16, 1.11x / 1.10x), at 16 445.3 / 504.7 µs (1.10x of its
-own floor, which its second union's bytes raise ~5 µs) -- 1.007x / 1.005x. A call whose sides are all whole groups runs
-the one-group pass (`facts_pass<Bt, 1>`), the code before the halves: the layer's facts sessions at nl64k-alt-h4, -g4 and
--g16 read 0.998, 0.997 and 0.993 of that build's time, and one `ncu` launch at nl64k-alt-k4 375 µs against its 376.
+MEASURED (sm_86, RTX 3080 Ti, 2026-11-10, `tools/overlap_gate.py`'s rows, one `ncu` launch each on its locked clock,
+4 heads at 65,536 tokens, whole list groups): `facts-alt-k4` 337.5 µs, 1.58x its DRAM floor of 213.8 µs -- OVER THE
+LINE, and what holds it there is not attributed (owed: the row's stall census); `facts-dense` 12.7 µs against a 3.6 µs
+floor -- a call with no sparse level runs the columns unit alone, so the launch's fixed time is what the row reads and
+its ratio says nothing of the line.
 
 Per architecture: sm_80 runs the same form at five CTAs an SM (registers); on sm_90 the window fills by TMA (a
 `[512 tokens × 32 bytes]` box of the head's plane in one instruction) under an mbarrier, the rest unchanged. Scaling:

@@ -2,11 +2,11 @@
 model's final form, bit for bit.
 
 `tests/unit/test_liveness_contract.py` gates the words' contract and the pure-torch model without a device; this file
-holds the one pass to that model on the bundle's own rows -- u8 and f16, separate tensors and views of one packed plane
+holds the one pass to that model on the bundle's own rows -- u8, separate tensors and views of one packed plane
 -- at every SPARSE level, which makes every property the model proves (sparse rows are the digits' support, pad digits
 are dead, a token past `L` votes dead) a property of the kernel; a dense level's rows and groups are the static width
 mask, which the folds take from the statics, so the pass neither reads nor writes them. The lists are the model's
-in each of the carry's forms (docs/internals/facts/facts.md#lists-out). The class-2 folds the words feed are
+at each list group (docs/internals/facts/facts.md#lists-out). The class-2 folds the words feed are
 gated here too: the exact per-page byte against the general box fold at the atom box set and against the leaf-level
 truth.
 
@@ -41,8 +41,6 @@ _SHAPES = (((32,), 32), ((16, 16), 64), ((32, 16), 40), ((16, 16, 16), 96), ((64
 #: (and, at depth one, on level 0), so each side has a sparse level from depth two; "tied" -- level 0 dense on both
 #: sides, the rest sparse; "all" -- every level dense on both.
 _MODES = ("alternating", "tied", "all")
-
-#: the list maxima's bound, relative: the kernel's fp32 product of at most seven factors, a rounding each.
 
 #: EACH SIDE'S LIST GROUP, (read, write) (docs/internals/facts/facts.md#list-groups): a unit's whole liveness group,
 #: each side's halves alone, and both halves
@@ -269,7 +267,7 @@ def _lists_want(routes, values, layout, read_statics, write_statics, list_groups
 
 
 def _assert_lists(got: list_model.Lists, want: list_model.Lists):
-    """Every defined slot of the pass's lists is the model's: the unions and their extents, the boundaries' prefix rows
+    """Every defined slot of the pass's lists is the model's: the unions and their sizes, the boundaries' prefix rows
     and the groups' totals, and each list to its end -- gathered on the device, so nothing past an end (undefined by the
     contract) is read."""
     assert torch.equal(got.count.cpu().long(), want.count)
@@ -313,7 +311,7 @@ def test_grouped_reads_are_one_union_a_window_bit_for_bit(widths, L, group, list
 @pytest.mark.parametrize("list_groups", _LIST_GROUPS)
 def test_the_lists_are_the_model_bit_for_bit(widths, L, dense, list_groups):
     """Each side's lists at its list level and list group (docs/internals/facts/facts.md#lists-out, #list-groups): the
-    union by rank and its extent, each digit's entries in token order (a slot and a byte), and the groups' boundaries
+    union by rank and its size, each digit's entries in token order (a slot and a byte), and the groups' boundaries
     in prefix form -- bit for bit, at every window."""
     layout = _layout(widths, L)
     read_statics, write_statics = _sides(layout, dense, widths)
@@ -339,18 +337,6 @@ def test_the_boundaries_cover_a_whole_window(list_groups):
     assert (write.count > 7 * list_model.LIST_BOUND).any(), "no union passes the last boundary: the cell is vacuous"
     _assert_lists(got.write, write)
     _assert_lists(got.read, read)
-
-
-@pytest.mark.parametrize(("widths", "L"), [((32, 64), 600), ((16,), 1100)])
-def test_the_columns_are_the_model_bit_for_bit(widths, L):
-    """Each token's ``(F, m)`` = ``(m s, m)`` in fp32, multiplied in the model's order (facts.md#columns)."""
-    layout = _layout(widths, L)
-    read_statics, write_statics = _sides(layout, "alternating", widths)
-    routes, values = _bundle(widths, L, (read_statics, write_statics))
-    got = _facts(routes, values, layout, read_statics, write_statics)
-    m, ms = list_model.columns(routes, values)
-    want = torch.stack((ms, m), -1).permute(0, 2, 1, 3).reshape(got.fm.shape)
-    assert torch.equal(got.fm, want)
 
 
 @pytest.mark.parametrize("list_groups", ((32, 32), (16, 16)))

@@ -32,11 +32,10 @@ LIVENESS PASS") admits exactly two classes of fact.
   `O(#boxes × L)` has no consumer.
 
 The int8 rebuild's ruling of 2026-09-28 widened what the facts kernel owns to anything
-determinable from the raw produced values, so two per-grain aggregates now sit beside
-the classes and are written by the same pass: the list exponents, per (window, list digit)
-([`facts.md`](facts.md#lists)), and the [tile unions](#tile-unions), per 64 tokens. Neither is a class-2 fact — neither is
-over the whole call nor `O(N)` — and neither is derived by a consumer: each is the OR or
-the maximum of what the pass already holds when it holds it.
+determinable from the raw produced values, so one per-grain aggregate sits beside
+the classes and is written by the same pass: the [tile unions](#tile-unions), per 64 tokens. It is not a class-2 fact —
+it is neither over the whole call nor `O(N)` — and it is not derived by a consumer: it is the OR
+of what the pass already holds when it holds it.
 
 ## <a id="max"></a>The digits: each against its row's max
 
@@ -132,9 +131,9 @@ the words that exist. `union_address` in the header is the table's address from 
 extents, which `LivenessLayout::union_index` and a kernel with compile-time extents both
 call; `tile_unions` in the Python module is the model, gated against the per-token bits.
 
-An intra's slab gate is the consumer. The ampere family's (the branch `ampere`) read 40
-bytes a lane of it where reading the words themselves took a 64-byte run from each of 512
-rows 8 KB apart — measured there at `L = 64K`, 10% of that intra's warp cycles against 3.5%.
+An intra's slab gate is the consumer: 40 bytes a lane of the table where the words themselves
+are a 64-byte run from each of a window's rows, 8 KB apart. No intra is built on this line, so
+what the table saves its reader is owed to the first one's measurement.
 
 <a id="folds"></a>
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The prefill family's DAG, read top to bottom, and the context it runs over.
 
-ONE SEGMENT in, its readout out: the facts pass over the segment's bundle, the scale pass, the
+ONE SEGMENT in, its readout out: the facts pass over the segment's bundle, the
 carry and the intra, then the post pass ``y = num / (den + eps / r)``. The stateless and
 stateful bands are one tuple, the stateless being the stateful with the residency band
 masked out. Segmentation is the LAYER's (docs/internals/engine/prefill_dag.md): this
@@ -45,8 +45,8 @@ class PrefillContext:
 
 @node(gives=("facts", "carve", "layout", "statics"), needs=("routes", "values"), stream="main")
 def facts(f):
-    """THE FACTS PASS over the bundle, one launch: both sides' class-1 words and their tile unions, the write lists'
-    exponents, each side's lists in the form of the carry arm the carve selects and the writers' factors, with the carve
+    """THE FACTS PASS over the bundle, one launch: both sides' class-1 words and their tile unions, each side's
+    lists at its list group and the writers' factor products, with the carve
     the planner picks, the layout the words are read in -- the topology's padded widths -- and the two sides' statics,
     their dense levels unread (`rola.ops.facts`)."""
     from rola.engine.carve import plan_carve
@@ -91,7 +91,7 @@ def residency(f):
 
 @node(gives=("num", "den"), needs=("routes", "values", "facts", "carve", "layout", "statics"), stream="main")
 def launch(f):
-    """The scale pass, the carry at its bytes and the intra into the same planes: ``num [BH, T, d_v]`` and
+    """The carry at its bytes and the intra into the same planes: ``num [BH, T, d_v]`` and
     ``den [BH, T]``, fp32, each over the reader factor (`rola.ops.prefill.prefill`)."""
     from rola.ops import prefill as prefill_ops
 

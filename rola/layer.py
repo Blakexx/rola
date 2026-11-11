@@ -208,7 +208,7 @@ class RoLA(nn.Module):
         write slot), its tile unions and factor products; each side's lists at its one sparse
         level -- a window's slots a digit, a uint32 an entry, with the union by slot at the finest list group and
         the boundaries and totals under a sixteenth of the width; the values (bf16) and their scale and the gain; the
-        scale pass's byte and its masses; the carry's ``num`` (fp32 at most) and den; the readout's unpacked ``num``,
+        carry's ``num`` (fp32 at most) and den; the readout's unpacked ``num``,
         den, factor and reader factor, ``y`` and its bf16 copy for the output projection. A token's: the hidden
         stream's two bf16 casts and the output, fp32 at most.
         """
