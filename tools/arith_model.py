@@ -32,7 +32,8 @@ rounds, a window `W` at a time:
   average of values, under the call's largest value scale; the cluster's shares are summed as integers at that one
   scale, turned back and multiplied by the cluster's den, and the clusters summed in fp32.
   `--scale-spread B` raises the tokens' write scales by B binades over the call, `--value-spread B` their value
-  scales, and `--leaf-spread B` spreads the write scales over the leaves of a cluster, to stress the scales.
+  scales, `--leaf-spread B` spreads the write scales over the leaves of a cluster and `--spike B` raises the call's first 16
+  tokens' by B binades, to stress the scales.
 Each token's error is `|y - y64| / |y64|` over its channels; the record holds the median, the 99th percentile and the
 largest with every rounding on, and with each one alone (the others exact), so the family's error has its sources.
 One write head a run (`--head`); a grouped bundle is refused.
@@ -166,7 +167,7 @@ def _errors(y, want) -> dict:
 
 
 def model(name: str, window: int, head: int, shape: tuple[int, int], along: int, spread: int,
-          value_spread: int, leaf_spread: int) -> dict:
+          value_spread: int, leaf_spread: int, spike: int) -> dict:
     import torch
 
     from measure.cells import by_name, realize
@@ -185,7 +186,6 @@ def model(name: str, window: int, head: int, shape: tuple[int, int], along: int,
     writes = _format([x[0, :, head].double() for x in write])
     v = values.dequantized()[0, :, head].double()                           # [T, d_v]
     s = v.abs().amax(dim=-1)
-    T = v.shape[0]
     u = _bf16(torch.where(s[:, None] > 0, v / s[:, None].clamp_min(1e-300), torch.zeros_like(v)))
     T, d_v = v.shape
     if value_spread:
@@ -200,6 +200,12 @@ def model(name: str, window: int, head: int, shape: tuple[int, int], along: int,
         #: case for one scale a call
         ramp = torch.arange(T, dtype=torch.float64, device=v.device) / max(T - 1, 1)
         factor = 2.0 ** torch.round(-spread * (1.0 - ramp))
+        writes[0] = (writes[0][0], writes[0][1] * factor)
+    if spike:
+        #: THE SPIKE: the call's first 16 tokens write at `spike` binades over every other token, so a running bound
+        #: sits that far over what every later output is made of wherever it misses those tokens' leaves
+        factor = torch.ones(v.shape[0], dtype=torch.float64, device=v.device)
+        factor[:16] = 2.0 ** spike
         writes[0] = (writes[0][0], writes[0][1] * factor)
     if leaf_spread:
         #: THE LEAVES' STRESS: each token's write scale falls by up to `leaf_spread` binades with its largest write
@@ -288,7 +294,7 @@ def model(name: str, window: int, head: int, shape: tuple[int, int], along: int,
     _prove_truth(reads, writes, u, s, routes.topology, y64, min(T, 2 * window))
     return {"cell": name, "tokens": T, "window": window, "head": head, "box": list(shape), "along": along,
             "cluster": cluster,
-            "scale_spread": spread, "value_spread": value_spread, "leaf_spread": leaf_spread, "clusters_read_a_token": float(torch.cat(read_clusters[1:] or read_clusters).mean()),
+            "scale_spread": spread, "value_spread": value_spread, "leaf_spread": leaf_spread, "spike": spike, "clusters_read_a_token": float(torch.cat(read_clusters[1:] or read_clusters).mean()),
             "errors": {k: _errors(torch.cat(ys), y64) for k, ys in got.items()}}
 
 
@@ -303,6 +309,8 @@ def main(argv: list[str]) -> int:
                     help="stress: each token's value scale times 2^-k, k falling from this many binades to none")
     ap.add_argument("--leaf-spread", type=int, default=0,
                     help="stress: a token's write scale times 2^-k, k up to this many binades by its largest write digit")
+    ap.add_argument("--spike", type=int, default=0,
+                    help="stress: the first 16 tokens' write scales times 2^this, every other token's as drawn")
     ap.add_argument("--along", type=int, choices=(0, 1), default=0,
                     help="the level a cluster holds one range of (its boxes span the other): the cluster forms' scope")
     ap.add_argument("--scale-spread", type=int, default=0,
@@ -315,7 +323,7 @@ def main(argv: list[str]) -> int:
     records = []
     with gpu_lock(mode="shared"):
         for cell in a.cells:
-            record = model(cell, a.window, a.head, tuple(a.box), a.along, a.scale_spread, a.value_spread, a.leaf_spread)
+            record = model(cell, a.window, a.head, tuple(a.box), a.along, a.scale_spread, a.value_spread, a.leaf_spread, a.spike)
             print(f"{cell}: a token reads {record['clusters_read_a_token']:.2f} of its {record['cluster']}-box clusters")
             records.append(record)
             for key, e in record["errors"].items():

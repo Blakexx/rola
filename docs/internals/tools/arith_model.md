@@ -26,14 +26,16 @@ whose output is a few intra terms). With no rounding on the model is the truth e
 
 ## <a id="sums"></a>The cross-box sum
 
-The readout's output is a sum over boxes that different CTAs hold. The model sums each box's fp32 partial three ways,
-with nothing else rounded: box after box in fp32; as integers of 32 or 64 bits at a scale `2^q` taken from a bound
-(the tool's docstring lists the bounds: one a call, two a window, two a cluster and window); and NORMALIZED -- each
-box's num over its cluster's den for the token, a share of a weighted average of values, as integers at the call's
-largest value scale, turned back and multiplied by the cluster's den. A box is `--box FIRST SECOND` digits a level; a cluster
-is the boxes sharing one range of level `--along`, summed as integers, the clusters then in fp32. Three stresses move
-what a scale must hold: `--scale-spread` (write scales rising over the call), `--value-spread` (value scales rising),
-`--leaf-spread` (write scales apart across one cluster's leaves).
+WHY IT IS MODELLED. The readout's output is a sum over boxes that different CTAs hold, and
+[precision.md](../../architecture/precision.md) states that sum in fp32. A float cannot be summed between CTAs before
+it reaches global memory -- the instruction set's reductions into another CTA's shared memory are integer -- so every
+box's partial would cross to global memory by itself. An integer partial can be summed in a cluster first. The model
+asks what an integer sum costs in accuracy, under each way of choosing its scale, before any kernel takes one: each
+box's fp32 partial summed in fp32, as 32- or 64-bit integers at a scale from a bound, or normalized by its cluster's
+den (the tool's docstring states each form). A box is `--box FIRST SECOND` digits a level; a cluster is the boxes
+sharing one range of level `--along`. Four stresses move what a scale must hold: `--scale-spread` (write scales rising
+over the call), `--value-spread` (value scales rising), `--leaf-spread` (write scales apart across one cluster's
+leaves) and `--spike` (the call's first 16 tokens far over the rest).
 
     bazel run //tools:arith_model -- nl64k-alt-k4 --along 1 [--scale-spread 40 | --value-spread 16 | --leaf-spread 24]
 
@@ -49,10 +51,26 @@ token; the fp32 sum reads 4e-05% to 7e-05% in every column):
 | 32 bits, normalized in the cluster | 0.0002% | 0.00006% | 2.3% | 0.00001% |
 | 64 bits, one scale a call | 0.000008% | 107% | 0.0002% | |
 | 64 bits, a window's coarse bound | 0.000008% | 0.000008% | 0.000008% | 0.00001% |
+| 64 bits, the cluster's state a window | 0.00002% | 0.00002% | 0.00002% | 0.00001% |
 | 64 bits, normalized in the cluster | 0.00002% | 0.00002% | 0.00003% | 0.00001% |
 
-WHAT IT SHOWS. On the cells as drawn every form but a 32-bit call-wide or coarse scale adds less than the fp32 sum's
-own error. Each 32-bit form has one stress that takes it out of the family's 0.2%: a scale from the cluster's state
-fails where a cluster's leaves hold magnitudes far apart and a token reads only the small ones; the normalized sum
-fails where value scales spread over the call. The 64-bit sums at a window's coarse bound and normalized in the
-cluster hold in every column measured. A token of nl64k-alt-k4 reads 3.66 of its clusters.
+THE SPIKE (the first 16 tokens at 2^B over the rest; the 64-bit forms, the worst token):
+
+| B, cell | a window's coarse bound | the cluster's state a window | normalized in the cluster |
+|---|---|---|---|
+| 40, corner-tied-k4 | 0.21% | 0.0002% | 0.000007% |
+| 48, corner-tied-k4 | 27% | 0.045% | 0.000007% |
+| 40, flagship-both-k4-L4096 | 1.9% | 0.0003% | 0.00003% |
+| 48, flagship-both-k4-L4096 | 127% | 0.13% | 0.00003% |
+| 40, flagship-alt-k4-L4096 | 0.000008% | | 0.00002% |
+
+The 64-bit normalized sum under value scales rising 2^32, 2^40 and 2^48 (flagship-alt-k4-L4096): 0.00002%, 0.0002%,
+0.03%.
+
+WHAT IT SHOWS. On nl64k-alt-k4 as drawn the 64-bit sums add less than the fp32 sum's own error, and the 32-bit sums at
+a cluster's scale or normalized add one to three times it -- all far inside the family's 0.2%; a 32-bit call-wide or
+coarse scale is outside it. Every 32-bit form has a stress that takes it past 0.2%. Among the 64-bit forms the coarse
+bound gives out at a spike near 2^40 where later tokens' reads miss the spike's leaves (none in the alternating cell,
+whose every reader meets every writer); the cluster's state scale holds to a spike or a leaf spread near 2^48; the
+normalized sum holds everywhere but a value-scale spread near 2^48. A token of nl64k-alt-k4 reads 3.66 of its
+clusters.
