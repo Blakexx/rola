@@ -208,7 +208,8 @@ decode_step_kernel(DecodeParams p) {
 
     // ---- THE PROLOGUE: three phases, three barriers ------------------------------
     //: PHASE A, EVERY OPERAND'S LOAD AT ONCE: a value channel, the dials and the digits of both sides -- see docs/internals/decode/decode.md#prologue
-    const ValueUnit v_c = tid < DV ? load_value(p, b, h, tid) : ValueUnit{__float2half(0.0f), 0.0f};
+    const ValueUnit v_c =
+        tid < DV ? load_value(p, b, h, tid) : ValueUnit{__float2bfloat16(0.0f), 0.0f};
     if (DECAY) {
 #pragma unroll 1
       for (int i = tid; i < total_rows; i += Dp::kThreads) {
@@ -907,10 +908,10 @@ int64_t rola_decode_build_stamp() {
 
 Tensor rola_decode_forward(std::vector<Tensor> read, std::vector<Tensor> write,
                            std::vector<Tensor> read_scale, std::vector<Tensor> write_scale,
-                           int64_t floor_read, int64_t floor_write, std::optional<Tensor> dials,
-                           Tensor v, Tensor v_scale, Tensor state, Tensor yacc, Tensor queue,
-                           Tensor growth, Tensor growth_any, Tensor growth_ctr, Tensor done,
-                           Tensor atom_bits, std::vector<int64_t> level_widths,
+                           std::optional<Tensor> dials, Tensor v, Tensor v_scale, Tensor state,
+                           Tensor yacc, Tensor queue, Tensor growth, Tensor growth_any,
+                           Tensor growth_ctr, Tensor done, Tensor atom_bits,
+                           std::vector<int64_t> level_widths,
                            std::vector<int64_t> level_row_offsets, int64_t lattice_k,
                            int64_t lattice_m, bool write_dense, int64_t ctas, double eps,
                            std::optional<Tensor> page_table, std::optional<Tensor> pool_slots,
@@ -974,17 +975,15 @@ Tensor rola_decode_forward(std::vector<Tensor> read, std::vector<Tensor> write,
   p.D = D;
   const int total_rows = detail::fill_levels(p, write, level_widths, B, H, N);
   detail::fill_lattice(p, lattice_k, lattice_m, N);
-  //: THE COEFFICIENT ROWS: u8, a dense level's f16 (the floor stored). -- see docs/internals/decode/decode.md#coefficient-rows
+  //: THE COEFFICIENT ROWS: u8 at every level. -- see docs/internals/decode/decode.md#coefficient-rows
   STD_TORCH_CHECK(
       read_scale.size() == static_cast<size_t>(D) && write_scale.size() == static_cast<size_t>(D),
       "one row scale a level a side");
   for (int l = 0; l < D; ++l) {
     p.read[l] = detail::span_of(read[l], B, H, p.level_width[l], "read[l]");
-    const bool read_half = ((floor_read >> l) & 1) != 0, write_half = ((floor_write >> l) & 1) != 0;
-    STD_TORCH_CHECK(read[l].scalar_type() == (read_half ? Dtype::Half : Dtype::Byte)
-                        && write[l].scalar_type() == (write_half ? Dtype::Half : Dtype::Byte),
-                    "the coefficient rows are u8, a dense level's f16; level ", l, " is ",
-                    read[l].scalar_type(), " and ", write[l].scalar_type());
+    STD_TORCH_CHECK(read[l].scalar_type() == Dtype::Byte && write[l].scalar_type() == Dtype::Byte,
+                    "the coefficient rows are u8; level ", l, " is ", read[l].scalar_type(),
+                    " and ", write[l].scalar_type());
     detail::check_f32_span(read_scale[l], "read_scale[l]");
     detail::check_f32_span(write_scale[l], "write_scale[l]");
     p.read_scale[l] = detail::scalar_span_of(read_scale[l], B, H, "read_scale[l]");
@@ -993,13 +992,8 @@ Tensor rola_decode_forward(std::vector<Tensor> read, std::vector<Tensor> write,
   }
   //: whole atoms need the innermost run to cover one: a span of at least an atom (decode.md#whole-atoms).
   p.write_atoms = (write_dense && p.lat_inner_bits >= kAtomShift) ? 1 : 0;
-  STD_TORCH_CHECK(
-      floor_read >= 0 && floor_read < (1 << D) && floor_write >= 0 && floor_write < (1 << D),
-      "the floor bitmasks name levels inside the depth ", D, ": ", floor_read, ", ", floor_write);
-  p.floor_read = static_cast<uint32_t>(floor_read);
-  p.floor_write = static_cast<uint32_t>(floor_write);
-  //: THE VALUE: f16 against the token's largest channel, the fp32 token scale.
-  STD_TORCH_CHECK(v.scalar_type() == Dtype::Half, "v is f16, got ", v.scalar_type());
+  //: THE VALUE: bf16 against the token's largest channel, the fp32 token scale.
+  STD_TORCH_CHECK(v.scalar_type() == Dtype::BFloat16, "v is bf16, got ", v.scalar_type());
   p.v = detail::span_of(v, B, H, d_v, "v");
   detail::check_f32_span(v_scale, "v_scale");
   p.v_scale = detail::scalar_span_of(v_scale, B, H, "v_scale");

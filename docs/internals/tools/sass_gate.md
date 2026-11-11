@@ -26,8 +26,8 @@ predicated copy, a branch back into the loop, or a conditional back-edge still c
 
 ## <a id="cost"></a>What a read costs
 
-Every lint of a function reads the same two disassemblies of its cubin and the same MMA loops, so each is formed once:
-a cubin's `nvdisasm` text (`sass.disassemble`) and its parsed `cuobjdump -sass` once a
+Every lint of a function reads the same disassembly of its cubin and the same MMA loops, so each is formed once:
+a cubin's `nvdisasm` text (`sass.disassemble`) once a
 process for each version of the file (its path, size and mtime), `mma_loops` once a function (`_LOOPS`). A whole read
 of the sm_86 extension is ~20 s (measured 2026-11-01), which the
 verdict cache leaves to the cubins that changed.

@@ -58,8 +58,7 @@ class RouteFactors:
 
     ``amp_read``/``amp_write``: one row set per level, ``[B, T, H, width_l]`` read and ``[B, T, H_w, width_l]``
     write (``H_w`` write heads, each read by ``H / H_w`` consecutive query heads), each row UNIT-MAX -- u8 with its
-    largest digit at 255, except a DENSE level's rows (either side), f16 at 1 with the floor taken (a dense level is
-    never zero). An all-zero row is a dead token at that level. ``sparse``: ``(read, write)``, a bool a level -- the
+    largest digit at 255, at every level, a zero a zero. An all-zero row is a dead token at that level. ``sparse``: ``(read, write)``, a bool a level -- the
     levels whose support the facts pass words (they may hold exact zeros worth skipping); set at production, read
     by every consumer, never derived from the activations. All dense by default. ``scale_read``/``scale_write``: the rows' maxima,
     fp32 per level at its side's prefix -- whatever magnitude a level carries, a producer's gain included, is in its
@@ -140,7 +139,7 @@ class RouteFactors:
                 if tensor.device != first.device:
                     raise ValueError(f"every routing level lives on one device; {name}[{level}] is on "
                                      f"{tensor.device} against {first.device}")
-                want = self.form(level, name[4:]).dtype
+                want = quant.ROWS.dtype
                 if tensor.dtype is not want:
                     raise TypeError(f"RouteFactors.{name}[{level}] is stored as {want}, got {tensor.dtype}")
                 if not _aligned(tensor):
@@ -159,19 +158,17 @@ class RouteFactors:
     @classmethod
     def from_levels(cls, topology: Topology, read, write, *, sparse=None) -> RouteFactors:
         """THE FACTORY: any nonnegative, finite floating levels in, the format out -- each level quantized into its
-        form against its own row max (:func:`level_form`: u8 for a sparse level, f16 with the floor taken for a dense
-        one), refusing an entry the form does not hold -- and the ``sparse`` flags (:meth:`from_rows`). Whatever
+        the rows' form against its own row max (`rola.routing.quant.ROWS`: u8), refusing an entry the form does not hold -- and the ``sparse`` flags (:meth:`from_rows`). Whatever
         magnitude a level carries lands in its scale; there is nothing else to pass."""
         read, write = tuple(read), tuple(write)
         sparse = default_sparse(topology) if sparse is None else tuple(tuple(map(bool, f)) for f in sparse)
 
-        quant.refuse_unheld((level_form(flags[i]), level) for levels, flags in ((read, sparse[0]), (write, sparse[1]))
-                            for i, level in enumerate(levels))
+        quant.refuse_unheld((quant.ROWS, level) for level in read + write)
 
-        def rows(levels, flags):
-            return zip(*(level_form(flags[i]).quantize(level, checked=True) for i, level in enumerate(levels)))
+        def rows(levels):
+            return zip(*(quant.ROWS.quantize(level, checked=True) for level in levels))
 
-        (amp_read, scale_read), (amp_write, scale_write) = rows(read, sparse[0]), rows(write, sparse[1])
+        (amp_read, scale_read), (amp_write, scale_write) = rows(read), rows(write)
         source = (read, write) if _requires_grad(read + write) else None
         return cls.from_rows(topology, amp_read, amp_write, scale_read, scale_write, source=source, sparse=sparse)
 
@@ -185,10 +182,6 @@ class RouteFactors:
             sparse = default_sparse(topology)
         return cls(topology=topology, amp_read=amp_read, amp_write=amp_write, scale_read=scale_read,
                    scale_write=scale_write, source=source, sparse=sparse)
-
-    def form(self, level: int, side: str) -> quant.Form:
-        """``level``'s storage form on ``side`` (:func:`level_form`)."""
-        return level_form(self.sparse[side == "write"][level])
 
     @property
     def batch(self) -> int:
@@ -245,7 +238,7 @@ class RouteFactors:
         sides = []
         for side, name in enumerate(SIDES):
             scales = getattr(self, f"scale_{name}")
-            levels = tuple(self.form(level, name).dequantize(self.rows(level, name), scale)
+            levels = tuple(quant.ROWS.dequantize(self.rows(level, name), scale)
                            for level, scale in enumerate(scales))
             if self.source is not None:
                 levels = tuple(quant.straight_through(exact, level) for exact, level in zip(self.source[side], levels))
@@ -253,34 +246,14 @@ class RouteFactors:
         return sides[0], sides[1]
 
     def live(self, side: str) -> tuple[torch.Tensor, ...]:
-        """THE LIVE DIGITS of one side, a bool ``[B, T, H, width_l]`` a level: a sparse level's nonzero digits, and
-        every digit of a dense level's live row (its zeros read as the floor; docs/internals/facts/liveness_contract.md#floor).
-        The one definition every support and atom set is derived from."""
-        index = SIDES.index(side)
-        out = []
-        for level in range(self.topology.D):
-            rows = self.rows(level, side)
-            live = rows != 0
-            if not self.sparse[index][level]:
-                live = live | (getattr(self, f"scale_{side}")[level] > 0).unsqueeze(-1)
-            out.append(live)
-        return tuple(out)
-
-    def floor_bits(self) -> tuple[int, int]:
-        """``(read, write)``: each side's dense levels as a bitmask -- the levels whose zero digits, in a live row,
-        read as the floor (docs/internals/facts/liveness_contract.md#floor)."""
-        return tuple(sum(1 << level for level, sparse in enumerate(flags) if not sparse) for flags in self.sparse)
+        """THE LIVE DIGITS of one side, a bool ``[B, T, H, width_l]`` a level: its nonzero digits, at every level. The
+        facts pass words a dense level by its width instead, a superset of this (docs/internals/facts/facts.md)."""
+        return tuple(self.rows(level, side) != 0 for level in range(self.topology.D))
 
     def tensors(self) -> tuple[torch.Tensor, ...]:
         """Every tensor the OPERATION consumes, for the gradient-reachability predicate."""
         source = () if self.source is None else (*self.source[0], *self.source[1])
         return (*self.amp_read, *self.amp_write, *self.scale_read, *self.scale_write, *source)
-
-
-def level_form(sparse: bool) -> quant.Form:
-    """A routing level's storage form: ``SPARSE`` (u8) for a sparse level, ``DENSE`` (f16, the floor taken) for a dense
-    one (`rola.routing.quant`)."""
-    return quant.SPARSE if sparse else quant.DENSE
 
 
 def default_sparse(topology: Topology) -> tuple[tuple[bool, ...], tuple[bool, ...]]:

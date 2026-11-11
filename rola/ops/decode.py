@@ -42,7 +42,6 @@ from rola.ops.decay import leaf_rate_dials
 from rola.ops.lattice import derive_lattice, permutation
 from rola.ops.padding import pad_v, padded_value_width, slice_y
 from rola.ops.paging import MMA_K_QUANTUM, page_layout
-from rola.routing import quant
 from rola.routing.types import Topology
 
 __all__ = [
@@ -232,24 +231,16 @@ def _fold(t: torch.Tensor) -> torch.Tensor:
     return t.permute(0, 2, 1, 3).reshape(B * H, W).contiguous()
 
 
-def fold_levels(levels, scales, forms) -> list[torch.Tensor]:
-    """The per-level RAW coefficient values, in torch: ``[BH, width_l]`` fp32, each stored entry on the u8 scale (a u8
-    digit as its integer, a dense level's f16 coefficient times 255; a form with a floor at it in a live row), the
-    values the step kernel's fold sums and scales; ``forms`` each level's (`rola.routing.quant.Form`).
+def fold_levels(levels) -> list[torch.Tensor]:
+    """The per-level RAW coefficient values, in torch: ``[BH, width_l]`` fp32, each stored u8 digit as its integer, the
+    values the step kernel's fold sums and scales.
 
     AN ENUMERATED REFERENCE -- ITS ONLY CALLERS ARE GATES. The shipped path folds inside
     the step kernel, from the producer's own views; a gate that fed the kernel its own
     fold's output would prove nothing about the fold
     (docs/internals/decode/decode_fold.md#the-gate).
     """
-    out = []
-    for rows, scale, form in zip(levels, scales, forms, strict=True):
-        raw = _fold(rows).float() * (quant.AMP_LEVELS / form.top)
-        if form.floor is not None:
-            live = _fold(scale.unsqueeze(-1)) > 0
-            raw = torch.where(live, raw.clamp_min(quant.AMP_LEVELS * form.floor), raw)
-        out.append(raw)
-    return out
+    return [_fold(rows).float() for rows in levels]
 
 
 def guard_no_grad(operands) -> None:
@@ -342,8 +333,6 @@ def step(plan: DecodePlan) -> torch.Tensor:
         write=list(plan.write),
         read_scale=list(plan.read_scale),
         write_scale=list(plan.write_scale),
-        floor_read=plan.floor[0],
-        floor_write=plan.floor[1],
         dials=plan.dials,
         v=plan.v,
         v_scale=plan.v_scale,
@@ -432,6 +421,6 @@ def _decode_step(
     y = step(DecodePlan(
         config=config, heads=values.heads, read=routes.amp_read, write=routes.amp_write,
         read_scale=routes.scale_read, write_scale=routes.scale_write,
-        floor=routes.floor_bits(), dials=leaf_rate_dials_for(decay, config, v.device), v=v, v_scale=values.scale,
+        dials=leaf_rate_dials_for(decay, config, v.device), v=v, v_scale=values.scale,
         state_plane=plane, page_table=page_table, scratch=workspace, pool=pool))
     return slice_y(y, logical_d_v), state, workspace

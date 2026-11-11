@@ -106,8 +106,7 @@ to `6e-39`, a *small* number rather than a zero. The rule binds every kernel
 
 **(b) The other factor is finite by construction.** `0 * finite == 0` exactly;
 `0 * inf == NaN`. Every multiplicand a kernel reads is bounded by its format: a u8
-digit, a dense write level's f16 row at most 1 against its row max
-([`liveness_contract.md#max`](../internals/facts/liveness_contract.md#max)), an f16
+digit at every level, a bf16
 value at most 1 against its token's largest channel (`rola/values.py`). Finiteness is
 a property of the bundle's format, not a read-side clamp. So rule 4's
 zero-route annihilation is satisfied *branchlessly and structurally* because the
@@ -131,8 +130,8 @@ because several other decisions now rest on the theorem.
 **A second, narrower precondition** is the storage boundary itself. The clock reads
 the STORED write levels -- the bundle's rows, which both the oracle and the kernel are
 fed -- so the theorem holds exactly while the stored representation has the **same zero
-set** as the trained one. A sparse level's zero digit is an exact zero in both; a dense
-level has no zeros at all ([the dense floor](../internals/facts/liveness_contract.md#floor)). A quantization that
+set** as the trained one. A zero digit is an exact zero in both, at every level
+([the digits](../internals/facts/liveness_contract.md#digits)). A quantization that
 turned an exact zero
 into a denormal, or a nonzero into a zero, would break the coupling in (a) above. That
 is why the solve WRITES the stored form rather than being rounded into it afterwards:
@@ -208,7 +207,7 @@ breaks this.
 
 | Change | Why the theorem dies |
 |---|---|
-| **An epsilon floor** on routing weights (`max(p, eps)`, or an STE-style relaxed support) | There are no exact zeros left. Every dead route becomes a small live route: the clock ticks, `keep < 1`, untouched states decay, over-fetch changes results, identity-store drifts. Standing ruling: sparsity comes from the activation's exact zeros only — never a floor, never a threshold. The dense floor is not this: it lifts only a dense level, whose activation has no exact zeros, and a sparse level's zero stays exact ([`liveness_contract.md#floor`](../internals/facts/liveness_contract.md#floor)). |
+| **An epsilon floor** on routing weights (`max(p, eps)`, or an STE-style relaxed support) | There are no exact zeros left. Every dead route becomes a small live route: the clock ticks, `keep < 1`, untouched states decay, over-fetch changes results, identity-store drifts. Standing ruling: sparsity comes from the activation's exact zeros only — never a floor, never a threshold. No level's row has one: a stored zero is a zero at a sparse level and at a dense one ([`docs/CONSTITUTION.md` R23](../CONSTITUTION.md#r23)). |
 | **A log-space amplitude** | `log 0 = -inf`. Either `-inf * 0 = NaN`, or the clamp turns the zero into `6e-39` and the route is no longer dead. |
 | **A non-zero-preserving normalization** — per-state normalization that divides by the state's own magnitude, or any readout of the form `q · S / ‖S‖` | `0/0`. A never-written state has no unit direction, so reading it is undefined rather than inert. The shipped readout is a **global ratio** `Σ r̃ᶜ Nᶜ / (Σ r̃ᶜ dᶜ + ε)` in which the explicit `dᶜ` factor kills the dead leaf in numerator *and* denominator; that structure is what makes the theorem survive normalization at all. |
 | **A mean-style reduction** — averaging over the *live* entries, or any readout whose denominator counts contributors rather than summing their mass | A zero is then not inert; it is a vote for zero. A dead leaf would drag an `O(1)` average down by an amount proportional to how many leaves are dead — data-dependent, silent, and absent from the reference. This is the exact reason the "average over only-written states" variant is classified a **modeling change** rather than an optimization: it alters the dense result too. |

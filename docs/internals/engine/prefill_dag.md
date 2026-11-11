@@ -20,7 +20,7 @@ against the state the call is handed. `rola.rola_op` validates the context in th
 | `residency` (stateful) | `state_in`, `arena` | the state's entry plane, this call's write atoms committed |
 | `nodes.join` (stateful) | | waits for the admission before anything reads the page table |
 | `nodes.backing` | `page_table`, `state_out` | the planes the launch is handed; a continuation's are one |
-| `launch` | `num`, `den` | the scale pass, the carry at its bytes (`num` and the v+1 channel `den`) and the intra into the same planes, each over the reader factor (`rola.ops.prefill.prefill`, [`#the-seam`](#the-seam)) |
+| `launch` | `num`, `den` | the carry at its bytes (`num` and the v+1 channel `den`) and the intra into the same planes, each over the reader factor (`rola.ops.prefill.prefill`, [`#the-seam`](#the-seam)) |
 | `post` | `y` | THE POST PASS, `y = num / (den + eps / r)`, `[B, T, H, d_v]` fp32 (`rola.ops.prefill.readout`; `r` the reader factor the kernels leave out) |
 
 ## The seam

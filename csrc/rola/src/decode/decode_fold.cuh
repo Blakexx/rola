@@ -5,7 +5,6 @@
 // see docs/internals/decode/decode_fold.md#note-l3
 
 #include <cuda_bf16.h>
-#include <cuda_fp16.h>
 
 #include <cstdint>
 
@@ -47,11 +46,8 @@ __device__ __forceinline__ void fold_digits(const DecodeParams& p, int b, int h,
     const int digit = ((word - p.mask_off[l]) << 5) + lane;
     const bool valid = s < 2 * slots && digit < p.level_width[l];
     const Span& rows = write_side ? p.write[l] : p.read[l];
-    //: on the byte scale: a u8 digit, or a dense level's f16 coefficient (its floor stored) times 255, exact
-    const bool half = (((write_side ? p.floor_write : p.floor_read) >> l) & 1u) != 0u;
-    x[j] = !valid ? 0.0f
-           : half ? facts::kRowMaxDigit * __half2float(row_of<__half>(rows, b, h)[digit * rows.sw])
-                  : static_cast<float>(row_of<uint8_t>(rows, b, h)[digit * rows.sw]);
+    //: on the byte scale: a u8 digit, at every level
+    x[j] = valid ? static_cast<float>(row_of<uint8_t>(rows, b, h)[digit * rows.sw]) : 0.0f;
     scale[j] = valid ? scale_of(write_side ? p.write_scale[l] : p.read_scale[l], b, h) : 0.0f;
   }
 
@@ -67,14 +63,11 @@ __device__ __forceinline__ void fold_digits(const DecodeParams& p, int b, int h,
       if (word >= p.mask_off[q]) l = q;
     }
     const int digit = ((word - p.mask_off[l]) << 5) + lane;
-    const bool floored =
-        ((write_side ? p.floor_write : p.floor_read) >> l & 1u) != 0u && scale[j] > 0.0f;
-    const float raw = floored ? fmaxf(x[j], facts::kDenseFloorDigit) : x[j];
-    const uint32_t live = __ballot_sync(0xffffffffu, raw != 0.0f);
+    const uint32_t live = __ballot_sync(0xffffffffu, x[j] != 0.0f);
     if (lane == 0) (write_side ? mask_w : mask_r)[word] = live;
     if (digit < p.level_width[l])
       (write_side ? sa_w : sa_r)[p.level_amp_offset[l] + digit] =
-          raw * (scale[j] / facts::kRowMaxDigit);
+          x[j] * (scale[j] / facts::kRowMaxDigit);
   }
 }
 
@@ -104,19 +97,19 @@ __device__ __forceinline__ float share_scale(const DecodeParams& p, const float*
   return total > 0.0f ? 1.0f / total : 0.0f;
 }
 
-//: Channel `c` of the token's value, LOADED: its f16 unit and the token's scale, the product left for after the digit pass. -- see docs/internals/decode/decode_fold.md#fold-value
+//: Channel `c` of the token's value, LOADED: its bf16 unit and the token's scale, the product left for after the digit pass. -- see docs/internals/decode/decode_fold.md#fold-value
 struct ValueUnit {
-  __half unit;
+  __nv_bfloat16 unit;
   float scale;
 };
 
 __device__ __forceinline__ ValueUnit load_value(const DecodeParams& p, int b, int h, int c) {
-  return ValueUnit{row_of<__half>(p.v, b, h)[c * p.v.sw], scale_of(p.v_scale, b, h)};
+  return ValueUnit{row_of<__nv_bfloat16>(p.v, b, h)[c * p.v.sw], scale_of(p.v_scale, b, h)};
 }
 
 //: The channel's value, `unit * scale`.
 __device__ __forceinline__ float value_of(const ValueUnit& d) {
-  return __half2float(d.unit) * d.scale;
+  return __bfloat162float(d.unit) * d.scale;
 }
 
 }  // namespace decode

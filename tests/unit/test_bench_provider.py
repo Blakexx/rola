@@ -69,7 +69,8 @@ def test_an_arm_is_offered_only_where_the_binary_carries_its_kernel(binary, monk
     assert "facts_pass" in names and "prefill" not in names
     assert "decode_step@layer=chunk-decode-w16" in provider.arms(by_name(DECODE_CELL))
     binary.decode = []
-    assert not any(name.startswith("decode_step") for name in provider.arms(by_name(DECODE_CELL)))
+    with pytest.raises(RuntimeError, match="lacks the shipped arms.*--//:decode_arms"):
+        provider.arms(by_name(DECODE_CELL))
 
 
 def test_a_cell_is_refused_by_name(binary, monkeypatch):

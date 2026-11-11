@@ -66,7 +66,7 @@ _HOST_CC = "@host_cc//:identity.txt"
 #: one source recompiles that source's unit and this one, not every unit
 _STAMP_UNIT = "src/common/build_stamp.cu"
 
-#: the runtime's units, which an instrument's library links too
+#: the runtime's units
 cuda_unit(
     name = "runtime",
     srcs = RUNTIME_UNITS,

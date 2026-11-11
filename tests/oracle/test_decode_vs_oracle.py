@@ -156,7 +156,7 @@ def _kernel_realized_support(routes, side, widths, B, H, device, d_v=64):
     The read side is left empty so the walk's union is the set under test, the state
     starts at zero and ``v`` is all ones, so a deposited row is a nonzero row and the
     correspondence is exact rather than statistical. ``side``'s rows are the bundle's own stored rows, carried with
-    its sparse flags (a dense level's zeros read as the floor), so the support is the one the kernel is handed.
+    its sparse flags, so the support is the one the kernel is handed.
     """
     topology = _topology(widths)
     N = math.prod(widths)
@@ -168,9 +168,7 @@ def _kernel_realized_support(routes, side, widths, B, H, device, d_v=64):
     #: shows only what the step WROTE, and a read deposits nothing), the others sparse and empty
     read_flags = (False,) + (True,) * (len(widths) - 1)
     flags = routes.sparse[0] if side == "read" else routes.sparse[1]
-    #: a dense level is f16 at the floor on either side: the rows move to the write side in their own form
-    empty = tuple(quant.aligned_rows(*r.shape, r.device, quant.ROW_DTYPE if sparse else quant.DENSE_DTYPE)
-                  for r, sparse in zip(rows, read_flags))
+    empty = tuple(quant.aligned_rows(*r.shape, r.device) for r in rows)
     routes = RouteFactors.from_rows(topology, empty, rows, (ones,) * len(widths), (ones,) * len(widths),
                                     sparse=(read_flags, flags))
     values = Values.from_projection(torch.ones(B, 1, H, d_v, **f32))

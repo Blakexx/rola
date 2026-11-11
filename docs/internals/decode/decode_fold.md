@@ -6,9 +6,9 @@ R23](../../CONSTITUTION.md#r23)) -- and staged in the SHARED MEMORY of the CTA t
 
 Symbols: `B` batch, `H` heads, `BH = B * H`, `bh = b * H + h`; `D` levels; `b_l` level
 `l`'s width; `d_v` the value width. The operands are the read and write coefficient rows
-(`[B, 1, H, b_l]` each, u8 unit-max digits -- a dense level's f16 -- in the producer's own layout) with their
+(`[B, 1, H, b_l]` each, u8 unit-max digits at every level, in the producer's own layout) with their
 fp32 row maxima (`[B, 1, H]` each; a producer's write gain is a factor of write level 0's) and the token's values
-(`[B, 1, H, d_v]` f16 against its largest channel, and the fp32 token scale).
+(`[B, 1, H, d_v]` bf16 against its largest channel, and the fp32 token scale).
 
 ---
 
@@ -44,27 +44,24 @@ own convention.
 What the entry refuses is `T != 1`: the fold is defined on one token and a second one would
 be silently dropped.
 
-<a id="raw"></a>A digit's RAW value rounds nothing — a u8 digit is its integer, a dense level's f16 coefficient times
-255 (exact, its floor stored: [`../facts/liveness_contract.md#floor`](../facts/liveness_contract.md#floor)) — and a
+<a id="raw"></a>A digit's RAW value rounds nothing — a u8 digit is its integer, at every level — and a
 level's amplitude is `raw * (scale / 255)`, one fp32 multiply by a per-row factor (255 is `kRowMaxDigit`, the row
 max's digit), on either side. `tests/integration/test_decode_fold.py` cell 1 states
 that through the step's own output, on strided views as well as contiguous ones.
 
 <a id="fold-digits"></a>**The digit pass** (`fold_digits`) takes every digit of both sides in one pass, a warp a mask
 word. A lane loads its digit and its row's fp32 scale together, one round trip; the warp's ballot of the nonzero test
-(after the floor) is the digit mask's word ([`decode_lattice.md#the-digit-mask`](decode_lattice.md#the-digit-mask));
+is the digit mask's word ([`decode_lattice.md#the-digit-mask`](decode_lattice.md#the-digit-mask));
 and the lane stages `raw * (scale / 255)`. Slots past a level's width are not loaded and ballot a zero.
 
 ## <a id="the-dtype-arms"></a>3. The storage types are the format's, and the step's template axes are not
 
-The fold reads two INDEPENDENT storage families: the coefficient rows (u8, a dense level's f16; ruled
-2026-10-03/04/07) and the values (f16), with fp32 scales. They are independent because the routing bundle and the
-value projection are different producers. A level's row type is the bundle's declaration (its dense bit a side,
-`floor_read`/`floor_write`), read once a step; a dtype outside the format is a REFUSAL (the bundle's own, then the
-host entry's), never a silent widening.
+The fold reads two INDEPENDENT storage families: the coefficient rows (u8 at every level) and the values (bf16),
+with fp32 scales. They are independent because the routing bundle and the value projection are different producers.
+A dtype outside the format is a REFUSAL (the bundle's own, then the host entry's), never a silent widening.
 
 <a id="fold-value"></a>The value is folded once a step into the CTA's resident row: the
-channel's f16 unit times the token's `scale`. `load_value` issues the loads before the digit
+channel's bf16 unit times the token's `scale`. `load_value` issues the loads before the digit
 pass and `value_of` does the arithmetic after it, so the channel's loads ride the same round
 trip.
 

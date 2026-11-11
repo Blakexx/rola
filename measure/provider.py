@@ -5,7 +5,7 @@
 `arms(cell)` takes a central carry cell (a shape, a draw and the state it binds) or a central layer cell (an input)
 and returns a builder for every arm this checkout runs on it, or refuses the cell by raising:
 - any cell, when the binary lacks an arm its tree ships (`tools/manifests/shipped_set.json`): an iteration build
-  (`--//:carry_arms`) measures a subset of the tree;
+  (`--//:carry_arms`, `--//:decode_arms`) measures a subset of the tree;
 - data that is neither kind.
 `measure/executors.py`'s timing entry calls it on the cell a registration hands it; a profiler launches one arm
 through `oneshot_argv`.
@@ -68,17 +68,21 @@ def arms(data) -> dict:
 
 
 def _refuse_a_partial_binary() -> None:
-    from rola.ops import carry
+    from rola.ops import carry, decode
 
     if str(CHECKOUT / "tools") not in sys.path:
         sys.path.insert(0, str(CHECKOUT / "tools"))
     import gen_shards
 
-    declared = {tuple(row) for row in gen_shards.CARRY_ARMS}
-    built = {tuple(arm) for arm in carry.arms()}
-    if declared - built:
-        raise RuntimeError(f"this binary carries {sorted(built)} and lacks the shipped arms {sorted(declared - built)}: an "
-                           "iteration build (--//:carry_arms) measures a subset of the tree; build the shipped set")
+    families = (("carry", gen_shards.CARRY_ARMS, carry.arms(), "--//:carry_arms"),
+                ("decode", gen_shards.DECODE_ARMS, decode.arms(), "--//:decode_arms"))
+    for family, rows, carried, knob in families:
+        declared = {tuple(int(x) for x in row) for row in rows}
+        built = {tuple(int(x) for x in arm) for arm in carried}
+        if declared - built:
+            raise RuntimeError(f"this binary carries the {family} arms {sorted(built)} and lacks the shipped arms "
+                               f"{sorted(declared - built)}: an iteration build ({knob}) measures a subset of the "
+                               "tree; build the shipped set")
 
 
 def _kernel_carried(subject: str, spec, construction) -> bool:

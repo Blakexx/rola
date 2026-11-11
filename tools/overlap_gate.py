@@ -72,7 +72,7 @@ def _launch_facts(cell: str, heads: int, repeat: int) -> None:
 
     spec = by_name(cell)
     routes, values, layout, statics = bundle_of(spec, realize(spec, H=heads))
-    form = facts_ops.UNIT_FORM
+    form = facts_ops.WHOLE_GROUPS
     for _ in range(repeat):
         facts_ops.facts(routes, values, layout, *statics, form)
     torch.cuda.synchronize()

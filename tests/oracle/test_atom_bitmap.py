@@ -1,4 +1,6 @@
-"""The facts pass's words, folded to atoms, are the EXACT atom-grain write bitmap.
+"""The facts pass's words, folded to atoms, are the EXACT atom-grain write bitmap of the levels as the pass words
+them: a sparse level by its nonzero digits, a dense level whole (`_declared`). Against the stored digits the bitmap is
+the write set where every write level is sparse and a superset where a dense digit rounded to zero.
 
 This is the gate the paging work's first stage exists to pass, and it is the one
 that decides the shape of everything after it. Residency is planned from this
@@ -60,8 +62,8 @@ from rola.routing.types import (
 from rola.values import Values
 from tests.oracle.fixtures import with_gain
 
-#: the lists' form the facts pass is called in (sm_86's even carry arm); this file reads its words and unions only
-_LISTS = facts_ops.ListsForm(read_row=64, read_list_group=32, write_list_group=32)
+#: the lists' form the facts pass is called in; this file reads its words and unions only
+_LISTS = facts_ops.WHOLE_GROUPS
 
 pytestmark = [
     pytest.mark.cuda,
@@ -107,16 +109,23 @@ def _alternating_sparse(D):
 
 def _bundle(write, sparse=None):
     """The fixture's write levels in the format (both sides the same levels): the rows the facts pass reads, each
-    side's levels sparse or dense as ``sparse`` declares (default the alternating split): a dense level is floored by
-    the quantizer, never zero. The reference reads the bundle's OWN levels (`dequantized`), so a value that rounded to a
-    zero digit (or to the floor) is the same on both legs and the comparison is about the derivation, not the
-    rounding."""
+    side's levels sparse or dense as ``sparse`` declares (default the alternating split). The reference reads the
+    bundle's OWN levels (:func:`_declared`), so a value that rounded to a zero digit is the same on both legs and the
+    comparison is about the derivation, not the rounding."""
     B, T, H = write[0].shape[:3]
     topology = Topology(levels=tuple(OpaqueRouting(width=level.shape[-1]) for level in write))
     ones = torch.ones((B, T, H), device=write[0].device)
     sparse = _alternating_sparse(len(write)) if sparse is None else sparse
     return (RouteFactors.from_levels(topology, write, with_gain(write, ones), sparse=sparse),
             Values.from_projection(torch.ones((B, T, H, 8), device=write[0].device)))
+
+
+def _declared(routes):
+    """The write levels as the pass words them: a sparse level's own values, and a dense level READ WHOLE -- its
+    support is not worded, so every digit of a live row counts (docs/api.md section 2.1)."""
+    levels = routes.dequantized()[1]
+    return tuple(level if sparse else (level.amax(-1, keepdim=True) > 0).expand_as(level).to(level.dtype)
+                 for level, sparse in zip(levels, routes.sparse[1]))
 
 
 def _kernel_bitmap(routes, values):
@@ -154,7 +163,7 @@ def test_atom_bitmap_is_exact(arm, support):
     _read, write = _fixture(widths, _SUPPORTS[support], seed=D * 1000 + B)
     routes, values = _bundle(write)
     bits = _kernel_bitmap(routes, values)
-    oracle = _oracle_bitmap(routes.dequantized()[1], widths)
+    oracle = _oracle_bitmap(_declared(routes), widths)
     assert bits.shape == (_B * _H, prod(widths) // MMA_K_QUANTUM)
     assert torch.equal(bits, oracle), (
         f"kernel and the fp64 leaf-product reference disagree on "

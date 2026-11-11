@@ -3,8 +3,7 @@
 The report: a kernel's peak live register count and its histogram, the peak and mean per source region (the innermost
 function the instruction inlines from, struct methods as `Struct::method`, the naming `tools/region_ledger.py` uses),
 and the peak program points. The cubin needs `-lineinfo` for the regions; an extension's cubin (`--so`, `--member`)
-reports the peak and histogram without them. `--kernel` names the function where the cubin holds several (a carry arm:
-the carry and its plan pass); offsets restart in every function.
+reports the peak and histogram without them. `--kernel` names the function where the cubin holds several; offsets restart in every function.
 
 Why it exists (KERNEL_STANDARDS §22): a budget argument about registers cites the peak live at the program point it
 concerns, never ptxas's allocation.
@@ -15,10 +14,7 @@ registers against its `registers` line, an instruction attributed as the region 
 (`region_ledger.owner_of`) -- the innermost inline frame in the `--source` files (repeat the flag: the kernel's file
 first, then its components') whose function is one of the budget's `components`, walking outward no further than the
 kernel's own body, else that body (its glue). Red where a component passes its line or has
-none. The carry at 87240898 (arm 0, sm_86): every component peaks at 204-252 live, the readout at 252 -- about 200
-registers stay live through every phase, the room a phase has for a second stage's operands is ~50; its lines are
-those readings, a ratchet until the window's design states each phase's (`registers_basis` in the budget). The shipped carry (sm_86, arm 0) is allocated 255 registers; it peaks at 251 live in
-the readout's tile loop and holds ~198 where an item starts, the fold's 128-register state among them.
+none.
 
 <a id="liveness"></a>
 ## The liveness
@@ -49,7 +45,5 @@ A function at 255 registers is one nvdisasm refuses (`Invalid register count`); 
 R252 such a function reaches (two of the count are reserved). An instruction naming a register past the columns is
 refused.
 
-`--arm N` compiles the carry arm's translation unit alone with `-lineinfo` against the build's generated headers
-(`build/generated`, so the parts mask of the last build) for this machine's GPU architecture (or `--arch`), then reads
-it -- the compile the build ledger and the composer each used to spell. `--json PATH` also writes the instruction count,
+`--json PATH` also writes the instruction count,
 the peak live registers, whether line info was present, and every region's peak, mean and instruction count.

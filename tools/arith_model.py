@@ -50,14 +50,14 @@ def _fp32(x):
 
 
 def _format(levels):
-    """Each level's rows as ``(unit, scale)`` in the u8 scaled-block form (`rola.routing.quant.SPARSE`: against the
+    """Each level's rows as ``(unit, scale)`` in the u8 scaled-block form (`rola.routing.quant.ROWS`: against the
     row's max at 255, no floor, a zero a zero), ``[T, width]`` fp64 and ``[T]``."""
     from rola.routing import quant
 
     out = []
     for x in levels:
-        rows, scale = quant.SPARSE.quantize(x.float()[None, :, None])
-        out.append((rows[0, :, 0].double() / quant.SPARSE.top, scale[0, :, 0].double()))
+        rows, scale = quant.ROWS.quantize(x.float()[None, :, None])
+        out.append((rows[0, :, 0].double() / quant.ROWS.top, scale[0, :, 0].double()))
     return out
 
 

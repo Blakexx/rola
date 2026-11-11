@@ -1,16 +1,14 @@
 # Copyright 2026 Blake Bottum
 # SPDX-License-Identifier: Apache-2.0
 """THE FACTS PASS, as a caller reaches it: one launch over the bundle's rows for both sides' class-1 words, the
-window's columns, the write list level's exponents and each side's lists in the carry's final form.
+window's columns and each side's lists, an entry a slot and a byte.
 
 The words' LAYOUT, their reader, the folds over them and the pure-torch MODEL the kernel is graded against live in
-:mod:`rola.engine.facts.liveness`; the lists' model in :mod:`rola.engine.facts.lists`; the list exponents' definition
-is the fp16 fold's reference (``tests/oracle/fold_reference.py``, ``list_exponents``). What is here is the call: the
+:mod:`rola.engine.facts.liveness`; the lists' model in :mod:`rola.engine.facts.lists`. What is here is the call: the
 layout and the two sides' static operands a bundle's topology implies (:func:`call_layout`, :func:`call_statics`),
 packed into the bits R13 requires so no logical width crosses the seam, and the launch
-(docs/internals/facts/facts_api.md). The lists carry no chunk size of the carry's; a call names only what the arm
-reads them in (:class:`ListsForm`, ``rola.ops.carry.lists_form``): its read pool row, the read entries' row offsets
-being in its bytes, and each side's list group.
+(docs/internals/facts/facts_api.md). The lists carry nothing of a consumer's but each side's list group
+(:class:`ListsForm`): the digits one union spans, a box's extent along the side's list level.
 """
 from __future__ import annotations
 
@@ -26,7 +24,7 @@ __all__ = [
     "COMPOSITE",
     "LEDGER_PHASES",
     "LEDGER_WARPS",
-    "UNIT_FORM",
+    "WHOLE_GROUPS",
     "Facts",
     "ListsForm",
     "call_layout",
@@ -47,41 +45,30 @@ class Facts(NamedTuple):
     """One call's facts, a write head's (``BH = B H_w``): ``words`` the ``[BH, g + 1, rows, ceil(L / 32)]`` int32
     class-1 table (:class:`LivenessLayout`; slots ``0 .. g - 1`` the query heads' read side, ``g`` the write side;
     ``[BH, 2, ...]`` ungrouped), ``unions`` the ``[BH, g + 1, groups, ceil(L / 64)]`` int32 tile unions
-    (``tile_unions``), and ``list_exp`` the
-    ``[BH, windows, B_list, 2]`` int16 list exponents -- per window and digit of the write list level
-    (:func:`list_level`) the smallest ``K`` with every token's ``b m <= 2^K`` (column 0) and ``b m s <= 2^K`` (column
-    1), ``b`` its write byte, ``m`` the write gain times the write levels' scales and ``s`` the value scale; ``-126``
-    for a list no token writes; ``B_list`` 0 when the write side lists nothing. ``fm`` the ``[BH, L, 2]`` fp32 factor
-    products, each token's ``(F, m)`` = ``(m s, m)``; ``gains16`` ``[BH, L, 2]`` f16 each token's ``(m, m s)`` at its
-    window's powers of two and ``gains_exp`` ``[BH, windows, 2]`` their exponents. A DENSE level's rows and groups
+    (``tile_unions``), and ``fm`` the ``[BH, L, 2]`` fp32 factor products, each token's ``(F, m)`` = ``(m s, m)``,
+    ``m`` the write levels' scales multiplied (a write gain among them) and ``s`` the value scale. A DENSE level's rows and groups
     of ``words`` and ``unions`` are left unwritten: they are its width mask over the live tokens, which a reader takes
     from the side's statics. ``write`` and ``read`` each side's lists at its list level
     (:class:`rola.engine.facts.lists.Lists`; width 0 for a side with no sparse level, ``None`` for a composite side,
-    :func:`side_lists`) (docs/internals/facts/facts.md#lists-out, #gains)."""
+    :func:`side_lists`) (docs/internals/facts/facts.md#lists-out)."""
 
     words: torch.Tensor
     unions: torch.Tensor
-    list_exp: torch.Tensor
     fm: torch.Tensor
     write: list_model.Lists | None
     read: list_model.Lists | None
-    gains16: torch.Tensor
-    gains_exp: torch.Tensor
 
 
 class ListsForm(NamedTuple):
-    """What a call's lists are built for, a carry arm's (``rola.ops.carry.lists_form``): the read entries' pool row in
-    bytes, and each side's LIST GROUP -- the digits one union and its prefix rows span
-    (:data:`rola.engine.facts.lists.LIST_GROUPS`; docs/internals/facts/facts.md#list-groups)."""
+    """Each side's LIST GROUP -- the digits one union and its prefix rows span, a box's extent along the side's list
+    level (:data:`rola.engine.facts.lists.LIST_GROUPS`; docs/internals/facts/facts.md#list-groups)."""
 
-    read_row: int
     read_list_group: int
     write_list_group: int
 
 
-#: THE FORM A CALL WITH NO CARRY ARM TAKES: a 64-byte read pool row and whole 32-digit list groups -- what the pass's
-#: own gates and measurements launch it at while no carry arm is built to name another
-UNIT_FORM = ListsForm(read_row=64, read_list_group=32, write_list_group=32)
+#: each side's lists in whole 32-digit groups, a liveness group a union
+WHOLE_GROUPS = ListsForm(read_list_group=32, write_list_group=32)
 
 
 def call_layout(routes) -> LivenessLayout:
@@ -127,13 +114,12 @@ def _dense_bits(statics: SideStatics) -> int:
 
 def facts(routes, values, layout: LivenessLayout, read_statics: SideStatics, write_statics: SideStatics,
           form: ListsForm) -> Facts:
-    """THE PASS: both sides' words and tile unions, the window's columns, the write list exponents and each side's
-    lists from the bundle (``routes``, ``values``) in ONE launch, in the carry arm's ``form``: the read entries' row
-    offsets in its read pool rows, each side's lists in its list group.
+    """THE PASS: both sides' words and tile unions, the window's columns and each side's lists from the bundle
+    (``routes``, ``values``) in ONE launch, each side's lists in ``form``'s list group.
 
     Same words at every sparse level, bit for bit, as :func:`rola.engine.facts.liveness.liveness_words` over the
-    bundle's rows, and their unions as :func:`rola.engine.facts.liveness.tile_unions`; the list exponents those of
-    ``list_exponents`` within fp32 rounding; the lists :func:`rola.engine.facts.lists.final_lists` at each side's list
+    bundle's rows, and their unions as :func:`rola.engine.facts.liveness.tile_unions`; the lists
+    :func:`rola.engine.facts.lists.final_lists` at each side's list
     group, bit for bit. The rows are read where the bundle holds them, any offset or stride of the format, each level's
     ``[B, T, H, w_l]`` view.
 
@@ -143,14 +129,14 @@ def facts(routes, values, layout: LivenessLayout, read_statics: SideStatics, wri
     """
     level, read_level = list_level(write_statics), list_level(read_statics)
     count = mask_words(layout.rows)
-    words, unions, list_exp, fm, gains16, gains_exp, *lists = extension().rola_facts_forward(
+    words, unions, fm, *lists = extension().rola_facts_forward(
         list(routes.amp_read), list(routes.amp_write), list(routes.scale_write), values.scale,
         list(layout.B), _dense_bits(read_statics), [read_statics.mask_word(i) for i in range(count)],
         _dense_bits(write_statics), [write_statics.mask_word(i) for i in range(count)], max(level, -1),
-        max(read_level, -1), form.read_row, form.read_list_group, form.write_list_group)
+        max(read_level, -1), form.read_list_group, form.write_list_group)
     write, read = list_model.Lists(*lists[:5]), list_model.Lists(*lists[5:])
-    return Facts(words=words, unions=unions, list_exp=list_exp, fm=fm, write=None if level == COMPOSITE else write,
-                 read=None if read_level == COMPOSITE else read, gains16=gains16, gains_exp=gains_exp)
+    return Facts(words=words, unions=unions, fm=fm, write=None if level == COMPOSITE else write,
+                 read=None if read_level == COMPOSITE else read)
 
 
 def ledger_bind(ledger: torch.Tensor | None) -> None:  #: reserved: the measurement instrument (docs/internals/facts/facts.md#phase-ledger)

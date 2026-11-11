@@ -23,7 +23,7 @@ with a listed side holds at most `LISTED_CHANNELS` (64: a 128-channel box needs 
 and m8 forms); and each side's warps own an MMA tile of dense rows (`MIN_DENSE`). So at `d_v`
 64 a dense-dense declaration takes 64 channels, and so does the alternating one: 32 write
 lists x 16 read digits x 64 channels, its read side ranked in 16-digit groups, its write side
-in 32 (`../carry/ampere/plan.md#list-groups`); at `d_v` 32 it is 32 x 32 x 32. The leaves are what the state holds over it,
+in 32; at `d_v` 32 it is 32 x 32 x 32. The leaves are what the state holds over it,
 allocated as powers of two, one bit at a time, under the cap and each level's width:
 
 0. Each side with no list level, its row level (its operand's first: `_row_levels`) to an

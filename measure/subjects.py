@@ -139,7 +139,7 @@ def facts_pass(fx) -> Launch:
 
     spec = fx["cell"]
     routes, values, layout, statics = bundle_of(spec, realize(spec))
-    form = facts_ops.UNIT_FORM
+    form = facts_ops.WHOLE_GROUPS
 
     def run():
         return facts_ops.facts(routes, values, layout, *statics, form)
@@ -191,10 +191,9 @@ def _one_segment(spec, layer) -> None:
 
 
 def _layer_bundle(fx):
-    """``(routes, values, layout, statics, carve, form)``: the layer's producer run once on the cell's prefill
-    tokens, untimed, and what the op builds from its bundle before the facts pass, as the prefill DAG's facts node does
-    -- the layout, both sides' statics, the planner's carve and the lists' form."""
-    from rola.engine.carve import plan_carve
+    """``(routes, values, layout, statics, form)``: the layer's producer run once on the cell's prefill
+    tokens, untimed, and what a facts call takes of its bundle -- the layout, both sides' statics and the lists' form
+    (whole groups: no carry arm names another)."""
     from rola.ops import facts as facts_ops
 
     spec, layer = fx["cell"], fx["layer"]
@@ -203,8 +202,7 @@ def _layer_bundle(fx):
         routes, values = layer._produce(fx["x"][:, :spec.tokens].contiguous())
     layout = facts_ops.call_layout(routes)
     statics = facts_ops.call_statics(routes, layout)
-    carve = plan_carve(tuple(routes.topology.padded_widths), *routes.sparse, values.v.shape[-1])
-    return routes, values, layout, statics, carve, facts_ops.UNIT_FORM
+    return routes, values, layout, statics, facts_ops.WHOLE_GROUPS
 
 
 def layer_facts(fx) -> Launch:
@@ -212,7 +210,7 @@ def layer_facts(fx) -> Launch:
     from rola.ops import facts as facts_ops
 
     spec = fx["cell"]
-    routes, values, layout, statics, _carve, form = _layer_bundle(fx)
+    routes, values, layout, statics, form = _layer_bundle(fx)
 
     def run():
         return facts_ops.facts(routes, values, layout, *statics, form)
@@ -262,7 +260,7 @@ def decode_step(fx) -> Launch:
     layout = facts_ops.call_layout(routes)
     statics = facts_ops.call_statics(routes, layout)
     words = facts_ops.facts(routes, rola.Values.from_projection(fx["v_prefill"]), layout, *statics,
-                            facts_ops.UNIT_FORM).words
+                            facts_ops.WHOLE_GROUPS).words
     bits = lv.page_bits(words, layout, *statics)
     seeded: dict = {}
 

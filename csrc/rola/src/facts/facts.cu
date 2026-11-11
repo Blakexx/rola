@@ -1,6 +1,6 @@
 // THE FACTS PASS'S TRANSLATION UNIT -- the kernel that reads the bundle's rows once, a CTA a unit (a window's side,
 // level and 32-digit group): both sides' class-1 words and tile unions, the window's columns, and each side's lists
-// ranked and placed in the carry's final form; and the host entry that validates the bundle's views, plans a
+// ranked and placed, an entry a slot and a byte; and the host entry that validates the bundle's views, plans a
 // window's units and launches them.
 // see docs/internals/facts/facts.md
 
@@ -57,24 +57,6 @@ struct FactsAt {
   //: bit 7 of each byte set iff the byte is nonzero (three operations for four digits)
   static __device__ __forceinline__ uint32_t nonzero_bytes(uint32_t x) {
     return (((x & 0x7f7f7f7fu) + 0x7f7f7f7fu) | x) & 0x80808080u;
-  }
-
-  //: THE LIST EXPONENT: the smallest `K` with `x <= 2^K`, an `x` below the smallest normal at its exponent.
-  static __device__ __forceinline__ int ceil_exponent(float x) {
-    const uint32_t bits = __float_as_uint(fmaxf(x, kListFloor));
-    return static_cast<int>(bits >> 23) - 127 + ((bits & 0x7fffffu) != 0u);
-  }
-
-  //: 2^e as fp32, `e` in [-126, 127]
-  static __device__ __forceinline__ float pow2(int e) {
-    return __uint_as_float(static_cast<uint32_t>(127 + e) << 23);
-  }
-
-  //: THE GAINS' POWER OF TWO for a window's largest `top`: `-4 - floor(log2 top)`, clamped to [-126, 127], 0 for a zero
-  //: largest. -- see docs/internals/facts/facts.md#gains
-  static __device__ __forceinline__ int gains_shift(float top) {
-    if (!(top > 0.0f)) return 0;
-    return max(-126, min(127, -(static_cast<int>(__float_as_uint(top) >> 23) - 127) - 4));
   }
 
   //: A UNIT'S PLACE: its code's fields and its (write head's batch-head, window). -- see docs/internals/facts/facts.md#the-grid
@@ -166,30 +148,14 @@ struct FactsAt {
                         t + kStep * k < p.L ? run : 0u);
   }
 
-  //: THE COLUMNS OUT, the window's one unit's: each token's `(F, m)` and its gains pair at the window's powers of two,
-  //: from the warps' posted maxima. -- see docs/internals/facts/facts.md#gains
+  //: THE COLUMNS OUT, the window's one unit's: each token's `(F, m)`. -- see docs/internals/facts/facts.md#columns
   static __device__ __forceinline__ void columns_out(const FactsParams& p, const Unit& x,
-                                                     const float2 (&col)[kThreadTokens],
-                                                     const float2* wmax, int tid) {
-    float2 top = wmax[0];
-#pragma unroll
-    for (int w = 1; w < kFactsWarps; ++w)
-      top = make_float2(fmaxf(top.x, wmax[w].x), fmaxf(top.y, wmax[w].y));
-    const int sm = gains_shift(top.x), sf = gains_shift(top.y);
+                                                     const float2 (&col)[kThreadTokens], int tid) {
 #pragma unroll
     for (int k = 0; k < kThreadTokens; ++k) {
       const int t = x.window * kWindowTokens + tid + kFactsThreads * k;
-      if (t < p.L) {
-        const int64_t at = static_cast<int64_t>(x.bh) * p.L + t;
-        p.gains16[at] =
-            static_cast<uint32_t>(__half_as_ushort(__float2half_rn(col[k].x * pow2(sm))))
-            | static_cast<uint32_t>(__half_as_ushort(__float2half_rn(col[k].y * pow2(sf)))) << 16;
-        p.fm[at] = make_float2(col[k].y, col[k].x);
-      }
+      if (t < p.L) p.fm[static_cast<int64_t>(x.bh) * p.L + t] = make_float2(col[k].y, col[k].x);
     }
-    if (tid < 2)
-      p.gains_exp[(static_cast<int64_t>(x.bh) * p.windows + x.window) * 2 + tid] =
-          static_cast<int16_t>(tid ? sf : sm);
   }
 
   //: THE VOTE, a warp's two blocks: lane `(tk, dq)` token `8 tk + i`'s digits `4 dq ..` as a word, each byte's nonzero
@@ -381,17 +347,16 @@ struct FactsAt {
 
   //: THE LISTS of query head `j`'s rows, a warp's 4 lists `w + 8 j`, 8 lanes a list, lane `s` its words `2s`, `2s + 1`:
   //: each lane's tokens before each of the head's boundaries' bounds, summed over the list's lanes into its boundaries
-  //: past `placed` (the list's entries in the heads before) and scanned into the lane's first place; on the write side a
-  //: walk takes the list's maxima; a walk places and writes each entry, its slot past its list group's heads before.
+  //: past `placed` (the list's entries in the heads before) and scanned into the lane's first place; a walk places and
+  //: writes each entry -- its slot past its list group's heads before, and its byte.
   //: -- see docs/internals/facts/facts.md#lists-out
-  template <bool kWriteSide, int kGroups>
+  template <int kGroups>
   static __device__ __forceinline__ void lists_out(const FactsParams& p, const Unit& x,
                                                    uint8_t* smem, const Ranks& r, int warp,
-                                                   int lane, uint32_t ats, int j, int& placed) {
+                                                   int lane, uint32_t ats, int& placed) {
     const uint8_t* const win = smem + FactsSmem<kGroups>::kWin;
     const uint32_t* const tile =
         reinterpret_cast<const uint32_t*>(smem + FactsSmem<kGroups>::kTile);
-    const float2* const cols = reinterpret_cast<const float2*>(smem + FactsSmem<kGroups>::kCols);
     const int dl = lane >> 3, s = lane & 7, d = warp + kFactsWarps * dl;
     const bool high = kGroups > 1 && d >= p.list_group[x.side];
     const int at = half_of<kGroups>(ats, high);
@@ -401,7 +366,7 @@ struct FactsAt {
     const bool listed = digit < width;
     const ListsOut out = p.lists[x.side];
     const int64_t list = (static_cast<int64_t>(x.bh) * p.windows + x.window) * width + digit;
-    uint2* const entries = out.entries + list * heads_of(p, x) * kListCap;
+    uint32_t* const entries = out.entries + list * heads_of(p, x) * kListCap;
     uint32_t words[kLaneWords];
 #pragma unroll
     for (int q = 0; q < kLaneWords; ++q) words[q] = tile[tile_at(d, kLaneWords * s + q)];
@@ -449,41 +414,7 @@ struct FactsAt {
     const int first = placed + static_cast<int>(inc[kBoundPairs] - own[kBoundPairs]);
     placed += head_total;
 
-    //: the write side's maxima, its exponents and scales
-    float sm = 1.0f, sv = 1.0f;
-    if constexpr (kWriteSide) {
-      float mx = 0.0f, mf = 0.0f;
-#pragma unroll
-      for (int jj = 0; jj < kLaneWords; ++jj) {
-        uint32_t xw = words[jj];
-        for (int k = __any_sync(0xffffffffu, xw != 0u) != 0; k > 0; --k)
-#pragma unroll 1
-          do {
-            if (xw != 0u) {
-              const int t = kTokBits * (kLaneWords * s + jj) + __ffs(xw) - 1;
-              const float b = static_cast<float>(win[window_at(t, d)]);
-              const float2 col = cols[t];
-              mx = fmaxf(mx, b * col.x);
-              mf = fmaxf(mf, b * col.y);
-              xw &= xw - 1u;
-            }
-          } while (__any_sync(0xffffffffu, xw != 0u));
-      }
-#pragma unroll
-      for (int off = 1; off < 8; off <<= 1) {
-        mx = fmaxf(mx, __shfl_xor_sync(0xffffffffu, mx, off));
-        mf = fmaxf(mf, __shfl_xor_sync(0xffffffffu, mf, off));
-      }
-      const int km = ceil_exponent(mx), kv = ceil_exponent(mf);
-      sm = pow2(kCoefTop - max(km, kUnitMin));
-      sv = pow2(kCoefTop - max(kv, kUnitMin));
-      if (listed && s == 0)
-        p.list_exp[list] = static_cast<uint32_t>(static_cast<uint16_t>(km))
-                           | static_cast<uint32_t>(static_cast<uint16_t>(kv)) << 16;
-    }
-
     //: the entries: the lane's `i`-th at its first place plus `i`
-    const int row = p.read_row;
     int pos = first;
 #pragma unroll
     for (int jj = 0; jj < kLaneWords; ++jj) {
@@ -496,20 +427,7 @@ struct FactsAt {
             xw &= xw - 1u;
             const uint32_t sl =
                 static_cast<uint32_t>(at + r.pre[jj] + __popc(r.u[jj] & ((1u << bit) - 1u)));
-            const float b = static_cast<float>(win[window_at(t, d)]);
-            uint2 e;
-            if constexpr (kWriteSide) {
-              const float2 col = cols[t];
-              const uint32_t cv = __half_as_ushort(__float2half_rn(b * col.y * sv));
-              const uint32_t cm = __half_as_ushort(__float2half_rn(b * col.x * sm));
-              e = make_uint2(sl, cv | cm << 16);
-            } else {
-              const uint32_t coef = __half_as_ushort(__float2half_rn(b * (1.0f / 256.0f)));
-              e = make_uint2((sl * (row / 16) + pool_chunk(row, sl, 0u))
-                                 | static_cast<uint32_t>(kWindowTokens * j + t) << 16,
-                             coef);
-            }
-            if (listed) entries[pos] = e;
+            if (listed) entries[pos] = sl | static_cast<uint32_t>(win[window_at(t, d)]) << 16;
             ++pos;
           }
         } while (__any_sync(0xffffffffu, xw != 0u));
@@ -560,41 +478,26 @@ struct FactsAt {
     const Unit x = unit_of(p);
     uint8_t* const win = smem + FactsSmem<kGroups>::kWin;
     uint32_t* const tile = reinterpret_cast<uint32_t*>(smem + FactsSmem<kGroups>::kTile);
-    float2* const cols = reinterpret_cast<float2*>(smem + FactsSmem<kGroups>::kCols);
-    float2* const wmax = reinterpret_cast<float2*>(smem + FactsSmem<kGroups>::kWmax);
-    const bool listed = x.kind == kUnitList, writes = (x.side == kWrite) & listed;
-    const bool columns = (x.kind == kUnitColumns) | writes;
+    const bool listed = x.kind == kUnitList;
     const int heads = listed ? heads_of(p, x) : 1;
 
-    //: THE LOAD: the window's copies, a write unit's columns beside them, each warp's largest posted
-    if (x.kind != kUnitColumns) issue_window(p, x, ops::smem_addr(win), tid, x.head);
-    ops::stage_commit();
-    float2 col[kThreadTokens];
-#pragma unroll
-    for (int k = 0; k < kThreadTokens; ++k) col[k] = make_float2(0.0f, 0.0f);
-    if (columns) {
-      float2 top = make_float2(0.0f, 0.0f);
-#pragma unroll
-      for (int k = 0; k < kThreadTokens; ++k) {
-        col[k] = load_column(p, x, tid + kFactsThreads * k);
-        cols[tid + kFactsThreads * k] = col[k];
-        top = make_float2(fmaxf(top.x, col[k].x), fmaxf(top.y, col[k].y));
-      }
-#pragma unroll
-      for (int off = 16; off > 0; off >>= 1) {
-        top.x = fmaxf(top.x, __shfl_xor_sync(0xffffffffu, top.x, off));
-        top.y = fmaxf(top.y, __shfl_xor_sync(0xffffffffu, top.y, off));
-      }
-      if (lane == 0) wmax[warp] = top;
-    }
-    ops::stage_wait<0>();
-    __syncthreads();
-    clock.lap(kPhaseLoad);
-    if ((x.kind == kUnitColumns) | (writes & (x.group == 0))) columns_out(p, x, col, wmax, tid);
+    //: THE COLUMNS UNIT: each token's `(F, m)` from its scales, and nothing else
     if (x.kind == kUnitColumns) {
+      float2 col[kThreadTokens];
+#pragma unroll
+      for (int k = 0; k < kThreadTokens; ++k) col[k] = load_column(p, x, tid + kFactsThreads * k);
+      clock.lap(kPhaseLoad);
+      columns_out(p, x, col, tid);
       clock.publish(p.ledger, 0, kFactsWarps, warp);
       return;
     }
+
+    //: THE LOAD: the window's copies
+    issue_window(p, x, ops::smem_addr(win), tid, x.head);
+    ops::stage_commit();
+    ops::stage_wait<0>();
+    __syncthreads();
+    clock.lap(kPhaseLoad);
 
     //: each list group's slots before the head, packed (`half_of`)
     uint32_t at = 0u;
@@ -623,11 +526,7 @@ struct FactsAt {
       const Ranks r = ranks<kGroups>(p, x, smem, tid, warp, lane, at, head);
       __syncthreads();
       clock.lap(kPhaseRanks);
-      if (writes) {
-        lists_out<true, kGroups>(p, x, smem, r, warp, lane, at, head, placed);
-      } else {
-        lists_out<false, kGroups>(p, x, smem, r, warp, lane, at, head, placed);
-      }
+      lists_out<kGroups>(p, x, smem, r, warp, lane, at, placed);
       __syncthreads();
       if (kGroups > 1 ? warp < kGroups && list_group_in<kGroups>(p, x, warp) : warp == 0)
         bounds_out<kGroups>(p, x, smem, lane, kGroups > 1 ? warp : 0,
@@ -676,7 +575,7 @@ ColumnView column_view(const Tensor& t, int64_t B, int64_t T, int64_t H, const c
 
 //: THE PLAN, a window's units: each side's sparse levels in order, a unit a group -- a list unit at the side's list
 //: level (the read side's its write head's query heads in turn), a vote unit elsewhere (the read side's one a query
-//: head) -- and the window's columns unit when the write side lists nothing.
+//: head) -- and the window's columns unit.
 //: -- see docs/internals/facts/facts.md#the-plan
 void plan_units(FactsParams& p, const uint32_t (&dense)[kSides]) {
   int n = 0;
@@ -689,7 +588,7 @@ void plan_units(FactsParams& p, const uint32_t (&dense)[kSides]) {
         for (int head = 0; head < heads; ++head)
           p.unit[n++] = unit_code(list ? kUnitList : kUnitVote, side, level, g, head);
     }
-  if (p.list_level[kWrite] < 0) p.unit[n++] = unit_code(kUnitColumns, kWrite, 0, 0, 0);
+  p.unit[n++] = unit_code(kUnitColumns, kWrite, 0, 0, 0);
   p.per_window = n;
 }
 
@@ -732,8 +631,8 @@ std::vector<Tensor> rola_facts_forward(std::vector<Tensor> read, std::vector<Ten
                                        std::vector<int64_t> widths, int64_t dense_read,
                                        std::vector<int64_t> mask_read, int64_t dense_write,
                                        std::vector<int64_t> mask_write, int64_t write_list_level,
-                                       int64_t read_list_level, int64_t read_row,
-                                       int64_t read_list_group, int64_t write_list_group) {
+                                       int64_t read_list_level, int64_t read_list_group,
+                                       int64_t write_list_group) {
   check_arch_table();
   const int D = static_cast<int>(widths.size());
   STD_TORCH_CHECK(D >= 1 && D <= kMaxLevels, "the routing depth is one to four levels, got ", D);
@@ -809,15 +708,6 @@ std::vector<Tensor> rola_facts_forward(std::vector<Tensor> read, std::vector<Ten
                     " digits, got ", list_groups[side]);
     p.list_group[side] = static_cast<int>(list_groups[side]);
   }
-  //: a listed read side's entries hold their rows' places (a dense side has none: its row is the carry's alone)
-  STD_TORCH_CHECK(
-      read_list_level < 0
-          || (read_row >= 64 && read_row % 64 == 0 && (read_row == 128 || read_row / 64 % 2 == 1)
-              && p.g * W * read_row / 16 <= 65536),
-      "a listed read side's pool row is 128 bytes or an odd number of 64, a window's g heads' pool "
-      "inside a 16-bit offset of 16-byte chunks; got ",
-      read_row, " bytes at g ", p.g);
-  p.read_row = static_cast<int>(read_row);
   for (int level = 0; level < D; ++level)
     p.scale_write[level] = detail::column_view(scale_write[level], B, T, H, "scale_write[l]");
   p.v_scale = detail::column_view(v_scale, B, T, H, "v_scale");
@@ -827,36 +717,30 @@ std::vector<Tensor> rola_facts_forward(std::vector<Tensor> read, std::vector<Ten
   p.groups = layout.groups();
   p.tiles = layout.tiles();
   //: THE OUTPUTS, a write head's: the words and unions (its query heads' read slots, then its write side's), the
-  //: write list level's exponents, the factor products and gains, then each side's lists at its list level
-  const int64_t BH = B * H, list_width = p.list_level[kWrite] >= 0 ? p.B[p.list_level[kWrite]] : 0;
+  //: factor products, then each side's lists at its list level
+  const int64_t BH = B * H;
   const auto out = [&](std::initializer_list<int64_t> dims, Dtype dtype) {
     return empty_cuda(Shape(std::vector<int64_t>(dims)), dtype, device);
   };
   std::vector<Tensor> outs = {out({BH, p.g + 1, p.rows_total, p.token_words}, Dtype::Int),
                               out({BH, p.g + 1, p.groups, p.tiles}, Dtype::Int),
-                              out({BH, p.windows, list_width, 2}, Dtype::Short),
-                              out({BH, T, 2}, Dtype::Float),
-                              out({BH, T, 2}, Dtype::Half),
-                              out({BH, p.windows, 2}, Dtype::Short)};
+                              out({BH, T, 2}, Dtype::Float)};
   p.words = reinterpret_cast<uint32_t*>(outs[0].mutable_data_ptr<int32_t>());
   p.unions = reinterpret_cast<uint32_t*>(outs[1].mutable_data_ptr<int32_t>());
-  if (list_width > 0) p.list_exp = static_cast<uint32_t*>(outs[2].mutable_data_ptr());
-  p.fm = static_cast<float2*>(outs[3].mutable_data_ptr());
-  p.gains16 = static_cast<uint32_t*>(outs[4].mutable_data_ptr());
-  p.gains_exp = static_cast<int16_t*>(outs[5].mutable_data_ptr());
+  p.fm = static_cast<float2*>(outs[2].mutable_data_ptr());
   //: THE LISTS OUT, a side's at its list level (none: width 0): entries, boundaries, the union by slot, its extent
   for (const int side : {kWrite, kRead}) {
     const int64_t width = p.list_level[side] >= 0 ? p.B[p.list_level[side]] : 0,
                   G = p.list_group[side], groups = (width + G - 1) / G,
                   heads = side == kRead ? p.g : 1;
-    const Tensor entries = out({BH, p.windows, width, heads * s.list_cap, 4}, Dtype::Short);
+    const Tensor entries = out({BH, p.windows, width, heads * s.list_cap}, Dtype::Int);
     const Tensor pre = out({BH, p.windows, groups, G + 1, heads * s.list_at}, Dtype::Short);
     const Tensor totals = out({BH, p.windows, groups, heads * s.list_at}, Dtype::Int);
     const Tensor union_tok = out({BH, p.windows, groups, heads * s.list_cap}, Dtype::Short);
     const Tensor union_count = out({BH, p.windows, groups}, Dtype::Int);
     if (width > 0) {
       ListsOut& o = p.lists[side];
-      o.entries = static_cast<uint2*>(entries.mutable_data_ptr());
+      o.entries = static_cast<uint32_t*>(entries.mutable_data_ptr());
       o.pre = static_cast<uint16_t*>(pre.mutable_data_ptr());
       o.totals = static_cast<int32_t*>(totals.mutable_data_ptr());
       o.union_tok = static_cast<uint16_t*>(union_tok.mutable_data_ptr());

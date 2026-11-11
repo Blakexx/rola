@@ -6,8 +6,8 @@ device function (or struct method) each SASS instruction inlines from -- against
 `tools/budgets/<kernel>.json`. KERNEL_STANDARDS §19: a component over budget is red.
 
     tools/region_ledger.py --csv <ncu SourceCounters csv> --so <extension .so> \\
-        --source csrc/rola/src/carry/ampere/carry_kernel.cuh csrc/rola/src/carry/ampere/parts.cuh ... \\
-        --budget tools/budgets/carry.json --per <cta-windows in the launch>
+        --member <the cubin member> --source <the kernel's file> <its components' files>... \\
+        --budget tools/budgets/<kernel>.json --per <cta-windows in the launch>
 
 The csv is `ncu --section SourceCounters --page source --print-source sass --csv` of ONE launch
 (rola-ledger skill). Attribution (`Attribution`): the innermost frame in the kernel's sources (the kernel's file
@@ -240,7 +240,7 @@ def main() -> int:
     ap.add_argument("--so", type=Path, required=True)
     ap.add_argument("--source", type=Path, nargs="+", required=True,
                     help="the kernel's file (its line views), then the files its components live in")
-    ap.add_argument("--member", default="carry_arm")
+    ap.add_argument("--member", required=True, help="the cubin member's name")
     ap.add_argument("--kernel", default=None,
                     help="the profiled kernel, a regex over the member's functions (needed where it holds several)")
     ap.add_argument("--arch", default=None, help="the cubin's architecture (default: this machine's GPU)")

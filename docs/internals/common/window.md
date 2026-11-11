@@ -4,7 +4,7 @@ Mirrors `csrc/rola/src/common/window.cuh`.
 
 A call's token axis is cut into windows of W tokens, global to every box and every kernel: the carry reads each
 window's state out to the window's readers and folds its writes, the intra takes the pairs inside one window, the facts
-pass emits each window's lists, the scale pass each window's write masses. W is not a data size. A window's resident rows
+pass emits each window's lists. W is not a data size. A window's resident rows
 follow its read and write unions (the plan's chunks, multiples of 64 union slots); W sets how many tokens share one
 window's fixed work -- the hand-off of the state into the image, the staging of the next window's inputs, the barriers.
 A card with more shared memory amortizes that work over more tokens (ruled 2026-10-31: W and the other structural

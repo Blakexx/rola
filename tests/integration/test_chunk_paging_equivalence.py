@@ -72,7 +72,7 @@ def test_a_stateless_call_carries_no_state():
 def test_an_idle_resident_page_is_neither_loaded_nor_stored():
     """The second call's writes reach a strict subset of the leaves the first call's wrote: every leaf outside that
     subset is bit for bit what the first call left, on both backings. A cohort draw (tokens of a cohort share their
-    sparse write digits) leaves most leaves unwritten by a window; a floored dense write level writes every leaf."""
+    sparse write digits) leaves most leaves unwritten by a window; a dense write level is worded whole and pages every leaf."""
     spec = by_name("flagship-cohort-k4")
     half = spec.tokens // 2
     first, second = operands(spec, slice(0, half)), operands(spec, slice(half, spec.tokens))

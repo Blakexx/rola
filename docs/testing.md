@@ -307,8 +307,9 @@ must never be able to fail a merge.
 
 Performance work has its own document — [`measurement.md`](measurement.md) — because the instruments are as much a
 subject of review as the kernel. The timing system's own non-vacuity tests live with it, in rola-devtools and
-rola-results; this repository's is `tests/unit/test_bench_provider.py`, which plants an uncarried carry arm, an
-iteration build, another library's data and a binary without the kernel a subject launches, and requires each refusal.
+rola-results; this repository's is `tests/unit/test_bench_provider.py`, which plants an
+iteration build of either arm family and another library's data, and requires each refusal by name, and a binary
+without the carry arm a cell's carve selects, and requires that the `prefill` arm is not offered on it.
 `bazel run //:ratify -- --self-test` is the same discipline on the codegen side ([`ratification.md`](ratification.md)).
 
 ### Triaging a suspected stream-ordering bug
@@ -355,7 +356,9 @@ publication read before its join, an inner join standing in for an outer one, a 
 
 `bazel test //tests:sanitizer` runs `tools/sanitize_oracle.py`, passing it the toolkit's own `compute-sanitizer`
 (`@cuda_tools`, the release the library is built by; the script refuses any whose `--version` is not the toolchain
-record's `sanitizer`, and takes none from PATH) over ONE named oracle cell per family (the facts pass, decode and the entmax solves), each pair in its own process
+record's `sanitizer`, and takes none from PATH) over ONE named oracle cell per family (the facts pass, decode and the entmax solves), each pair in its own process;
+a family declared ABSENT (the carry over a whole call: no carry kernel is built) runs its cell bare and must still
+fail, so the row flips the day its kernel lands,
 with a timeout, under the GPU lock; `--test_arg=--tool --test_arg=racecheck` or `--family` narrows or widens it. It is
 `manual`: no suite holds it.
 It runs **when a component lands, before a ratify, and on a schedule, never per commit**

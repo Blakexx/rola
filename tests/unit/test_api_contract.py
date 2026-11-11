@@ -117,9 +117,8 @@ def test_a_malformed_hand_built_bundle_is_refused_by_its_structure(break_it, mes
     elif break_it == "prefix":
         fields["amp_write"][1] = fields["amp_write"][1][:1]
     elif break_it == "dtype":
-        #: each level's rows have one stored type (f16 for a dense write level, u8 otherwise): plant the other
-        rows = fields["amp_write"][0]
-        fields["amp_write"][0] = rows.to(torch.uint8 if rows.dtype is torch.float16 else torch.float16)
+        #: every level's rows have one stored type, u8: plant another
+        fields["amp_write"][0] = fields["amp_write"][0].to(torch.float16)
     elif break_it == "scale_shape":
         fields["scale_write"][0] = fields["scale_write"][0][..., :1]
     with pytest.raises((ValueError, TypeError), match=message):
@@ -160,14 +159,13 @@ def test_the_prefill_reads_groups_and_a_consumer_of_one_head_count_refuses_them_
 
 
 def test_the_digit_header_mirrors_the_quantizer():
-    """`facts/liveness_contract.cuh` and `rola.routing.quant` state one format: the row max's digit and the dense floor."""
+    """`facts/liveness_contract.cuh` and `rola.routing.quant` state one format: the row max's digit."""
     from pathlib import Path
 
     from rola.routing import quant
 
     text = (Path(__file__).resolve().parents[2] / "csrc/rola/src/facts/liveness_contract.cuh").read_text()
     assert "constexpr float kRowMaxDigit = 255.0f;" in text and quant.AMP_LEVELS == 255.0
-    assert "constexpr float kDenseFloor = 1.0f / 8192.0f;" in text and quant.DENSE_FLOOR == 1.0 / 8192.0
 
 
 def test_the_factory_refuses_an_entry_its_form_does_not_hold():
@@ -187,44 +185,38 @@ def test_the_factory_refuses_an_entry_its_form_does_not_hold():
     v[0, 0, 0, 0] = float("nan")
     with pytest.raises(ValueError, match="form holds finite entries"):
         Values.from_projection(v)
-    with pytest.raises(ValueError, match="f16 signed"):
-        quant.SIGNED.quantize(v)
+    with pytest.raises(ValueError, match="bf16 values"):
+        quant.VALUES.quantize(v)
 
 
-def test_a_dense_levels_zero_digit_reads_as_the_floor_in_a_live_row_only():
-    """RULED 2026-10-03 (docs/internals/facts/liveness_contract.md#floor): a dense level's zero digit dequantizes to
-    the floor times its row's scale, a dead row (scale 0) stays zero, and a sparse level's zero is exact."""
+def test_a_zero_digit_is_a_zero_at_every_level():
+    """docs/CONSTITUTION.md#r23: a level's rows are u8 with no floor under them -- a zero digit dequantizes to an exact
+    zero in a live row, and a dead row (scale 0) stays zero."""
     from rola.routing import quant
 
     scale = torch.tensor([2.0, 0.0])
-    dense = quant.DENSE.dequantize(torch.tensor([[1.0, 0.0, 0.5], [0.0, 0.0, 0.0]], dtype=torch.float16), scale)
-    assert dense[0, 1] == 2.0 * quant.DENSE_FLOOR and dense[0, 0] == 2.0 and torch.equal(dense[1], torch.zeros(3))
-    sparse = quant.SPARSE.dequantize(torch.tensor([[255, 0, 3], [0, 0, 0]], dtype=torch.uint8), scale)
-    assert sparse[0, 1] == 0.0 and sparse[0, 0] == 2.0
+    rows = quant.ROWS.dequantize(torch.tensor([[255, 0, 3], [0, 0, 0]], dtype=torch.uint8), scale)
+    assert rows[0, 1] == 0.0 and rows[0, 0] == 2.0 and torch.equal(rows[1], torch.zeros(3))
 
 
 def test_rows_are_u8_at_every_depth():
-    """RULED 2026-10-03: the producer writes u8 rows at every depth, each against its own max -- a dense level's rows
-    f16 at the floor (the write side 2026-10-04, the read side 2026-10-07), and every side has a dense level
-    (2026-10-08); a row of any other type is refused, and a deep bundle dequantizes to its levels within half a digit a
-    row."""
+    """The producer writes u8 rows at every depth, dense or sparse, each against its own max, and every side has a
+    dense level (2026-10-08); a row of any other type is refused, and a deep bundle dequantizes to its levels within
+    half a digit a row."""
     from rola.routing.types import OpaqueRouting, Topology
 
     deep = Topology(levels=tuple(OpaqueRouting(width=4) for _ in range(3)))
     level = torch.rand(1, 2, 1, 4, dtype=torch.float64) + 0.1
     sparse = ((False, True, True), (False, True, True))
     bundle = RouteFactors.from_levels(deep, (level,) * 3, (level,) * 3, sparse=sparse)
-    assert all(row.dtype is torch.uint8 for row in bundle.amp_read[1:] + bundle.amp_write[1:])
-    assert bundle.amp_read[0].dtype is torch.float16 and bundle.amp_write[0].dtype is torch.float16
+    assert all(row.dtype is torch.uint8 for row in bundle.amp_read + bundle.amp_write)
     with pytest.raises(ValueError, match="every read level sparse"):
         RouteFactors.from_levels(deep, (level,) * 3, (level,) * 3, sparse=((True,) * 3, (False, True, True)))
     for got in bundle.dequantized()[0]:
         top = level.amax(-1, keepdim=True)
         assert ((got.double() - level).abs() <= top / 510 * (1 + 2 ** -20)).all()
-    from rola.routing import quant
-
     wrong = list(bundle.amp_read)
-    wrong[1] = quant.DENSE.quantize(level)[0]
+    wrong[1] = wrong[1].to(torch.float16)
     with pytest.raises(TypeError, match="stored as torch.uint8"):
         RouteFactors(topology=deep, amp_read=wrong, amp_write=bundle.amp_write, scale_read=bundle.scale_read,
                      scale_write=bundle.scale_write, sparse=sparse)
@@ -256,19 +248,19 @@ def test_the_op_refuses_a_bare_value_tensor_and_names_the_bundle():
 
 
 def test_the_value_bundle_is_the_format_and_its_view_is_the_rounded_projection():
-    """`Values.from_projection` writes the value format against the token's largest channel: f16 with that channel
+    """`Values.from_projection` writes the value format against the token's largest channel: bf16 with that channel
     at 1; the scale is its magnitude in fp32, and `dequantized` is the rounded projection carrying its gradient
     (docs/api.md section 4.1)."""
     v = torch.randn(2, 6, 2, 8, dtype=torch.float64, requires_grad=True)
     values = Values.from_projection(v)
-    assert values.v.dtype is torch.float16 and tuple(values.v.shape) == (2, 6, 2, 8)
+    assert values.v.dtype is torch.bfloat16 and tuple(values.v.shape) == (2, 6, 2, 8)
     assert values.scale.dtype is torch.float32
     torch.testing.assert_close(values.scale, v.detach().abs().amax(-1).float())
     assert values.v.abs().amax(-1).eq(1).all()
-    torch.testing.assert_close(values.dequantized().double(), v.detach(), rtol=2.0 ** -11, atol=0)
+    torch.testing.assert_close(values.dequantized().double(), v.detach(), rtol=2.0 ** -8, atol=0)
     values.dequantized().sum().backward()
     assert torch.equal(v.grad, torch.ones_like(v))
-    with pytest.raises(ValueError, match="f16"):
+    with pytest.raises(ValueError, match="bf16"):
         Values(v=values.v.float(), scale=values.scale)
 
 
@@ -313,8 +305,8 @@ def test_a_producer_outside_the_framework_still_emits_the_format_or_nothing():
 
     producer = Uniform()
     factors = producer(_x(producer))
-    assert factors.amp_read[0].dtype is torch.float16 and factors.amp_write[0].dtype is torch.float16
-    assert torch.equal(factors.amp_read[0], torch.ones_like(factors.amp_read[0])), "a flat dense row is all ones"
+    assert factors.amp_read[0].dtype is torch.uint8 and factors.amp_write[0].dtype is torch.uint8
+    assert torch.equal(factors.amp_read[0], torch.full_like(factors.amp_read[0], 255)), "a flat dense row is all 255"
     v = torch.randn(2, 6, 2, 8, dtype=torch.float64)
     _admitted(factors, v)
     assert torch.isfinite(_oracle(factors, v)).all()
@@ -365,16 +357,14 @@ def test_the_public_levels_are_the_formats_rows_dequantized():
     """
     producer = _routes(widths=(4, 6))
     factors = _factors(producer)
-    #: RULED 2026-09-26: the rows (u8, a dense level's f16) and their scales ARE the stored layout; the dequantized
+    #: RULED 2026-09-26: the rows (u8) and their scales ARE the stored layout; the dequantized
     #: levels are computed at a consumer's seam, for consumers that still compute on floating levels.
     read, _ = factors.dequantized()
     for level, (rows, scale, public) in enumerate(zip(factors.amp_read, factors.scale_read, read)):
-        dense = not factors.sparse[0][level]
-        assert rows.dtype is factors.form(level, "read").dtype and tuple(rows.shape) == tuple(public.shape)
-        top = 1 if dense else 255
-        assert torch.equal(rows.amax(dim=-1), torch.full_like(rows.amax(dim=-1), top)), (
+        assert rows.dtype is torch.uint8 and tuple(rows.shape) == tuple(public.shape)
+        assert torch.equal(rows.amax(dim=-1), torch.full_like(rows.amax(dim=-1), 255)), (
             f"level {level}'s rows are not unit-max")
-        assert torch.allclose(factors.form(level, "read").dequantize(rows, scale).to(public.dtype), public.detach()), (
+        assert torch.allclose((rows.float() / 255 * scale.unsqueeze(-1)).to(public.dtype), public.detach()), (
             f"level {level}'s public level is not its rows dequantized")
 
 

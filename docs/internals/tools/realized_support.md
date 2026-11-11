@@ -4,7 +4,7 @@ A carry cell DECLARES its support (`k_tok`, the draw); a layer construction's we
 producer's solve on the cell's hidden states (`measure.cells.layer.build`). A layer reading's regime is that realized
 support, so the tool reads it from the bundle the kernels take, after quantization: per level and side, the nonzero
 digits a token over every batch row, token and head -- the mean, the median, the 99th percentile and the fraction of
-the level's width -- and whether the side is declared sparse (a dense side is never zero).
+the level's width -- and whether the side is declared sparse (a dense side's zeros are values that rounded to zero).
 
     bazel run //tools:realized_support -- [nl64k-alt-h4] [--json support.json]   # one construction, or every one
 

@@ -26,5 +26,10 @@ tensor floor is reachable and its arithmetic holds.
 THE ROWS' FIRST READING (2026-10-07, ncu's locked clock): `facts-alt-k4` 300.4 us, 1.48x its DRAM floor (202.7 us;
 issue 166.5, shared 89.3) -- the list build's serial phase; `facts-dense` 185.0 us, 1.15x its DRAM floor.
 
+THE INDEXER'S READING (2026-11-10, sm_86, the same clock; whole 32-digit list groups, `rola.ops.facts.WHOLE_GROUPS`):
+`facts-alt-k4` 337.2 us, 1.58x its DRAM floor (213.7 us; issue 194.1, shared 72.6) -- red against the 1.15 line as the
+first reading was, at a different lists form, so the two times are not one comparison. What holds it over its floor
+is not attributed yet (owed: the stall census of the row).
+
 `tools/lint/coverage.py` reads `ROWS` by AST: every kernel's `overlap` obligation in `tools/coverage.json` names a row
 gating it, or is exempt or owed with its reason.

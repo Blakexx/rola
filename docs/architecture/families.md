@@ -36,7 +36,7 @@ Python reads a hardware fact only for a purpose the C++ path cannot serve -- the
 windows, the measurement tools -- and a Python read that shapes or launches a kernel call is a defect to move into the
 entry.
 
-KERNELS THAT MUST AGREE ON A FACT SHARE ITS CODE. The facts pass, the carry, the scale pass and the intra all cut the
+KERNELS THAT MUST AGREE ON A FACT SHARE ITS CODE. The facts pass, the carry and the intra all cut the
 call into the same windows: each reads W as `traits_of(B).window` at the card's build, one constant in the generated
 hardware header, so they agree by construction. A value one side computes and hands to the other through Python is a
 second channel that can only disagree, and is not built.

@@ -203,11 +203,11 @@ class RoLA(nn.Module):
         a segment allocates, summed as if all were alive at once. Gated against the measured peak
         (tests/integration/test_layer_segments.py); a kernel port that adds or drops a tensor changes its term here.
 
-        A head's, both sides: its rows (a byte a digit at a sparse level, two at a dense one); the levels' scales and
+        A head's, both sides: its rows (a byte a digit at every level); the levels' scales and
         the producer's level masses (four bytes each a level); the facts pass's words (a bit a row, the read and the
-        write slot), its tile unions, factor products, gains and list exponents; each side's lists at its one sparse
-        level -- a window's slots a digit, four int16 an entry, with the union by slot at the finest list group and
-        the boundaries and totals under a sixteenth of the width; the values (f16) and their scale and the gain; the
+        write slot), its tile unions and factor products; each side's lists at its one sparse
+        level -- a window's slots a digit, a uint32 an entry, with the union by slot at the finest list group and
+        the boundaries and totals under a sixteenth of the width; the values (bf16) and their scale and the gain; the
         scale pass's byte and its masses; the carry's ``num`` (fp32 at most) and den; the readout's unpacked ``num``,
         den, factor and reader factor, ``y`` and its bf16 copy for the output projection. A token's: the hidden
         stream's two bf16 casts and the output, fp32 at most.
@@ -216,10 +216,10 @@ class RoLA(nn.Module):
         D, total = len(widths), sum(widths)
         per_head = 16 * D + total // 4 + total // 64 + 16 * self.d_v + 49
         for sparse in default_sparse(self.topology):
-            per_head += sum(width if flag else 2 * width for flag, width in zip(sparse, widths))
+            per_head += total
             if sparse.count(True) == 1:
                 width = widths[sparse.index(True)]
-                per_head += 8 * width + width // 8 + width // 16
+                per_head += 4 * width + width // 8 + width // 16
         return self.num_heads * per_head + 8 * self.hidden_size
 
     def state_bytes(self, batch: int) -> int:

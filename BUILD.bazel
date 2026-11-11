@@ -2,7 +2,7 @@
 
     bazel build //:library                      # rola_cu13/_C.abi3.so and its build record, the shipped build
     bazel run //:library                        # the same, copied into this checkout's rola_cu13/
-    bazel run //:library --//:archs=86 --//:carry_arms=3     # an iteration build
+    bazel run //:library --//:archs=86 --//:decode_arms=3    # an iteration build
     bazel test //:ratified                      # ratify's verdict on the build (docs/build-graph.md#ratify)
     bazel run //:ratify -- --write              # re-ratify: the manifests, recorded from the build
 """

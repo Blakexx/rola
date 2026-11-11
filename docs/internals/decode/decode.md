@@ -406,7 +406,7 @@ spills, and a visit's prologue is issued by 16 warps
 ## <a id="params-amps"></a>9. `DecodeParams` — the operands, as addresses
 
 `read[l]` / `write[l]` (the coefficient rows), `read_scale[l]` / `write_scale[l]` (their fp32
-maxima; a producer's write gain is a factor of write level 0's), `v` (the f16 values) and `v_scale` are `Span`s: a
+maxima; a producer's write gain is a factor of write level 0's), `v` (the bf16 values) and `v_scale` are `Span`s: a
 base pointer
 and the `(b, h, w)` strides of the CALLER'S OWN `[B, 1, H, *]` view. There is no `[BH, b_l]` plane between the
 producer and the walk — the step folds these into shared memory itself
@@ -414,9 +414,7 @@ producer and the walk — the step folds these into shared memory itself
 the kernel computes rather than a pass that ran.
 
 No level is normalized, on either side: the fold reads each as stored ([`docs/CONSTITUTION.md`
-R23](../../CONSTITUTION.md#r23)). `floor_read` and `floor_write` name each side's dense levels, a bit a level:
-their rows are f16 with the floor stored, and a zero, in a live row, reads as the floor
-([`../facts/liveness_contract.md#floor`](../facts/liveness_contract.md#floor)).
+R23](../../CONSTITUTION.md#r23)): u8 digits at every level, a zero an exact zero.
 
 `level_amp_offset[l]` is where level `l`'s staged amplitude row starts inside the flat
 `sum_l b_l` SMEM arrays. It is host-computed and carried rather than recomputed, because
@@ -1029,8 +1027,8 @@ lever there is the page's layout, not the walk.
 <a id="coefficient-rows"></a>
 ## The coefficient rows, as the bundle holds them
 
-The step reads the bundle's rows as they are (ruled 2026-10-03/04/07): u8 unit-max digits, a dense
-level's f16 at 1 with its floor stored (either side), each row beside its fp32 max; the value in f16 against its
+The step reads the bundle's rows as they are: u8 unit-max digits at every level, each row beside its fp32 max; the
+value in bf16 against its
 largest channel, and the fp32 token scale. The host entry refuses any other type -- the bundle
 refuses the same at construction, so a refusal here
 names a direct caller of the ABI. How the fold turns each into a staged amplitude:

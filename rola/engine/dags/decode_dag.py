@@ -115,7 +115,7 @@ def build_plan(f):
     return DecodePlan(
         config=geometry, heads=routes.heads, read=routes.amp_read, write=routes.amp_write,
         read_scale=routes.scale_read, write_scale=routes.scale_write,
-        floor=routes.floor_bits(), dials=bodies.leaf_rate_dials_for(f["decay"], geometry, values.device),
+        dials=bodies.leaf_rate_dials_for(f["decay"], geometry, values.device),
         v=values.v, v_scale=values.scale,
         state_plane=f["state_plane"],
         page_table=f["page_table"], scratch=f["scratch"], pool=f["pool"])

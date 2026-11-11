@@ -95,8 +95,7 @@ admission plans from), and under a slack pool a growth step admits itself.
 `write_dense` is the bundle's flag that the innermost level's write side is dense
 (`docs/api.md` §2.1), which lets the write term walk whole atoms (`decode.md#whole-atoms`). Its operands are the
 caller's RAW
-`[B, 1, H, *]` views — `read`, `write` and their scales, `v`, plus each side's dense levels (`floor_read`,
-`floor_write`, a bit a level) — because the fold is inside the kernel and there is no operand plane
+`[B, 1, H, *]` views — `read`, `write` and their scales, `v` — because the fold is inside the kernel and there is no operand plane
 to hand it ([`decode_fold.md`](decode_fold.md)). `heads` is not an argument: `v`'s own
 `[B, 1, H, d_v]` shape carries it. `lattice_k`/`lattice_m` name the `(k, m)` box
 (`decode_lattice.md#the-refusals`) the caller's state plane and routing levels are

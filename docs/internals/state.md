@@ -138,9 +138,10 @@ place and returns THE SAME OBJECT.
 
 The backing is chosen at BIND time and is not a per-call flag:
 
-* **paged** (the default for every stateful call) — a `PageArena`. The call's exact
-  atom bitmap (`rola.engine.facts.planes.written_atoms` of the activity byte, the
-  kernel's own write set) is planned into
+* **paged** (the default for every stateful call) — a `PageArena`. The call's
+  atom bitmap (`rola.engine.facts.planes.written_atoms` of the activity byte: the
+  kernel's own write set, and a superset of it where a dense level's digit rounded to
+  zero) is planned into
   slots, and the kernel resolves one slot per atom through the page table. Resident
   state scales with the atoms the routing REALIZES, not with the `N` the topology
   provisions.

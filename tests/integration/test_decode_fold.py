@@ -67,10 +67,10 @@ def _single_leaf_state(BH: int, config, s0: int, device, seed: int):
 
 def _routes(rows, scale):
     """A one-level bundle over ``rows`` (read) and an empty write side, both sides dense (depth one: the read rows are
-    strictly positive and the dead write rows are all-zero rows, which a dense level keeps zero). The level is
+    strictly positive and the dead write rows are all-zero rows). The level is
     union-routed, whose read duty is never on the simplex: the fold reads it as stored."""
     topology = Topology(levels=(UnionRouting(width=rows.shape[-1]),))
-    return RouteFactors.from_rows(topology, (rows,), (quant.aligned_rows(*rows.shape, rows.device, quant.DENSE_DTYPE),),
+    return RouteFactors.from_rows(topology, (rows,), (quant.aligned_rows(*rows.shape, rows.device),),
                                   (scale,), (torch.zeros_like(scale),), sparse=((False,), (False,)))
 
 
@@ -90,7 +90,7 @@ def _y_of(rows, scale, *, seed, s0=0):
 
 def _reference_y(rows, scale, *, e, m, s0=0):
     """The collapsed readout, computed from the DECLARED arithmetic and nothing else."""
-    raw = fold_levels((rows,), (scale,), (_routes(rows, scale).form(0, "read"),))[0]
+    raw = fold_levels((rows,))[0]
     #: a tensor divisor: torch divides by a SCALAR through its reciprocal, which is not the kernel's IEEE divide.
     scale = scale.reshape(-1)
     a = raw[:, s0] * (scale / torch.full_like(scale, quant.AMP_LEVELS))
@@ -98,11 +98,11 @@ def _reference_y(rows, scale, *, e, m, s0=0):
 
 
 def _read_rows(B, H, width, *, seed, device="cuda"):
-    """``(rows, scale)``: a stored dense read level, f16 at the floor, off the simplex. Every entry is strictly
-    positive, so `supp(R)` is the whole leaf space and the walk visits every row."""
+    """``(rows, scale)``: a stored dense read level, u8, off the simplex. Every entry is at least a digit, so
+    `supp(R)` is the whole leaf space and the walk visits every row."""
     gen = torch.Generator(device=device).manual_seed(seed)
     level = 0.5 * (torch.rand(B, 1, H, width, device=device, generator=gen) + 0.25)
-    return quant.DENSE.quantize(level)
+    return quant.ROWS.quantize(level)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +141,6 @@ def test_more_than_one_token_is_refused():
 
 def test_a_row_dtype_outside_the_format_is_refused():
     rows, scale = _read_rows(2, 2, 16, seed=5)
-    digits = quant.aligned_rows(*rows.shape, rows.device).copy_((rows.float() * quant.AMP_LEVELS).round().to(torch.uint8))
-    with pytest.raises((TypeError, ValueError), match="torch.float16"):
-        _routes(digits, scale)
+    halves = quant.aligned_rows(*rows.shape, rows.device, torch.float16).copy_(rows.float() / quant.AMP_LEVELS)
+    with pytest.raises((TypeError, ValueError), match="torch.uint8"):
+        _routes(halves, scale)

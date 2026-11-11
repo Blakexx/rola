@@ -556,7 +556,7 @@ with masking by predication; ThunderKittens' producer and consumer warpgroups.
 1. `[COMPILER]` THE EMITTED DISTANCE IS THE LATENCY BUDGET. ptxas sets an instruction's stall count to the producer's
    latency minus the instructions it placed between producer and first consumer (Huerta et al. 2025, §4, validated on
    GA102), so a dependence is hidden only by what sits between its ends in the SASS, never by anything in the source.
-   The SASS gate's step cover reads that accounting (§32.4).
+   A family's step cover reads that accounting once its model exists (§32.4).
 2. `[COMPILER]` ORDER BY DEPENDENCY, NEVER BY HOPE. There is no scheduling knob (nvcc §4.2.9.1) and no supported
    ordering; the one sanctioned device is a data dependency, one primitive in a common header (§32.6). No fence for
    ordering (it orders memory operations and costs runtime), no clock trick. The burst-tier lint refuses a fence in a
@@ -727,7 +727,7 @@ it names no debt, and an instrument's probe keeps one only where it declares it 
 the experiment declares them (an expectation on BSSY: a comparison baseline kept on purpose). The burst tier's lint
 (§24) holds the source side: no data-dependent `if` inside a burst function, `@burst-exempt <reason>` the only way
 out. Register moves per MMA in a step (the copy-rotation signature) and the MMA gap (the longest MMA-free run in the
-step loop's body, and around it) are reported; the gate on what they cost is §32.4's step cover. Measured: §26.3 s.
+step loop's body, and around it) are reported; the gate on what they cost is §32.4's step cover, which runs once a family's model exists. Measured: §26.3 s.
 
 ## <a id="s28"></a>§28 — NO PHASE IDLES THE BINDING STREAM (law, 2026-10-07, from Blake's "any kernel we write should be going for maximal pipelining, ilp, etc. we shouldn't be compromising our standards, and if linters are letting us we should be making our linters more powerful and standards more clear")
 The facts pass's list build was priced by instruction count (about 10 an entry, "inside the ~40% issue headroom")
@@ -749,7 +749,7 @@ kernel names its row, or why it has none, in `tools/coverage.json`'s `overlap` o
 instrument, checked against a probe row: a pure 512 MB read stream (a torch reduction) reaches 96% of the profiler's
 sustained DRAM peak on the RTX 3080 Ti (1.04x), so the DRAM floor is reachable; the tensor floor takes the product's
 calibrated MMA rate (§22), its probe row owed with the first MMA kernel's row. Per phase, item 4 is §32's: each
-phase against its predicted cycles (§32.2) and every MMA step loop's pipe cover (§32.4).
+phase against its predicted cycles (§32.2) and, once a family's model exists, every MMA step loop's pipe cover (§32.4).
 
 ## <a id="s29"></a>§29 — EVERY INSTRUCTION IS BUDGETED BY CLASS BEFORE CODE, AND HOISTED BY FREQUENCY (law, 2026-10-11, from Blake's "is there any kind of linting / sass checks we can add to stop us from writing such bad code? ... we do not take a standard analytical / deterministic approach to writing kernels when i feel the patterns are quite easy to formalize")
 The readout lab (`read_image`) ran 18.7 instructions an MMA where its design needs about 9: each panel add

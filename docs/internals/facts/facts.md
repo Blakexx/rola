@@ -1,8 +1,9 @@
 # `csrc/rola/src/facts/facts.cuh` / `facts.cu` — the facts pass
 
-Mirror doc for the one pass that reads a call's bundle before the carry and the intra do: both sides' class-1
-liveness words and their tile unions, the window's columns (the factor products and the gains), the write list
-level's exponents, and each side's lists in the carry's final form, in one launch. What the words ARE — their layout,
+Mirror doc for the one pass that reads a call's bundle before its consumers do: both sides' class-1 liveness words
+and their tile unions, the window's columns (the factor products), and each side's lists, an entry a slot and a byte,
+in one launch. It is an INDEXER: it emits what is the data's alone, and nothing of a card's -- no exponent, no
+coefficient in an operand's format, no layout offset (KERNEL_STANDARDS §29.5). What the words ARE — their layout,
 the folds over them and why each is the grain it is — is [`liveness_contract.md`](liveness_contract.md), which this
 kernel does not restate and must not contradict; its host seam is [`facts_api.md`](facts_api.md).
 `rola.engine.facts.liveness.liveness_words` is the words' pure-torch MODEL, `rola.engine.facts.lists.final_lists` the
@@ -10,7 +11,7 @@ lists', and `tests/integration/test_facts_pass.py` holds the kernel to both.
 
 Vocabulary, defined here and used unqualified below: `D` = routing depth; `B_l` = level `l`'s PADDED width; `b_l` =
 its LOGICAL width, the rows' own; `L` = tokens in the call; `BH` = batch × heads; `rows = Σ_l B_l`; **word** = 32
-consecutive tokens of one row; **window** = the carry's 512 tokens, 16 words; **group** = 32 consecutive digits of a
+consecutive tokens of one row; **window** = the card's W tokens (512 on sm_86: 16 words); **group** = 32 consecutive digits of a
 level; **unit** = one (side, level, group) of a window, the work of one CTA; **list group** = the `G` consecutive
 digits (16 or 32, the side's) one union and its prefix rows span ([below](#list-groups)).
 
@@ -49,8 +50,8 @@ more than 65,535 windows or batch-heads).
 `plan_units` (host) lists a window's units once a call, the same for every window (`FactsParams::unit`, coded by
 `unit_code`: kind, side, level, group, head): for each side and level in order, a `kUnitList` unit a group of the
 side's LIST LEVEL (its one sparse level, `rola.ops.facts.list_level`) and a `kUnitVote` unit a group of every other
-sparse level -- on the read side one a query head of the write head's `g`, its head in the code; and when the write
-side lists nothing (no sparse level, or two), one `kUnitColumns` unit for the window's columns. A read list unit takes
+sparse level -- on the read side one a query head of the write head's `g`, its head in the code; and one
+`kUnitColumns` unit for the window's columns. A read list unit takes
 its write head's query heads IN TURN, one union over their rows (the ranks below): head `j`'s window loaded, voted and
 its bits out at its slot, ranked and listed past the heads before it, the CTA's shared memory reused a head. A
 side with two or more sparse levels gets its words and no lists: they would be COMPOSITE, keyed by a digit of each
@@ -73,8 +74,8 @@ same way (`half_of`; a group's slots a window, every head's, are at most 8,192) 
 128-register cap, and a pair of counts a half held apart spilled; a list lane takes its own digit's half; warp `q`
 writes half `q`'s prefix rows.
 
-Why a half: the carry's 64-channel box at `d_v` 64 holds 16 digits of the read list level; a union over 32 would stage
-the other box's tokens as its own, a step of entries the box never reads.
+Why a half: a box that holds 16 digits of its list level reads a union of those 16; a union over 32 would hand it
+another box's tokens as its own.
 
 THE TWO PASSES: the kernel is compiled, at each build, for a unit of one list group (`facts_pass<BuildTag<B>, 1>`, every side at 32: the halves'
 work compiled out, the code before them) and of two (`facts_pass<BuildTag<B>, 2>`), and the host launches the one the call's groups
@@ -86,16 +87,14 @@ same passes (the window's words double at W = 1,024, the halves' scan with them)
 
 ## The CTA's shared memory
 
-`FactsSmemAt<W, G>` by offset, dynamic, at W = 512 22.7 KB a pass of one list group a unit and 22.8 KB of two:
+`FactsSmemAt<W, G>` by offset, dynamic, at W = 512 18.6 KB a pass of one list group a unit and 18.7 KB of two:
 
 | tenant | bytes | live |
 |---|---|---|
-| the window: 512 tokens × the group's 32 bytes | 16,384 | the load to the lists' last coefficient |
+| the window: 512 tokens × the group's 32 bytes | 16,384 | the load to the lists' last entry |
 | the bit tile (`tile_at`) | 2,048 | the vote to the end |
-| the columns `(m, F)` (float2) | 4,096 | a write unit's load to the end |
 | each list group's union words | 64 a group | the vote to the ranks |
 | each list group's bounds (a boundary's first token) | 32 a group | the ranks to the lists |
-| the warps' maxima | 64 | the load |
 | a head's lists' boundaries (`kTable`, u16) | 576 | the lists to the boundaries out |
 
 <a id="load"></a>
@@ -129,8 +128,8 @@ of 32 tokens, and the stages map onto that window by four counts derived from it
 (`kWarpBlocks`), a thread's tokens (`kThreadTokens`), a list lane's words (`kLaneWords`, eight lanes a list) and
 boundaries (`kLaneBounds`) -- so a stage's loop runs over its count and at W = 512 every count is the 512-token pass's
 own. The shared tenants are `FactsSmemAt<W>`; the device code is `FactsAt<FactsPlan<B>>` and the host launches the
-card's build (`build_switch`) at that plan's tenants. A read
-entry's pool offset is 16 bits, so a write head's read side merges at most `max_group(W) = 8192 / W` query heads (16 at
+card's build (`build_switch`) at that plan's tenants. An
+entry's slot is 16 bits, so a write head's read side merges at most `max_group(W) = 8192 / W` query heads (16 at
 512, 8 at 1,024); `kMaxGroup` stays the parameter block's bound, the same in both compile passes.
 
 <a id="tiles"></a>
@@ -149,32 +148,9 @@ reads each meet 32 banks); after the barrier each digit's window of words goes o
 
     m(t) = Π_l scale_write_l(t)      (the levels in order: the write side's shared scale)      F(t) = m(t) × s(t)
 
-`s` the value scale, a token past `L` zero. Every write list unit loads them (the coefficients and the list maxima
-read them); the unit of group 0 of the write list level — or the window's `kUnitColumns` unit when the write side lists
-nothing — also stores each token's `(F, m)` to the `[BH, L, 2]` plane `fm` (the factor products: the fold reads a
-token's two in one 8-byte load; at 8 bytes a token-head it adds no `O(L·N)` term) and the gains.
-
-<a id="gains"></a>
-
-## The gains
-
-Each token's `(m, F)` as an f16 pair at its window's powers of two (`gains16`) and the exponents (`gains_exp`): the
-window's largest `m` and `F` (each warp's largest posted in shared memory before the vote's barrier, joined after it)
-give `gains_shift(top)` = `-4 - floor(log2 top)` (the largest in [2^-4, 2^-3)), clamped to [-126, 127], 0 for a zero
-largest. The carry's fold reads `fm` and `gains_exp` where its write side has no list level: each slot's F into its c, the
-window's shift as every list's exponent bound (`../carry/ampere/fold.md#units`).
-
-<a id="lists"></a>
-
-## The list exponents: the fp16 fold's scales
-
-    K[w, r, 0]    = ceil(log2(max over the window's tokens of b(t, r) × m(t)))
-    K[w, r, 1]    = ceil(log2(max over the window's tokens of b(t, r) × m(t) × s(t)))
-
-per window `w` and digit `r` of the WRITE LIST LEVEL, `b` the token's u8 digit, floored at -126 (the smallest normal's
-exponent: a list no token writes). Stored int16 `[BH, windows, B_list, 2]`. The fp16 fold puts each list's largest
-coefficient at a fixed power of two by them (ruled 2026-10-03). They come out of the write side's maxima walk (each
-lane's largest over its entries, joined over the digit's eight lanes; [the lists out](#lists-out)).
+`s` the value scale, a token past `L` zero. The window's `kUnitColumns` unit loads each token's scales and stores its
+`(F, m)` to the `[BH, L, 2]` plane `fm` (the factor products: a consumer reads a token's two in one 8-byte load; at 8
+bytes a token-head it adds no `O(L·N)` term). It touches no shared memory and votes nothing.
 
 <a id="ranks"></a>
 
@@ -218,15 +194,10 @@ the differences are exact although a union of grouped queries' rows passes 16 bi
 cost the window 4% (2026-10-16); no chunk size of a consumer's reaches this pass (`kListBound`: a
 consumer plans its chunks per window).
 
-An entry is 8 bytes, the carry's `uint2`:
-- READ: the slot's pool row offset in the union in 16-byte chunks, the row's swizzle folded in
-  (`slot × row / 16 + chunk0`, `chunk0` the carry's `pool_chunk` of chunk 0: an 8-chunk row XORs by the residue, a row
-  of an odd number of 64-byte quarters by the residue's high bits), its ROW (`512 j + t`, the token's window place `t`
-  ungrouped: the readout looks up the token's scale byte by it); the coefficient `f16(byte / 256)`, 0. A chunk starting
-  at a multiple of 64 takes the offset back by its first slot's, modulo 2^16, and its slot from the row: the swizzle depends on a slot's low bits only, and a chunk's own span is
-  far inside 16 bits.
-- WRITE: the slot, 0; `c_v = f16(fp32(b F) 2^(4 - E_v))`, `c_m = f16(fp32(b m) 2^(4 - E_m))`, `E = max(K, -123)` the
-  list's exponent.
+AN ENTRY IS A SLOT AND A BYTE, 4 bytes on either side: the token's union slot in the low 16 bits (a group's slots a
+window fit them: the plan's assert) and its level byte in bits 16 to 23. Its token is the union's at the slot
+(`union_tok[slot]`), and what a consumer's step needs beyond the byte -- a scale, a coefficient in its operand's
+format, an address in its own layout -- the consumer forms where it expands the byte.
 
 THE LANES, every warp its 4 lists `w + 8 j`, 8 lanes a list, lane `s` the list's words `2s` and `2s + 1`. Each lane
 counts its tokens before the head's eight bounds and its total (a popcount of each word under a mask); a segmented
@@ -235,9 +206,9 @@ lane `s` posts boundary `s` to the CTA's table past the list's entries in the he
 through the head -- and each lane's tokens before its own, its first place. After the walks a barrier, and warp `q`
 writes list group `q`'s columns `k0 ..` (a later head's own columns overwrite the ones past this head's rows; the last
 head's entries through it fill every column past its eight), lane `c` column `k0 + c` in prefix form down the lists and
-its sum, the group's total (`bounds_out`). On the write side a walk over the lane's entries
-takes the list maxima, and their exponents. A walk then writes the lane's entries at consecutive places from its
-first, each's slot `pre + popc(union word & below)` from the lane's two union words and their ranks before.
+its sum, the group's total (`bounds_out`). A walk then writes the lane's entries at consecutive places from its
+first, each's slot `pre + popc(union word & below)` from the lane's two union words and their ranks before, beside its
+byte from the window.
 
 <a id="access-table"></a>
 
@@ -250,7 +221,6 @@ first, each's slot `pre + popc(union word & below)` from the lane's two union wo
 | union words | the vote: lane 0, a word a list group | the ranks: lane `i` word `i % 16` of each | 1.0 (a broadcast pair) |
 | bounds | the ranks: the lane holding a 64th slot | the lists: every lane, seven words | broadcast, 1.0 |
 | table, prefix | the lists: a lane a list's boundary (u16); warp `q`'s sums (u16) | warp `q`: a lane a column of its list group's rows | 1.0 / the column walk's u16 at 16-byte stride, 2-way |
-| columns | a lane a token | the walks: a float2 at a token | random, ~1.5 |
 
 <a id="phase-ledger"></a>
 
@@ -264,9 +234,9 @@ moves no output (`tests/integration/test_facts_pass.py`).
 
 ## `FactsParams` — the operand block, by value
 
-Per side and level a `RowView`, per write level and for the gain and value scale a `ColumnView`, the outputs (a
-`ListsOut` a side), the depth, the padded widths, row and group bases, each side's list level and list group, the read
-pool row's bytes, the window's unit codes, per side the digit mask's words. Under a kilobyte and a half. No logical
+Per side and level a `RowView`, per write level and for the value scale a `ColumnView`, the outputs (a
+`ListsOut` a side), the depth, the padded widths, row and group bases, each side's list level and list group, the
+window's unit codes, per side the digit mask's words. Under a kilobyte and a half. No logical
 width is in it: `b_l` reaches the mask at the seam and bounds nothing else — the host entry refuses a mask that names a
 digit past a level's rows.
 
@@ -277,20 +247,19 @@ digit past a level's rows.
 THE LINE (ruled 2026-10-12, restated 2026-10-13): the whole pass at <= 1.15x its required bytes' DRAM floor on the
 lab's `facts_block` cell (rows `[4 level-sides, 65,536, 4, 256]` u8, 268 MB, k live digits a token-head; the write side
 lists level 0 and the read side level 1, the other level of each voted). Its required bytes -- the rows, the columns,
-the words and tile unions, every list's entries, the boundaries' prefix rows, the groups' totals, union and extent, the
-exponents, the factor products and
-gains -- are 398 µs at k 4 and 455 µs at k 16 at the lab's flat read (854 GB/s); the line was set at 516 and 665 µs
-from the colored lists' larger outputs and stands.
+the words and tile unions, every list's entries, the boundaries' prefix rows, the groups' totals, union and extent and
+the factor products -- were 398 µs at k 4 and 455 µs at k 16 at the lab's flat read (854 GB/s) when an entry was 8
+bytes and the pass also wrote exponents and gains; the line was set at 516 and 665 µs. The indexer's own bytes and time
+are unmeasured: the readings below are the pass's before it shed them.
 
-MEASURED (the lab `facts_block`, RTX 3080 Ti at its boost clock, medians, 2026-10-14):
+MEASURED, the 8-byte-entry pass (the lab `facts_block`, RTX 3080 Ti at its boost clock, medians, 2026-10-14):
 
 | | k 4 | k 16 |
 |---|---|---|
 | the pass | 437 µs (1.10x the floor) | 500 µs (1.10x) |
 | phase share: load, vote, ranks, lists | 0.54, 0.23, 0.08, 0.16 | 0.43, 0.22, 0.07, 0.27 |
 
-Everything but the lists is fixed a unit; the lists' walks run each warp's longest lane (a write unit walks twice, its
-maxima then its entries).
+Everything but the lists is fixed a unit; the lists' walks run each warp's longest lane.
 
 MEASURED, the list groups (sm_86, 2026-11-06; `bench_facts_block.py --read-list-group 32 16`, the two timed launch by
 launch): the read side at 32 runs 442.3 / 502.7 µs (k 4 / k 16, 1.11x / 1.10x), at 16 445.3 / 504.7 µs (1.10x of its

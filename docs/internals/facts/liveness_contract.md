@@ -40,7 +40,7 @@ the maximum of what the pass already holds when it holds it.
 
 ## <a id="max"></a>The digits: each against its row's max
 
-Python's statement of the digits is `rola.routing.quant` (`AMP_LEVELS`, `DENSE_FLOOR`, the `SPARSE` and `DENSE` forms);
+Python's statement of the digits is `rola.routing.quant` (`AMP_LEVELS`, the `ROWS` form);
 `tests/unit/test_api_contract.py` holds the two to the same constants.
 
 Every level's row is stored unit-max: u8 digits with the row's largest at 255 (`kRowMaxDigit`), the row's max beside
@@ -58,27 +58,14 @@ asynchronous quanta whose source is 16-byte aligned and whose 32-byte run is one
 ([`facts.md`](facts.md#load)). A level whose width is not a multiple of 16 is copied whole
 up to its last digit and no further (a partial quantum zero-fills the rest).
 
-## <a id="floor"></a>The dense floor
+## <a id="digits"></a>The digits, dense or sparse
 
-A DENSE level is one whose activation has no exact zeros (the bundle's `sparse` flag unset: softmax, not entmax),
-and it is never zero (ruled 2026-10-04): no coefficient of a live row is below `kDenseFloor` = 2^-13 of the row max,
-the numerically safe minimum (f16's least normal is 2^-14). A dense level's rows, on either side, are stored f16 at
-the row max with the floor already taken — the producer writes `max(w / max, 2^-13)` — so its consumers read them as
-they are (the write side ruled 2026-10-04, the read side 2026-10-07: the readout loads the read rows into its MMAs
-unconverted). The floor applies only in a live row (scale > 0): a dead row stays zero everywhere, including where a
-consumer divides the row by its own sum (the decay's shares). A sparse level's zero is exact and stays 0, and its rows are u8 on both
-sides.
-
-What it buys: the fp16 fold scales each write list by one power of two, and the readout publishes each 64-leaf block
-at one; both keep 11 bits a term but only a bounded range below their largest. With the floor, the list's strongest
-token writes every leaf of its list at no less than 2^-13 of the list's top, and a reader weights the leaves of a
-block within 2^13 of each other, so what fp16 loses below its range is a small fraction of every leaf it touches
-whatever the gain spread. The cost to the model: a peaked row's mass grows by at most 255 × 2^-13 ≈ 3% of its max,
-inside the uncertainty its own zero digits already carry.
-
-Every consumer reads it the same way: a dense level's f16 rows as stored, the floor taken, on either side -- the
-`DENSE` form's `dequantize`, the decode fold, the fold and readout, the intra and the oracle's references. Numerical safety asks for one dense level a side (the alternating split, or fully dense);
-sparse-sparse routing has no floor to lean on and is declared at the caller's risk.
+Every level's rows are u8 against the row max (`kRowMaxDigit` = 255), on either side, and a zero digit is an exact
+zero: there is no floor under a row ([`docs/CONSTITUTION.md` R23](../../CONSTITUTION.md#r23)). A DENSE level is one
+whose activation has no exact zeros (the bundle's `sparse` flag unset: softmax, not entmax); it differs from a sparse
+one only in that its support is not worded -- the facts pass neither reads nor writes its rows, and its bits are its
+width mask over the live tokens. A dead row (scale 0) is zero everywhere, including where a consumer divides the row by
+its own sum (the decay's shares).
 
 <a id="layout"></a>
 
@@ -145,9 +132,9 @@ the words that exist. `union_address` in the header is the table's address from 
 extents, which `LivenessLayout::union_index` and a kernel with compile-time extents both
 call; `tile_unions` in the Python module is the model, gated against the per-token bits.
 
-The intra's slab gate is the consumer (`intra/ampere/intra_kernel.md#slab-gate`): a CTA reads 40
+An intra's slab gate is the consumer. The ampere family's (the branch `ampere`) read 40
 bytes a lane of it where reading the words themselves took a 64-byte run from each of 512
-rows 8 KB apart — measured at `L = 64K`, 10% of the intra's warp cycles against 3.5%.
+rows 8 KB apart — measured there at `L = 64K`, 10% of that intra's warp cycles against 3.5%.
 
 <a id="folds"></a>
 

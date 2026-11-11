@@ -169,10 +169,8 @@ RouteFactors.from_rows(topology, amp_read, amp_write, scale_read, scale_write, s
 ```
 
 **The stored form is the internal quantized format** (ruled 2026-09-26). Each level's rows are
-UNIT-MAX -- u8 with the row's largest digit at 255, except a DENSE level's rows, f16 at 1 (the write side ruled
-2026-10-04, the read side 2026-10-07); a sparse level's zero digit is dead; a dense level is never zero -- its rows are
-stored with the floor taken, 2^-13 of the row's max (the dense floor, ruled 2026-10-03/04;
-`docs/internals/facts/liveness_contract.md#floor`); an all-zero row is a dead token at that level -- with the row's maximum
+UNIT-MAX -- u8 with the row's largest digit at 255, at every level, dense or sparse (CONSTITUTION R17, R23); a zero
+digit is an exact zero, with no floor under it; an all-zero row is a dead token at that level -- with the row's maximum
 carried beside them as its fp32 scale (`amp_read`/`scale_read`, `amp_write`/`scale_write`, one
 tensor per level, `[B, T, H, width]` read and `[B, T, H_w, width]` write, starting on and stepping by 32 bytes: the
 row alignment law, `docs/internals/facts/liveness_contract.md#alignment`). Every level is stored as rows, once (ruled 2026-10-01: the
@@ -183,7 +181,7 @@ has exact zeros, and `from_levels`/`from_rows` default to that rule -- and read 
 no consumer derives it from the activations. A flag cannot disagree with the rows: a sparse-flagged
 level with no zeros costs its words, and a dense-flagged level with zeros is read whole.
 EVERY SIDE HAS A DENSE LEVEL: a `sparse` that flags every level of a side is refused -- a side's dense levels are
-the carry's operand on that side and carry the floor (`docs/internals/engine/rules.md#carve`).
+a carry's operand rows on that side (`docs/internals/engine/rules.md#carve`).
 <a id="grouped-queries"></a>
 GROUPED QUERIES: the read side is the `H` query heads' (`heads`), the write side the `H_w` write heads' (`write_heads`):
 its rows and scales (`[B, T, H_w]`), and with it the values, the decay dials and the state. `H_w` divides
@@ -242,10 +240,9 @@ tensors, which `RouteFactors.tensors()` enumerates for autograd.
 
 A level is numbers in a representation, not a distribution (ruled 2026-11-07,
 [`CONSTITUTION.md` R23](CONSTITUTION.md#r23)). `q` (read), `k` (write) and `v` are each a
-SCALED BLOCK: unit-max rows in a FORM that states its storage type, its signedness and its
-floor -- u8 nonnegative at 255 (a sparse routing level, a zero dead), f16 nonnegative at 1
-with the dense floor taken (a dense routing level), f16 signed in `[-1, 1]` (the values) --
-with the row's max as its fp32 scale. The forms are `rola.routing.quant`'s `Form` (`SPARSE`, `DENSE`, `SIGNED`),
+SCALED BLOCK: unit-max rows in a FORM that states its storage type and its signedness -- u8
+nonnegative at 255 (a routing level, dense or sparse, a zero a zero), bf16 signed in `[-1, 1]` (the values) --
+with the row's max as its fp32 scale. The forms are `rola.routing.quant`'s `Form` (`ROWS`, `VALUES`),
 quantizing into and dequantizing out of each written once on it, and the factory refuses an entry its form does not
 hold -- a negative or non-finite routing level, a non-finite value -- with one host read a call. A side's shared scale is the product of its levels'
 scales, STORED FACTORED: each level's scale is written by the producer job that quantizes that
@@ -292,7 +289,7 @@ RULED 2026-09-29: the producer is a DECLARED CONFIGURATION. A `Routing` is data 
 the projection bias -- and the layer compiles it once into its producer plan and owns every weight it implies: the
 packed per-head routing projection `route_W`, its bias, the write gain's bias, `v_proj` and `o_proj`. One producer
 call (`rola.ops.produce.produce`) turns a stretch of tokens into the bundle -- the projection, the exact
-entmax/softmax solves, the write gain, the unit-max rows and the f16 values -- and on CUDA with no gradient
+entmax/softmax solves, the write gain, the unit-max rows and the bf16 values -- and on CUDA with no gradient
 that call is ONE LAUNCH of the fused producer kernel, the bundle's rows and scales views of the planes it writes --
 a kernel not built on this line, so the call raises `rola.ops._ext.KernelNotBuilt` there
 ([`open-work.md`](open-work.md)). The torch composition behind the same call is the reference: fp64, the host,
@@ -332,9 +329,9 @@ uniform(depth, level)                     # `depth` levels spelled the same way
 because a broadcast is a rule the reader has to know before they can read the widths off
 the call.
 
-**Every level, every head and the values are one launch.** The plan compiles into the
-kernel's job table -- a job per head's solve and per group of value heads -- so a model pays
-one launch for the whole topology, whatever its levels' operators, alphas and widths.
+**Every level, every head and the values are one launch by design** -- a model pays one launch for the whole
+topology, whatever its levels' operators, alphas and widths. That kernel is not built on this line: the no-grad
+CUDA call raises `rola.ops._ext.KernelNotBuilt`, and the torch composition behind the same call serves fp64, the host and a gradient.
 
 <a id="projection-weight"></a>**The projection reads a laid-out copy of `route_W` when no gradient flows.** The GEMM's
 operands are bf16 and the kernel reads each column's hidden run contiguous (`hidden_contiguous`), so an inference
@@ -454,7 +451,7 @@ SCALAR, not a tally — a caller that needs how many times an arm ran spies on t
 `v_proj` and `o_proj` run as bf16 GEMMs (their weights read through the inference copy when no
 gradient flows, §2.3), and the projection
 is written to the value format at the layer: `Values.from_projection(v)` (`rola/values.py`)
-holds each token's values `v` in f16 against its largest channel (at 1); that magnitude is
+holds each token's values `v` in bf16 against its largest channel (at 1); that magnitude is
 the token's fp32 `scale`. The op takes the bundle, not the tensor. The plane and the scale are
 what the kernels read; `Values.dequantized()` is
 the fp32 view a consumer still computing on floating values takes at its seam, with the

@@ -76,11 +76,8 @@ class DecodePlan:
     write: tuple[torch.Tensor, ...]
     read_scale: tuple[torch.Tensor, ...]
     write_scale: tuple[torch.Tensor, ...]
-    #: Per side, the dense levels as a bitmask: their zero digits, in a live row, read as the floor
-    #: (docs/internals/facts/liveness_contract.md#floor).
-    floor: tuple[int, int]
     dials: torch.Tensor | None
-    #: The value, `[B, 1, H, d_v]` f16 against the token's largest channel, and its fp32 `[B, 1, H]` scale.
+    #: The value, `[B, 1, H, d_v]` bf16 against the token's largest channel, and its fp32 `[B, 1, H]` scale.
     v: torch.Tensor
     v_scale: torch.Tensor
     state_plane: torch.Tensor

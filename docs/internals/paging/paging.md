@@ -28,20 +28,24 @@ the resolve is one ``int32`` load per atom. It resolves
 ``slot = page_tbl ? page_tbl[atom] : atom``, which makes the DENSE plane the same kernel
 with a null table (the slot IS the atom), and paging ONE base translation rather than a
 second path. ``slot < 0`` -- an atom the plan committed nothing for -- is skipped at both
-ends, exactly and not defensively, because the plan's bitmap is the write set exactly
-(``../facts/facts.md``). The decode step is today's reader
+ends, exactly and not defensively, because the plan's bitmap holds the whole write set:
+the write set itself where every write level is sparse, and a superset where a dense
+level's digit rounded to zero (the pass words a dense level by its width;
+``../facts/facts.md``). The decode step is today's reader
 ([`../decode/decode.md#paged-address`](../decode/decode.md#paged-address)); the rebuilt
 carry has no state I/O yet.
 
 ## Allocation: Planned-Exact-Async
 
-The pool is sized EXACTLY, not grown: the popcount of the atom condensation is the
-number of atoms this call will touch, so the arena knows its own footprint before the
+The pool is sized from the plan, not grown: the popcount of the atom condensation is the
+number of atoms this call may touch, so the arena knows its own footprint before the
 kernel launches, and there is nothing to discover. The condensation comes from the
 call's own arm and never from a second derivation — the facts pass at `T > 1`
 ([`../facts/facts.md`](../facts/facts.md)), the decode step's own published `atom_bits` at `T = 1`
-([`decode/decode_api.md` §4](../decode/decode_api.md#the-verdict)) — and both are EXACT
-rather than a bound, which is what makes `resident == realized` a fact instead of a hope.
+([`decode/decode_api.md` §4](../decode/decode_api.md#the-verdict)) — and the step's
+is exact, as the pass's is where every write level is sparse: there `resident == realized`
+is a fact. A dense write level makes the pass's a bound: an atom reached only through a
+dense digit that rounded to zero is resident and unwritten.
 
 Allocation and zero-init issue on a SIDE STREAM as soon as the facts land, and the
 launch waits on ONE event. That is the whole of the asynchrony: no polling, no

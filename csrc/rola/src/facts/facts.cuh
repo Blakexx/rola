@@ -1,5 +1,5 @@
 // csrc/rola/src/facts/facts.cuh -- THE FACTS PASS's constants and operand block: both sides' class-1 words
-// (`liveness_contract.cuh`), the window's columns, and each side's lists in the carry's final form, a CTA a unit.
+// (`liveness_contract.cuh`), the window's columns, and each side's lists, an entry a slot and a byte, a CTA a unit.
 // see docs/internals/facts/facts.md
 #pragma once
 
@@ -49,21 +49,11 @@ __host__ __device__ constexpr int unit_group(uint32_t c) { return (c >> 5) & 7; 
 
 __host__ __device__ constexpr int unit_head(uint32_t c) { return (c >> 8) & 15; }
 
-//: THE LIST EXPONENTS' FLOOR, the smallest normal fp32. -- see docs/internals/facts/facts.md#lists
-constexpr float kListFloor = 1.17549435e-38f;
-
-//: THE LISTS OUT: a boundary every 64th union slot, a gap slot's token, a pool row's swizzled chunk, and a write
-//: entry's coefficients at 2^(kCoefTop - E) with E floored at `kUnitMin`. -- see docs/internals/facts/facts.md#lists-out
+//: THE LISTS OUT: a boundary every 64th union slot, and a gap slot's token. -- see docs/internals/facts/facts.md#lists-out
 constexpr int kListBound = 64;
 constexpr uint16_t kGap = 0x8000;
-constexpr int kCoefTop = 4;
-constexpr int kUnitMin = kCoefTop - 127;
 
-__host__ __device__ __forceinline__ constexpr uint32_t pool_chunk(int row, uint32_t s, uint32_t k) {
-  return row == 128 ? k ^ (s & 7u) : (k & ~3u) | ((k ^ (s >> 1)) & 3u);
-}
-
-//: THE STEP: a union's extent is its size in whole steps of the carry's 8 entries.
+//: THE STEP: a union's extent is its size in whole steps of 8 entries.
 constexpr int kStep = 8;
 
 //: A SIDE'S LIST GROUP: a union's digits, a unit's group or each half. -- see docs/internals/facts/facts.md#list-groups
@@ -73,25 +63,22 @@ static_assert(kUnitGroups == 2, "a list unit's groups are its liveness group or 
 
 enum FactsPhase : int { kPhaseLoad, kPhaseVote, kPhaseRanks, kPhaseLists, kFactsPhases };
 
-//: THE CTA'S SHARED MEMORY, by offset, a pass of `G` list groups a unit: the window, the bit tile, the columns, each
-//: group's union words and bounds, the warps' maxima, a head's boundaries. -- see docs/internals/facts/facts.md#shared-memory
+//: THE CTA'S SHARED MEMORY, by offset, a pass of `G` list groups a unit: the window, the bit tile, each group's union
+//: words and bounds, a head's boundaries. -- see docs/internals/facts/facts.md#shared-memory
 template <int W, int G>
 struct FactsSmemAt {
   static constexpr int kWin = 0;
   static constexpr int kTile = kWin + W * kGroupDigits;
-  static constexpr int kCols = kTile + kGroupDigits * (W / kTokBits) * 4;
-  static constexpr int kUword = kCols + W * 8;
+  static constexpr int kUword = kTile + kGroupDigits * (W / kTokBits) * 4;
   static constexpr int kBound = kUword + G * (W / kTokBits) * 4;
-  static constexpr int kWmax = kBound + G * (W / kListBound) * 4;
-  static constexpr int kTable = kWmax + kFactsWarps * 8;
+  static constexpr int kTable = kBound + G * (W / kListBound) * 4;
   static constexpr int kBytes = kTable + kGroupDigits * (W / kListBound + 1) * 2;
 };
 
 template <int W, int G>
 constexpr bool tenants_aligned() {
   using S = FactsSmemAt<W, G>;
-  return S::kTile % 16 == 0 && S::kCols % 16 == 0 && S::kUword % 16 == 0 && S::kWmax % 8 == 0
-         && S::kTable % 16 == 0;
+  return S::kTile % 16 == 0 && S::kUword % 16 == 0 && S::kTable % 16 == 0;
 }
 
 //: THE PASS'S PLAN at build `B`: its window and the counts the stages map onto it (a warp's 32-token blocks, a
@@ -127,10 +114,11 @@ struct FactsPlan {
                 "each tenant on its access's alignment");
 };
 
-//: A SIDE'S LISTS OUT at its list level: entries, prefix rows (mod 2^16), exact totals, the union by slot, its extent.
+//: A SIDE'S LISTS OUT at its list level: entries (`slot | byte << 16`), prefix rows (mod 2^16), exact totals, the union
+//: by slot, its extent.
 //: -- see docs/internals/facts/facts_api.md#rola-facts-forward
 struct ListsOut {
-  uint2* entries;
+  uint32_t* entries;
   uint16_t* pre;
   int32_t* totals;
   uint16_t* union_tok;
@@ -156,14 +144,10 @@ struct FactsParams {
   ColumnView v_scale;
   uint32_t* words;
   uint32_t* unions;
-  uint32_t* list_exp;  // [BH, windows, B_list], a digit's (K_m, K_v) int16 pair
-  float2* fm;  // [BH, L], a token's (F, m): the fold's factor products (facts.md#factor-products)
-  uint32_t*
-      gains16;  // [BH, L], a token's (m, F) as an f16 pair at its window's scales (facts.md#gains)
-  int16_t* gains_exp;  // [BH, windows, 2], those scales' exponents
+  float2* fm;  // [BH, L], a token's (F, m): the factor products (facts.md#factor-products)
   ListsOut lists[kSides];
   long long* ledger;
-  int D, H, g, L, token_words, windows, rows_total, groups, tiles, per_window, read_row;
+  int D, H, g, L, token_words, windows, rows_total, groups, tiles, per_window;
   int B[kMaxLevels];
   int row_base[kMaxLevels];
   int group_base[kMaxLevels];
