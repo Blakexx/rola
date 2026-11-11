@@ -27,9 +27,11 @@ whose output is a few intra terms). With no rounding on the model is the truth e
 ## <a id="sums"></a>The cross-box sum
 
 WHY IT IS MODELLED. The readout's output is a sum over boxes that different CTAs hold, and
-[precision.md](../../architecture/precision.md) states that sum in fp32. A float cannot be summed between CTAs before
-it reaches global memory -- the instruction set's reductions into another CTA's shared memory are integer -- so every
-box's partial would cross to global memory by itself. An integer partial can be summed in a cluster first. The model
+[precision.md](../../architecture/precision.md) states that sum in fp32. On sm_90 the instruction set's REDUCTIONS into another CTA's
+shared memory are integer (the toolkit's PTX wrappers list add, min and max on integers there, and a float add to
+global memory only): several CTAs cannot add fp32 partials into one panel. They can each add an integer partial
+into it. (The other way to sum in a cluster keeps fp32 -- each CTA stores into its own slot and one CTA adds the
+slots; [`carry_floor`](carry_floor.md) counts both.) The model
 asks what an integer sum costs in accuracy, under each way of choosing its scale, before any kernel takes one: each
 box's fp32 partial summed in fp32, as 32- or 64-bit integers at a scale from a bound, or normalized by its cluster's
 den (the tool's docstring states each form). A box is `--box FIRST SECOND` digits a level; a cluster is the boxes
@@ -67,9 +69,9 @@ THE SPIKE (the first 16 tokens at 2^B over the rest; the 64-bit forms, the worst
 The 64-bit normalized sum under value scales rising 2^32, 2^40 and 2^48 (flagship-alt-k4-L4096): 0.00002%, 0.0002%,
 0.03%.
 
-WHAT IT SHOWS. On nl64k-alt-k4 as drawn the 64-bit sums add less than the fp32 sum's own error, and the 32-bit sums at
-a cluster's scale or normalized add one to three times it -- all far inside the family's 0.2%; a 32-bit call-wide or
-coarse scale is outside it. Every 32-bit form has a stress that takes it past 0.2%. Among the 64-bit forms the coarse
+WHAT IT SHOWS. On nl64k-alt-k4 as drawn the 64-bit sums add less than the fp32 sum's own error; the 32-bit sums at
+the cluster's state scale and normalized add about two and three times it, and at the cluster's planned bound about
+a hundred times it (0.007%) -- all inside the family's 0.2%; a 32-bit call-wide or coarse scale is outside it. Every 32-bit form has a stress that takes it past 0.2%. Among the 64-bit forms the coarse
 bound gives out at a spike near 2^40 where later tokens' reads miss the spike's leaves (none in the alternating cell,
 whose every reader meets every writer); the cluster's state scale holds to a spike or a leaf spread near 2^48; the
 normalized sum holds everywhere but a value-scale spread near 2^48. A token of nl64k-alt-k4 reads 3.66 of its

@@ -39,9 +39,10 @@ warpgroup under this hand-over takes a tile in 290 cycles, where one wgmma with 
 pipe's own time 32 ([`wgmma_rate`](wgmma_rate.md)). What the other 190 cycles are -- the full and empty barriers'
 polled waits, the descriptor formed a tile, the rest of the loop -- no row here separates.
 
-BESIDE IT: [`byte_expand`](byte_expand.md) reads the expansion alone at 202 cycles a tile a warp, in a loop that
-differs from this producer's (it stores its bytes itself, where these arrive by a bulk copy). So most of a producer's
-773 cycles here is not the expansion; what it is, among the barrier waits, the warp's synchronization and the loads'
-issue, no row separates.
+BESIDE IT: [`byte_expand`](byte_expand.md) reads the expansion alone, in a loop that differs from this producer's
+(it stores its bytes itself, where these arrive by a bulk copy): 210 cycles a tile for a lone warp with a lane's two
+tokens neighbours, as this producer takes them, and 67 with a warp's accesses on eight bank groups. So most of a
+producer's 773 cycles here is not the expansion, and its lane layout is the conflicting one; what the rest is, among
+the barrier waits, the warp's synchronization and the loads' issue, no row separates.
 
 Record: `measure/lab/results/row_ring/sm_90a.json`; its counters are the written exception (no profiler on that box).

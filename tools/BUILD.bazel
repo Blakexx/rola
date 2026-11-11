@@ -76,6 +76,7 @@ cc_binary(
 ) for name in [
     "arith_model",
     "bank_model",
+    "carry_floor",
     "gen_shards",
     "header_selfcheck",
     "kernel_targets",
