@@ -19,14 +19,17 @@ its reason):
   a value width under 64 runs wgmma's 64 rows (the idle half);
 - the readout's operand: its (token, leaf) coefficients expanded into shared memory, at the SM's shared access rate
   (`byte_expand`, its bank-spread form);
-- the output's sum, in a cluster by one of two forms (`--sum`), then one fp32 drain a (token, cluster read) to global
-  memory (`bulk_drain`, a CTA's own sum to one sum for every CTA); with no cluster (`--cluster` all ones) every box
-  drains. `s64`: a box's partial a (token, box read) added as 64-bit integers into its cluster's collector at the
-  shared rate, the conversion a value and the state's scan a window at the SM's issue rate. `slots`: a box's fp32
-  partial stored into its OWN slot of the collector's shared memory, the collector loading a token's slots and
-  adding them in registers -- the fp32 sum itself, no scale: the bytes in, the same bytes read back, an add a value;
+- the output's sum: by default (`--sum none`) every box drains its own partial to global memory (`bulk_drain`, a
+  CTA's own sum to one sum for every CTA), and a cluster shares the fold's value loads only. Summed in a cluster
+  first by one of two forms, it is then one fp32 drain a (token, cluster read). Both forms are MEASURED
+  (`cluster_sum`, eight collectors a cluster, its rows at two round sizes split into a cost a round and a cost a
+  token), and neither pays: `slots`, the fp32 sum the format states -- a box's partial staged and sent by a bulk copy into its own slot of a collector, which adds a token's slots; `s64` -- the partial
+  as 64-bit integers by a bulk reduction into the collector's panel, outside the fp32 the format states, counted for
+  comparison. A cluster's CTAs hand over once a ROUND of `--round` partials a CTA, and the round's cost is its own
+  term (beyond 64 partials a round it is the line's, UNMEASURED);
 - the fold's operands: its (token, leaf) coefficients into shared memory, and its values loaded a (token, list) of
-  each cluster it writes into (one load serves the cluster's boxes; with no cluster, each box loads);
+  each cluster it writes into: ESTIMATED from one request a cluster (a load landed in every CTA of it costing what
+  one CTA's does) to one a box (the cluster sharing nothing) -- no lab has read a load landed across a cluster;
 - the state in and out, a call (24-bit state, at a memory bandwidth).
 
 NOT COUNTED: the hand-over between producer and consumer warps, the den's readout, the divergent carve's register
@@ -45,18 +48,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 RESULTS = ROOT / "measure" / "lab" / "results"
 
 #: wgmma's rows: the channels a warpgroup's MMA carries
 MMA_ROWS = 64
 #: ESTIMATED, each with its reason: nothing on an H100 has measured these
 ESTIMATES = {
-    "issue": (4.0, "warp-instructions a cycle an SM: one a scheduler, four schedulers"),
-    "convert": (2.0, "instructions a value: fp32 to a 64-bit integer at a scale"),
-    "scan": (140.0, "instructions a thread a box a window (a warpgroup's 4 warps): the state's largest magnitude"),
-    "window": (1024.0, "tokens a window (the hopper row's provisional W)"),
-    "load_low": (5.0, "cycles a 128-byte load request: the ampere fill's floor"),
-    "load_high": (10.0, "cycles a 128-byte load request: twice the ampere fill's floor"),
+    "load_low": (5.0, "cycles a 128-byte load request through an SM's load path: no card of this line has measured it"),
+    "load_high": (10.0, "cycles a 128-byte load request, twice the low guess"),
     "clock": (1.8e9, "SM cycles a second: inferred from the card's published tensor rate, not measured"),
     "memory_low": (2.0e12, "bytes a second across memory, the low guess"),
     "memory_high": (3.0e12, "bytes a second across memory, the high guess"),
@@ -90,7 +90,21 @@ def measured() -> dict[str, tuple[float, str]]:
                       "bulk_drain / one bulk add a panel, each CTA its own sum (a byte)"),
         "drain_shared": (median("bulk_drain", "one bulk add a panel, one sum for every CTA") / 256.0,
                          "bulk_drain / one bulk add a panel, one sum for every CTA (a byte)"),
+        **cluster_rates(),
     }
+
+
+def cluster_rates() -> dict[str, tuple[float, str]]:
+    """A cluster form's two costs from `cluster_sum`'s rows at 16 and at 64 tokens a round, eight collectors: what a
+    round costs a CTA whatever it holds, and what a partial costs a byte (256 a token in the lab)."""
+    out = {}
+    for name, form in (("slots", "fp32 slots by a bulk copy"), ("s64", "64-bit integers by a bulk reduction")):
+        at16, at64 = (median("cluster_sum", f"{form}, eight collectors, rounds of {n} tokens") for n in (16, 64))
+        a_round = (at16 - at64) / (1 / 16 - 1 / 64)
+        where = f"cluster_sum / {form}, eight collectors, rounds of 16 and of 64 tokens"
+        out[f"round_{name}"] = (a_round, f"{where}: the line's cost a round, a CTA")
+        out[f"hop_{name}"] = ((at64 - a_round / 64) / 256.0, f"{where}: the line's cost a token (a byte of partial)")
+    return out
 
 
 @dataclass(frozen=True)
@@ -126,7 +140,8 @@ def side(widths, sparse, k: int, box, cluster) -> Side:
     return Side(leaves, boxes, clusters, (leaves / boxes) / along)
 
 
-def floor(widths, read_sparse, write_sparse, k: int, box, cluster, dv: int, tokens: int, form: str = "s64") -> dict:
+def floor(widths, read_sparse, write_sparse, k: int, box, cluster, dv: int, tokens: int, form: str = "none",
+          round_partials: int = 64) -> dict:
     """The report: each term's SM-cycles a token as `(low, high)`, with the rate it used."""
     rates = measured()
     est = {name: value for name, (value, _) in ESTIMATES.items()}
@@ -137,29 +152,29 @@ def floor(widths, read_sparse, write_sparse, k: int, box, cluster, dv: int, toke
     products, shared = rates["products"][0], rates["shared"][0]
     drain = (rates["drain_own"][0], rates["drain_shared"][0])
     value_requests = math.ceil(dv * 2 / 128)
-    leaves_a_box = math.prod(box)
-    #: every box scans once a window, its four warps each issuing the scan
-    scan = est["scan"] * 4 / est["issue"] * (math.prod(widths) / leaves_a_box) / est["window"]
+    #: `none`: the cluster shares the fold's value loads only, and every box drains its own
+    summed = clustered and form != "none"
+    hop = rates[f"hop_{form}"][0] * dv * 4 if summed else 0.0
+    barriers = read.boxes * rates[f"round_{form}"][0] / round_partials if summed else 0.0
 
     def both(x: float) -> tuple[float, float]:
         return (x, x)
 
-    partial = dv * (8 if form == "s64" else 4)
-    #: `slots`: the collector reads back what the boxes stored, and adds each value once (an instruction a value)
-    passes = 1 if form == "s64" else 2
-    work = (read.boxes * dv * est["convert"] / 32 / est["issue"] + scan if form == "s64"
-            else read.boxes * dv / 32 / est["issue"])
-    drains = read.clusters if clustered else read.boxes
-    loads = (write.clusters if clustered else write.boxes) * write.lists * value_requests
+    drains = read.clusters if summed else read.boxes
+    #: a cluster's value load, one request landed in every CTA of it: ESTIMATED from landing free (one request a
+    #: cluster) to sharing nothing (one a box)
+    loads = ((write.clusters if clustered else write.boxes) * write.lists * value_requests,
+             write.boxes * write.lists * value_requests)
     terms = {
         "tensor, readout": (both(read.leaves * rows / products), "products"),
         "tensor, fold": (both(write.leaves * rows / products), "products"),
         "readout operand, expanded": (both(read.leaves * 2 / shared), "shared"),
-        "sum: partials into the cluster": (both(passes * read.boxes * partial / shared if clustered else 0.0), "shared"),
+        "sum: partials into the cluster": (both(read.boxes * hop), f"hop_{form}" if summed else "no cluster sum"),
+        "sum: the rounds' barriers": (both(barriers), f"round_{form}" if summed else "no cluster sum"),
         "sum: drains to global memory": (tuple(drains * (dv * 4 + 4) * d for d in drain), "drain_own .. drain_shared"),
-        "sum: its instructions": ((0.0, work if clustered else 0.0), "ESTIMATED issue (and convert, scan); hidden .. not"),
         "fold operand, expanded": (both(write.leaves * 2 / shared), "shared"),
-        "fold values, loaded": ((loads * est["load_low"], loads * est["load_high"]), "ESTIMATED load_low .. load_high"),
+        "fold values, loaded": ((loads[0] * est["load_low"], loads[1] * est["load_high"]),
+                                "ESTIMATED load_low a cluster .. load_high a box"),
     }
     total = tuple(sum(v[0][i] for v in terms.values()) for i in (0, 1))
     seconds = tuple(t * tokens / SMS / est["clock"] for t in total)
@@ -188,7 +203,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--k", type=int, required=True, help="a sparse level's live digits a token")
     ap.add_argument("--box", type=int, nargs="+", required=True, help="a box's digits of each level")
     ap.add_argument("--cluster", type=int, nargs="+", required=True, help="a cluster's boxes along each level")
-    ap.add_argument("--sum", choices=("s64", "slots"), default="s64", help="the cluster's sum: integers, or fp32 slots")
+    ap.add_argument("--sum", choices=("none", "slots", "s64"), default="none",
+                    help="the cluster's sum: none (every box drains its own; the cluster shares the fold's value "
+                         "loads only), fp32 slots by a bulk copy, or 64-bit integers by a bulk reduction")
+    ap.add_argument("--round", type=int, default=64,
+                    help="the partials a CTA hands over between its barriers (64 is the round the lab read)")
     ap.add_argument("--dv", type=int, default=64)
     ap.add_argument("--tokens", type=int, default=65536)
     ap.add_argument("--json", type=Path)
@@ -202,7 +221,7 @@ def main(argv: list[str]) -> int:
         if width % b or (width // b) % c:
             raise SystemExit(f"carry_floor: a level of {width} digits is not whole boxes of {b} in whole clusters of {c}")
 
-    report = floor(a.widths, a.read_sparse, a.write_sparse, a.k, a.box, a.cluster, a.dv, a.tokens, a.sum)
+    report = floor(a.widths, a.read_sparse, a.write_sparse, a.k, a.box, a.cluster, a.dv, a.tokens, a.sum, a.round)
     read, write = report["counts"]["read"], report["counts"]["write"]
     print(f"a token reads {read['leaves']:.0f} leaves in {read['boxes']:.1f} boxes of {read['clusters']:.2f} clusters; "
           f"writes {write['leaves']:.0f} in {write['boxes']:.1f} boxes of {write['clusters']:.2f} clusters, "

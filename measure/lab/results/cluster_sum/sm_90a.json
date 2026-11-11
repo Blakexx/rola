@@ -1,0 +1,1089 @@
+{
+ "experiment": "cluster_sum",
+ "question": "a token's output is a sum of partials that the CTAs of a cluster hold; what does a token cost a CTA when the cluster sums them in one CTA's shared memory before one drain to global memory, by each of five forms, beside every CTA draining its own -- and how much of it is the round's fixed cost? And does one collector hold a cluster's partials, or must the collecting be spread?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "every CTA drains its own, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots stored by the warps, one collector, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots stored by the warps, eight collectors, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 atomic adds into one panel, one collector, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 atomic adds into one panel, eight collectors, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots by a bulk copy, one collector, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots by a bulk copy, eight collectors, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integers by a bulk reduction, one collector, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integers by a bulk reduction, eight collectors, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integer adds by the warps, one collector, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integer adds by the warps, eight collectors, rounds of 16 tokens",
+   "ok": true,
+   "detail": "0 of 16384 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the round's barriers alone, no partial, one collector, rounds of 16 tokens",
+   "reason": "an isolation: the arrival forms' barriers with no partial sent or summed"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the round's barriers alone, no partial, eight collectors, rounds of 16 tokens",
+   "reason": "an isolation: the arrival forms' barriers with no partial sent or summed"
+  },
+  {
+   "lab": "check",
+   "variant": "every CTA drains its own, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots stored by the warps, one collector, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots stored by the warps, eight collectors, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 atomic adds into one panel, one collector, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 atomic adds into one panel, eight collectors, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots by a bulk copy, one collector, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "fp32 slots by a bulk copy, eight collectors, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integers by a bulk reduction, one collector, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integers by a bulk reduction, eight collectors, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integer adds by the warps, one collector, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "check",
+   "variant": "64-bit integer adds by the warps, eight collectors, rounds of 64 tokens",
+   "ok": true,
+   "detail": "0 of 65536 sums differ from the exact ones at 16 rounds"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the round's barriers alone, no partial, one collector, rounds of 64 tokens",
+   "reason": "an isolation: the arrival forms' barriers with no partial sent or summed"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the round's barriers alone, no partial, eight collectors, rounds of 64 tokens",
+   "reason": "an isolation: the arrival forms' barriers with no partial sent or summed"
+  }
+ ],
+ "driver": "580.173.02",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "34960275c0ee6c3b512d5ba75b61260cd04c08f5",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T18:07:33+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "every CTA drains its own, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    36.68516,
+    36.694009,
+    36.690607,
+    36.686601,
+    36.685884,
+    36.679445,
+    36.675153
+   ],
+   "median": 36.685884,
+   "min": 36.675153,
+   "max": 36.694009,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots stored by the warps, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    570.783006,
+    570.761123,
+    571.557389,
+    570.746883,
+    570.557067,
+    572.215139,
+    570.702523
+   ],
+   "median": 570.761123,
+   "min": 570.557067,
+   "max": 572.215139,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots stored by the warps, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    568.742723,
+    568.60895,
+    568.861276,
+    568.333068,
+    568.61296,
+    568.793982,
+    568.730679
+   ],
+   "median": 568.730679,
+   "min": 568.333068,
+   "max": 568.861276,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 atomic adds into one panel, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    862.434566,
+    862.319498,
+    862.360135,
+    862.236509,
+    862.508758,
+    862.219126,
+    862.454623
+   ],
+   "median": 862.360135,
+   "min": 862.219126,
+   "max": 862.508758,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 atomic adds into one panel, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    1006.965969,
+    1006.809461,
+    1007.303044,
+    1007.071727,
+    1007.274961,
+    1007.109123,
+    1006.990807
+   ],
+   "median": 1007.071727,
+   "min": 1006.809461,
+   "max": 1007.303044,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots by a bulk copy, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    491.147454,
+    491.104088,
+    491.251769,
+    491.264451,
+    491.110268,
+    491.148132,
+    491.180324
+   ],
+   "median": 491.148132,
+   "min": 491.104088,
+   "max": 491.264451,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots by a bulk copy, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    468.206055,
+    468.326832,
+    468.151896,
+    468.288912,
+    468.175707,
+    468.268889,
+    468.22769
+   ],
+   "median": 468.22769,
+   "min": 468.151896,
+   "max": 468.326832,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integers by a bulk reduction, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    490.342574,
+    490.1977,
+    490.016017,
+    489.896081,
+    490.195174,
+    490.074317,
+    490.200764
+   ],
+   "median": 490.195174,
+   "min": 489.896081,
+   "max": 490.342574,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integers by a bulk reduction, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    480.052287,
+    480.523607,
+    480.000172,
+    479.927571,
+    480.284313,
+    480.1847,
+    479.916594
+   ],
+   "median": 480.052287,
+   "min": 479.916594,
+   "max": 480.523607,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integer adds by the warps, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    584.774163,
+    584.625417,
+    584.508441,
+    584.510614,
+    584.438405,
+    584.627899,
+    584.763219
+   ],
+   "median": 584.625417,
+   "min": 584.438405,
+   "max": 584.774163,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integer adds by the warps, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    605.576408,
+    605.647045,
+    605.602719,
+    605.690337,
+    605.295576,
+    605.392394,
+    605.661439
+   ],
+   "median": 605.602719,
+   "min": 605.295576,
+   "max": 605.690337,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the round's barriers alone, no partial, one collector, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    453.640406,
+    453.843977,
+    453.445501,
+    453.712525,
+    453.661193,
+    453.666936,
+    453.687439
+   ],
+   "median": 453.666936,
+   "min": 453.445501,
+   "max": 453.843977,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the round's barriers alone, no partial, eight collectors, rounds of 16 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    481.09036,
+    481.151909,
+    481.04945,
+    481.008216,
+    481.095278,
+    481.07689,
+    481.049023
+   ],
+   "median": 481.07689,
+   "min": 481.008216,
+   "max": 481.151909,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "every CTA drains its own, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    23.554075,
+    23.552616,
+    23.550665,
+    23.549405,
+    23.547276,
+    23.541966,
+    23.541789
+   ],
+   "median": 23.549405,
+   "min": 23.541789,
+   "max": 23.554075,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots stored by the warps, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    176.679026,
+    176.712771,
+    176.684988,
+    176.693156,
+    176.738092,
+    176.737868,
+    176.690927
+   ],
+   "median": 176.693156,
+   "min": 176.679026,
+   "max": 176.738092,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots stored by the warps, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    155.389207,
+    155.35396,
+    155.360349,
+    155.291249,
+    155.30856,
+    155.250342,
+    155.297145
+   ],
+   "median": 155.30856,
+   "min": 155.250342,
+   "max": 155.389207,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 atomic adds into one panel, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    462.988924,
+    462.994652,
+    462.862502,
+    462.993027,
+    463.026689,
+    463.025869,
+    463.090413
+   ],
+   "median": 462.994652,
+   "min": 462.862502,
+   "max": 463.090413,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 atomic adds into one panel, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    488.432671,
+    488.512153,
+    488.460268,
+    488.371966,
+    488.466051,
+    488.433204,
+    488.444224
+   ],
+   "median": 488.444224,
+   "min": 488.371966,
+   "max": 488.512153,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots by a bulk copy, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    163.7335,
+    163.782859,
+    163.756498,
+    163.70365,
+    163.723899,
+    163.677063,
+    163.754033
+   ],
+   "median": 163.7335,
+   "min": 163.677063,
+   "max": 163.782859,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "fp32 slots by a bulk copy, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    128.611722,
+    128.477917,
+    128.583974,
+    128.626621,
+    128.637599,
+    128.56837,
+    128.629079
+   ],
+   "median": 128.611722,
+   "min": 128.477917,
+   "max": 128.637599,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integers by a bulk reduction, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    271.756823,
+    270.499132,
+    269.835284,
+    270.501804,
+    271.047974,
+    270.691836,
+    269.256502
+   ],
+   "median": 270.501804,
+   "min": 269.256502,
+   "max": 271.756823,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integers by a bulk reduction, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    147.680018,
+    147.732676,
+    147.679315,
+    147.705301,
+    147.722145,
+    147.677065,
+    147.650505
+   ],
+   "median": 147.680018,
+   "min": 147.650505,
+   "max": 147.732676,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integer adds by the warps, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    305.853023,
+    305.808203,
+    305.875786,
+    305.690781,
+    305.791203,
+    305.870126,
+    305.744958
+   ],
+   "median": 305.808203,
+   "min": 305.690781,
+   "max": 305.875786,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "64-bit integer adds by the warps, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    195.251701,
+    195.241764,
+    195.237524,
+    195.212781,
+    195.312637,
+    195.265342,
+    195.197794
+   ],
+   "median": 195.241764,
+   "min": 195.197794,
+   "max": 195.312637,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the round's barriers alone, no partial, one collector, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    113.465688,
+    113.451179,
+    113.412229,
+    113.437026,
+    113.337055,
+    113.399394,
+    113.420205
+   ],
+   "median": 113.420205,
+   "min": 113.337055,
+   "max": 113.465688,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the round's barriers alone, no partial, eight collectors, rounds of 64 tokens",
+   "unit": "cycles a token a CTA",
+   "samples": [
+    120.270017,
+    120.248678,
+    120.222977,
+    120.265048,
+    120.284682,
+    120.232802,
+    120.278104
+   ],
+   "median": 120.265048,
+   "min": 120.222977,
+   "max": 120.284682,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void cluster_sum::sum<(int)6, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 12,
+   "ops": {
+    "NOP": 12,
+    "MEMBAR.ALL.CTA": 12,
+    "MEMBAR.ALL.GPU": 12,
+    "ERRBAR": 12,
+    "CGAERRBAR": 12,
+    "UMOV": 10,
+    "SYNCS.ARRIVE.TRANS64.RED.A1T0": 9,
+    "BRA": 8,
+    "UPRMT": 8,
+    "CCTL.IVALL": 5,
+    "VIADD": 4,
+    "LDC": 3
+   }
+  },
+  "void cluster_sum::sum<(int)6, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 12,
+   "ops": {
+    "MEMBAR.ALL.CTA": 12,
+    "MEMBAR.ALL.GPU": 12,
+    "ERRBAR": 12,
+    "CGAERRBAR": 12,
+    "UMOV": 11,
+    "BRA": 9,
+    "NOP": 9,
+    "UPRMT": 9,
+    "SYNCS.ARRIVE.TRANS64.RED.A1T0": 9,
+    "CCTL.IVALL": 5,
+    "VIADD": 4,
+    "UIADD3": 4
+   }
+  },
+  "void cluster_sum::sum<(int)5, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 120,
+   "ops": {
+    "BRA": 137,
+    "MOV": 97,
+    "IADD3": 96,
+    "LOP3.LUT": 72,
+    "LEA.HI": 70,
+    "VIADD": 68,
+    "IMAD": 67,
+    "SHF.R.U32.HI": 66,
+    "IMAD.X": 64,
+    "SHF.R.S32.HI": 43,
+    "IMAD.MOV.U32": 35,
+    "BSSY": 34
+   }
+  },
+  "void cluster_sum::sum<(int)5, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 78,
+   "ops": {
+    "BRA": 138,
+    "IADD3": 69,
+    "IMAD.MOV.U32": 64,
+    "VIADD": 64,
+    "IMAD.X": 60,
+    "MOV": 38,
+    "BSSY": 34,
+    "IMAD": 34,
+    "BSYNC": 34,
+    "SHF.R.U32.HI": 34,
+    "FMUL": 33,
+    "LDS.64": 33
+   }
+  },
+  "void cluster_sum::sum<(int)4, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 128,
+   "ops": {
+    "LOP3.LUT": 102,
+    "SHF.R.S32.HI": 99,
+    "LEA.HI": 98,
+    "VIADD": 69,
+    "IMAD": 67,
+    "SHF.R.U32.HI": 67,
+    "IMAD.MOV.U32": 38,
+    "LEA": 37,
+    "IMAD.IADD": 34,
+    "FMUL": 33,
+    "STS.64": 33,
+    "IMAD.HI": 32
+   }
+  },
+  "void cluster_sum::sum<(int)4, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 84,
+   "ops": {
+    "VIADD": 46,
+    "IMAD": 34,
+    "SHF.R.U32.HI": 34,
+    "FMUL": 33,
+    "STS.64": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "F2I.S64.TRUNC": 32,
+    "IMAD.MOV.U32": 25,
+    "IADD3": 24,
+    "MEMBAR.ALL.CTA": 14
+   }
+  },
+  "void cluster_sum::sum<(int)3, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 124,
+   "ops": {
+    "SHF.R.S32.HI": 131,
+    "IMAD": 100,
+    "LEA.HI": 98,
+    "VIADD": 69,
+    "LOP3.LUT": 68,
+    "IMAD.IADD": 66,
+    "IMAD.MOV.U32": 37,
+    "LEA": 37,
+    "SHF.R.U32.HI": 34,
+    "STS": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32
+   }
+  },
+  "void cluster_sum::sum<(int)3, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 71,
+   "ops": {
+    "VIADD": 51,
+    "IMAD": 34,
+    "STS": 33,
+    "SHF.R.U32.HI": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "IMAD.MOV.U32": 25,
+    "IADD3": 20,
+    "NOP": 15,
+    "MEMBAR.ALL.CTA": 14,
+    "BRA": 11
+   }
+  },
+  "void cluster_sum::sum<(int)2, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 96,
+   "ops": {
+    "BRA": 233,
+    "IMAD": 99,
+    "MOV": 97,
+    "FADD": 96,
+    "SHF.R.S32.HI": 75,
+    "LEA.HI": 70,
+    "VIADD": 68,
+    "ISETP.EQ.U32.AND": 64,
+    "LD.E": 64,
+    "LOP3.LUT": 40,
+    "IMAD.IADD": 38,
+    "BSSY": 34
+   }
+  },
+  "void cluster_sum::sum<(int)2, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 54,
+   "ops": {
+    "BRA": 234,
+    "FADD": 96,
+    "ISETP.EQ.U32.AND": 64,
+    "LD.E": 64,
+    "MOV": 51,
+    "IMAD.MOV.U32": 45,
+    "VIADD": 45,
+    "BSSY": 34,
+    "IMAD": 34,
+    "BSYNC": 34,
+    "SHF.R.U32.HI": 34,
+    "LDS": 33
+   }
+  },
+  "void cluster_sum::sum<(int)1, (int)1, (int)64>(long long *, float *, int)": {
+   "regs": 121,
+   "ops": {
+    "IMAD": 131,
+    "SHF.R.S32.HI": 75,
+    "LEA.HI": 70,
+    "VIADD": 69,
+    "MOV": 65,
+    "LOP3.LUT": 40,
+    "IMAD.IADD": 38,
+    "IMAD.MOV.U32": 35,
+    "SHF.R.U32.HI": 34,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32
+   }
+  },
+  "void cluster_sum::sum<(int)1, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 72,
+   "ops": {
+    "VIADD": 46,
+    "IMAD": 35,
+    "SHF.R.U32.HI": 34,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "I2FP.F32.S32": 32,
+    "ST.E": 32,
+    "IMAD.MOV.U32": 25,
+    "IADD3": 24,
+    "NOP": 15,
+    "MEMBAR.ALL.CTA": 13,
+    "MEMBAR.ALL.GPU": 13
+   }
+  },
+  "void cluster_sum::sum<(int)0, (int)0, (int)64>(long long *, float *, int)": {
+   "regs": 148,
+   "ops": {
+    "VIADD": 60,
+    "IMAD.MOV.U32": 56,
+    "SHF.R.U32.HI": 34,
+    "LEA": 33,
+    "SHF.R.S32.HI": 33,
+    "IMAD": 33,
+    "IMAD.HI": 32,
+    "LEA.HI.SX32": 32,
+    "IMAD.WIDE.U32": 32,
+    "LEA.HI.X": 32,
+    "I2FP.F32.S32": 32,
+    "REDG.E.ADD.F32.FTZ.RN.STRONG.GPU": 32
+   }
+  },
+  "void cluster_sum::sum<(int)6, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 12,
+   "ops": {
+    "NOP": 12,
+    "MEMBAR.ALL.CTA": 12,
+    "MEMBAR.ALL.GPU": 12,
+    "ERRBAR": 12,
+    "CGAERRBAR": 12,
+    "UMOV": 10,
+    "SYNCS.ARRIVE.TRANS64.RED.A1T0": 9,
+    "BRA": 8,
+    "UPRMT": 8,
+    "CCTL.IVALL": 5,
+    "VIADD": 4,
+    "LDC": 3
+   }
+  },
+  "void cluster_sum::sum<(int)6, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 12,
+   "ops": {
+    "MEMBAR.ALL.CTA": 12,
+    "MEMBAR.ALL.GPU": 12,
+    "ERRBAR": 12,
+    "CGAERRBAR": 12,
+    "UMOV": 11,
+    "BRA": 9,
+    "NOP": 9,
+    "UPRMT": 9,
+    "SYNCS.ARRIVE.TRANS64.RED.A1T0": 9,
+    "CCTL.IVALL": 5,
+    "VIADD": 4,
+    "UIADD3": 4
+   }
+  },
+  "void cluster_sum::sum<(int)5, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 40,
+   "ops": {
+    "BRA": 41,
+    "MOV": 25,
+    "LOP3.LUT": 24,
+    "IADD3": 24,
+    "LEA.HI": 22,
+    "VIADD": 20,
+    "SHF.R.S32.HI": 19,
+    "IMAD": 19,
+    "SHF.R.U32.HI": 17,
+    "IMAD.X": 16,
+    "NOP": 13,
+    "MEMBAR.ALL.CTA": 13
+   }
+  },
+  "void cluster_sum::sum<(int)5, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 34,
+   "ops": {
+    "BRA": 42,
+    "IMAD.MOV.U32": 22,
+    "VIADD": 20,
+    "IADD3": 17,
+    "IMAD.X": 17,
+    "NOP": 15,
+    "MEMBAR.ALL.CTA": 13,
+    "MEMBAR.ALL.GPU": 13,
+    "ERRBAR": 13,
+    "CGAERRBAR": 13,
+    "MOV": 11,
+    "BSSY": 10
+   }
+  },
+  "void cluster_sum::sum<(int)4, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 48,
+   "ops": {
+    "LOP3.LUT": 30,
+    "SHF.R.S32.HI": 27,
+    "LEA.HI": 26,
+    "VIADD": 21,
+    "IMAD": 19,
+    "SHF.R.U32.HI": 18,
+    "MEMBAR.ALL.CTA": 14,
+    "LEA": 13,
+    "IMAD.MOV.U32": 12,
+    "UMOV": 11,
+    "NOP": 11,
+    "MEMBAR.ALL.GPU": 11
+   }
+  },
+  "void cluster_sum::sum<(int)4, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 36,
+   "ops": {
+    "VIADD": 19,
+    "IMAD.MOV.U32": 14,
+    "MEMBAR.ALL.CTA": 14,
+    "NOP": 12,
+    "BRA": 11,
+    "MEMBAR.ALL.GPU": 11,
+    "ERRBAR": 11,
+    "CGAERRBAR": 11,
+    "IMAD": 10,
+    "UMOV": 10,
+    "UPRMT": 10,
+    "SHF.R.U32.HI": 9
+   }
+  },
+  "void cluster_sum::sum<(int)3, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 40,
+   "ops": {
+    "SHF.R.S32.HI": 35,
+    "IMAD": 28,
+    "LEA.HI": 26,
+    "VIADD": 22,
+    "LOP3.LUT": 22,
+    "IMAD.IADD": 18,
+    "MEMBAR.ALL.CTA": 14,
+    "IMAD.MOV.U32": 13,
+    "LEA": 13,
+    "UMOV": 11,
+    "NOP": 11,
+    "MEMBAR.ALL.GPU": 11
+   }
+  },
+  "void cluster_sum::sum<(int)3, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 34,
+   "ops": {
+    "VIADD": 18,
+    "IMAD.MOV.U32": 15,
+    "NOP": 14,
+    "MEMBAR.ALL.CTA": 14,
+    "BRA": 11,
+    "MEMBAR.ALL.GPU": 11,
+    "ERRBAR": 11,
+    "CGAERRBAR": 11,
+    "IMAD": 10,
+    "UMOV": 10,
+    "UPRMT": 10,
+    "STS": 9
+   }
+  },
+  "void cluster_sum::sum<(int)2, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 34,
+   "ops": {
+    "BRA": 65,
+    "SHF.R.S32.HI": 27,
+    "IMAD": 27,
+    "MOV": 25,
+    "FADD": 24,
+    "LEA.HI": 22,
+    "VIADD": 20,
+    "LOP3.LUT": 16,
+    "NOP": 16,
+    "ISETP.EQ.U32.AND": 16,
+    "LD.E": 16,
+    "IMAD.IADD": 14
+   }
+  },
+  "void cluster_sum::sum<(int)2, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 32,
+   "ops": {
+    "BRA": 66,
+    "FADD": 24,
+    "VIADD": 19,
+    "IMAD.MOV.U32": 18,
+    "MOV": 16,
+    "ISETP.EQ.U32.AND": 16,
+    "LD.E": 16,
+    "NOP": 14,
+    "MEMBAR.ALL.CTA": 13,
+    "MEMBAR.ALL.GPU": 13,
+    "ERRBAR": 13,
+    "CGAERRBAR": 13
+   }
+  },
+  "void cluster_sum::sum<(int)1, (int)1, (int)16>(long long *, float *, int)": {
+   "regs": 40,
+   "ops": {
+    "IMAD": 35,
+    "SHF.R.S32.HI": 27,
+    "VIADD": 22,
+    "LEA.HI": 22,
+    "LOP3.LUT": 17,
+    "MOV": 17,
+    "IMAD.IADD": 14,
+    "MEMBAR.ALL.CTA": 13,
+    "MEMBAR.ALL.GPU": 13,
+    "ERRBAR": 13,
+    "CGAERRBAR": 13,
+    "IMAD.MOV.U32": 12
+   }
+  },
+  "void cluster_sum::sum<(int)1, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 32,
+   "ops": {
+    "VIADD": 16,
+    "NOP": 14,
+    "IMAD.MOV.U32": 13,
+    "MEMBAR.ALL.CTA": 13,
+    "MEMBAR.ALL.GPU": 13,
+    "ERRBAR": 13,
+    "CGAERRBAR": 13,
+    "BRA": 10,
+    "IMAD": 10,
+    "UMOV": 10,
+    "UPRMT": 10,
+    "SHF.R.U32.HI": 9
+   }
+  },
+  "void cluster_sum::sum<(int)0, (int)0, (int)16>(long long *, float *, int)": {
+   "regs": 44,
+   "ops": {
+    "VIADD": 17,
+    "IMAD.MOV.U32": 15,
+    "NOP": 14,
+    "LEA": 9,
+    "SHF.R.S32.HI": 9,
+    "SHF.R.U32.HI": 9,
+    "IMAD": 9,
+    "IMAD.HI": 8,
+    "LEA.HI.SX32": 8,
+    "IMAD.WIDE.U32": 8,
+    "LEA.HI.X": 8,
+    "I2FP.F32.S32": 8
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai rented box, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

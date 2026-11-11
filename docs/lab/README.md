@@ -21,4 +21,5 @@ about the machine cites the experiment it rests on ([`docs/KERNEL_STANDARDS.md#s
 | [`row_ring`](row_ring.md) | experiment |
 | [`wgmma_rate`](wgmma_rate.md) | experiment |
 | [`byte_expand`](byte_expand.md) | experiment |
+| [`cluster_sum`](cluster_sum.md) | experiment |
 | [`drain`](drain.md) | experiment |

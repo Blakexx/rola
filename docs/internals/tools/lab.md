@@ -80,6 +80,14 @@ else from the work the tensor-pipe counter counts and the one MMA kind the SASS 
   `regs_down<N>` and `regs_up<N>` (`setmaxnreg`). The lab's step checks read `HGMMA` as they read `HMMA`
   and `IMMA`; a wgmma kernel states `Bench::exempt`, a budgeted one being refused until the hopper counters' model
   names its per-MMA divisor.
+* <a id="cluster"></a>Hopper's clusters (a kernel of them carries `__cluster_dims__`): `cluster_rank`,
+  `cluster_addr` (this CTA's shared address as a mate holds it), `cluster_store_f32` and `cluster_add_f32`
+  (a value stored or added into a mate's shared memory by its thread), `cluster_bulk_copy` and `cluster_bulk_add_u64`
+  (a span of this CTA's shared memory copied, or added as 64-bit integers, into a mate's, its bytes completing the
+  mate's barrier), `cluster_add_u64` (the warps' integer add), `cluster_fence` (a thread's stores and adds into
+  a mate ordered for the cluster), `cluster_arrive` (at a mate's barrier, releasing to the cluster) with
+  `cluster_wait` (acquiring from it) and `cluster_fence_init`,
+  and `cluster_sync` (the cluster's own barrier: before any CTA reaches into a mate, and before any exits).
 * `lab::Bench` — the host runner: `expect(kernel, op, cmp, count)` declares SASS (printed under `--expect`, run by the
   driver before anything is timed), `variant(launch, measure)` warms up and repeats a launch, `record(name, unit,
   samples)` prints a result, `cycles(warps)` and `mean(...)` read the warps' clocks. `--blocks N` holds the grid an experiment launches over `Bench::sms` to N CTAs, so a sanitizer
@@ -153,3 +161,4 @@ a source in `measure/lab/experiments/`. The anchors below are where the sources'
 - <a id="row-ring"></a>[`row_ring`](../../lab/row_ring.md)
 - <a id="wgmma-rate"></a>[`wgmma_rate`](../../lab/wgmma_rate.md)
 - <a id="byte-expand"></a>[`byte_expand`](../../lab/byte_expand.md)
+- <a id="cluster-sum"></a>[`cluster_sum`](../../lab/cluster_sum.md)

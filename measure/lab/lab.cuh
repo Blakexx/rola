@@ -361,6 +361,87 @@ __device__ __forceinline__ void red_add_f32(float* dst, float v) {
   asm volatile("red.global.add.f32 [%0], %1;" : : "l"(dst), "f"(v) : "memory");
 }
 
+// ------------------------------------------------------------------------------------------ hopper clusters
+// a cluster's CTAs reach each other's shared memory; a kernel of them carries `__cluster_dims__`
+// see docs/internals/tools/lab.md#cluster
+
+//: this CTA's rank in its cluster
+__device__ __forceinline__ uint32_t cluster_rank() {
+  uint32_t r;
+  asm volatile("mov.u32 %0, %%cluster_ctarank;" : "=r"(r));
+  return r;
+}
+
+//: the shared address `a` of this CTA, as CTA `rank` of the cluster holds it
+__device__ __forceinline__ uint32_t cluster_addr(uint32_t a, uint32_t rank) {
+  uint32_t r;
+  asm volatile("mapa.shared::cluster.u32 %0, %1, %2;" : "=r"(r) : "r"(a), "r"(rank));
+  return r;
+}
+
+//: one fp32 stored into a cluster-mate's shared memory
+__device__ __forceinline__ void cluster_store_f32(uint32_t a, float v) {
+  asm volatile("st.shared::cluster.f32 [%0], %1;" : : "r"(a), "f"(v) : "memory");
+}
+
+//: one fp32 ADDED into a cluster-mate's shared memory by its thread
+__device__ __forceinline__ void cluster_add_f32(uint32_t a, float v) {
+  asm volatile("red.shared::cluster.add.f32 [%0], %1;" : : "r"(a), "f"(v) : "memory");
+}
+
+//: A BULK COPY INTO A CLUSTER-MATE'S SHARED MEMORY: `bytes` of this CTA's shared memory at `src` to the mate's at
+//: `dst`, asynchronous; the bytes complete the MATE'S barrier `bar` (its arrival states them: `mbar_expect`).
+//: Multiples of 16 bytes
+__device__ __forceinline__ void cluster_bulk_copy(uint32_t dst, uint32_t src, uint32_t bytes, uint32_t bar) {
+  asm volatile("cp.async.bulk.shared::cluster.shared::cta.mbarrier::complete_tx::bytes [%0], [%1], %2, [%3];"
+               :
+               : "r"(dst), "r"(src), "r"(bytes), "r"(bar)
+               : "memory");
+}
+
+//: the same ADDED into the mate's shared memory, 64-bit integer by 64-bit integer
+__device__ __forceinline__ void cluster_bulk_add_u64(uint32_t dst, uint32_t src, uint32_t bytes, uint32_t bar) {
+  asm volatile("cp.reduce.async.bulk.shared::cluster.shared::cta.mbarrier::complete_tx::bytes.add.u64 "
+               "[%0], [%1], %2, [%3];"
+               :
+               : "r"(dst), "r"(src), "r"(bytes), "r"(bar)
+               : "memory");
+}
+
+//: THE CLUSTER'S OWN BARRIER: every thread of every CTA arrives and waits -- before any CTA touches a mate's shared
+//: memory (it may not have started) and before any exits (a mate may still reach in)
+__device__ __forceinline__ void cluster_sync() {
+  asm volatile("barrier.cluster.arrive;" ::: "memory");
+  asm volatile("barrier.cluster.wait;" ::: "memory");
+}
+
+//: an arrival at a cluster-mate's barrier, RELEASING to the cluster: what this CTA wrote into the mate's shared memory
+//: before it is ordered before the mate's wait
+__device__ __forceinline__ void cluster_arrive(uint32_t a) {
+  asm volatile("mbarrier.arrive.release.cluster.shared::cluster.b64 _, [%0];" : : "r"(a) : "memory");
+}
+
+//: this CTA's barrier waited on ACQUIRING from the cluster (polled), the pair of `cluster_arrive`
+__device__ __forceinline__ void cluster_wait(uint32_t a, uint32_t parity) {
+  asm volatile("{\n.reg .pred p;\nLAB_CWAIT_%=:\n"
+               "mbarrier.test_wait.parity.acquire.cluster.shared::cta.b64 p, [%0], %1;\n@!p bra LAB_CWAIT_%=;\n}"
+               :
+               : "r"(a), "r"(parity)
+               : "memory");
+}
+
+//: this thread's stores and adds into a mate's shared memory ordered for the cluster, before the hand-over's barrier
+__device__ __forceinline__ void cluster_fence() { asm volatile("fence.acq_rel.cluster;" ::: "memory"); }
+//: a barrier's initialization made visible to the cluster, before any mate arrives at it
+__device__ __forceinline__ void cluster_fence_init() {
+  asm volatile("fence.mbarrier_init.release.cluster;" ::: "memory");
+}
+
+//: one 64-bit integer added into a cluster-mate's shared memory by its thread (an unsigned add: the same bits)
+__device__ __forceinline__ void cluster_add_u64(uint32_t a, long long v) {
+  asm volatile("red.shared::cluster.add.u64 [%0], %1;" : : "r"(a), "l"(v) : "memory");
+}
+
 // --------------------------------------------------------------------------------------------------- host
 
 //: A KERNEL'S DEMANGLED NAME AS AN EXPECTATION'S PATTERN: `kernel("tax", {3, 17})` matches

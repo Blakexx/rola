@@ -30,21 +30,34 @@ def test_a_sides_counts_are_the_expected_ones():
 
 def test_a_cluster_moves_the_drains_and_the_loads_and_nothing_else():
     none = carry_floor.floor(cluster=(1, 1), **ALT)["terms"]
-    rows = carry_floor.floor(cluster=(16, 1), **ALT)["terms"]
-    columns = carry_floor.floor(cluster=(1, 16), **ALT)["terms"]
+    rows = carry_floor.floor(cluster=(16, 1), form="slots", **ALT)["terms"]
+    columns = carry_floor.floor(cluster=(1, 16), form="slots", **ALT)["terms"]
     for name in ("tensor, readout", "tensor, fold", "readout operand, expanded", "fold operand, expanded"):
         assert none[name] == rows[name] == columns[name]
     drains, loads = "sum: drains to global memory", "fold values, loaded"
     assert rows[drains]["cycles"][0] < columns[drains]["cycles"][0] == pytest.approx(none[drains]["cycles"][0] * 16 / 58.25, rel=0.01)
     assert columns[loads]["cycles"][0] < rows[loads]["cycles"][0] < none[loads]["cycles"][0]
+    #: a cluster's shared load is an estimate from free to worthless: its high end is every box's own load
+    assert columns[loads]["cycles"][1] == rows[loads]["cycles"][1] == none[loads]["cycles"][1]
     assert none["sum: partials into the cluster"]["cycles"] == [0.0, 0.0]
 
 
-def test_the_two_sums_move_the_same_bytes():
-    s64 = carry_floor.floor(cluster=(16, 1), form="s64", **ALT)["terms"]
+def test_the_cluster_forms_read_the_labs_line():
+    hop, rounds = "sum: partials into the cluster", "sum: the rounds' barriers"
     slots = carry_floor.floor(cluster=(16, 1), form="slots", **ALT)["terms"]
-    name = "sum: partials into the cluster"
-    assert s64[name]["cycles"] == pytest.approx(slots[name]["cycles"])
+    s64 = carry_floor.floor(cluster=(16, 1), form="s64", **ALT)["terms"]
+    longer = carry_floor.floor(cluster=(16, 1), form="slots", round_partials=512, **ALT)["terms"]
+    assert slots[hop]["rate"] == "hop_slots" and s64[hop]["cycles"][0] > slots[hop]["cycles"][0] > 0.0
+    assert longer[hop] == slots[hop]
+    assert longer[rounds]["cycles"][0] == pytest.approx(slots[rounds]["cycles"][0] / 8)
+
+
+def test_a_cluster_with_no_sum_shares_the_loads_and_every_box_drains():
+    none = carry_floor.floor(cluster=(1, 1), **ALT)["terms"]
+    shared = carry_floor.floor(cluster=(1, 16), **ALT)["terms"]
+    drains, loads = "sum: drains to global memory", "fold values, loaded"
+    assert shared[drains] == none[drains] and shared["sum: the rounds' barriers"]["cycles"] == [0.0, 0.0]
+    assert shared[loads]["cycles"][0] < none[loads]["cycles"][0]
 
 
 def test_a_missing_record_row_is_refused():

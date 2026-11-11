@@ -27,11 +27,11 @@ whose output is a few intra terms). With no rounding on the model is the truth e
 ## <a id="sums"></a>The cross-box sum
 
 WHY IT IS MODELLED. The readout's output is a sum over boxes that different CTAs hold, and
-[precision.md](../../architecture/precision.md) states that sum in fp32. On sm_90 the instruction set's REDUCTIONS into another CTA's
-shared memory are integer (the toolkit's PTX wrappers list add, min and max on integers there, and a float add to
-global memory only): several CTAs cannot add fp32 partials into one panel. They can each add an integer partial
-into it. (The other way to sum in a cluster keeps fp32 -- each CTA stores into its own slot and one CTA adds the
-slots; [`carry_floor`](carry_floor.md) counts both.) The model
+[precision.md](../../architecture/precision.md) states that sum in fp32. On sm_90 the ASYNCHRONOUS reductions into another
+CTA's shared memory are integer (the toolkit's PTX wrappers list them; its float bulk add goes to global memory
+only), so an integer partial is the one a cluster can sum with no warp's work. The fp32 way to sum in a cluster, a slot a box
+added by one CTA, is [`carry_floor`](carry_floor.md)'s, counted beside this one; the warps' own atomic float add
+there is measured by [`cluster_sum`](../../lab/cluster_sum.md) at eighteen times a store and is no form of either. The model
 asks what an integer sum costs in accuracy, under each way of choosing its scale, before any kernel takes one: each
 box's fp32 partial summed in fp32, as 32- or 64-bit integers at a scale from a bound, or normalized by its cluster's
 den (the tool's docstring states each form). A box is `--box FIRST SECOND` digits a level; a cluster is the boxes
