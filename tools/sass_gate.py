@@ -18,8 +18,9 @@ What it reads, per function of every cubin (every kernel and every outlined devi
   instructions per HMMA -- the static ratio, a ceiling the arm states (issue-bound above it)
   the conversion unit in a step -- F2I/I2F/F2F/MUFU inside an MMA loop: 16 lanes a cycle an SM where the FMA pipe's
                   forms (a magic-constant FFMA, a PRMT) run at 64 (KERNEL_STANDARDS section 29)
-  global memory in a step -- LDG/STG/RED/ATOMG inside an MMA loop: a step's operands are staged ahead by `cp.async`
-                  (LDGSTS, allowed), and a reduction to global memory belongs to a drain outside the steps
+  global memory in a step -- LDG/STG/RED/ATOMG or a bulk copy or reduction out inside an MMA loop: a step's operands
+                  are staged ahead (`cp.async`'s LDGSTS, hopper's bulk copy in: allowed), and a reduction to
+                  global memory belongs to a drain outside the steps
 On a whole binary it also reds a PTX image (closed-world rule 2: cubins only), and on a whole extension every kernel
 the source defines (`tools/kernels.py`) that no cubin carries: a gate that cannot see a kernel has not gated it. An instrument's library (`--instrument`, bazel/defs.bzl's `rola_instrument`)
 carries its own kernels and owes none of the source's. Its kernels are PROBES, and a probe that keeps a step
@@ -192,7 +193,7 @@ def mma_gap(lines: list[tuple[int, str, str, str]], labels: dict[str, int]) -> t
 
 def step_classes(lines: list[tuple[int, str, str, str]], labels: dict[str, int]) -> tuple[int, int]:
     """KERNEL_STANDARDS section 29: inside the innermost MMA loops (`mma_loops`), the instructions on the conversion
-    unit and the global memory accesses other than `cp.async` (LDGSTS)."""
+    unit and the global memory accesses other than a staged copy in (`_STAGED`)."""
     xu = memory = 0
     for target, k in mma_loops(lines, labels):
         for j in range(target, k + 1):
@@ -343,7 +344,7 @@ def _declares(key: str, function: str, arch: str | None) -> bool:
 
 def loop_report(lines: list[tuple[int, str, str, str]], labels: dict[str, int]) -> list[str]:
     """Each innermost MMA loop of a function: its span, its instructions and MMAs, then each line inside it that a step
-    lint counts -- a branch or convergence barrier, the conversion unit, global memory other than `cp.async`."""
+    lint counts -- a branch or convergence barrier, the conversion unit, global memory other than a staged copy in."""
     resolve = _resolver(lines, labels)
     out = []
     for target, k in mma_loops(lines, labels):
@@ -354,7 +355,7 @@ def loop_report(lines: list[tuple[int, str, str, str]], labels: dict[str, int]) 
             forward = resolve(ops) if op == "BRA" and pred and pred != _NEVER else None
             kind = sass.opcode_class(op)
             if op == "BSSY" or (forward is not None and forward > j) or kind == "conversion unit" or (
-                    kind == "global" and not op.startswith("LDGSTS")):
+                    kind == "global" and not op.startswith(_STAGED)):
                 out.append(f"       {addr:#06x} {pred + ' ' if pred else ''}{op} {ops}")
     return out
 

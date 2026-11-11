@@ -1,0 +1,547 @@
+{
+ "experiment": "wgmma_rate",
+ "question": "what is one m64n64k16 wgmma's own time on the tensor pipe, apart from its commit group's round trip, and do two warpgroups of a CTA share that pipe?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "1 wgmma a group, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 540672 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "2 wgmmas a group, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 1081344 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "4 wgmmas a group, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 2162688 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "6 wgmmas a group, A registers, one warpgroup",
+   "ok": true,
+   "detail": "0 of 3244032 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "1 wgmma a group, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 540672 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "2 wgmmas a group, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 1081344 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "4 wgmmas a group, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 2162688 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "6 wgmmas a group, A shared, one warpgroup",
+   "ok": true,
+   "detail": "0 of 3244032 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "1 wgmma a group, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1081344 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "2 wgmmas a group, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 2162688 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "4 wgmmas a group, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 4325376 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "6 wgmmas a group, A registers, two warpgroups",
+   "ok": true,
+   "detail": "0 of 6488064 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "1 wgmma a group, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 1081344 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "2 wgmmas a group, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 2162688 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "4 wgmmas a group, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 4325376 accumulators differ from the host's at 16 steps"
+  },
+  {
+   "lab": "check",
+   "variant": "6 wgmmas a group, A shared, two warpgroups",
+   "ok": true,
+   "detail": "0 of 6488064 accumulators differ from the host's at 16 steps"
+  }
+ ],
+ "driver": "595.91.07",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "6286046643d17ec1a3cb881dc414dcc2ed866cf6",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T04:54:43+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "1 wgmma a group, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    96.033627,
+    96.033797,
+    96.033625,
+    96.03361,
+    96.033703,
+    96.033669,
+    96.033632
+   ],
+   "median": 96.033632,
+   "min": 96.03361,
+   "max": 96.033797,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "2 wgmmas a group, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    123.035578,
+    123.035521,
+    123.035485,
+    123.035469,
+    123.035554,
+    123.035539,
+    123.035517
+   ],
+   "median": 123.035521,
+   "min": 123.035469,
+   "max": 123.035578,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "4 wgmmas a group, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    182.051166,
+    182.051127,
+    182.051162,
+    182.051153,
+    182.051125,
+    182.051144,
+    182.051142
+   ],
+   "median": 182.051144,
+   "min": 182.051125,
+   "max": 182.051166,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "6 wgmmas a group, A registers, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    246.068019,
+    246.067984,
+    246.067988,
+    246.06801,
+    246.068017,
+    246.068021,
+    246.068021
+   ],
+   "median": 246.068017,
+   "min": 246.067984,
+   "max": 246.068021,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "1 wgmma a group, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    105.03401,
+    105.034021,
+    105.033989,
+    105.034021,
+    105.033987,
+    105.034021,
+    105.034017
+   ],
+   "median": 105.034017,
+   "min": 105.033987,
+   "max": 105.034021,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "2 wgmmas a group, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    132.036199,
+    132.03617,
+    132.036185,
+    132.036188,
+    132.036205,
+    132.036168,
+    132.036186
+   ],
+   "median": 132.036186,
+   "min": 132.036168,
+   "max": 132.036205,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "4 wgmmas a group, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    191.051808,
+    191.0518,
+    191.0518,
+    191.051832,
+    191.051806,
+    191.051808,
+    191.051795
+   ],
+   "median": 191.051806,
+   "min": 191.051795,
+   "max": 191.051832,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "6 wgmmas a group, A shared, one warpgroup",
+   "unit": "cycles a step",
+   "samples": [
+    255.067479,
+    255.067486,
+    255.067483,
+    255.067488,
+    255.067475,
+    255.067472,
+    255.067473
+   ],
+   "median": 255.067479,
+   "min": 255.067472,
+   "max": 255.067488,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "1 wgmma a group, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    98.13255,
+    98.140139,
+    98.14019,
+    98.132554,
+    98.124909,
+    98.132572,
+    98.177947
+   ],
+   "median": 98.132572,
+   "min": 98.124909,
+   "max": 98.177947,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "2 wgmmas a group, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    128.056032,
+    128.055634,
+    128.056078,
+    128.055875,
+    128.055481,
+    128.055886,
+    128.056089
+   ],
+   "median": 128.055886,
+   "min": 128.055481,
+   "max": 128.056089,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "4 wgmmas a group, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    256.084119,
+    256.083981,
+    256.083929,
+    256.084278,
+    256.084092,
+    256.08401,
+    256.084071
+   ],
+   "median": 256.084071,
+   "min": 256.083929,
+   "max": 256.084278,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "6 wgmmas a group, A registers, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    384.11148,
+    384.111641,
+    384.111221,
+    384.111273,
+    384.111591,
+    384.111548,
+    384.111297
+   ],
+   "median": 384.11148,
+   "min": 384.111221,
+   "max": 384.111641,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "1 wgmma a group, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    103.050404,
+    103.050358,
+    103.050352,
+    103.050393,
+    103.050419,
+    103.050435,
+    103.050402
+   ],
+   "median": 103.050402,
+   "min": 103.050352,
+   "max": 103.050435,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "2 wgmmas a group, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    140.058348,
+    140.058222,
+    140.058353,
+    140.058313,
+    140.058734,
+    140.057802,
+    140.058327
+   ],
+   "median": 140.058327,
+   "min": 140.057802,
+   "max": 140.058734,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "4 wgmmas a group, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    256.085699,
+    256.086228,
+    256.086261,
+    256.086097,
+    256.085915,
+    256.087193,
+    256.085425
+   ],
+   "median": 256.086097,
+   "min": 256.085425,
+   "max": 256.087193,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "6 wgmmas a group, A shared, two warpgroups",
+   "unit": "cycles a step",
+   "samples": [
+    384.116758,
+    384.117112,
+    384.117696,
+    384.117637,
+    384.117517,
+    384.117173,
+    384.11757
+   ],
+   "median": 384.117517,
+   "min": 384.116758,
+   "max": 384.117696,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void wgmma_rate::rate<(int)6, (int)0>(long long *, float *, int)": {
+   "regs": 222,
+   "ops": {
+    "STG.E": 192,
+    "CS2R": 98,
+    "IMAD.IADD": 26,
+    "LEA.HI": 22,
+    "LOP3.LUT": 18,
+    "IMAD": 15,
+    "SHF.R.U32.HI": 14,
+    "NOP": 14,
+    "VIADD": 11,
+    "SHF.R.S32.HI": 10,
+    "I2FP.F32.S32": 10,
+    "IMAD.WIDE.U32": 10
+   }
+  },
+  "void wgmma_rate::rate<(int)4, (int)0>(long long *, float *, int)": {
+   "regs": 158,
+   "ops": {
+    "STG.E": 128,
+    "CS2R": 66,
+    "IMAD.IADD": 26,
+    "LEA.HI": 22,
+    "LOP3.LUT": 18,
+    "IMAD": 15,
+    "SHF.R.U32.HI": 14,
+    "VIADD": 11,
+    "SHF.R.S32.HI": 10,
+    "I2FP.F32.S32": 10,
+    "IMAD.WIDE.U32": 10,
+    "NOP": 8
+   }
+  },
+  "void wgmma_rate::rate<(int)2, (int)0>(long long *, float *, int)": {
+   "regs": 94,
+   "ops": {
+    "STG.E": 64,
+    "CS2R": 34,
+    "IMAD.IADD": 26,
+    "LEA.HI": 22,
+    "LOP3.LUT": 18,
+    "IMAD": 15,
+    "SHF.R.U32.HI": 14,
+    "VIADD": 11,
+    "SHF.R.S32.HI": 10,
+    "I2FP.F32.S32": 10,
+    "IMAD.WIDE.U32": 10,
+    "NOP": 10
+   }
+  },
+  "void wgmma_rate::rate<(int)1, (int)0>(long long *, float *, int)": {
+   "regs": 62,
+   "ops": {
+    "STG.E": 32,
+    "IMAD.IADD": 26,
+    "LEA.HI": 22,
+    "LOP3.LUT": 18,
+    "CS2R": 18,
+    "IMAD": 15,
+    "SHF.R.U32.HI": 14,
+    "VIADD": 11,
+    "NOP": 11,
+    "SHF.R.S32.HI": 10,
+    "I2FP.F32.S32": 10,
+    "IMAD.WIDE.U32": 10
+   }
+  },
+  "void wgmma_rate::rate<(int)6, (int)1>(long long *, float *, int)": {
+   "regs": 218,
+   "ops": {
+    "STG.E": 192,
+    "CS2R": 98,
+    "NOP": 12,
+    "SHF.R.S32.HI": 10,
+    "IMAD.IADD": 10,
+    "LEA.HI": 9,
+    "LOP3.LUT": 9,
+    "BRA": 7,
+    "IMAD": 7,
+    "HGMMA.64": 6,
+    "SHF.R.U32.HI": 5,
+    "LDC": 4
+   }
+  },
+  "void wgmma_rate::rate<(int)4, (int)1>(long long *, float *, int)": {
+   "regs": 154,
+   "ops": {
+    "STG.E": 128,
+    "CS2R": 66,
+    "NOP": 14,
+    "SHF.R.S32.HI": 10,
+    "IMAD.IADD": 10,
+    "LEA.HI": 9,
+    "LOP3.LUT": 9,
+    "BRA": 7,
+    "IMAD": 7,
+    "SHF.R.U32.HI": 5,
+    "LDC": 4,
+    "IMAD.MOV.U32": 4
+   }
+  },
+  "void wgmma_rate::rate<(int)2, (int)1>(long long *, float *, int)": {
+   "regs": 90,
+   "ops": {
+    "STG.E": 64,
+    "CS2R": 34,
+    "SHF.R.S32.HI": 10,
+    "IMAD.IADD": 10,
+    "LEA.HI": 9,
+    "LOP3.LUT": 9,
+    "NOP": 8,
+    "BRA": 7,
+    "IMAD": 7,
+    "SHF.R.U32.HI": 5,
+    "LDC": 4,
+    "IMAD.MOV.U32": 4
+   }
+  },
+  "void wgmma_rate::rate<(int)1, (int)1>(long long *, float *, int)": {
+   "regs": 58,
+   "ops": {
+    "STG.E": 32,
+    "CS2R": 18,
+    "SHF.R.S32.HI": 10,
+    "IMAD.IADD": 10,
+    "LEA.HI": 9,
+    "LOP3.LUT": 9,
+    "NOP": 9,
+    "BRA": 7,
+    "IMAD": 7,
+    "SHF.R.U32.HI": 5,
+    "LDC": 4,
+    "IMAD.MOV.U32": 4
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai rented box, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

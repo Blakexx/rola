@@ -23,7 +23,7 @@ rounded once), and a pair becomes a bf16 word by one `F2FP.BF16.F32.PACK_AB`: a 
 
 MEASURED (H100 SXM, 132 SMs, a rented box: vast.ai instance 60165274, driver 595.91.07; 2026-11-11, one session, 7
 repetitions, the accumulators exact against the host's at every producer count; cycles a tile -- 1,024 elements -- the
-median, the spread under 0.1%):
+median, the spread under 0.3%):
 
 | | cycles a tile |
 |---|---|
@@ -35,14 +35,13 @@ median, the spread under 0.1%):
 
 WHAT IT SHOWS. One producer warp makes a tile in about 770 cycles, 0.75 a warp an element, and the ring runs at the
 producers' rate up to two warps (760, then 391, half of it). At four it runs at 304, the consumer's own 290: a
-warpgroup under this hand-over takes a tile in 290 cycles, where its wgmma with its wait alone is 105 to 136
-([`wgmma_regs`](wgmma_regs.md)), so the full and empty barriers a tile -- every thread's polled wait, one thread's
-arrival -- cost the consumer about as much again as the tile's tensor work. By these rows a warpgroup that consumed at
-its wgmma's own pace would take six or seven such producer warps (773 against 105 to 136: arithmetic across two
-experiments, not a measured form).
+warpgroup under this hand-over takes a tile in 290 cycles, where one wgmma with its group's wait is 96 and the
+pipe's own time 32 ([`wgmma_rate`](wgmma_rate.md)). What the other 190 cycles are -- the full and empty barriers'
+polled waits, the descriptor formed a tile, the rest of the loop -- no row here separates.
 
-NOT SEPARATED: how much of a producer's 770 cycles is the expansion's ~100 instructions a lane and how much its three
-barrier waits and the warp's synchronization a tile; the expansion alone, with no ring, is owed before a design prices
-a producer.
+BESIDE IT: [`byte_expand`](byte_expand.md) reads the expansion alone at 202 cycles a tile a warp, in a loop that
+differs from this producer's (it stores its bytes itself, where these arrive by a bulk copy). So most of a producer's
+773 cycles here is not the expansion; what it is, among the barrier waits, the warp's synchronization and the loads'
+issue, no row separates.
 
 Record: `measure/lab/results/row_ring/sm_90a.json`; its counters are the written exception (no profiler on that box).

@@ -163,6 +163,12 @@ __device__ __forceinline__ uint32_t held(uint32_t v) {
   return v;
 }
 
+//: the same for a 64-bit value (a wgmma operand descriptor)
+__device__ __forceinline__ uint64_t held(uint64_t v) {
+  asm volatile("" : "+l"(v));
+  return v;
+}
+
 //: THE ASYNCHRONOUS COPIES (`cp.async`, sm_80+) as `ops.cuh` spells them: 16 bytes bypassing L1, or 4 through it; a
 //: group committed and waited, or an mbarrier arrival when all of the thread's prior copies land.
 __device__ __forceinline__ void cp_async16(uint32_t dst, const void* src) {

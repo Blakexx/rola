@@ -42,15 +42,13 @@ WHAT IT SHOWS.
   the two MMAs of one commit group overlap.
 - A second warpgroup in the CTA costs a step nothing to 7%, so at these steps one warpgroup does not hold the SM's
   tensor pipe: a step that waits for its own group is bound by the group's round trip. The pipe's own time a wgmma is
-  not read here (owed with the family's machine model, KERNEL_STANDARDS §32.4).
-- THE FIXED-REGISTER ROWS ARE A COMPILER ARTIFACT, by the SASS: the readout with A in registers loaded ONCE is slower
-  than with A shared (136 against 105 alone, 165 against 121 with the fold), though the narrowed form -- also A in
-  registers -- is the fastest. In the shared form ptxas hoists the operand descriptors' arithmetic out of the step
-  loop; in the fixed-register forms it re-derives B's descriptor inside the loop, five dependent uniform instructions
-  (`ULEA`, `UIADD3`, `USHF`, two `ULOP3`) between the wait and the `HGMMA`; the narrowed form keeps three of them, among
-  its narrowings. That those instructions are the 30 to 45 cycles is an INFERENCE from the rows, not a measurement:
-  the same forms with the descriptors held in registers are owed. No design rests on the fixed-register rows, and a
-  kernel's step holds its descriptors where ptxas cannot re-derive them.
+  [`wgmma_rate`](wgmma_rate.md)'s: 32 cycles.
+- THE FIXED-REGISTER ROWS (A in registers loaded once: 136 against A shared's 105 alone, 165 against 121 with the
+  fold) are not the register operand's cost: [`wgmma_rate`](wgmma_rate.md) reads the same readout at 96, under A
+  shared's 105. Its kernel differs from this one's in three ways at once -- every descriptor held in a register, A's
+  words held, launch bounds stated -- so which of them is the 40 cycles is NOT isolated; ptxas re-deriving B's
+  descriptor inside this loop is one candidate the SASS shows, and the narrowed form here keeps three of those five
+  instructions and is fast. No design rests on the rows here.
 
 Record: `measure/lab/results/wgmma_regs/sm_90a.json`; its counters are the written exception (no profiler on that
 box).

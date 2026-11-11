@@ -19,4 +19,6 @@ about the machine cites the experiment it rests on ([`docs/KERNEL_STANDARDS.md#s
 | [`bulk_drain`](bulk_drain.md) | experiment |
 | [`reg_trade`](reg_trade.md) | experiment |
 | [`row_ring`](row_ring.md) | experiment |
+| [`wgmma_rate`](wgmma_rate.md) | experiment |
+| [`byte_expand`](byte_expand.md) | experiment |
 | [`drain`](drain.md) | experiment |
