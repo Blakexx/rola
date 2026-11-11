@@ -15,4 +15,5 @@ about the machine cites the experiment it rests on ([`docs/KERNEL_STANDARDS.md#s
 | [`facts_block`](facts_block.md) | experiment |
 | [`facts_two`](facts_two.md) | experiment |
 | [`issue_latency`](issue_latency.md) | experiment |
+| [`wgmma_regs`](wgmma_regs.md) | experiment |
 | [`drain`](drain.md) | experiment |

@@ -79,7 +79,9 @@ def build(path: Path, arch: str) -> Path:
     from measure.hardware import cc_of
 
     cc = cc_of(arch)
-    subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", f"-arch={arch}", f"-DROLA_LAB_CC={cc}",
+    #: an architecture-specific row (`sm_90a`) names its own virtual architecture: `-arch` alone targets `sm_90`
+    target = f"-gencode=arch=compute_{arch.removeprefix('sm_')},code={arch}" if arch.endswith("a") else f"-arch={arch}"
+    subprocess.run([dev_config.cuda_bin("nvcc"), "-O3", "-std=c++20", target, f"-DROLA_LAB_CC={cc}",
                     "-lineinfo", f"-I{LAB}", f"-I{KERNELS}", "--expt-relaxed-constexpr", "-o", str(out), str(path)],
                    check=True)
     return out
@@ -431,23 +433,94 @@ def report(name: str, arch: str, device: dict, results: list[dict], reps: int) -
 
 
 def keep(name: str, arch: str, device: dict, results: list[dict], table: dict, reps: int, utilization: int,
-         record: bool, digests: dict[str, str], counters: dict[str, dict]) -> Path:
-    """The run's record: into `measure/lab/results` under `--record`, else the scratch space."""
+         record: bool, digests: dict[str, str], counters: dict[str, dict], refused: dict | None = None,
+         built: dict | None = None, into: Path | None = None) -> Path:
+    """The run's record: into `measure/lab/results` under `--record`, else the scratch space (`into`: that directory
+    instead). `refused`: the written exception of a host that grants no counters, in their place. `built`: a pack's
+    toolkit and commit, where the binary was built on another machine (`pack`)."""
     driver, = smi("driver_version")
-    toolkit = subprocess.run([dev_config.cuda_bin("nvcc"), "--version"], capture_output=True,
-                             text=True).stdout.strip().splitlines()[-1]
+    built = built or {"toolkit": toolkit_line(), "git": git_state()}
     body = {"experiment": name, "question": question(experiments()[name]), "arch": arch, "device": device.get("name"),
             "checks": device.get("_checks", []),
-            "driver": driver, "toolkit": toolkit, "git": git_state(), "reps": reps,
+            "driver": driver, "toolkit": built["toolkit"], "git": built["git"], "reps": reps,
             "date": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
             "utilization_before": utilization, "inputs": digests, "results": results,
             "kernels": {k: {"regs": v.get("regs"), "ops": dict(Counter(v["ops"]).most_common(12))}
                         for k, v in table.items()},
             "counters": {k: {m: v for m, v in c.items() if m != "opcodes"} for k, c in counters.items()}}
-    target = (RESULTS / name if record else dev_config.scratch("lab") / "results" / name) / f"{arch}.json"
+    if refused:
+        body["counters_exception"] = refused
+    target = (into / name if into else RESULTS / name if record
+              else dev_config.scratch("lab") / "results" / name) / f"{arch}.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(body, indent=1) + "\n")
     return target
+
+
+def toolkit_line() -> str:
+    return subprocess.run([dev_config.cuda_bin("nvcc"), "--version"], capture_output=True,
+                          text=True).stdout.strip().splitlines()[-1]
+
+
+def pack(name: str, arch: str, into: Path) -> int:
+    """AN EXPERIMENT BUILT HERE FOR A CARD ELSEWHERE: its binary for `arch`, its SASS checked as `run` checks it, and
+    beside it what a record needs of the build -- the kernels' registers and opcodes, the toolkit, the commit and the
+    binary's digest -- so a box with a driver and no toolkit runs it (`carried`)."""
+    binary = build(experiments()[name], arch)
+    table = kernels(binary)
+    failures = check(binary, table)
+    if failures:
+        print(f"lab: {name} REFUSED -- its SASS is not what it measures:", *failures, sep="\n  ")
+        return 1
+    if budgets(binary):
+        print(f"lab: {name} has budgeted kernels, whose gate reads executed counts: it runs where the toolkit is")
+        return 1
+    into.mkdir(parents=True, exist_ok=True)
+    carried_binary = into / binary.name
+    carried_binary.write_bytes(binary.read_bytes())
+    carried_binary.chmod(0o755)
+    body = {"experiment": name, "arch": arch, "toolkit": toolkit_line(), "git": git_state(),
+            "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+            "kernels": {k: {"regs": v.get("regs"), "ops": dict(v["ops"])} for k, v in table.items()}}
+    (into / f"{binary.name}.pack.json").write_text(json.dumps(body, indent=1) + "\n")
+    print(f"lab: packed {name} for {arch} into {into}")
+    return 0
+
+
+def carried(name: str, source: Path, reps: int, into: Path, force: bool) -> int:
+    """A PACKED EXPERIMENT RUN ON THIS CARD, a box with no toolkit: the pack's binary by its digest, on the pack's
+    architecture, timed and checked as `run` does; the record's counters are the written exception of KERNEL_STANDARDS
+    section 16 addendum 4 (no profiler here), its build facts the pack's."""
+    arch = sass.device_arch()
+    binary = source / f"{name}.{arch}"
+    if not binary.exists():
+        print(f"lab: no pack of {name} for this card's {arch} in {source}")
+        return 1
+    built = json.loads((source / f"{binary.name}.pack.json").read_text())
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != built["sha256"]:
+        print(f"lab: {binary} is not the binary its pack describes")
+        return 1
+    extra, digests = inputs(name)
+    utilization = quiet()
+    if utilization > QUIET_PERCENT and not force:
+        print(f"lab: the GPU is {utilization}% busy before the run (--force to measure anyway)")
+        return 1
+    device, results = execute(binary, reps, extra)
+    report(name, arch, device, results, reps)
+    for c in device.get("_checks", []):
+        print(f"  {'checked' if c['lab'] == 'check' else 'unchecked'} {c['variant']}: "
+              f"{'ok' if c.get('ok') else 'FAILED' if c['lab'] == 'check' else c['reason']}"
+              + (f" ({c['detail']})" if c["lab"] == "check" else ""))
+    wrong = unverified(name, device, results)
+    if wrong:
+        print(f"lab: {name}'s outputs are not verified, not recorded:", *wrong, sep="\n  ")
+        return 1
+    refused = {"host": device.get("name"), "ncu": "not run: the box carries a driver and no toolkit",
+               "instead": "the kernels' own clocks and the SASS's static counts"}
+    target = keep(name, arch, device, results, built["kernels"], reps, utilization, False, digests, {}, refused,
+                  built, into)
+    print(f"lab: recorded {target}")
+    return 0
 
 
 def run(name: str, reps: int, record: bool, force: bool) -> int:
@@ -476,15 +549,28 @@ def run(name: str, reps: int, record: bool, force: bool) -> int:
     if wrong:
         print(f"lab: {name}'s outputs are not verified, not recorded:", *wrong, sep="\n  ")
         return 1
-    raw = counters_of(binary, extra)
-    units, mmas = declared(binary, table)
-    pipes_report(raw, table, units, mmas)
-    over = over_budget(binary, table, raw, units)
-    if over and not force:
-        print(f"lab: {name} OVER ITS INSTRUCTION BUDGET, not recorded (--force to record anyway):", *over,
-              sep="\n  ")
-        return 1
-    target = keep(name, arch, device, results, table, reps, utilization, record, digests, raw)
+    try:
+        raw, refused = counters_of(binary, extra), None
+    except subprocess.CalledProcessError as failure:
+        #: THE HOST GRANTS NO COUNTERS (KERNEL_STANDARDS section 16 addendum 4): the profiler failed on a binary that
+        #: just ran, so the record carries the exception -- the host, the profiler's own words, what stands in
+        said = [line for line in (failure.stderr or failure.stdout or "").splitlines() if line.strip()]
+        raw, refused = {}, {"host": device.get("name"), "ncu": said[-1] if said else f"exit {failure.returncode}",
+                            "instead": "the kernels' own clocks and the SASS's static counts"}
+        print(f"lab: NO COUNTERS on this host ({refused['ncu']}): recorded with the exception, no pipes report")
+        if budgets(binary):
+            print(f"lab: {name} has budgeted kernels, whose gate reads executed counts: not recorded on a host "
+                  "that grants no counters (KERNEL_STANDARDS section 16 addendum 4)")
+            return 1
+    if refused is None:
+        units, mmas = declared(binary, table)
+        pipes_report(raw, table, units, mmas)
+        over = over_budget(binary, table, raw, units)
+        if over and not force:
+            print(f"lab: {name} OVER ITS INSTRUCTION BUDGET, not recorded (--force to record anyway):", *over,
+                  sep="\n  ")
+            return 1
+    target = keep(name, arch, device, results, table, reps, utilization, record, digests, raw, refused)
     print(f"lab: recorded {target.relative_to(ROOT) if record else target}")
     return 0
 
@@ -636,6 +722,16 @@ def main() -> int:
     r.add_argument("--reps", type=int, default=7)
     r.add_argument("--record", action="store_true", help="write the record into measure/lab/results")
     r.add_argument("--force", action="store_true", help="measure on a busy GPU")
+    k = sub.add_parser("pack", help="build and check an experiment here for a card elsewhere")
+    k.add_argument("experiment")
+    k.add_argument("--arch", required=True)
+    k.add_argument("--into", required=True, type=Path)
+    c = sub.add_parser("carried", help="run a packed experiment on this card, a box with no toolkit")
+    c.add_argument("experiment")
+    c.add_argument("--from", dest="source", required=True, type=Path)
+    c.add_argument("--into", required=True, type=Path)
+    c.add_argument("--reps", type=int, default=7)
+    c.add_argument("--force", action="store_true")
     g = sub.add_parser("ledger", help="a kernel's executed instructions by phase (KERNEL_STANDARDS 29.13)")
     g.add_argument("experiment")
     g.add_argument("--kernel", help="a regex over the demangled kernel names")
@@ -644,6 +740,7 @@ def main() -> int:
     n.add_argument("--metric", action="append", required=True, help="an ncu metric; repeat for several")
     n.add_argument("--record", action="store_true", help="write the counters into measure/lab/results")
     args = ap.parse_args()
+
     if args.cmd == "list":
         for name, path in experiments().items():
             print(f"{name}: {question(path)}")
@@ -651,6 +748,10 @@ def main() -> int:
     if args.experiment not in experiments():
         print(f"lab: no experiment {args.experiment!r}; `list` names them")
         return 1
+    if args.cmd == "pack":
+        return pack(args.experiment, args.arch, args.into)
+    if args.cmd == "carried":
+        return carried(args.experiment, args.source, args.reps, args.into, args.force)
     if args.cmd == "sass":
         return show_sass(args.experiment, args.kernel, args.full, args.arch)
     if args.cmd == "ncu":

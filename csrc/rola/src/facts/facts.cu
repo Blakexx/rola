@@ -98,7 +98,7 @@ struct FactsAt {
     return at < kGroupDigits && kGroupDigits * x.group + at < p.B[x.level];
   }
 
-  //: LIST GROUP `q`'S HALF of a pair of counts packed as 16-bit halves (a group's slots a window, at most 8,192); a
+  //: LIST GROUP `q`'S HALF of a pair of counts packed as 16-bit halves (a group's slots a window, `max_group` heads' at most); a
   //: one-group unit holds its count whole
   template <int kGroups>
   static __device__ __forceinline__ int half_of(uint32_t pair, int q) {

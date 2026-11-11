@@ -80,7 +80,7 @@ another box's tokens as its own.
 THE TWO PASSES: the kernel is compiled, at each build, for a unit of one list group (`facts_pass<BuildTag<B>, 1>`, every side at 32: the halves'
 work compiled out, the code before them) and of two (`facts_pass<BuildTag<B>, 2>`), and the host launches the one the call's groups
 need, each at its own tenants (`FactsSmemAt<W, G>`). A split call pays two warp reductions a block, a second gap
-tail and a second union's bytes, the same at every density ([measured](#budget)); sm_80, sm_90 and sm_100 run the
+tail and a second union's bytes, the same at every density (unmeasured on the indexer); sm_80, sm_90 and sm_100 run the
 same passes (the window's words double at W = 1,024, the halves' scan with them).
 
 <a id="shared-memory"></a>
@@ -129,9 +129,9 @@ of 32 tokens, and the stages map onto that window by four counts derived from it
 boundaries (`kLaneBounds`) -- so a stage's loop runs over its count and at W = 512 every count is the 512-token pass's
 own. The shared tenants are `FactsSmemAt<W>`; the device code is `FactsAt<FactsPlan<B>>` and the host launches the
 card's build (`build_switch`) at that plan's tenants. A
-union's row `W j + t` sits under the gap's bit 15 and an entry's slot is 16 bits, so a write head's read side merges at
-most `max_group(W) = min(16, 32,768 / W)` query heads (16 up to W = 2,048); `kMaxGroup` = 16 is the parameter block's
-bound, the same in both compile passes. MEASURED at W = 512 only (sm_86, 16 heads: 8,192 slots a union); a wider window's
+write head's read side merges at most `max_group(W)` query heads: `kMaxGroup` = 16, the parameter block's bound and the
+same in both compile passes, under what a union slot's head field holds at W (`window_heads`: 64 at 512, 32 at 1,024;
+[`window.md`](../common/window.md#token-field)) -- 16 at both windows. MEASURED at W = 512 only (sm_86, 16 heads: 8,192 slots a union); a wider window's
 16 heads first run on its card.
 
 <a id="tiles"></a>
@@ -163,7 +163,7 @@ reads one slot map a union (ruled 2026-10-12). A union token's SLOT is its RANK,
 token order (ruled 2026-10-13). After the vote's barrier every warp scans the 16 union words' counts, both list
 groups' as the 16-bit halves of one word (a 16-lane shuffle scan), and its two words' tokens go out to each group's
 `union_tok` at their slots -- a word's tokens at consecutive slots, so the
-stores coalesce -- every slot past the union `kGap` (`carry/carry.cuh`: token 0 with bit 15 set, so a row fetch masked
+stores coalesce -- every slot past the union `kGap` (token 0 with bit 15 set, so a row fetch masked
 to the window stays inside it). The union's size is `union_count` (int32); a consumer
 rounds it to its own step. The token at every 64th slot is a BOUND, posted in
 shared memory (`kWindowTokens` past the union): a list's tokens before bound `k` are its entries before slot `64 k`,
@@ -253,9 +253,8 @@ products written.
 
 MEASURED (sm_86, RTX 3080 Ti, 2026-11-10, `tools/overlap_gate.py`'s rows, one `ncu` launch each on its locked clock,
 4 heads at 65,536 tokens, whole list groups): `facts-alt-k4` 337.5 µs, 1.58x its DRAM floor of 213.8 µs -- OVER THE
-LINE, and what holds it there is not attributed (owed: the row's stall census); `facts-dense` 12.7 µs against a 3.6 µs
-floor -- a call with no sparse level runs the columns unit alone, so the launch's fixed time is what the row reads and
-its ratio says nothing of the line.
+LINE, RED, and what holds it there is not attributed (owed: the row's stall census). A call with no sparse level runs
+the columns unit alone (12.7 µs at that shape, a launch's fixed time), so the gate holds no dense row.
 
 Per architecture: sm_80 runs the same form at five CTAs an SM (registers); on sm_90 the window fills by TMA (a
 `[512 tokens × 32 bytes]` box of the head's plane in one instruction) under an mbarrier, the rest unchanged. Scaling:

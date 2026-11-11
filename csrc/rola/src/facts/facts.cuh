@@ -23,12 +23,12 @@ constexpr int kRowAlign = 32;
 constexpr int kMaxWidth = 256;
 constexpr int kMaxGroups = kMaxWidth / kGroupDigits;
 constexpr int kMaxMaskWords = kMaxLevels * kMaxWidth / 32;
-//: THE QUERY HEADS a write head's read side merges: the parameter block's bound, and a window's at W (a union's row
-//: `W j + t` under the gap's bit 15). -- see docs/internals/facts/facts.md#window
+//: THE QUERY HEADS a write head's read side merges: the parameter block's bound, under a union slot's head field at W
+//: (`window_heads`). -- see docs/internals/facts/facts.md#window
 constexpr int kMaxGroup = 16;
 
 __host__ __device__ constexpr int max_group(int w) {
-  return 32768 / w < kMaxGroup ? 32768 / w : kMaxGroup;
+  return window_heads(w) < kMaxGroup ? window_heads(w) : kMaxGroup;
 }
 
 //: A UNIT, coded (kind, side, level, group, head in the group). -- see docs/internals/facts/facts.md#the-plan

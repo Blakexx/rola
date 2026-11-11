@@ -131,9 +131,9 @@ the words that exist. `union_address` in the header is the table's address from 
 extents, which `LivenessLayout::union_index` and a kernel with compile-time extents both
 call; `tile_unions` in the Python module is the model, gated against the per-token bits.
 
-An intra's slab gate is the consumer: 40 bytes a lane of the table where the words themselves
-are a 64-byte run from each of a window's rows, 8 KB apart. No intra is built on this line, so
-what the table saves its reader is owed to the first one's measurement.
+An intra's slab gate is the consumer: the table in place of a run of each of a window's rows'
+words, which lie `L / 8` bytes apart. No intra is built on this line, so what the table saves
+its reader is owed to the first one's measurement.
 
 <a id="folds"></a>
 

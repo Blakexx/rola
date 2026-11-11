@@ -23,7 +23,7 @@
   }
  },
  "source": {
-  "csrc_sha256": "6ef593b89c74fbbd1d21ffc81229177a1fcc096a2273c89397bccd7c50b66796",
+  "csrc_sha256": "ad665206699a744fc355ae3e447c47f392efd34a481f64360b36e395ad0d5b85",
   "date": "2026-11-10",
   "image_digest": ""
  },
@@ -2755,7 +2755,7 @@
    "spill_loads": 0,
    "hot_locals": 0,
    "local_ops": 0,
-   "sass_sha256": "bd758662024e60ebd86a3e44050ae3fa583105cc68d23fa7f5015a43301b2cc9"
+   "sass_sha256": "1c775ada713d99d099b34a2ca0b0a62f82af1a046fcfd12a434802eb74e0503a"
   }
  }
 }

@@ -17,8 +17,8 @@ the sequence enters with, which is what the carry family's oracle and probe run 
 (`measure.cells.layer`): a producer, a routing template and a gain, from which the amplitudes are PRODUCED -- the
 only way to price the producer's own solve or a decode step through the layer.
 
-**EVERYTHING OUTSIDE THE LAUNCH IS BUILT ONCE, HERE.** The bundle, the facts pass's lists, the carve, the scale pass's
-bytes: all of it happens before the callable is returned, so a timed span wraps the launch and nothing else.
+**EVERYTHING OUTSIDE THE LAUNCH IS BUILT ONCE, HERE.** The bundle, the facts pass's lists, the carve:
+all of it happens before the callable is returned, so a timed span wraps the launch and nothing else.
 """
 from __future__ import annotations
 
@@ -131,8 +131,8 @@ def bundle_of(spec, drawn, tokens: slice = slice(None)):
 
 
 def facts_pass(fx) -> Launch:
-    """Both sides' class-1 words, the window's columns, the write lists' exponents and each side's lists in the cell's
-    carry form, from the cell's draw in the bundle's format: the pass the prefill's facts node launches, a side dense
+    """Both sides' class-1 words and tile unions, each side's lists in whole list groups and the writers' factor
+    products, from the cell's draw in the bundle's format: the pass the prefill's facts node launches, a side dense
     where the cell declares it so (its rows unread)."""
     from measure.cells import realize
     from rola.ops import facts as facts_ops

@@ -31,6 +31,16 @@ the `//:` headings of the experiment's source -- per declared unit (KERNEL_STAND
 [budgets.md](budgets.md)). `run` also refuses a budgeted kernel whose loops hold convergence instructions (`BSSY`,
 `BSYNC`, `BRA.DIV`) beyond what it declares as `LOOP_CONVERGENCE`.
 
+<a id="pack"></a>A CARD ELSEWHERE. A rented box carries a driver and no toolkit, so an experiment for it is built and checked
+here and run there: `bazel run //tools:lab -- pack <name> --arch sm_90a --into DIR` compiles it for that architecture,
+holds its SASS to the same checks as `run`, and writes the binary with a pack file beside it (the kernels' registers
+and opcodes, the toolkit, the commit, the binary's digest); on the card, `tools/lab.py carried <name> --from DIR --into
+OUT` runs the pack's binary by its digest, times and checks it as `run` does, and writes the record with the pack's
+build facts. No profiler runs there, so the record's counters are a written exception (`counters_exception`: the
+host, why, what stands in -- `docs/KERNEL_STANDARDS.md` §16 addendum 4), and an experiment with budgeted kernels,
+whose gate reads executed counts, is not packed. `run` writes the same exception where a toolkit's profiler is
+refused by the host.
+
 An experiment that reads data -- a cell's routing, say -- has a `<name>.inputs.py` beside it whose `write(directory)`
 writes the files and returns their names. `run` and `ncu` call it first (in the scratch space), pass the binary
 `--inputs <directory>`, and the record carries each file's digest under `inputs`.
@@ -55,6 +65,11 @@ else from the work the tensor-pipe counter counts and the one MMA kind the SASS 
 * `lab::sink(out, v)` — a fold of everything a thread computed, stored unconditionally.
 * The atoms as one PTX instruction each: `mma_f16_f32` (and `_fresh`), `mma_f16_f16`, `mma_bf16_f32`, `mma_u8u8`,
   `mma_u8s8`.
+* <a id="wgmma"></a>Hopper's atoms, each one PTX instruction of sm_90a (an experiment calling one compiles for sm_90a
+  only): `wg_desc` (wgmma's unswizzled K-major shared operand: lines in bricks of 8, 16 bytes a line, the K halves and
+  the bricks at stated offsets), `wg_fence`, `wg_commit`, `wg_wait<N>`, `wg_hold` (a register an asynchronous MMA
+  wrote, held behind its wait), `wg_bf16_n16_ss`, `wg_bf16_n64_ss`, `wg_bf16_n64_rs` (A from registers), and the two
+  narrowings of an fp32 pair to bf16, `bf16x2_trunc` (one `PRMT`) and `bf16x2_round` (one conversion).
 * `lab::Bench` — the host runner: `expect(kernel, op, cmp, count)` declares SASS (printed under `--expect`, run by the
   driver before anything is timed), `variant(launch, measure)` warms up and repeats a launch, `record(name, unit,
   samples)` prints a result, `cycles(warps)` and `mean(...)` read the warps' clocks. `--blocks N` holds the grid an experiment launches over `Bench::sms` to N CTAs, so a sanitizer
@@ -122,3 +137,4 @@ a source in `measure/lab/experiments/`. The anchors below are where the sources'
 - <a id="facts-two"></a>[`facts_two`](../../lab/facts_two.md)
 - <a id="issue-latency"></a>[`issue_latency`](../../lab/issue_latency.md)
 - <a id="drain"></a>[`drain`](../../lab/drain.md)
+- <a id="wgmma-regs"></a>[`wgmma_regs`](../../lab/wgmma_regs.md)

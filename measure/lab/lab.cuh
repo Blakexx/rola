@@ -225,6 +225,79 @@ __device__ __forceinline__ bool mbar_test(uint32_t a, uint32_t parity) {
   return ok != 0u;
 }
 
+// ------------------------------------------------------------------------------------------- hopper atoms
+// each one PTX instruction of sm_90a; an experiment that calls one compiles for sm_90a only
+// see docs/internals/tools/lab.md#wgmma
+
+//: WGMMA'S SHARED-MEMORY OPERAND, unswizzled and K-major: the tile at `a`, rows (A) or columns (B) in bricks of 8, a
+//: brick's 8 lines of K 0-7 contiguous at 16 bytes a line, its K 8-15 `lbo` lines on, the next brick `sbo` lines on
+__device__ __forceinline__ uint64_t wg_desc(uint32_t a, uint32_t lbo, uint32_t sbo) {
+  return uint64_t((a >> 4) & 0x3fffu) | (uint64_t(lbo & 0x3fffu) << 16) | (uint64_t(sbo & 0x3fffu) << 32);
+}
+
+__device__ __forceinline__ void wg_fence() { asm volatile("wgmma.fence.sync.aligned;" ::: "memory"); }
+
+__device__ __forceinline__ void wg_commit() { asm volatile("wgmma.commit_group.sync.aligned;" ::: "memory"); }
+
+//: wait until at most `N` committed groups are in flight
+template <int N>
+__device__ __forceinline__ void wg_wait() {
+  asm volatile("wgmma.wait_group.sync.aligned %0;" : : "n"(N) : "memory");
+}
+
+//: A REGISTER AN ASYNCHRONOUS MMA WROTE, held behind the wait the compiler cannot see it depends on
+__device__ __forceinline__ void wg_hold(float& r) { asm volatile("" : "+f"(r) : : "memory"); }
+
+//: m64n16k16, bf16 x bf16 into fp32, both operands shared memory: `d` += A [64 x 16] B [16 x 16]
+__device__ __forceinline__ void wg_bf16_n16_ss(float (&d)[8], uint64_t a, uint64_t b) {
+  asm volatile(
+      "{ .reg .pred p; setp.ne.b32 p, %10, 0;\n"
+      "wgmma.mma_async.sync.aligned.m64n16k16.f32.bf16.bf16 {%0, %1, %2, %3, %4, %5, %6, %7}, %8, %9, p, 1, 1, 0, 0; }"
+      : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3]), "+f"(d[4]), "+f"(d[5]), "+f"(d[6]), "+f"(d[7])
+      : "l"(a), "l"(b), "r"(1));
+}
+
+#define LAB_WG_D32(d)                                                                                              \
+  "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3]), "+f"(d[4]), "+f"(d[5]), "+f"(d[6]), "+f"(d[7]), "+f"(d[8]),      \
+      "+f"(d[9]), "+f"(d[10]), "+f"(d[11]), "+f"(d[12]), "+f"(d[13]), "+f"(d[14]), "+f"(d[15]), "+f"(d[16]),       \
+      "+f"(d[17]), "+f"(d[18]), "+f"(d[19]), "+f"(d[20]), "+f"(d[21]), "+f"(d[22]), "+f"(d[23]), "+f"(d[24]),      \
+      "+f"(d[25]), "+f"(d[26]), "+f"(d[27]), "+f"(d[28]), "+f"(d[29]), "+f"(d[30]), "+f"(d[31])
+#define LAB_WG_D32_LIST                                                                                            \
+  "{%0, %1, %2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, " \
+  "%24, %25, %26, %27, %28, %29, %30, %31}"
+
+//: m64n64k16, bf16 x bf16 into fp32, both operands shared memory: `d` += A [64 x 16] B [16 x 64]
+__device__ __forceinline__ void wg_bf16_n64_ss(float (&d)[32], uint64_t a, uint64_t b) {
+  asm volatile("{ .reg .pred p; setp.ne.b32 p, %34, 0;\n"
+               "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16 " LAB_WG_D32_LIST ", %32, %33, p, 1, 1, 0, 0; }"
+               : LAB_WG_D32(d)
+               : "l"(a), "l"(b), "r"(1));
+}
+
+//: the same with A from the warpgroup's registers: a thread's 8 bf16 of A as 4 words, in the layout of an m64n16
+//: accumulator's 8 fp32 (word `j` its values `2j`, `2j + 1`)
+__device__ __forceinline__ void wg_bf16_n64_rs(float (&d)[32], const uint32_t (&a)[4], uint64_t b) {
+  asm volatile("{ .reg .pred p; setp.ne.b32 p, %37, 0;\n"
+               "wgmma.mma_async.sync.aligned.m64n64k16.f32.bf16.bf16 " LAB_WG_D32_LIST
+               ", {%32, %33, %34, %35}, %36, p, 1, 1, 0; }"
+               : LAB_WG_D32(d)
+               : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "l"(b), "r"(1));
+}
+
+//: two fp32 narrowed to a bf16 pair by TRUNCATION: each value's high 16 bits, one byte permute
+__device__ __forceinline__ uint32_t bf16x2_trunc(float lo, float hi) {
+  uint32_t r;
+  asm volatile("prmt.b32 %0, %1, %2, 0x7632;" : "=r"(r) : "r"(__float_as_uint(lo)), "r"(__float_as_uint(hi)));
+  return r;
+}
+
+//: two fp32 narrowed to a bf16 pair ROUNDED to nearest, one conversion
+__device__ __forceinline__ uint32_t bf16x2_round(float lo, float hi) {
+  uint32_t r;
+  asm volatile("cvt.rn.bf16x2.f32 %0, %1, %2;" : "=r"(r) : "f"(hi), "f"(lo));
+  return r;
+}
+
 // --------------------------------------------------------------------------------------------------- host
 
 //: A KERNEL'S DEMANGLED NAME AS AN EXPECTATION'S PATTERN: `kernel("tax", {3, 17})` matches

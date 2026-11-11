@@ -25,9 +25,8 @@ tensor floor is reachable and its arithmetic holds.
 
 THE ROWS' READING (2026-11-10, sm_86, ncu's locked clock; whole 32-digit list groups, `rola.ops.facts.WHOLE_GROUPS`):
 `facts-alt-k4` 337.5 us, 1.58x its DRAM floor (213.8 us; issue 193.8, shared 72.6) -- red against the 1.15 line, and
-what holds it over its floor is not attributed yet (owed: the stall census of the row); `facts-dense` 12.7 us against a
-3.6 us floor (issue 2.4, shared 0.4) -- a call with no sparse level runs the pass's columns unit alone, so the row reads
-a launch's fixed time and its ratio is no verdict on the line.
+what holds it over its floor is not attributed yet (owed: the stall census of the row). The pass has no dense row: a call
+with no sparse level runs its columns unit alone, 12.7 us at nl64k-dense, a launch's fixed time against a 3.6 us floor.
 
 `tools/lint/coverage.py` reads `ROWS` by AST: every kernel's `overlap` obligation in `tools/coverage.json` names a row
 gating it, or is exempt or owed with its reason.

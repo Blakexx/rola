@@ -248,7 +248,7 @@ def test_the_factor_products_are_the_declared_fp32_ones(widths, L):
     assert torch.equal(got, want)
 
 
-# --------------------------------------------------------------- the lists and the columns are the model
+# --------------------------------------------------------------- the lists are the model
 
 
 def _lists_want(routes, values, layout, read_statics, write_statics, list_groups=(32, 32)):
