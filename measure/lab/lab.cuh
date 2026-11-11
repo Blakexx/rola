@@ -338,7 +338,8 @@ __device__ __forceinline__ void bulk_add_f32(void* dst, uint32_t src, uint32_t b
                : "memory");
 }
 
-//: THE WRITERS' EDGE to a bulk copy out: a thread's ordinary stores to shared memory made visible to the bulk engine
+//: THE WRITERS' EDGE to an asynchronous reader of shared memory -- a bulk copy out, a wgmma in another warp: a
+//: thread's ordinary stores made visible to it
 __device__ __forceinline__ void bulk_fence() { asm volatile("fence.proxy.async.shared::cta;" ::: "memory"); }
 
 __device__ __forceinline__ void bulk_commit() { asm volatile("cp.async.bulk.commit_group;" ::: "memory"); }

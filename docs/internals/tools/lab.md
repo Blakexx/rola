@@ -74,11 +74,12 @@ else from the work the tensor-pipe counter counts and the one MMA kind the SASS 
   narrowings of an fp32 pair to bf16, `bf16x2_trunc` (one `PRMT`) and `bf16x2_round` (one conversion) -- the common
   atoms' `hi_bf16x2` and `pack_bf16x2`, spelled here until the common atoms admit a hopper build; and the bulk reduction
   out of shared memory, `bulk_add_f32` (`cp.reduce.async.bulk`, fp32 added into global) with the writers' proxy fence
-  before it (`bulk_fence`), `bulk_commit`,
+  before an asynchronous reader of their stores (`bulk_fence`: a bulk copy out, another warp's wgmma), `bulk_commit`,
   `bulk_wait<N>`, beside `red_add_f32` (one value by its thread); the bulk copy in, `bulk_load`, under a barrier whose
   arrival states its bytes (`mbar_expect`); and a warpgroup's registers a thread,
-  `regs_down<N>` and `regs_up<N>` (`setmaxnreg`). The lab's MMA checks read `HGMMA` as they read `HMMA`
-  and `IMMA`.
+  `regs_down<N>` and `regs_up<N>` (`setmaxnreg`). The lab's step checks read `HGMMA` as they read `HMMA`
+  and `IMMA`; a wgmma kernel states `Bench::exempt`, a budgeted one being refused until the hopper counters' model
+  names its per-MMA divisor.
 * `lab::Bench` — the host runner: `expect(kernel, op, cmp, count)` declares SASS (printed under `--expect`, run by the
   driver before anything is timed), `variant(launch, measure)` warms up and repeats a launch, `record(name, unit,
   samples)` prints a result, `cycles(warps)` and `mean(...)` read the warps' clocks. `--blocks N` holds the grid an experiment launches over `Bench::sms` to N CTAs, so a sanitizer

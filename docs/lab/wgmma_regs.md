@@ -43,10 +43,14 @@ WHAT IT SHOWS.
 - A second warpgroup in the CTA costs a step nothing to 7%, so at these steps one warpgroup does not hold the SM's
   tensor pipe: a step that waits for its own group is bound by the group's round trip. The pipe's own time a wgmma is
   not read here (owed with the family's machine model, KERNEL_STANDARDS §32.4).
-- NOT ATTRIBUTED: the readout with A in registers loaded ONCE is slower than with A shared (136 against 105 alone, 165
-  against 121 with the fold), while the narrowed form -- also A in registers -- is the fastest. The loops' SASS differs
-  only in where the wait sits and in the four narrowing instructions. No design rests on the fixed-register rows until
-  that is explained.
+- THE FIXED-REGISTER ROWS ARE A COMPILER ARTIFACT, by the SASS: the readout with A in registers loaded ONCE is slower
+  than with A shared (136 against 105 alone, 165 against 121 with the fold), though the narrowed form -- also A in
+  registers -- is the fastest. In the shared form ptxas hoists the operand descriptors' arithmetic out of the step
+  loop; in the fixed-register forms it re-derives B's descriptor inside the loop, five dependent uniform instructions
+  (`ULEA`, `UIADD3`, `USHF`, two `ULOP3`) between the wait and the `HGMMA`; the narrowed form keeps three of them, among
+  its narrowings. That those instructions are the 30 to 45 cycles is an INFERENCE from the rows, not a measurement:
+  the same forms with the descriptors held in registers are owed. No design rests on the fixed-register rows, and a
+  kernel's step holds its descriptors where ptxas cannot re-derive them.
 
 Record: `measure/lab/results/wgmma_regs/sm_90a.json`; its counters are the written exception (no profiler on that
 box).

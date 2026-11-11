@@ -38,9 +38,9 @@ repetitions, the medians):
 
 WHAT IT SHOWS. The trade works on the device as compiled: the state folded before it is read out exactly after it, by
 a warpgroup holding 232 registers a thread in a kernel launched at 128, and it costs about 200 cycles a warp, once.
-The readout's cycles a wgmma fall as a commit group holds more of them (three: 77; five: 52.5; one, in
-[`wgmma_regs`](wgmma_regs.md): 105 to 136), which is a group's round trip shared out, not the registers' doing: the
-two columns differ in sets, so they do not price the raised count itself.
+The readout's cycles a wgmma differ between the columns (three sets at 128 registers: 77; five at 232: 52.5), and
+the two differ in both the sets a commit group holds and the registers, so these rows do not say which one it is: the
+same sets at both counts are owed.
 
 Record: `measure/lab/results/reg_trade/sm_90a.json`; its counters are the written exception (no profiler on that
 box).

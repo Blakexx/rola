@@ -124,6 +124,8 @@ def convergence_calls(lines: list[tuple[int, str, str, str]], labels: dict[str, 
 
 
 _MMA = re.compile(r"^(HMMA|IMMA|HGMMA)")
+#: a step's operands staged ahead, the one global access a step may hold: `cp.async`, and hopper's bulk copy in
+_STAGED = ("LDGSTS", "UBLKCP.S.G")
 
 
 def _resolver(lines: list[tuple[int, str, str, str]], labels: dict[str, int]):
@@ -199,7 +201,7 @@ def step_classes(lines: list[tuple[int, str, str, str]], labels: dict[str, int])
                 continue
             kind = sass.opcode_class(op)
             xu += kind == "conversion unit"
-            memory += kind == "global" and not op.startswith("LDGSTS")
+            memory += kind == "global" and not op.startswith(_STAGED)
     return xu, memory
 
 
@@ -274,9 +276,10 @@ def gate(cubin: Path, kernel: str | None, max_per_hmma: float | None) -> tuple[b
         branches = mma_loop_branches(whole[name], labels[name])
         gap, around = mma_gap(whole[name], labels[name])
         xu, memory = step_classes(whole[name], labels[name])
-        #: the tensor instructions `_MMA` names, predicated and all (the report keeps its historical `hmma` keys)
-        phmma = sum(1 for i in ins if (m := re.match(r"@!?U?P\d+ (\S+)", i)) and _MMA.match(m.group(1)))
-        hmma = sum(1 for i in ins if _MMA.match(i.split()[1] if i.startswith("@") and len(i.split()) > 1 else i))
+        #: the tensor instructions `_MMA` names: each line's opcode, past its predicate if it has one
+        opcodes = [next((w for w in i.split() if not w.startswith("@")), "") for i in ins]
+        phmma = sum(1 for i, op in zip(ins, opcodes) if i.lstrip().startswith("@") and _MMA.match(op))
+        hmma = sum(1 for op in opcodes if _MMA.match(op))
         per = (n / hmma) if hmma else float("nan")
         reds = []
         if ldl:

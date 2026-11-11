@@ -1,0 +1,230 @@
+{
+ "experiment": "row_ring",
+ "question": "producer warps expand u8 rows, landed in shared memory by a bulk copy, into a ring of wgmma B operands (bf16, each row times its fp32 scale); how many cycles a tile does a producer take against the warpgroup consuming it, and how many producers keep one warpgroup fed?",
+ "arch": "sm_90a",
+ "device": "NVIDIA H100 80GB HBM3",
+ "checks": [
+  {
+   "lab": "check",
+   "variant": "producers and consumer, 1 producer warp",
+   "ok": true,
+   "detail": "0 of 540672 accumulators differ from the host's at 32 tiles"
+  },
+  {
+   "lab": "check",
+   "variant": "producers and consumer, 2 producer warps",
+   "ok": true,
+   "detail": "0 of 540672 accumulators differ from the host's at 32 tiles"
+  },
+  {
+   "lab": "check",
+   "variant": "producers and consumer, 4 producer warps",
+   "ok": true,
+   "detail": "0 of 540672 accumulators differ from the host's at 32 tiles"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "producers alone, 1 producer warp",
+   "reason": "an isolation: one side only arrives at the barriers, so the accumulators are not the product"
+  },
+  {
+   "lab": "unchecked",
+   "variant": "the consumer alone, 1 producer warp",
+   "reason": "an isolation: one side only arrives at the barriers, so the accumulators are not the product"
+  }
+ ],
+ "driver": "595.91.07",
+ "toolkit": "Build cuda_13.0.r13.0/compiler.36260728_0",
+ "git": {
+  "sha": "747a147483d9623cb4ca6657031da2960f4dbb87",
+  "dirty": false
+ },
+ "reps": 7,
+ "date": "2026-11-11T04:45:41+00:00",
+ "utilization_before": 0,
+ "inputs": {},
+ "results": [
+  {
+   "lab": "result",
+   "name": "producers and consumer, 1 producer warp",
+   "unit": "cycles a tile",
+   "samples": [
+    760.673778,
+    760.54143,
+    760.566891,
+    760.694506,
+    760.539418,
+    760.563238,
+    760.728407
+   ],
+   "median": 760.566891,
+   "min": 760.539418,
+   "max": 760.728407,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "producers and consumer, 2 producer warps",
+   "unit": "cycles a tile",
+   "samples": [
+    390.915231,
+    390.952694,
+    391.065837,
+    390.851784,
+    390.964683,
+    390.83128,
+    390.902427
+   ],
+   "median": 390.915231,
+   "min": 390.83128,
+   "max": 391.065837,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "producers and consumer, 4 producer warps",
+   "unit": "cycles a tile",
+   "samples": [
+    303.709504,
+    303.725429,
+    303.746403,
+    303.742768,
+    303.727898,
+    303.732289,
+    303.73635
+   ],
+   "median": 303.732289,
+   "min": 303.709504,
+   "max": 303.746403,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "producers alone, 1 producer warp",
+   "unit": "cycles a tile",
+   "samples": [
+    772.989136,
+    773.074239,
+    773.097529,
+    773.058699,
+    773.086383,
+    773.102143,
+    773.079836
+   ],
+   "median": 773.079836,
+   "min": 772.989136,
+   "max": 773.102143,
+   "unstable": false
+  },
+  {
+   "lab": "result",
+   "name": "the consumer alone, 1 producer warp",
+   "unit": "cycles a tile",
+   "samples": [
+    289.855016,
+    289.668577,
+    289.333822,
+    289.195986,
+    289.859055,
+    289.671013,
+    289.331739
+   ],
+   "median": 289.668577,
+   "min": 289.195986,
+   "max": 289.859055,
+   "unstable": false
+  }
+ ],
+ "kernels": {
+  "void row_ring::ring<(int)2, (int)1>(long long *, float *, const unsigned char *, int)": {
+   "regs": 62,
+   "ops": {
+    "STG.E": 32,
+    "CS2R": 18,
+    "LOP3.LUT": 16,
+    "IMAD": 13,
+    "BRA": 12,
+    "IMAD.IADD": 12,
+    "VIADD": 12,
+    "SHF.R.U32.HI": 12,
+    "NOP": 11,
+    "IMAD.MOV.U32": 10,
+    "IMAD.HI": 8,
+    "LEA.HI.SX32": 8
+   }
+  },
+  "void row_ring::ring<(int)1, (int)1>(long long *, float *, const unsigned char *, int)": {
+   "regs": 40,
+   "ops": {
+    "PRMT": 36,
+    "FFMA": 32,
+    "STG.E": 32,
+    "LOP3.LUT": 22,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "BRA": 15,
+    "IMAD": 14,
+    "NOP": 13,
+    "IMAD.IADD": 12,
+    "PLOP3.LUT": 11,
+    "IMAD.SHL.U32": 10,
+    "R2UR": 9
+   }
+  },
+  "void row_ring::ring<(int)0, (int)4>(long long *, float *, const unsigned char *, int)": {
+   "regs": 62,
+   "ops": {
+    "PRMT": 36,
+    "LOP3.LUT": 32,
+    "FFMA": 32,
+    "STG.E": 32,
+    "IMAD": 23,
+    "IMAD.IADD": 21,
+    "CS2R": 18,
+    "VIADD": 17,
+    "IMAD.MOV.U32": 16,
+    "SHF.R.U32.HI": 16,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "BRA": 15
+   }
+  },
+  "void row_ring::ring<(int)0, (int)2>(long long *, float *, const unsigned char *, int)": {
+   "regs": 62,
+   "ops": {
+    "PRMT": 36,
+    "LOP3.LUT": 32,
+    "FFMA": 32,
+    "STG.E": 32,
+    "IMAD": 23,
+    "IMAD.IADD": 21,
+    "CS2R": 18,
+    "VIADD": 17,
+    "IMAD.MOV.U32": 16,
+    "SHF.R.U32.HI": 16,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "BRA": 15
+   }
+  },
+  "void row_ring::ring<(int)0, (int)1>(long long *, float *, const unsigned char *, int)": {
+   "regs": 62,
+   "ops": {
+    "PRMT": 36,
+    "LOP3.LUT": 32,
+    "FFMA": 32,
+    "STG.E": 32,
+    "IMAD": 23,
+    "IMAD.IADD": 21,
+    "CS2R": 18,
+    "VIADD": 17,
+    "IMAD.MOV.U32": 16,
+    "SHF.R.U32.HI": 16,
+    "F2FP.BF16.F32.PACK_AB": 16,
+    "BRA": 15
+   }
+  }
+ },
+ "counters": {},
+ "counters_exception": {
+  "host": "vast.ai rented box, NVIDIA H100 80GB HBM3: a box with a driver and no toolkit",
+  "instead": "the kernels' own clocks and the SASS's static counts"
+ }
+}

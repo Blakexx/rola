@@ -198,10 +198,10 @@ def check(binary: Path, table: dict[str, dict]) -> list[str]:
         for k, info in table.items():
             if count(info["ops"], "HGMMA") and any(re.search(b["kernel"], k) for b in budgets(binary)):
                 failures.append(f"{k}: a budgeted wgmma kernel -- its per-MMA divisor is read from counters the "
-                                "hopper model does not name yet (owed with that model); exempt it or budget by units")
+                                "hopper model does not name yet (owed with that model): state `Bench::exempt`")
             if count(info["ops"], "HMMA|IMMA|HGMMA") and not any(re.search(b["kernel"], k) for b in stated):
-                failures.append(f"{k}: an MMA kernel with no instruction budget (KERNEL_STANDARDS 29: `Bench::budget`, "
-                                "or `Bench::exempt` with its reason)")
+                failures.append(f"{k}: an MMA kernel with no instruction budget (KERNEL_STANDARDS 29: `Bench::budget` "
+                                "-- `HMMA` and `IMMA` kernels -- or `Bench::exempt` with its reason)")
     declared = {op: {k for e in expected for k in table if re.search(e["kernel"], k) and e["op"] == op}
                 for op in ("STEP_XU", "STEP_GLOBAL")}
 

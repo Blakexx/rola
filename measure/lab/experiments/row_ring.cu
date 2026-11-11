@@ -60,7 +60,8 @@ __device__ __forceinline__ float expand(uint32_t word, int i, float s, float c) 
 //: A PRODUCER WARP'S TILES: every `kProducers`-th, the next one's bytes issued before this one is expanded
 template <int MODE, int kProducers>
 __device__ __forceinline__ void produce(uint8_t* smem, const uint8_t* src, int tiles, int mine) {
-  static_assert(kProducers < kRawSlots, "a producer's next tile has its own slot of bytes");
+  static_assert(kRawSlots % kProducers == 0 && kProducers <= kSlots,
+                "a slot of bytes is one warp's alone, and its next tile's is not this tile's");
   constexpr bool kExpands = MODE != kConsumerAlone;
   const int lane = threadIdx.x & 31;
   const uint32_t base = lab::smem(smem);

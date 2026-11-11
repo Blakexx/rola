@@ -75,7 +75,7 @@ __device__ __forceinline__ void lowered(uint8_t* smem, int* sinks, int steps) {
 template <int TRADED>
 __global__ void __launch_bounds__(kThreads, 2) trade(long long* times, long long* trade_times, int* sinks, float* out, int steps) {
   __shared__ alignas(128) uint8_t smem[kSmem];
-  const int tid = threadIdx.x, warp = tid >> 5, group = tid >> 7;
+  const int tid = threadIdx.x, group = tid >> 7;
   auto* tile = reinterpret_cast<uint16_t*>(smem);
 #pragma unroll 1
   for (int i = tid; i < kM * kK; i += kThreads) tile[(kFoldA + tile_at(i / kK, i % kK)) / 2] = bf16_of(fold_a(i / kK, i % kK));

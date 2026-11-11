@@ -67,9 +67,11 @@ The fp32 accumulator of one GEMM becomes the A operand of the next by reinterpre
 and narrowing the type — no store, no shuffle.
 - FA2: `flash_fwd_kernel.h:378-380` (`make_tensor(rP.data(), convert_layout_acc_Aregs<TiledMma>(rP.layout()))` → `gemm_rs`); the layout math `utils.h:199-211`.
 - FA3: `hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp:1156-1160` (same, plus an explicit register permute for fp8, and a documented fallback through SMEM when the register-sourced GMMA is unavailable, `:1161-1162`).
-RoLA: the fold's fp32 accumulators become the readout's bf16 operand by this relayout, narrowed in place
-(`docs/ARCHITECTURE.md`, section 9) -- unbuilt, its instruction count a lab's to measure before a hopper carry is
-designed; a phase change that moves state is the transfer the design names, never an ad-hoc copy.
+RoLA: the fold's fp32 accumulators become the readout's bf16 operand narrowed in place
+(`docs/ARCHITECTURE.md`, section 9) -- unbuilt. `[MACHINE]` MEASURED (H100, 2026-11-11, `wgmma_regs`:
+`measure/lab/results/wgmma_regs/sm_90a.json`): wgmma's `m64n16` accumulator is its register operand A's layout, so
+the narrowing is one instruction a bf16 pair with no relayout -- four a thread a step, truncated or rounded at the same
+110 cycles a fold-and-readout step; a phase change that moves state is the transfer the design names, never an ad-hoc copy.
 
 ## 3. Shared memory: copy atoms, swizzles by composition, transposition as a layout operation
 - `ldmatrix` in both variants is a declared copy atom with an arch fallback chosen at the atom, not inline
@@ -100,7 +102,11 @@ parity without a comment naming the invariant.
   (`hopper/flash_fwd_kernel_sm90.h:82-83, 308-309, 360-361`), with the budgets `constexpr` per configuration.
 RULE: a warp is specialized only where its registers move with its role -- `setmaxnreg` hands a producer's to the
 consumers -- and only where the accumulator binds: a producer that holds a consumer's slice and folds nothing is
-waste. `[MACHINE]` `setmaxnreg` around a live state is unmeasured here (a hopper lab's).
+waste. `[MACHINE]` MEASURED (H100, 2026-11-11, `reg_trade`: `measure/lab/results/reg_trade/sm_90a.json`): a state folded
+before a trade of 24 against 232 registers a thread is read out exactly after it, and the trade costs about 200
+cycles a warp, once. `[COMPILER]` ptxas honours `setmaxnreg` only in a kernel whose `__launch_bounds__` give the count
+at entry, and compiles whatever follows a join after it at the lower count: each role's whole body stays in its own
+branch (`docs/lab/reg_trade.md`).
 THE IDEAL REGIME IS FEW WARPS WITH FILLED REGISTERS (Blake, restated 2026-08-08: "If that doesn't work it means
 something is wrong with the kernel in another way we need to fix. not intentionally avoid the ideal regime"). Warp
 count and the register budget are one knob, swept jointly as a surface and never marginally; occupancy is an output,

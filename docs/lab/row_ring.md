@@ -21,6 +21,28 @@ rounded once), and a pair becomes a bf16 word by one `F2FP.BF16.F32.PACK_AB`: a 
 `PRMT`, 32 `FFMA`, 16 packs and 4 `STS.128` -- one FFMA, one PRMT and half a pack an element. A bulk load is one
 `UBLKCP.S.G`.
 
-UNMEASURED: no hopper card has run it. A producer's and the consumer's cycles a tile, alone and together at 1, 2 and 4
-producers, are owed to its first run (`bazel run //tools:lab -- pack row_ring --arch sm_90a`, then `carried` on the
-card, under its kill timeout).
+MEASURED (H100 SXM, 132 SMs, a rented box: vast.ai instance 60165274, driver 595.91.07; 2026-11-11, one session, 7
+repetitions, the accumulators exact against the host's at every producer count; cycles a tile -- 1,024 elements -- the
+median, the spread under 0.1%):
+
+| | cycles a tile |
+|---|---|
+| the producer alone, 1 warp (the consumer only arrives) | 773.1 |
+| the consumer alone (the producer only arrives) | 289.7 |
+| together, 1 producer warp | 760.6 |
+| together, 2 producer warps | 390.9 |
+| together, 4 producer warps | 303.7 |
+
+WHAT IT SHOWS. One producer warp makes a tile in about 770 cycles, 0.75 a warp an element, and the ring runs at the
+producers' rate up to two warps (760, then 391, half of it). At four it runs at 304, the consumer's own 290: a
+warpgroup under this hand-over takes a tile in 290 cycles, where its wgmma with its wait alone is 105 to 136
+([`wgmma_regs`](wgmma_regs.md)), so the full and empty barriers a tile -- every thread's polled wait, one thread's
+arrival -- cost the consumer about as much again as the tile's tensor work. By these rows a warpgroup that consumed at
+its wgmma's own pace would take six or seven such producer warps (773 against 105 to 136: arithmetic across two
+experiments, not a measured form).
+
+NOT SEPARATED: how much of a producer's 770 cycles is the expansion's ~100 instructions a lane and how much its three
+barrier waits and the warp's synchronization a tile; the expansion alone, with no ring, is owed before a design prices
+a producer.
+
+Record: `measure/lab/results/row_ring/sm_90a.json`; its counters are the written exception (no profiler on that box).

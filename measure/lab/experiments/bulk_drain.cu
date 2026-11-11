@@ -30,7 +30,7 @@ constexpr int value_of(int i) { return i % 7 + 1; }
 template <int FORM>
 __global__ void drain(long long* times, int* sinks, float* out, int rounds, int own) {
   __shared__ alignas(128) float panels[2 * kPanel];
-  const int tid = threadIdx.x, warp = tid >> 5;
+  const int tid = threadIdx.x;
   float* const dst = out + (own ? static_cast<long long>(blockIdx.x) * kPanel : 0);
   const uint32_t base = lab::smem(panels);
   float v[kMine];
